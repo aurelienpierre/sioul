@@ -76,6 +76,7 @@ ColumnLayout {
         delegate: ItemDelegate {
             id: thing
 
+            objectName: "relatedRow"
             required property var modelData
 
             Layout.fillWidth: true

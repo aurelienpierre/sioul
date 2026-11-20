@@ -778,15 +778,11 @@ fn held_words(config: &sioul_core::config::Config) -> String {
 /// its line ("at.work", "at.meals"…: what comes forward on it at that time,
 /// areas joined by +, "none" for nothing; "" as its areas say again). Any
 /// device may say it of any other: it travels with the settings. Returns
-/// what went wrong, else "".
-pub(crate) fn say_of_device(id: &str, field: &str, value: &str) -> String {
-    say_of_device_said(id, field, value).0
-}
-
-/// `say_of_device`, with what a change of a phone's calls is to be said
-/// with Undo: the line's sentence, when the change did more than the cell
-/// pressed (a first change that rings where a moment did not) or replaced a
-/// table of your own (a profile, "Screen as every phone does": L15).
+/// what went wrong, else "", with what a change of a phone's calls is to be
+/// said with Undo: the line's sentence, when the change did more than the
+/// cell pressed (a first change that rings where a moment did not) or
+/// replaced a table of your own (a profile, "Screen as every phone does":
+/// L15).
 pub(crate) fn say_of_device_said(id: &str, field: &str, value: &str) -> (String, Option<String>) {
     let path = crate::backend::config_path();
     let mut undo: Option<String> = None;
@@ -3817,6 +3813,12 @@ pub(crate) fn set_backup_place(place: &str) -> String {
         state.asked = now;
     });
     chosen.err().unwrap_or_default()
+}
+
+/// `say_of_device_said`'s problem alone, for the tests.
+#[cfg(test)]
+fn say_of_device(id: &str, field: &str, value: &str) -> String {
+    say_of_device_said(id, field, value).0
 }
 
 #[cfg(test)]

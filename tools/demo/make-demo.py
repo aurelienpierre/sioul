@@ -375,37 +375,37 @@ W: World = World()
 def contacts() -> dict:
     return {
         "iris": dict(name=W.iris[0], first="Iris", last=W.iris[0].split()[1], email=[("work", W.iris[1])], phone=[("work", "+33 4 65 71 20 14")],
-                     org=W.library_name, title=t("Head librarian", "Directrice de la médiathèque"), adr=(street("2 Rue de l'Exemple"), "69006", "Lyon"), place=(45.7765, 4.8540),
+                     org=W.library_name, title=t("Head librarian", "Directrice de la médiathèque"), adr=(street("2 Rue de l'Exemple"), "99006", "Exempleville"), place=(45.7765, 4.8540),
                      note=t("The library's new website: Iris decides; Oskar does the technical side.",
                             "Le nouveau site de la médiathèque : Iris décide ; Oscar s'occupe de la technique."),
                      url=f"https://{W.library}", cats=["clients"]),
         "oskar": dict(name=W.oskar[0], first=W.oskar[0].split()[0], last=W.oskar[0].split()[1], email=[("work", W.oskar[1])], phone=[("work", "+33 4 65 71 20 15")],
-                      org=W.library_name, title=t("IT and digital services", "Informatique et services numériques"), adr=(street("2 Rue de l'Exemple"), "69006", "Lyon"),
+                      org=W.library_name, title=t("IT and digital services", "Informatique et services numériques"), adr=(street("2 Rue de l'Exemple"), "99006", "Exempleville"),
                       place=(45.7765, 4.8540), cats=["clients"]),
         "tom": dict(name=W.tom[0], first="Tom", last=W.tom[0].split()[1], email=[("work", W.tom[1])], phone=[("cell", "+262 6 39 98 41 07")],
-                    org=t("Inkwell Studio", "Atelier L'Encrier"), title=t("Illustrator", "Illustrateur"), adr=(street("9 Quai des Exemples"), "69001", "Lyon"), place=(45.7675, 4.8337),
+                    org=t("Inkwell Studio", "Atelier L'Encrier"), title=t("Illustrator", "Illustrateur"), adr=(street("9 Quai des Exemples"), "99001", "Exempleville"), place=(45.7675, 4.8337),
                     cats=[t("colleagues", "collègues")], note=t("Shares the stand at the December craft fair.", "Partage le stand du salon des créateurs en décembre.")),
         "maud": dict(name="Maud Ferrand", first="Maud", last="Ferrand", email=[("home", "maud.ferrand@example.org")], phone=[("cell", "+262 6 39 98 12 30")],
-                     adr=(street("14 Allée Fictive"), "69100", "Villeurbanne"), place=(45.7676, 4.8800), bday="--03-21", cats=[t("family", "famille")], note=t("Mum.", "Maman.")),
+                     adr=(street("14 Allée Fictive"), "99100", "Exemplebourg"), place=(45.7676, 4.8800), bday="--03-21", cats=[t("family", "famille")], note=t("Mum.", "Maman.")),
         "camille": dict(name="Camille Ferrand", first="Camille", last="Ferrand", email=[("home", "camille.ferrand@example.org")], phone=[("cell", "+262 6 39 98 55 02")],
-                        adr=(street("31 Rue Imaginaire"), "38000", "Grenoble"), place=(45.1916, 5.7281), bday="--07-02", cats=[t("family", "famille")]),
+                        adr=(street("31 Rue Imaginaire"), "99380", "Montexemple"), place=(45.1916, 5.7281), bday="--07-02", cats=[t("family", "famille")]),
         "hugo": dict(name="Hugo Ferrand", first="Hugo", last="Ferrand", email=[("home", "hugo.ferrand@example.org")], phone=[("cell", "+262 6 39 98 70 19")],
-                     adr=(street("6 Passage Inventé"), "42000", "Saint-Étienne"), place=(45.4397, 4.3872), bday="--10-14", cats=[t("family", "famille")]),
+                     adr=(street("6 Passage Inventé"), "99420", "Saint-Exemple"), place=(45.4397, 4.3872), bday="--10-14", cats=[t("family", "famille")]),
         "jonas": dict(name=W.jonas[0], first="Jonas", last=W.jonas[0].split()[1], email=[("home", W.jonas[1])], phone=[("cell", "+262 6 39 98 33 84")],
-                      adr=(street("18 Rue de l'Exemple"), "69007", "Lyon"), place=(45.7457, 4.8423), cats=[t("friends", "amis")],
+                      adr=(street("18 Rue de l'Exemple"), "99007", "Exempleville"), place=(45.7457, 4.8423), cats=[t("friends", "amis")],
                       note=t("Climbing on Saturdays.", "Escalade le samedi.")),
         "varga": dict(name="Dr Elena Varga", first="Elena", last="Varga", email=[], phone=[("work", "+33 4 65 71 47 70")],
                       org=t("Riverside Health Centre", "Centre de santé des Berges"), title=t("General practitioner", "Médecin généraliste"),
-                      adr=(street("5 Rue Imaginaire"), "69003", "Lyon"), place=(45.7606, 4.8590),
+                      adr=(street("5 Rue Imaginaire"), "99003", "Exempleville"), place=(45.7606, 4.8590),
                       note=t("Appointments by phone, mornings.", "Rendez-vous par téléphone, le matin.")),
         "marc": dict(name="Marc Duval", first="Marc", last="Duval", email=[("work", W.marc[1])], phone=[("work", "+33 4 65 71 63 25")],
-                     org=t("Duval Accounts", "Cabinet Duval"), title=t("Accountant", "Expert-comptable"), adr=(street("11 Place des Exemples"), "69400", "Villefranche-sur-Saône"),
+                     org=t("Duval Accounts", "Cabinet Duval"), title=t("Accountant", "Expert-comptable"), adr=(street("11 Place des Exemples"), "99400", "Exemple-sur-Rive"),
                      place=(45.9900, 4.7180)),
         "priya": dict(name="Priya Nair", first="Priya", last="Nair", email=[("home", f"priya@{W.choir}")], phone=[("cell", "+262 6 39 98 90 46")],
-                      org=t("Two Rivers Voices choir", "Chœur des Deux Rivières"), title=t("Choir director", "Cheffe de chœur"), adr=(street("3 Impasse Fictive"), "69004", "Lyon"),
+                      org=t("Two Rivers Voices choir", "Chœur des Deux Rivières"), title=t("Choir director", "Cheffe de chœur"), adr=(street("3 Impasse Fictive"), "99004", "Exempleville"),
                       place=(45.7745, 4.8320), cats=[t("friends", "amis")]),
         "healthcover": dict(name=W.health_name, email=[("work", f"members@{W.health}")], phone=[("work", "+33 4 65 71 80 00")],
-                            org=W.health_name, adr=(street("20 Boulevard de l'Exemple"), "69003", "Lyon"), place=(45.7608, 4.8458),
+                            org=W.health_name, adr=(street("20 Boulevard de l'Exemple"), "99003", "Exempleville"), place=(45.7608, 4.8458),
                             note=t("Open Monday to Friday, 9:00 to 12:00 and 14:00 to 16:30.", "Ouvert du lundi au vendredi, de 9 h à 12 h et de 14 h à 16 h 30."),
                             # Its opening hours on its card, typed (docs/tasks.md, "Offices' hours"): its call follows them.
                             hours=dict(open="Mo-Fr 09:00-12:00,14:00-16:30; PH off", phone="Mo-Th 09:00-12:00", checked="2026-09-14",
@@ -416,7 +416,7 @@ def contacts() -> dict:
         "townhall": dict(name=t("Exempleville town hall", "Mairie d’Exempleville"), email=[], phone=[],
                          adr=(street("6 Place de l'Exemple"), "99999", "Exempleville"), place=(45.7740, 4.8050)),
         "sophie": dict(name="Sophie Marchand", first="Sophie", last="Marchand", email=[("work", f"sophie.marchand@{W.bank}")], phone=[("work", "+33 4 65 71 30 52")],
-                       org=W.bank_name, title=t("Account adviser", "Conseillère clientèle"), adr=(street("1 Cours Imaginaire"), "69002", "Lyon"), place=(45.7578, 4.8320)),
+                       org=W.bank_name, title=t("Account adviser", "Conseillère clientèle"), adr=(street("1 Cours Imaginaire"), "99002", "Exempleville"), place=(45.7578, 4.8320)),
     }
 
 
@@ -609,7 +609,7 @@ Iris
 --
 Iris Calloway
 Head librarian, Fernhill Library
-2 Rue de l'Exemple, 69006 Lyon""",
+2 Rue de l'Exemple, 99006 Exempleville""",
             """
 1. Les horaires juste sous la photo plutôt qu'en bas de page : la plupart des gens viennent sur le site pour eux.
 2. Le coin des enfants dans le menu, comme une entrée à part.
@@ -622,11 +622,11 @@ Iris
 --
 Iris Calvet
 Directrice, Médiathèque des Fougères
-2 rue de l'Exemple, 69006 Lyon"""), key="homepage"),
+2 rue de l'Exemple, 99006 Exempleville"""), key="homepage"),
         Mail("work", c.ago(hours=2, minutes=10), ("Hana Okafor", f"hana@{W.coop}"), t("A small website for our cooperative?", "Un petit site pour notre coopérative ?"), t(
             """Dear Noa,
 
-Iris Calloway at Fernhill Library gave me your address. We are a small cooperative of market gardeners near Lyon, and our website has not changed since 2014.
+Iris Calloway at Fernhill Library gave me your address. We are a small cooperative of market gardeners near Exempleville, and our website has not changed since 2014.
 
 Would you have time this winter for a simple site: who we are, our market days, how to order a basket? Could you tell me roughly what it would cost?
 
@@ -635,7 +635,7 @@ Hana Okafor
 Greenfield Cooperative""",
             """Bonjour Noa,
 
-Iris Calvet, de la Médiathèque des Fougères, m'a donné votre adresse. Nous sommes une petite coopérative de maraîchers près de Lyon, et notre site n'a pas changé depuis 2014.
+Iris Calvet, de la Médiathèque des Fougères, m'a donné votre adresse. Nous sommes une petite coopérative de maraîchers près d'Exempleville, et notre site n'a pas changé depuis 2014.
 
 Auriez-vous du temps cet hiver pour un site simple : qui nous sommes, nos jours de marché, comment commander un panier ? Pourriez-vous me dire à peu près ce que cela coûterait ?
 
@@ -917,7 +917,7 @@ Il sera prélevé le 15 octobre.
 Votre relevé de compteur est à transmettre avant le 20.
 
 Clairwatt"""), flags="S", key="energy"),
-        Mail("personal", c.at(c.weekday_before(-6), "09:02"), (t("Lyon Climbing Club", "Club d'escalade de Lyon"), f"{t('news', 'actus')}@{W.club}"),
+        Mail("personal", c.at(c.weekday_before(-6), "09:02"), (t("Exempleville Climbing Club", "Club d'escalade d'Exempleville"), f"{t('news', 'actus')}@{W.club}"),
              t("October news: new routes on the left wall", "Nouvelles d'octobre : de nouvelles voies sur le mur de gauche"), t(
             """Ten new routes on the left wall, from beginner to hard. The gym closes early on 31 October.""",
             """Dix nouvelles voies sur le mur de gauche, du débutant au difficile. La salle ferme plus tôt le 31 octobre."""), kind="list", flags="S", key="club"),
@@ -1264,7 +1264,10 @@ def write_phone_messages(p: Profile):
     computer through the sharing (crates/sioul-core/src/phonemsgs.rs, `Line`;
     the phone's name in the sharing invented): a text from the doctor while you slept, a pharmacy's,
     a service's, a code said without it, a chat's whose words stayed on the
-    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71. The part itself: `write_here`."""
+    phone. Fiction numbers: ARCEP's 01 99 00 and 04 65 71. The apps by their real
+    ids, /e/'s Message and Signal, since Sioul knows apps by them (an SMS app's
+    texts, `appnotes.rs`; marked read by a reply, `replies::MARKS_READ`); the
+    senders invented. The part itself: `write_here`."""
     c = p.clock
 
     def line(moment: datetime, name: str, who: str, text: str = "", key: str = "", talk: str = "", kind: str = "text", **more) -> str:
@@ -1279,7 +1282,7 @@ def write_phone_messages(p: Profile):
     lines = [
         line(c.at(c.day(-1), "23:10"), "Dr Elena Varga", "safe", t("Could you call me back tomorrow morning? Nothing worrying.", "Pourriez-vous me rappeler demain matin ? Rien d’inquiétant."), doctor, "doctor"),
         line(c.at(c.today, "09:41"), t("Linden Pharmacy", "Pharmacie des Tilleuls"), "stranger", t("Your prescription is ready. We are open until 19:30.", "Votre ordonnance est prête. Nous sommes ouverts jusqu’à 19 h 30."), "+33199001234", "pharmacy"),
-        line(c.at(c.today, "10:15"), "AMELI", "automaton", t("Your certificate is available in your account.", "Votre attestation est disponible dans votre compte.")),
+        line(c.at(c.today, "10:15"), t("HEALTHCOVER", "CAISSESANTE"), "automaton", t("Your certificate is available in your account.", "Votre attestation est disponible dans votre compte.")),
         line(c.at(c.today, "11:05"), t("My Bank", "Ma Banque"), "", code=True),
         line(c.at(c.today, "13:02"), "Sam", "neutral", "", "", "sam", kind="chat", withheld=True),
     ]
@@ -1536,7 +1539,7 @@ def conflict_events(p: "Profile", me: tuple) -> list[tuple[str, str]]:
     where it is: the workshop is the change, and its organizer's
     (`overlaps::Notices::look`, conflicts.toml)."""
     c = p.clock
-    haircut = event(c, "haircut", t("Haircut", "Coiffeur"), c.today, "16:00", "16:45", location=t("Salon Lumière, Lyon", "Salon Lumière, Lyon"))
+    haircut = event(c, "haircut", t("Haircut", "Coiffeur"), c.today, "16:00", "16:45", location=t("Salon Lumière, Exempleville", "Salon Lumière, Exempleville"))
     workshop = event(c, "fernhill-workshop", t("Fernhill: content workshop", "Fougères : atelier sur les contenus"), c.today, "16:15", "17:00",
                      location=t("Video call, meet.example.com/fernhill", "Visio, meet.example.com/fougeres"), organizer=W.iris, attendees=[me])
     looked = unix(c.at(c.day(-2), "09:00"))
@@ -1647,7 +1650,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
         ("work", event(c, "planning", t("Weekly planning", "Planning de la semaine"), c.this_week(0), "09:00", "10:00",
                        notes=t("The week's steps, in Sioul's Tasks.", "Les étapes de la semaine, dans les Tâches de Sioul."), weekly=True)),
         ("personal", event(c, "doctor", t("Dr Varga: check-up", "Dr Varga : bilan"), c.weekday_after(1), "09:30", "10:00",
-                           location=t("Riverside Health Centre, 5 Rue Imaginaire, Lyon", "Centre de santé des Berges, 5 rue Imaginaire, Lyon"),
+                           location=t("Riverside Health Centre, 5 Rue Imaginaire, Exempleville", "Centre de santé des Berges, 5 rue Imaginaire, Exempleville"),
                            # What to bring, as a list to tick (docs/tasks.md, "Checklists").
                            notes=t("Bring:\n- [ ] The blood test results\n- [ ] Carte Vitale", "À emporter :\n- [ ] Les résultats de la prise de sang\n- [ ] La carte Vitale"),
                            # Its place's point, as a suggested address chosen writes it (the event card's map).
@@ -1671,7 +1674,7 @@ def write_calendars(p: Profile, mails: list[Mail]):
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
-        ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Villeurbanne")),
+        ("personal", event(c, "lunch-mum", t("Lunch at Mum's", "Déjeuner chez Maman"), c.this_week(6), "12:30", "15:00", location="Exemplebourg")),
         # A meeting you organize, made in Sioul (the event card's step 3): its guests in it, each
         # left to you, moved and changed through the organizer's door; its messages drafted.
         ("personal", event(c, "garden", t("Garden work party", "Chantier au jardin partagé"), c.this_week(5), "15:00", "16:30",
@@ -1679,13 +1682,13 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            attendees=[(W.jonas[0], W.jonas[1], "ACCEPTED"), (W.tom[0], W.tom[1], "NEEDS-ACTION")], left_to_you=True)),
         ("work", event(c, "fernhill-pages", t("Fernhill: pages kick-off", "Fougères : lancement des pages"), c.weekday_after(8), "10:00", "11:00",
                        location=W.library_name, organizer=W.iris, attendees=[me_w], project="fernhill")),
-        ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Étienne")),
+        ("personal", event(c, "hugo-birthday", t("Hugo's birthday dinner", "Dîner d'anniversaire de Hugo"), c.day(9), "19:30", "22:00", location="Saint-Exemple")),
         # Léa's agenda: a swimming lesson Sam takes, a dentist nobody takes yet (asked under the
         # Agenda's head line); Sam's, busy times alone.
         ("lea", event(c, "lea-swimming", t("Swimming lesson", "Cours de natation"), c.this_week(2), "17:00", "18:00", location=t("Riverside pool", "Piscine des Berges"),
                       extra=["X-SIOUL-CONCEPT;VALUE=URI:tag:aurelienpierre.com,2026:sioul/child-kind/activity",
                              f"X-SIOUL-TAKEN-BY;CN=Sam;PARTSTAT=ACCEPTED;SINCE={utc(c.at(c.day(-3), '18:15'))}:mailto:sam@example.org"])),
-        ("lea", event(c, "lea-dentist", t("Dentist", "Dentiste"), c.weekday_after(3), "10:00", "10:30", location=t("2 Rue Imaginaire, Lyon", "2 rue Imaginaire, Lyon"),
+        ("lea", event(c, "lea-dentist", t("Dentist", "Dentiste"), c.weekday_after(3), "10:00", "10:30", location=t("2 Rue Imaginaire, Exempleville", "2 rue Imaginaire, Exempleville"),
                       extra=["X-SIOUL-CONCEPT;VALUE=URI:tag:aurelienpierre.com,2026:sioul/child-kind/dentist"])),
         ("sam", event(c, "sam-busy-1", "Busy", c.this_week(1), "09:00", "12:00")),
         ("sam", event(c, "sam-busy-2", "Busy", c.this_week(3), "14:00", "18:00")),
@@ -2200,10 +2203,10 @@ Voir [[{library_page}]].
 """)),
         "Marc Duval.md": (stamp(-20, "12:00"), t("""# Marc Duval
 
-Accountant, Villefranche-sur-Saône. The quarterly declaration, and the yearly one in spring.
+Accountant, Exemple-sur-Rive. The quarterly declaration, and the yearly one in spring.
 """, """# Marc Duval
 
-Expert-comptable, Villefranche-sur-Saône. La déclaration trimestrielle, et l'annuelle au printemps.
+Expert-comptable, Exemple-sur-Rive. La déclaration trimestrielle, et l'annuelle au printemps.
 """)),
         "Priya Nair.md": (stamp(-40, "12:00"), t("""# Priya Nair
 
@@ -2270,7 +2273,7 @@ id = "fernhill"
 contact = "sioul:contact/demo-contact-iris"
 kind = "business"
 name = {toml_string(W.library_name)}
-address = {{ lines = [{toml_string(street("2 Rue de l'Exemple"))}], postcode = "69006", city = "Lyon", country = "FR" }}
+address = {{ lines = [{toml_string(street("2 Rue de l'Exemple"))}], postcode = "99006", city = "Exempleville", country = "FR" }}
 ids = [{{ kind = "siren", value = "904 123 452", printed = true }}]
 email = "{t("accounts", "compta")}@{W.library}"
 """)
@@ -2563,7 +2566,7 @@ started = 2024-03-01
 renews = {year + 1}-03-01
 every = "year"
 notice_days = 30
-cancel = {toml_string(W.lets + ", " + street("4 Rue de l'Exemple") + ", 69002 Lyon")}
+cancel = {toml_string(W.lets + ", " + street("4 Rue de l'Exemple") + ", 99002 Exempleville")}
 notes = {toml_string(t("Furnished flat: one month's notice.", "Meublé : un mois de préavis."))}
 
 [[contract]]
@@ -2602,7 +2605,7 @@ every = "year"
 notice_days = 30
 covers = {toml_string(t("Tenant's liability, water damage, legal protection.", "Responsabilité civile du locataire, dégâts des eaux, protection juridique."))}
 paper = "home-insurance"
-cancel = {toml_string(W.insurer + ", " + street("7 Rue Fictive") + ", 69003 Lyon")}
+cancel = {toml_string(W.insurer + ", " + street("7 Rue Fictive") + ", 99003 Exempleville")}
 
 [[contract]]
 id = "hosting"
@@ -2812,7 +2815,7 @@ due = "{day + timedelta(days=30)}"
 project = "fernhill"
 project_title = {toml_string(W.project_title)}
 client = {toml_string(W.library_name)}
-client_address = {toml_string(street("2 Rue de l'Exemple") + chr(10) + "69006 Lyon")}
+client_address = {toml_string(street("2 Rue de l'Exemple") + chr(10) + "99006 Exempleville")}
 total_cents = {total}
 currency = "EUR"
 sessions = {toml_list(keys)}
@@ -2820,7 +2823,7 @@ paid = true
 
 [issuer]
 name = "Noa Ferrand"
-address = {toml_string(street("8 Rue de l'Exemple") + chr(10) + "69004 Lyon")}
+address = {toml_string(street("8 Rue de l'Exemple") + chr(10) + "99004 Exempleville")}
 siret = "000 000 000 00000"
 vat = {toml_string(t("VAT not applicable, art. 293 B of the French tax code", "TVA non applicable, art. 293 B du CGI"))}
 payment = "IBAN FR76 0000 0000 0000 0000 0000 000"
@@ -3094,7 +3097,7 @@ made = "{p.clock.today}"
 geocode = false
 
 [weather]
-place = "Lyon"
+place = "Exempleville"
 latitude = 45.76
 longitude = 4.84
 
@@ -3108,15 +3111,15 @@ gathered = ["09:00", "13:00", "18:00"]
 
 # Invoices as Settings ▸ Invoices writes them since November 2026 (docs/projects.md):
 # France's preset, a sole trader under the micro regime and the VAT franchise,
-# a made-up SIRET that passes its check, the documented example IBAN.
+# a made-up SIRET that passes its check, an IBAN of an invented bank (code 99999) whose keys hold.
 [invoice]
 preset = "fr"
 legal_form = "ei"
 regime = "micro"
 name = "Noa Ferrand"
 address = {toml_string(street("8 Rue de l'Exemple"))}
-postcode = "69004"
-city = "Lyon"
+postcode = "99004"
+city = "Exempleville"
 prefix = "2026-"
 rate = 50.0
 currency = "EUR"
@@ -3133,7 +3136,7 @@ scheme = "franchise"
 
 [[invoice.bank]]
 holder = "Noa Ferrand"
-iban = "FR76 3000 6000 0112 3456 7890 189"
+iban = "FR76 9999 9000 0112 3456 7890 152"
 bic = "EXMPFRPP"
 
 # This computer, named in Settings ▸ Devices ("Rename…"): its id is share/here.toml's.
@@ -3165,7 +3168,7 @@ id = "{account_id('work')}"
 kind = "imap"
 address = "{WORK}"
 name = "Noa Ferrand"
-signature = {toml_string("Noa Ferrand  " + chr(10) + t("Web design and illustration, Lyon", "Web design et illustration, Lyon"))}
+signature = {toml_string("Noa Ferrand  " + chr(10) + t("Web design and illustration, Exempleville", "Web design et illustration, Exempleville"))}
 area = "work"
 host = "imap.example.invalid"
 port = 993
@@ -3291,7 +3294,8 @@ def move_lists(p: Profile, documents_at: str):
     """Sioul's lists out of the notes folder, as a device that moved keeps them
     (docs/notes-folder.md, "What lives where"): the lists in the data folder's
     records/, the papers' files in Documents/Papers, the letters' scans and
-    their inbox in Documents/Letters, the lists' paths named from there, the
+    their inbox in Documents/Letters (Papiers and Courrier in French: the
+    person's own folders), the lists' paths named from there, the
     state folder saying so, the two folders this device's own in config.toml.
     Each file keeps its time. The notes folder holds the notes alone."""
     records, documents = p.data / "records", p.root / "documents"
@@ -3303,7 +3307,7 @@ def move_lists(p: Profile, documents_at: str):
     for name in lists:
         if (p.notes / name).is_file():
             move(p.notes / name, records / name)
-    for old, folder in (("papers", "Papers"), ("letters", "Letters")):
+    for old, folder in (("papers", t("Papers", "Papiers")), ("letters", t("Letters", "Courrier"))):
         top = p.notes / old
         for path in sorted(f for f in top.rglob("*") if f.is_file()) if top.is_dir() else []:
             relative = path.relative_to(top)
@@ -3322,10 +3326,10 @@ def move_lists(p: Profile, documents_at: str):
     p.write(config, config.read_text(encoding="utf-8") + f"""
 # This device's own folders for papers and letters (docs/papers.md): Sioul's lists are in its own folder.
 [papers]
-folder = {toml_string(documents_at + "/Papers")}
+folder = {toml_string(documents_at + "/" + t("Papers", "Papiers"))}
 
 [letters]
-folder = {toml_string(documents_at + "/Letters")}
+folder = {toml_string(documents_at + "/" + t("Letters", "Courrier"))}
 """)
 
 

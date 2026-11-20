@@ -4054,23 +4054,9 @@ SioulWindow {
                 },
                 () => {},
                 () => grabber.save("vault-card-locked"),
-                // Open: stood in for (no Bitwarden server in the demo), the card and its row told so.
-                () => {
-                    const find = item => {
-                        if (item.objectName === "vaultState")
-                            return item
-                        for (let i = 0; i < item.children.length; i++) {
-                            const found = find(item.children[i])
-                            if (found)
-                                return found
-                        }
-                        return null
-                    }
-                    accountsPage.vaultCard.vault = "unlocked"
-                    const state = find(accountsPage.vaultCard)
-                    if (state)
-                        state.parent.open = "unlocked"
-                },
+                // Open: stood in for (no Bitwarden server in the demo), told to the card alone:
+                // its row follows the card's reading (SettingRow.qml's `vaultState`).
+                () => accountsPage.vaultCard.vault = "unlocked",
                 () => {},
                 () => grabber.save("vault-card-unlocked"),
                 () => {

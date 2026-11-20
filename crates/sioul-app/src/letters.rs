@@ -96,62 +96,132 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         if read.is_empty() {
             return;
         }
-        let entries = read.into_iter().flatten();
-        let Ok(letters) = Letters::load_at(&places) else { return };
-        let known: Vec<String> = letters.list.iter().map(|l| l.source.clone()).collect();
-        // Read first (seconds each), then added to the letters as the file holds them then.
-        let mut read: Vec<Letter> = Vec::new();
+        let scans: Vec<PathBuf> = read.into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).collect();
         let projects = sioul_core::projects::ProjectStore::load(&places.records).map(|s| s.projects).unwrap_or_default();
-        let mut added = 0;
-        for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
-            let source = source_of(&path);
-            if known.contains(&source) {
-                continue;
-            }
-            // A file still being written (a scanner, a sync) is read next time.
-            if std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
-                continue;
-            }
-            let (id, received) = letter_id(&path);
-            let work = sioul_core::config::cache_dir().join("ocr").join(&id);
-            let mut letter = Letter { id: id.clone(), file: places.letters.named(&path), source, received: Some(received), status: "new".into(), ..Letter::default() };
-            match sioul_sync::ocr::text_of(&path, &work, &looked.ocr.tesseract) {
-                Ok(text) => {
-                    letter.reading = sioul_core::letters::read(&looked, &text, received);
-                    letter.project = sioul_core::letters::project_of(&text, &letter.reading.sender, &projects).unwrap_or_default();
-                    let _ = letters.save_text(&id, &text);
-                    if let Ok(mut missing) = MISSING.lock() {
-                        missing.clear();
-                    }
-                }
-                Err(sioul_sync::ocr::Unread::Missing(hint)) => {
-                    // Kept, unread: it can still be filed by hand; read once a program is there.
-                    if let Ok(mut missing) = MISSING.lock() {
-                        *missing = hint;
-                    }
-                    continue;
-                }
-                Err(sioul_sync::ocr::Unread::Failed(e)) => letter.problem = e,
-            }
-            read.push(letter);
-            added += 1;
-        }
-        let taken = added > 0
-            && Letters::change_at(&places, |letters| {
-                for letter in read {
-                    if !letters.list.iter().any(|l| l.source == letter.source) {
-                        letters.put(letter);
-                    }
-                }
-            })
-            .is_ok();
+        let ocr = |path: &Path, id: &str| sioul_sync::ocr::text_of(path, &sioul_core::config::cache_dir().join("ocr").join(id), &looked.ocr.tesseract);
+        let taken = read_inbox(&places, &scans, &looked, &projects, &ocr) > 0;
         // The scans linked where they are, read the same way.
-        let linked = read_linked(&places, &looked, &projects, &|path: &Path, id: &str| sioul_sync::ocr::text_of(path, &sioul_core::config::cache_dir().join("ocr").join(id), &looked.ocr.tesseract));
+        let linked = read_linked(&places, &looked, &projects, &ocr);
         if taken || linked > 0 {
             let _ = qt.queue(|mut sioul| sioul.as_mut().letters_changed());
             let _ = shared;
         }
     });
+}
+
+/// What the letters already know of a scan in the inbox (`known_as`).
+#[derive(Debug, PartialEq, Eq)]
+enum Known {
+    /// No letter of theirs is this scan: it is read into a letter of its own.
+    New,
+    /// A letter was read from it as it is now (the same name, size and time).
+    Read,
+    /// A scan linked where it is, from the inbox, not read yet: `read_linked` reads it into that letter.
+    Linked,
+    /// A letter that names this very file and holds no trace of its reading
+    /// (a list written by another program, or by hand): that letter, by its id.
+    Traceless(String),
+}
+
+/// Where a file is, as the system names it: two spellings of one place are one place.
+fn place_of(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// What `letters` know of the scan at `scan` (its `source`, the day it came:
+/// `letter_id`). A scan is one letter: the one read from it as it is now;
+/// else one that names this very place and holds no trace of a reading yet
+/// (no `source`), as long as it is linked (read into that letter at a coming
+/// minute), or still waiting and dated the scan's own day. Absence proves
+/// nothing, and never lost comes before never doubled: a letter done with,
+/// of another day, or read from that place when it held other bytes (the
+/// file touched, or another scan put there under the same name) does not
+/// stand for it, and the scan is read as a letter of its own.
+fn known_as(letters: &Letters, scan: &Path, source: &str, day: jiff::civil::Date) -> Known {
+    if letters.list.iter().any(|l| l.source == source) {
+        return Known::Read;
+    }
+    let here = place_of(scan);
+    let mut traceless = letters.list.iter().filter(|l| l.source.is_empty() && place_of(&letters.file_path(l)) == here);
+    if traceless.clone().any(|l| l.linked) {
+        return Known::Linked;
+    }
+    traceless.find(|l| l.status != "done" && l.received == Some(day)).map_or(Known::New, |l| Known::Traceless(l.id.clone()))
+}
+
+/// The scans of the inbox (`scans`, among other files) that no letter
+/// stands for yet (`known_as`), read by `read` (a file and the letter's id:
+/// its text), then added to the letters as the file holds them then, each
+/// checked again there; a letter that names its scan without a trace of its
+/// reading takes that scan's trace, nothing else of it changed (what it says
+/// counts until you correct it). One still being written waits; a missing
+/// program leaves them unread, said on the page (`MISSING`). How many
+/// letters were added or given their trace.
+fn read_inbox(places: &Places, scans: &[PathBuf], looked: &sioul_core::words::Words, projects: &[sioul_core::projects::Project], read: &dyn Fn(&Path, &str) -> Result<String, sioul_sync::ocr::Unread>) -> usize {
+    let Ok(letters) = Letters::load_at(places) else { return 0 };
+    // Read first (seconds each), then added to the letters as the file holds them then.
+    let mut found: Vec<(Letter, PathBuf)> = Vec::new();
+    let mut traced: Vec<(String, PathBuf, jiff::civil::Date)> = Vec::new();
+    for path in scans.iter().filter(|p| p.is_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
+        // A file still being written (a scanner, a sync) is read, or its trace taken, next time.
+        if std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
+            continue;
+        }
+        let source = source_of(path);
+        let (id, received) = letter_id(path);
+        match known_as(&letters, path, &source, received) {
+            Known::Read | Known::Linked => continue,
+            Known::Traceless(_) => {
+                traced.push((source, path.clone(), received));
+                continue;
+            }
+            Known::New => {}
+        }
+        let mut letter = Letter { id: id.clone(), file: places.letters.named(path), source, received: Some(received), status: "new".into(), ..Letter::default() };
+        match read(path, &id) {
+            Ok(text) => {
+                letter.reading = sioul_core::letters::read(looked, &text, received);
+                letter.project = sioul_core::letters::project_of(&text, &letter.reading.sender, projects).unwrap_or_default();
+                let _ = letters.save_text(&id, &text);
+                if let Ok(mut missing) = MISSING.lock() {
+                    missing.clear();
+                }
+            }
+            Err(sioul_sync::ocr::Unread::Missing(hint)) => {
+                // Kept, unread: it can still be filed by hand; read once a program is there.
+                if let Ok(mut missing) = MISSING.lock() {
+                    *missing = hint;
+                }
+                continue;
+            }
+            Err(sioul_sync::ocr::Unread::Failed(e)) => letter.problem = e,
+        }
+        found.push((letter, path.clone()));
+    }
+    if found.is_empty() && traced.is_empty() {
+        return 0;
+    }
+    // Over the letters as they are now: one may have come for the same scan meanwhile (a link, another reading).
+    Letters::change_at(places, |letters| {
+        let mut n = 0;
+        for (source, path, day) in traced {
+            if let Known::Traceless(of) = known_as(letters, &path, &source, day)
+                && let Some(mut letter) = letters.get(&of).cloned()
+            {
+                letter.source = source;
+                letters.put(letter);
+                n += 1;
+            }
+        }
+        for (letter, path) in found {
+            if known_as(letters, &path, &letter.source, letter.received.unwrap_or_else(|| sioul_core::zone::now().date())) == Known::New {
+                letters.put(letter);
+                n += 1;
+            }
+        }
+        n
+    })
+    .unwrap_or(0)
 }
 
 /// The scans linked where they are (`link`) not read yet, read by `read`
@@ -241,7 +311,9 @@ fn link_in(places: &Places, paths: &[PathBuf]) -> String {
     let linked = Letters::change_at(places, |letters| {
         let mut n = 0usize;
         for letter in chosen {
-            if letters.list.iter().any(|l| l.file == letter.file || l.id == letter.id) {
+            // Already a letter: linked before, or read from the inbox where it lies (one place, one letter).
+            let here = place_of(Path::new(&letter.file));
+            if letters.list.iter().any(|l| l.file == letter.file || l.id == letter.id || place_of(&letters.file_path(l)) == here) {
                 continue;
             }
             letters.put(letter);
@@ -749,6 +821,78 @@ mod tests {
         let mut shown = super::View::default();
         super::fill(&mut shown, &Places::under(&root), None);
         assert!(shown.filed[0].letters[0].gone);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A scan in the inbox and its letter at once, as a list written by
+    /// another program or by hand keeps it (the demo's: no trace of its
+    /// reading, `source`): one letter on the Porch, never a second read
+    /// beside it; the letter takes the scan's trace, what it says kept. A
+    /// scan linked from the inbox before its reading: its letter alone,
+    /// read once; linked after its reading there: still one. Never lost
+    /// before never doubled: a letter done with, or of another day, or read
+    /// when the file held other bytes, does not stand for the scan, which
+    /// is read as a letter of its own.
+    #[test]
+    fn a_scan_and_its_letter_at_once_are_one_letter() {
+        use sioul_core::letters::{Letter, Letters, Reading};
+        sioul_core::config::stand_ins_only();
+        let base = sioul_core::config::data_dir().join(format!("letters-twice-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("Notes");
+        let places = Places::under(&root);
+        let inbox = places.letters.folder.join("inbox");
+        std::fs::create_dir_all(&inbox).unwrap();
+        let three_days = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 86_400);
+        let scan_at = |name: &str, bytes: &[u8], at: std::time::SystemTime| {
+            let scan = inbox.join(name);
+            std::fs::write(&scan, bytes).unwrap();
+            std::fs::File::options().write(true).open(&scan).unwrap().set_modified(at).unwrap();
+            scan
+        };
+        let words = sioul_core::words::Words::builtin_ref();
+        let read = |_: &std::path::Path, _: &str| -> Result<String, sioul_sync::ocr::Unread> { Ok("Caisse d'allocations familiales\nVotre dossier : il manque une pièce.".into()) };
+        let waiting = || {
+            let mut shown = super::View::default();
+            super::fill(&mut shown, &places, None);
+            shown.letters.iter().map(|l| l.sender.clone()).collect::<Vec<_>>()
+        };
+        // The scan waiting in the inbox and its letter written beside it, without its trace.
+        let scan = scan_at("housing-aid.pdf", b"%PDF housing", three_days);
+        let (_, day) = super::letter_id(&scan);
+        let written = Letter { id: "demo-letter-housing".into(), file: places.letters.named(&scan), received: Some(day), status: "new".into(), reading: Reading { sender: "Housing aid office".into(), ..Reading::default() }, ..Letter::default() };
+        Letters::change_at(&places, |letters| letters.put(written.clone())).unwrap();
+        assert_eq!(waiting(), ["Housing aid office"]);
+        assert_eq!(super::read_inbox(&places, std::slice::from_ref(&scan), words, &[], &|_, _| panic!("read again beside its letter")), 1, "the letter takes the scan's trace");
+        let letters = Letters::load_at(&places).unwrap();
+        assert_eq!(letters.list.len(), 1);
+        assert_eq!((letters.list[0].source.is_empty(), letters.list[0].reading.sender.as_str()), (false, "Housing aid office"), "what it says kept");
+        assert_eq!(super::read_inbox(&places, std::slice::from_ref(&scan), words, &[], &read), 0, "known by its trace from then on");
+        assert_eq!(waiting(), ["Housing aid office"], "one letter on the Porch");
+        // A scan linked from the inbox, not read yet: read once, into its letter.
+        let linked = scan_at("linked.pdf", b"%PDF linked", three_days);
+        super::link_in(&places, std::slice::from_ref(&linked));
+        assert_eq!(super::read_inbox(&places, std::slice::from_ref(&linked), words, &[], &|_, _| panic!("read beside its linked letter")), 0);
+        assert_eq!(super::read_linked(&places, words, &[], &read), 1);
+        assert_eq!(Letters::load_at(&places).unwrap().list.len(), 2);
+        // A scan read from the inbox, then linked: still one letter.
+        let read_first = scan_at("read-first.pdf", b"%PDF read first", three_days);
+        assert_eq!(super::read_inbox(&places, std::slice::from_ref(&read_first), words, &[], &read), 1);
+        assert_eq!(super::link_in(&places, std::slice::from_ref(&read_first)), "");
+        assert_eq!(Letters::load_at(&places).unwrap().list.len(), 3);
+        // Never lost: a letter done with, or of another day, without a trace, does not stand for the scan there.
+        for (name, status, days) in [("done.pdf", "done", 0), ("other-day.pdf", "new", 1)] {
+            let other = scan_at(name, name.as_bytes(), three_days);
+            let (_, its_day) = super::letter_id(&other);
+            let before = Letter { id: format!("by-hand-{name}"), file: places.letters.named(&other), received: Some(its_day - jiff::ToSpan::days(days)), status: status.into(), ..Letter::default() };
+            Letters::change_at(&places, |letters| letters.put(before.clone())).unwrap();
+            assert_eq!(super::read_inbox(&places, std::slice::from_ref(&other), words, &[], &read), 1, "{name} read as a letter of its own");
+        }
+        // Nor a letter read when the file held other bytes: the scan put there since is read too.
+        let n = Letters::load_at(&places).unwrap().list.len();
+        let replaced = scan_at("read-first.pdf", b"%PDF another letter under the same name", std::time::SystemTime::now() - std::time::Duration::from_secs(60));
+        assert_eq!(super::read_inbox(&places, std::slice::from_ref(&replaced), words, &[], &read), 1);
+        assert_eq!(Letters::load_at(&places).unwrap().list.len(), n + 1);
         let _ = std::fs::remove_dir_all(&base);
     }
 
