@@ -188,7 +188,7 @@ Les sites tournent dans Qt WebEngine, le moteur de Chromium, dans un profil à e
 
 | Fonction | Ce qu’il faut | Testé avec | Attendu avec | Limites |
 |---|---|---|---|---|
-| Un agent sur cet ordinateur | un client MCP qui lance `sioul mcp` | le serveur seul, dans ses tests et à la main | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme ; des modèles locaux par un tel client | essayé dans Claude Code le 10 novembre 2026 (ses outils listés, l’un lu) ; pas encore dans Claude Desktop |
+| Un agent sur cet ordinateur | un client MCP qui lance `sioul mcp` ([où est `sioul` dans chaque paquet](install.md#the-command-line)) ; un téléphone ou une tablette n’a pas de ligne de commande | le serveur seul, dans ses tests et à la main | Claude Code, Claude Desktop, les autres clients MCP qui lancent un programme ; des modèles locaux par un tel client | essayé dans Claude Code le 10 novembre 2026 (ses outils listés, l’un lu) ; pas encore dans Claude Desktop |
 | Un agent sur Internet | — | — | — | **non pris en charge** : ChatGPT n’atteint les serveurs que par Internet |
 | La lecture par l’IA d’une adresse protégée | votre clé Anthropic | une imitation du service d’Anthropic | Anthropic | seulement pour une adresse que vous protégez, quand vous le permettez ([Le Porche](porch.md#a-public-address-protected)) |
 

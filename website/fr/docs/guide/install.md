@@ -1,5 +1,5 @@
 ---
-description: "Construire et installer Sioul à partir de ses sources, sur Linux d’abord ; notes pour Windows et macOS."
+description: "Télécharger Sioul pour Windows, macOS, Linux ou Android, ou le construire à partir de ses sources."
 ---
 
 # Installer {#install}
@@ -14,8 +14,24 @@ Les paquets de chaque version sont sur [la page des versions](https://github.com
 | macOS 13 et plus récent, puces Apple et Intel | `Sioul-<version>-macos-universal.dmg` | Ouvrez-le et glissez Sioul dans Applications. Il n’est pas encore notarié : la première fois, ouvrez-le depuis Applications, puis **Réglages Système ▸ Confidentialité et sécurité ▸ Ouvrir quand même**. |
 | Linux, toute distribution (64 bits) | `Sioul-<version>-x86_64.AppImage` | Rendez-le exécutable (`chmod +x Sioul-*.AppImage`), puis lancez-le. Sur Ubuntu 24.04 et plus récent, ses sites tournent sans le bac à sable de Chromium : préférez-y le Flatpak. |
 | Linux, avec Flatpak | `Sioul-<version>.flatpak` | `flatpak install --user Sioul-<version>.flatpak` : l’environnement KDE et Qt WebEngine viennent de Flathub. |
+| Android 9 et plus récent, téléphones et tablettes 64 bits | `Sioul-<version>-android-arm64.apk` | Téléchargez-le sur le téléphone ou la tablette, et ouvrez-le : [Sur Android](#on-android). |
 
-Chacun contient aussi la ligne de commande, `sioul`. Ces premiers paquets ont été construits et testés par GitHub, mais peu de personnes les ont encore lancés : un mot dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues) aide.
+Le paquet de chaque ordinateur contient aussi la ligne de commande, `sioul` ([plus bas](#the-command-line)). Ces premiers paquets ont été construits et testés par GitHub, mais peu de personnes les ont encore lancés : un mot dans les [tickets GitHub](https://github.com/aurelienpierre/sioul/issues) aide.
+
+### La ligne de commande {#the-command-line}
+
+La ligne de commande, `sioul`, est dans le paquet de chaque ordinateur, à côté de la fenêtre (`sioul-app`) ; le paquet Android n’en a pas, si bien qu’un agent d’IA se connecte à Sioul sur un ordinateur ([Avec un agent d’IA](ai-agent.md)). Sioul la lance lui-même, depuis le dossier de sa fenêtre, pour entraîner votre filtre à indésirables de lui-même. Pour l’appeler vous-même :
+
+| Paquet | Où est `sioul`, et comment l’appeler |
+|---|---|
+| Installateur Windows | `sioul.exe`, à côté de `sioul-app.exe`, dans le dossier où Sioul a été installé : `%LOCALAPPDATA%\Programs\Sioul` quand il est installé pour vous seul, comme le fait l’installateur sauf s’il est lancé en administrateur, sinon `C:\Program Files\Sioul`. Il n’est pas ajouté au `PATH` : donnez son chemin complet. |
+| Image disque macOS | `/Applications/Sioul.app/Contents/MacOS/sioul`, une fois Sioul dans Applications. |
+| Flatpak | `flatpak run --command=sioul com.aurelienpierre.Sioul`, suivi de ce que vous taperiez après `sioul` : elle tourne dans le bac à sable du Flatpak, avec les réglages et les données de la fenêtre. |
+| AppImage | dans l’AppImage, qui ne lance que la fenêtre : `./Sioul-<version>-x86_64.AppImage --appimage-extract` la déballe dans un dossier `squashfs-root`, où `squashfs-root/usr/bin/sioul` est la ligne de commande. |
+| Construit à partir des sources | `sioul`, dans `~/.local/bin` une fois installé comme le dit [Dans votre menu d’applications](#into-your-application-menu). |
+| Android | aucune. |
+
+Ces façons de l’appeler découlent de la façon dont chaque paquet est fait ; aucune n’a encore été essayée par une personne.
 
 ## Ressources nécessaires {#resources-needed}
 
@@ -160,7 +176,7 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
-Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul ». La ligne de commande `sioul` vaut la peine d’être installée aussi : les rappels s’en servent quand la fenêtre est fermée ([Paramètres](settings.md#reminders)).
+Sioul apparaît alors dans votre menu d’applications sous le nom « Sioul ». La ligne de commande `sioul` vaut la peine d’être installée aussi, à côté de `sioul-app` : les rappels s’en servent quand la fenêtre est fermée ([Paramètres](settings.md#reminders)), et votre filtre à indésirables apprend de lui-même par elle.
 
 Installez juste après avoir construit. Si vous lancez les tests de Sioul (`cargo test`) entre les deux, ils laissent dans `target/release/` des programmes construits pour les tests, qui ne gardent aucun mot de passe : construisez à nouveau avant d’installer. `tools/install.sh` fait les constructions et les installations d’un coup, et refuse un programme construit pour les tests.
 

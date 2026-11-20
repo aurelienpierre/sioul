@@ -6,7 +6,7 @@ description: Laisser un agent d’IA comme Claude Code ou Claude Desktop lire ce
 
 ## En bref {#in-short}
 
-Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur cet appareil et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez, et c’est vous qui envoyez. Il n’envoie jamais rien, ne déplace jamais d’argent et ne lit jamais un mot de passe, et ne supprime qu’un événement, une tâche ou un mouvement d’argent à vous que vous lui avez demandé, ce que la fenêtre vous laisse annuler ; et les codes à usage unique et les numéros de compte lui sont cachés. Sioul n’en connecte aucun de lui-même : cette page est pour le jour où vous le voulez.
+Un agent d’IA dont vous vous servez déjà, comme Claude Code ou Claude Desktop, peut lire ce que Sioul garde sur votre ordinateur et vous préparer du travail : tâches, événements, notes, liens entre les choses, brouillons. Il explique et prépare ; vous relisez, et c’est vous qui envoyez. Il n’envoie jamais rien, ne déplace jamais d’argent et ne lit jamais un mot de passe, et ne supprime qu’un événement, une tâche ou un mouvement d’argent à vous que vous lui avez demandé, ce que la fenêtre vous laisse annuler ; et les codes à usage unique et les numéros de compte lui sont cachés. Sioul n’en connecte aucun de lui-même : cette page est pour le jour où vous le voulez.
 
 ## Avant d’en connecter un {#before-you-connect-one}
 
@@ -17,7 +17,7 @@ Certaines choses lui restent cachées quoi qu’il arrive ([plus bas](#what-does
 
 ## Le connecter {#connecting}
 
-Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sioul mcp`. Il faut pour cela la ligne de commande `sioul` installée ([Installer](install.md#into-your-application-menu)).
+Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sioul mcp`. Il faut pour cela la ligne de commande `sioul`, qui vient avec Sioul sur un ordinateur : l’agent se connecte à Sioul sur cet ordinateur. Un téléphone ou une tablette n’a pas de ligne de commande, et aucun agent ne s’y connecte. Où se trouve `sioul`, et comment l’appeler, dépend de la façon dont Sioul a été installé ([Installer, la ligne de commande](install.md#the-command-line)) : avec le Flatpak, `flatpak run --command=sioul com.aurelienpierre.Sioul` tient lieu de `sioul` dans ce qui suit.
 
 === "Claude Code"
 
@@ -42,7 +42,7 @@ Sioul sert les agents par le Model Context Protocol (MCP), avec la commande `sio
     }
     ```
 
-    Claude Desktop a besoin du chemin complet de `sioul` : `command -v sioul`, dans un terminal, l’affiche. Pour les phrases de Sioul en français : `"args": ["--language", "fr", "mcp"]`.
+    Claude Desktop a besoin du chemin complet de `sioul` : `command -v sioul`, dans un terminal, l’affiche ; sous Windows et macOS, il est dans le dossier où Sioul a été installé ([Installer, la ligne de commande](install.md#the-command-line)). Avec le Flatpak, `"command": "flatpak"` et `"args": ["run", "--command=sioul", "com.aurelienpierre.Sioul", "mcp"]`. Pour les phrases de Sioul en français : `"args": ["--language", "fr", "mcp"]`.
 
 `sioul mcp` a été testé seul, et tourne dans Claude Code : le 10 novembre 2026, une session y a listé ses outils et l’un d’eux, en lecture seule, a répondu. Il n’a pas encore été essayé dans Claude Desktop. Si quelque chose ne marche pas, un mot dans [les tickets GitHub](https://github.com/aurelienpierre/sioul/issues) aide.
 
@@ -89,7 +89,7 @@ Sur cet appareil seulement :
 
 ## Les outils de votre filtre à indésirables {#the-spam-filters-tools}
 
-Un agent peut aussi s’occuper de votre propre filtre à indésirables, comme vous le feriez depuis le terminal : dire où il en est, le tester et lister ses pires erreurs par expéditeur et par objet (les codes et les numéros de compte masqués, comme partout), dire ce qu’il ferait maintenant de vos boîtes de réception, dire qu’un courriel est indésirable ou non quand vous le lui demandez (une ligne que chaque appareil lit), télécharger le début de vos courriels depuis vos serveurs pour en apprendre, et l’entraîner. Le téléchargement ne fait que lire : rien ne change sur vos serveurs. Comme le réentraînement de lui-même, le téléchargement et l’apprentissage lancés par un agent n’apprennent d’une adresse Microsoft que si elle a été nommée sous **Entraîner maintenant** lors de votre dernier appui, et jamais d’une adresse professionnelle ou scolaire ([Politique de confidentialité](../privacy.md#sharing-of-microsoft-data)). Un apprentissage est un essai sauf si vous demandez plus, et il ne remplace le filtre de tous vos appareils que si le nouveau ne prend pas plus de bons courriels pour indésirables que l’ancien. Ces outils sont actifs tant que vous ne les désactivez pas : pour les garder loin des agents, désactivez **Les outils de votre filtre à indésirables** dans **Paramètres ▸ Agents d’IA** (`spam = false` sous `[mcp]` dans la configuration de Sioul, `~/.config/sioul/config.toml`).
+Un agent peut aussi s’occuper de votre propre filtre à indésirables, comme vous le feriez depuis le terminal : dire où il en est, le tester et lister ses pires erreurs par expéditeur et par objet (les codes et les numéros de compte masqués, comme partout), dire ce qu’il ferait maintenant de vos boîtes de réception, dire qu’un courriel est indésirable ou non quand vous le lui demandez (une ligne que chaque appareil lit), télécharger le début de vos courriels depuis vos serveurs pour en apprendre, et l’entraîner. Le téléchargement ne fait que lire : rien ne change sur vos serveurs. Comme le réentraînement de lui-même, le téléchargement et l’apprentissage lancés par un agent n’apprennent d’une adresse Microsoft que si elle a été nommée sous **Entraîner maintenant** lors de votre dernier appui, et jamais d’une adresse professionnelle ou scolaire ([Politique de confidentialité](../privacy.md#sharing-of-microsoft-data)). Un apprentissage est un essai sauf si vous demandez plus, et il ne remplace la table du filtre de cet ordinateur que si la nouvelle ne prend pas plus de bons courriels pour indésirables que l’ancienne ; vos autres appareils gardent la leur, et ne prennent celle-ci que s’ils n’apprennent pas eux-mêmes ([Vie privée et sécurité](privacy-security.md#your-own-spam-filter)). Ces outils sont actifs tant que vous ne les désactivez pas : pour les garder loin des agents, désactivez **Les outils de votre filtre à indésirables** dans **Paramètres ▸ Agents d’IA** (`spam = false` sous `[mcp]` dans la configuration de Sioul, `~/.config/sioul/config.toml`).
 
 ## Ce qui ne bouge pas {#what-does-not-move}
 

@@ -6,7 +6,7 @@ description: Letting an AI agent such as Claude Code or Claude Desktop read what
 
 ## In short {#in-short}
 
-An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on this device and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never moves money and never reads a password, and deletes nothing but an event, a task or a money record of your own you asked it to, which the window lets you undo; and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
+An AI agent you already use, such as Claude Code or Claude Desktop, can read what Sioul keeps on your computer and prepare work for you: tasks, events, notes, ties between things, drafts. It explains and prepares; you review, and you send. It never sends, never moves money and never reads a password, and deletes nothing but an event, a task or a money record of your own you asked it to, which the window lets you undo; and one-time codes and account numbers are hidden from it. Sioul connects none by itself: this page is for when you want to.
 
 ## Before you connect one {#before-you-connect-one}
 
@@ -17,7 +17,7 @@ Some things are kept from it whatever happens ([below](#what-does-not-move)): pa
 
 ## Connecting {#connecting}
 
-Sioul serves agents through the Model Context Protocol (MCP), with the command `sioul mcp`. It needs the command line `sioul` installed ([Install](install.md#into-your-application-menu)).
+Sioul serves agents through the Model Context Protocol (MCP), with the command `sioul mcp`. It needs the command line `sioul`, which comes with Sioul on a computer: the agent connects to Sioul on that computer. A phone or a tablet has no command line, and no agent connects to it. Where `sioul` is, and how to call it, depends on how Sioul was installed ([Install, the command line](install.md#the-command-line)): with the Flatpak, `flatpak run --command=sioul com.aurelienpierre.Sioul` stands in for `sioul` in what follows.
 
 === "Claude Code"
 
@@ -42,7 +42,7 @@ Sioul serves agents through the Model Context Protocol (MCP), with the command `
     }
     ```
 
-    Claude Desktop needs the full path of `sioul`: `command -v sioul`, in a terminal, prints it. For French: `"args": ["--language", "fr", "mcp"]`.
+    Claude Desktop needs the full path of `sioul`: `command -v sioul`, in a terminal, prints it; on Windows and macOS, it is in the folder Sioul was installed in ([Install, the command line](install.md#the-command-line)). With the Flatpak, `"command": "flatpak"` and `"args": ["run", "--command=sioul", "com.aurelienpierre.Sioul", "mcp"]`. For French: `"args": ["--language", "fr", "mcp"]`.
 
 `sioul mcp` has been tested on its own, and runs inside Claude Code: on 10 November 2026 a session there listed its tools and a read-only one answered. It has not yet been tried inside Claude Desktop. If something does not work, a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
 
@@ -89,7 +89,7 @@ On this device only:
 
 ## Your spam filter's tools {#the-spam-filters-tools}
 
-An agent can also look after your own spam filter, as you would from the terminal: say where it stands, test it and list its worst mistakes by sender and subject (codes and account numbers masked, as everywhere), say what it would do now with your inboxes, say a message is spam or not when you ask it to (one line that every device reads), download the start of your mail from your servers to learn from, and train it. The download only reads: nothing changes on your servers. Like training by itself, an agent's download and training learn from a Microsoft address only when it was named under **Train now** at your last press, and never from a work or school one ([Privacy policy](../privacy.md#sharing-of-microsoft-data)). A training is a trial unless you ask for more, and it replaces the filter every device uses only when the new one takes no more good mail for spam than the old one. These tools are on unless you turn them off: to keep them from agents, turn off **The spam filter's tools** in **Settings ▸ AI agents** (`spam = false` under `[mcp]` in Sioul's configuration, `~/.config/sioul/config.toml`).
+An agent can also look after your own spam filter, as you would from the terminal: say where it stands, test it and list its worst mistakes by sender and subject (codes and account numbers masked, as everywhere), say what it would do now with your inboxes, say a message is spam or not when you ask it to (one line that every device reads), download the start of your mail from your servers to learn from, and train it. The download only reads: nothing changes on your servers. Like training by itself, an agent's download and training learn from a Microsoft address only when it was named under **Train now** at your last press, and never from a work or school one ([Privacy policy](../privacy.md#sharing-of-microsoft-data)). A training is a trial unless you ask for more, and it replaces the table of this computer's filter only when the new one takes no more good mail for spam than the old one; your other devices keep their own, and take this one only when they do not learn themselves ([Privacy and security](privacy-security.md#your-own-spam-filter)). These tools are on unless you turn them off: to keep them from agents, turn off **The spam filter's tools** in **Settings ▸ AI agents** (`spam = false` under `[mcp]` in Sioul's configuration, `~/.config/sioul/config.toml`).
 
 ## What does not move {#what-does-not-move}
 

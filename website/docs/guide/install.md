@@ -1,5 +1,5 @@
 ---
-description: Download Sioul for Windows, macOS or Linux, or build it from its sources.
+description: Download Sioul for Windows, macOS, Linux or Android, or build it from its sources.
 ---
 
 # Install
@@ -14,8 +14,24 @@ The packages of each version are on [the releases page](https://github.com/aurel
 | macOS 13 and later, Apple silicon and Intel | `Sioul-<version>-macos-universal.dmg` | Open it, and drag Sioul into Applications. It is not notarised yet: the first time, open it from Applications, then **System Settings ▸ Privacy & Security ▸ Open Anyway**. |
 | Linux, any distribution (64-bit) | `Sioul-<version>-x86_64.AppImage` | Make it executable (`chmod +x Sioul-*.AppImage`), then run it. On Ubuntu 24.04 and later, its sites run without Chromium's sandbox: prefer the Flatpak there. |
 | Linux, with Flatpak | `Sioul-<version>.flatpak` | `flatpak install --user Sioul-<version>.flatpak`: the KDE runtime and Qt WebEngine come from Flathub. |
+| Android 9 and later, 64-bit phones and tablets | `Sioul-<version>-android-arm64.apk` | Download it on the phone or the tablet, and open it: [On Android](#on-android). |
 
-Each comes with the command line, `sioul`. These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+Each computer's package comes with the command line, `sioul` ([below](#the-command-line)). These first packages were built and tested by GitHub, but few people have run them yet: a word in [GitHub issues](https://github.com/aurelienpierre/sioul/issues) helps.
+
+### The command line
+
+The command line, `sioul`, is in each computer's package, beside the window (`sioul-app`); the Android package has none, so an AI agent connects to Sioul on a computer ([Using an AI agent](ai-agent.md)). Sioul itself runs it from beside its window to train your spam filter by itself. To call it yourself:
+
+| Package | Where `sioul` is, and how to call it |
+|---|---|
+| Windows installer | `sioul.exe`, beside `sioul-app.exe`, in the folder Sioul was installed in: `%LOCALAPPDATA%\Programs\Sioul` when installed for you alone, as the installer does unless run as an administrator, else `C:\Program Files\Sioul`. It is not added to the `PATH`: give its full path. |
+| macOS disk image | `/Applications/Sioul.app/Contents/MacOS/sioul`, once Sioul is in Applications. |
+| Flatpak | `flatpak run --command=sioul com.aurelienpierre.Sioul`, followed by what you would type after `sioul`: it runs in the Flatpak's sandbox, with the window's settings and data. |
+| AppImage | inside the AppImage, which starts the window only: `./Sioul-<version>-x86_64.AppImage --appimage-extract` unpacks it into a folder `squashfs-root`, where `squashfs-root/usr/bin/sioul` is the command line. |
+| Built from the sources | `sioul`, in `~/.local/bin` once installed as [Into your application menu](#into-your-application-menu) says. |
+| Android | none. |
+
+These ways of calling it follow from how each package is made; none has been tried by a person yet.
 
 ## Resources needed
 
@@ -160,7 +176,7 @@ install -Dm644 data/com.aurelienpierre.Sioul.metainfo.xml ~/.local/share/metainf
 mkdir -p ~/.local/share/icons && cp -r data/icons/hicolor ~/.local/share/icons/
 ```
 
-Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too: reminders use it when the window is closed ([Settings](settings.md#reminders)).
+Sioul then shows in your application menu as "Sioul". The command line `sioul` is worth installing too, beside `sioul-app`: reminders use it when the window is closed ([Settings](settings.md#reminders)), and your spam filter trains by itself through it.
 
 Install right after building. If you run Sioul's tests (`cargo test`) in between, they leave programs built for testing in `target/release/`, which keep no password: build again before installing. `tools/install.sh` does the builds and the installs in one go, and refuses a program built for testing.
 

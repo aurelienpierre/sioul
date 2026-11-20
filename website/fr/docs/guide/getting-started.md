@@ -78,7 +78,7 @@ C’est cette étape qui rend Sioul calme. Sans heures, tout arrive à toute heu
 
 ### Puis laissez-le ouvert {#then-leave-it-open}
 
-Sioul est fait pour rester ouvert toute la journée. Fermer sa fenêtre le range dans la zone de notification, où il continue de relever les courriels et de tenir vos rappels. **Quitter Sioul** est dans le menu de son icône, ou ++ctrl+q++. [Garder Sioul ouvert](first-steps.md#keep-sioul-open)
+Sioul est fait pour rester ouvert toute la journée. Sur un ordinateur, fermer sa fenêtre le range dans la zone de notification, où il continue de relever les courriels et de tenir vos rappels ; **Quitter Sioul** est dans le menu de son icône, ou ++ctrl+q++. Quand le bureau n’a pas de zone de notification (GNOME sans son extension), fermer la fenêtre quitte Sioul. Sur un téléphone ou une tablette, rangez Sioul comme toute application : ce qu’il fait encore alors est dans [Sur un téléphone ou une tablette](first-steps.md#on-a-phone). [Garder Sioul ouvert](first-steps.md#keep-sioul-open)
 
 ## Un premier regard {#a-first-look}
 
@@ -199,7 +199,7 @@ Sur un ordinateur qui partage déjà, **Ajouter un appareil**, dans le même pan
 - **Vos règles vous suivent.** Les heures, les listes et le « ne pas déranger » réglés sur un appareil valent sur les autres, le plus souvent en quelques minutes.
 - **Chaque appareil choisit ce qui voyage depuis lui**, partie par partie, sous **Ce qui voyage depuis cet appareil**.
 - **Mettez vos appareils à jour ensemble quand vous le pouvez.** Des appareils sur des versions différentes continuent de partager, mais une partie dont la forme est plus récente que ce qu’un appareil sait lire attend sur cet appareil jusqu’à sa mise à jour. Les listes de Sioul (projets, budgets…) ne quittent votre dossier de notes qu’une fois que chaque appareil a un Sioul qui connaît leur nouvelle place : un Sioul plus ancien fait attendre le déplacement jusqu’à sa mise à jour, ou jusqu’à ce que vous oubliiez cet appareil dans **Paramètres ▸ Appareils**.
-- **Sur Android**, une application de synchronisation n’apporte souvent les changements que toutes les demi-heures. Quand le dossier est sur votre Nextcloud, Sioul y lit lui-même les nouvelles de vos autres appareils, chaque minute tant qu’il est ouvert.
+- **Sur Android**, une application de synchronisation n’apporte souvent les changements que toutes les demi-heures. Quand le dossier est sur votre Nextcloud, Sioul y lit lui-même les nouvelles de vos autres appareils : chaque minute tant qu’il est à l’écran ou qu’un autre de vos appareils est utilisé, et sinon toutes les quelques minutes en arrière-plan, tant que le téléphone y reste à jour.
 
 La suite : [Partager entre vos appareils](sharing.md)
 

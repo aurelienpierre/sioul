@@ -24,7 +24,7 @@ Most spam filters keep an inbox tidy. Sioul's decides what can wait. It learns f
 
 **It judges strangers' mail only.** It never touches mail from someone you know, a code or a link you asked for, a project's mail, or what you send yourself.
 
-**Train it once.** In the Mail page's ⚙, under **Your own spam filter**, **Train now** names the addresses it learns from, downloads what training needs, then learns. The first time takes long, and Sioul stays usable meanwhile. After that it trains by itself, once a week, while the device charges and nobody is at it (**Train here, once a week, while this device charges and is idle**).
+**Train it once.** In the Mail page's ⚙, under **Your own spam filter**, **Train now** names the addresses it learns from, downloads what training needs, then learns. The first time takes long, and Sioul stays usable meanwhile. After that it trains by itself, once a week, while the device charges and nobody is at it (**Train here, once a week, while this device charges and is idle**): a computer while Sioul runs on it, a phone or a tablet while it shares with your other devices and keeps in step in the background. Each device judges the mail it fetches itself, and gives its table only to a device of yours that does not learn.
 
 **Choose what it does.** It finds a stranger's message **probably spam** (from 95%), **maybe spam** (from 50%) or **probably not spam**. For each verdict, you choose one of three:
 
@@ -79,7 +79,7 @@ A topic is a quiet word on a message, such as Health, Tax or Choir. It is a way 
 - **To teach a sender**: **Always <topic> for this sender**, or **Never…**, in the same menu.
 - **To look by topic**: the Topic filter, beside the filter by area, shows one topic's mail alone.
 
-Behind this, a small model learns your topics on each device, once a week, with the spam filter. It learns a topic once that topic has 20 messages from 3 senders; below that, your words and Sioul's rules sort it. It is made not to move things under your eyes: a new version replaces the one in use only when it does no worse on your newest mail and changes fewer than 2% of the topics already shown, and a doubt shows only under its topic's filter, as "Perhaps". On a computer, **Groups Sioul noticed** gathers mail that no topic names yet, and **Name it** gives the whole group a topic.
+Behind this, a small model learns your topics on each device, once a week, with the spam filter. It learns a topic once that topic has 20 messages from 3 senders, or 50 from a single one, such as an office; below that, your words and Sioul's rules sort it. It is made not to move things under your eyes: a new version replaces the one in use only when it does no worse on your newest mail and changes fewer than 2% of the topics already shown, and a doubt shows only under its topic's filter, as "Perhaps". On a computer, **Groups Sioul noticed** gathers mail that no topic names yet, and **Name it** gives the whole group a topic.
 
 More: [Topics](mail.md#topics)
 

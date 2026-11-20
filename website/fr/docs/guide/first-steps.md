@@ -4,7 +4,7 @@ description: "La fenêtre, ses touches, et les premières choses à régler dans
 
 # Premiers pas {#first-steps}
 
-Rien n’est à régler d’un coup. Chaque étape ci-dessous est utile seule, et Sioul fonctionne avec ce que vous lui donnez. Ouvrez-le depuis votre menu d’applications, ou avec `sioul-app` dans un terminal.
+Rien n’est à régler d’un coup. Chaque étape ci-dessous est utile seule, et Sioul fonctionne avec ce que vous lui donnez. Ouvrez-le depuis votre menu d’applications, ou depuis vos applications sur un téléphone ou une tablette ; construit à partir de ses sources, `sioul-app` dans un terminal l’ouvre aussi.
 
 Sioul parle anglais ou français, selon la langue de votre système, sauf si vous en choisissez une autre dans **Paramètres ▸ Affichage ▸ Langue**.
 
@@ -23,7 +23,7 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 **À gauche**, une étroite colonne d’icônes, de haut en bas :
 
 - **Nouveau ▾**, le **+**, crée une chose de n’importe quel type : un courriel, une tâche, un événement, un contact, une note, un projet, du temps passé, un mouvement de budget, un papier, le scan d’une lettre papier (sur un ordinateur : [Le courrier](papers.md#paper-letters)) ; et **Où j’en suis…** laisse une ligne sur où vous en êtes ([Les tâches](tasks.md#starting-and-stopping)).
-- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courriels (une enveloppe), SMS (une bulle de bande dessinée ; sur un ordinateur), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Courrier (une enveloppe ouverte, sa lettre visible), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
+- **Les lieux**, une icône chacun : Porche (une corbeille à courrier), Tâches (une liste à cocher), Courriels (une enveloppe), SMS (une bulle de bande dessinée ; sur un ordinateur, et sur une tablette sans carte SIM), Sites (un globe et ses méridiens), Agenda (un calendrier), Contacts (une personne et des lignes), Notes (un bloc-notes), Projets (un dossier), Temps (une horloge), Budgets (un portefeuille), Papiers (une carte), Courrier (une enveloppe ouverte, sa lettre visible), Santé (un cœur). Le lieu affiché est marqué d’une teinte douce et d’une courte barre.
 - **À part en bas** : **Clore la journée de travail** (une liste cochée) et, dessous, **Clore toute la journée** (une lune), à toute heure ([la fin de la journée](tasks.md#the-end-of-the-day)) ; puis trois icônes, côte à côte quand les noms s’affichent : Comptes (une personne), Paramètres (des curseurs), et Tout actualiser, qui relève à nouveau, d’un coup, les courriels, l’agenda, les tâches et les contacts.
 
 Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile.
@@ -43,7 +43,7 @@ Tout se fait au clavier : Tab pour se déplacer, Entrée pour choisir, Échap 
 | ++f5++ | Tout actualiser |
 | ++f9++ | Le nom des lieux à côté de leur icône, ou leurs icônes seules ; dans une fenêtre étroite, sortir les lieux ou les ranger |
 | ++f11++ | Plein écran, ou en sortir |
-| ++ctrl+q++ | Quitter Sioul (fermer la fenêtre la masque dans la zone de notification) |
+| ++ctrl+q++ | Quitter Sioul (fermer la fenêtre la masque dans la zone de notification, là où le bureau en a une) |
 | ++ctrl+enter++ | Envoyer, dans la fenêtre de rédaction |
 
 ### Sur un téléphone ou une tablette {#on-a-phone}
@@ -93,7 +93,7 @@ Ensuite, sur la fiche de l’adresse dans **Vos comptes**, dépliez **Réglages 
 
 ### Votre propre domaine chez un hébergeur {#your-own-domain-at-a-host}
 
-Une adresse à un domaine à vous, dont un hébergeur garde les courriels (OVH, votre hébergeur web) : Sioul cherche le serveur de l’hébergeur. Il interroge la liste des fournisseurs de Thunderbird sur les serveurs qui reçoivent les courriels de votre domaine, puis essaie `imap.` suivi de votre domaine, puis lit les enregistrements de votre domaine. Il ne propose un serveur que s’il présente un certificat fait pour son nom même, et dit d’où vient le serveur, à vérifier avant de taper votre mot de passe. Pour les boîtes d’hébergement d’OVH, il trouve `ssl0.ovh.net` tout seul. Un hébergeur peut avoir plusieurs offres de courriel, chacune avec son serveur : son aide nomme le serveur de chacune, et celui que Sioul trouve peut être celui d’une autre offre.
+Une adresse à un domaine à vous, dont un hébergeur garde les courriels (OVH, votre hébergeur web) : Sioul cherche le serveur de l’hébergeur. Il interroge la liste des fournisseurs de Thunderbird sur les serveurs qui reçoivent les courriels de votre domaine, puis essaie `imap.`, puis `mail.`, suivi de votre domaine, puis lit les enregistrements de votre domaine. Il ne propose un serveur que s’il présente un certificat fait pour son nom même, et dit d’où vient le serveur, à vérifier avant de taper votre mot de passe. Pour les boîtes d’hébergement d’OVH, il trouve `ssl0.ovh.net` tout seul. Un hébergeur peut avoir plusieurs offres de courriel, chacune avec son serveur : son aide nomme le serveur de chacune, et celui que Sioul trouve peut être celui d’une autre offre.
 
 Sioul ne propose plus `imap.` suivi de votre domaine, sauf si ce nom marche. Chez beaucoup d’hébergeurs, ce n’est qu’un alias du serveur de l’hébergeur, dont le certificat nomme l’hébergeur : aucun logiciel de courriel ne peut s’y connecter sûrement, et Sioul le proposait, puis échouait.
 
@@ -106,7 +106,7 @@ Quand Sioul ne trouve rien, le formulaire s’ouvre avec **Serveur** vide :
 
 Si Sioul dit qu’un certificat est pour un autre nom pendant que vous ajoutez une adresse, le nom demandé est très probablement un tel alias : remplacez-le par le nom donné dans l’aide de votre hébergeur. Ne le prenez pas dans le message, car sur un réseau auquel vous ne vous fiez pas un autre serveur a pu répondre. Si une adresse qui marchait avant le dit, réessayez plus tard ou sur un autre réseau.
 
-Sioul trouve le serveur d’envoi à votre premier courriel : d’abord les réglages de votre domaine ou la liste de Thunderbird d’après votre domaine, puis le serveur d’où viennent vos courriels, celui où va déjà votre mot de passe, puis ce que nomment l’entrée de l’hébergeur et les enregistrements de votre domaine, chez le même hébergeur seulement. Un compte ajouté avant cela, dont le serveur d’envoi a été gardé sous la forme `smtp.` suivi de votre domaine et est refusé pour son certificat : au courriel suivant, Sioul essaie pour l’envoi le serveur d’où viennent vos courriels. S’il accepte votre mot de passe, Sioul le garde, le dit une fois dans la ligne d’état en nommant les deux serveurs, et envoie par lui ; sinon, rien ne change et le refus est dit. Vos autres appareils envoient alors par lui aussi. Pas encore essayé avec une vraie boîte chez un hébergeur.
+Sioul trouve le serveur d’envoi à votre premier courriel : d’abord les réglages de votre domaine ou la liste de Thunderbird d’après votre domaine, puis le serveur d’où viennent vos courriels, celui où va déjà votre mot de passe, puis ce que nomment l’entrée de l’hébergeur et les enregistrements de votre domaine, chez le même hébergeur seulement, et enfin `smtp.` suivi de votre domaine, s’il présente un certificat fait pour ce nom. Un compte ajouté avant cela, dont le serveur d’envoi a été gardé sous la forme `smtp.` suivi de votre domaine et est refusé pour son certificat : au courriel suivant, Sioul essaie pour l’envoi le serveur d’où viennent vos courriels. S’il accepte votre mot de passe, Sioul le garde, le dit une fois dans la ligne d’état en nommant les deux serveurs, et envoie par lui ; sinon, rien ne change et le refus est dit. Vos autres appareils envoient alors par lui aussi. Pas encore essayé avec une vraie boîte chez un hébergeur.
 
 ### Gmail et Google Workspace {#gmail-and-google-workspace}
 

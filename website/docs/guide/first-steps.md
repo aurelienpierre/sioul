@@ -4,7 +4,7 @@ description: The window, its keys, and the first things to set up in Sioul - mai
 
 # First steps
 
-Nothing has to be set up at once. Each step below is useful on its own, and Sioul works with whatever you give it. Open it from your application menu, or with `sioul-app` in a terminal.
+Nothing has to be set up at once. Each step below is useful on its own, and Sioul works with whatever you give it. Open it from your application menu, or from your apps on a phone or a tablet; built from its sources, `sioul-app` in a terminal opens it too.
 
 Sioul speaks English and French, as your system does, unless you choose otherwise in **Settings ▸ Display ▸ Language**.
 
@@ -23,7 +23,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 **On the left**, a narrow column of icons, from top to bottom:
 
 - **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper, a paper letter's scan (on a computer: [Letters](papers.md#paper-letters)); and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
-- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an open envelope, its letter showing), Health (a heart). The place shown is marked by a soft tint and a short bar.
+- **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer, and on a tablet without a SIM), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an open envelope, its letter showing), Health (a heart). The place shown is marked by a soft tint and a short bar.
 - **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
@@ -43,7 +43,7 @@ Everything works from the keyboard: Tab to move, Enter to choose, Escape to go b
 | ++f5++ | Refresh everything |
 | ++f9++ | The places' names beside their icons, or their icons only; in a narrow window, pull the places out or put them away |
 | ++f11++ | Full screen, or back |
-| ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray) |
+| ++ctrl+q++ | Quit Sioul (closing the window hides it in the system tray, where the desktop has one) |
 | ++ctrl+enter++ | Send, in the writing window |
 
 ### On a phone or a tablet {#on-a-phone}
@@ -93,7 +93,7 @@ Then, on the address's card in **Your accounts**, unfold **Settings for this add
 
 ### Your own domain at a host {#your-own-domain-at-a-host}
 
-An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.` followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
+An address at a domain of your own, whose mail a host keeps (OVH, your web host): Sioul looks for the host's server. It asks Thunderbird's list of providers about the servers that receive your domain's mail, then tries `imap.`, then `mail.`, followed by your domain, then reads your domain's own records. It offers a server only when it shows a certificate made for its very name, and says where the server came from, to check before you type your password. For OVH's hosting mailboxes it finds `ssl0.ovh.net` by itself. A host may run several mail offers, each with its own server: its help names the server for each, and the one Sioul finds may be another offer's.
 
 Sioul no longer offers `imap.` followed by your domain unless that name works. At many hosts it is only an alias of the host's server, whose certificate names the host: no mail program can sign in through it safely, and Sioul used to offer it, then fail.
 
@@ -106,7 +106,7 @@ When Sioul finds nothing, the form opens with **Server** empty:
 
 If Sioul says that a certificate is for another name while you add an address, the name asked is most likely such an alias: replace it with the name from your host's help. Do not take it from the message, since on a network you do not trust another server could have answered. If an address that worked before says so, try again later or on another network.
 
-Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
+Sioul finds the sending server at your first message: your domain's own settings or Thunderbird's list by your domain first, then the server your mail comes from, the one your password goes to already, then what the host's entry and your domain's records name, at the same host only, and last `smtp.` followed by your domain, when it shows a certificate made for that name. An account added before this, whose sending server was kept as `smtp.` followed by your domain and is refused for its certificate: at the next message, Sioul tries the server your mail comes from for sending. If it accepts your password, Sioul keeps it, says so once on the status line, naming both servers, and sends through it; if not, nothing changes and the refusal is said. Your other devices then send through it too. Not yet tried with a real mailbox at a host.
 
 ### Gmail and Google Workspace
 

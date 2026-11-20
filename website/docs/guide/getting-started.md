@@ -78,7 +78,7 @@ This is the step that makes Sioul calm. Without hours, everything comes at any h
 
 ### Then leave it open {#then-leave-it-open}
 
-Sioul is made to stay open all day. Closing its window hides it in the system tray, where it goes on fetching mail and keeping your reminders. **Quit Sioul** is in the tray icon's menu, or ++ctrl+q++. [Keep Sioul open](first-steps.md#keep-sioul-open)
+Sioul is made to stay open all day. On a computer, closing its window hides it in the system tray, where it goes on fetching mail and keeping your reminders; **Quit Sioul** is in the tray icon's menu, or ++ctrl+q++. Where the desktop has no system tray (GNOME without its extension), closing the window quits Sioul. On a phone or a tablet, put Sioul away as any app: what it still does then is in [On a phone or a tablet](first-steps.md#on-a-phone). [Keep Sioul open](first-steps.md#keep-sioul-open)
 
 ## A first look {#a-first-look}
 
@@ -199,7 +199,7 @@ On a computer that shares already, **Add a device**, in the same panel, says wha
 - **Your rules follow you.** Hours, lists and do-not-disturb set on one device hold on the others, usually within minutes.
 - **Each device chooses what travels from it**, part by part, under **What travels from this device**.
 - **Update your devices together when you can.** Devices on different versions go on sharing, but a part whose form is newer than a device can read waits on that device until it is updated. Sioul's own lists (projects, budgets…) leave your notes folder only once every device runs a Sioul that knows their new place: an older one keeps the move waiting until it is updated, or forgotten in **Settings ▸ Devices**.
-- **On Android**, a sync app often brings changes only every half hour. Where the folder is on your Nextcloud, Sioul reads your other devices' news there itself, each minute while it is open.
+- **On Android**, a sync app often brings changes only every half hour. Where the folder is on your Nextcloud, Sioul reads your other devices' news there itself: each minute while it is on the screen or another of your devices is in use, and otherwise every few minutes in the background, while the phone keeps in step there.
 
 More: [Sharing between your devices](sharing.md)
 
