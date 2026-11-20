@@ -258,9 +258,10 @@ fn main() {
         "qml/KeysHint.qml",
         "qml/TitleBar.qml",
         "qml/WindowEdges.qml",
-        // One tab component for every view switcher; a page's column; a heading and a frame.
+        // One tab component for every view switcher; a page's column; a heading and a frame; a list's place.
         "qml/Tabs.qml",
         "qml/PageColumn.qml",
+        "qml/ListPlace.qml",
         "qml/Section.qml",
         "qml/BareButton.qml",
         // Sioul's overrides of the Basic style, which cpp/style.cpp gives in place of Basic's own.

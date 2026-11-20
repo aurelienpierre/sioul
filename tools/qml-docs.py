@@ -73,7 +73,7 @@ NAMED = {
     "Avatar": "controls", "DateField": "controls", "Icon": "controls", "LabeledRows": "controls",
     "Later": "controls", "MemoRecorder": "controls", "Panel": "controls", "PasswordField": "controls",
     "CostTiles": "controls", "ThingActions": "controls", "TimeDrag": "controls", "Paths": "parts",
-    "WrapCheckBox": "controls", "PlainComboBox": "controls", "Tabs": "controls", "PageColumn": "controls",
+    "WrapCheckBox": "controls", "PlainComboBox": "controls", "Tabs": "controls", "PageColumn": "controls", "ListPlace": "controls",
     "Section": "controls", "StyleButton": "controls", "StyleTextField": "controls", "StyleTextArea": "controls",
     "StyleCheckBox": "controls", "StyleRadioButton": "controls", "StyleSpinBox": "controls", "BareButton": "controls",
 }
