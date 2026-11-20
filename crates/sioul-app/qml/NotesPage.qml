@@ -554,6 +554,7 @@ Item {
 
         // The note; on a phone, only once one is open.
         Panel {
+            objectName: "notePanel"
             visible: !page.window.compact || page.note !== null
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -589,6 +590,7 @@ Item {
                             spacing: 0
 
                             Label {
+                                objectName: "noteTitle"
                                 Layout.fillWidth: true
                                 text: page.note ? page.note.title : ""
                                 textFormat: Text.PlainText
@@ -616,6 +618,7 @@ Item {
                             onClicked: Qt.openUrlExternally(page.note.url)
                         }
                         Button {
+                            objectName: "noteEdit"
                             visible: page.kind === "text"
                             text: page.editing ? page.sioul.text("note-read") : page.sioul.text("ui-edit")
                             icon.name: page.editing ? "view-hidden" : "document-edit"
@@ -783,6 +786,7 @@ Item {
                 // What is tied to it, and its unticked lines: beside the note, or under
                 // it on a narrow screen, a third of the height at most.
                 ScrollView {
+                    objectName: "noteSide"
                     Layout.fillHeight: !page.narrow
                     Layout.fillWidth: page.narrow
                     Layout.maximumHeight: page.narrow ? Math.round(page.height / 3) : Number.POSITIVE_INFINITY
@@ -846,6 +850,7 @@ Item {
                                     color: page.theme.text
                                 }
                                 ToolButton {
+                                    objectName: "noteLineTask"
                                     icon.name: "task-new"
                                     icon.color: page.theme.text
                                     Accessible.name: page.sioul.text("note-make-task")

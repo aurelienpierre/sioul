@@ -3,7 +3,10 @@
 
 // The buttons every card ends with: something new tied to it, a tie to
 // something that exists, and its ties as a chain (ChainPage.qml; Ctrl+G).
-// Right click in a list offers the same.
+// Right click in a list offers the same. As wide as the layout it sits in,
+// they go on to a second line when that is narrower than the three side by
+// side (Notes' column beside the note, 260 points): a row of them would set
+// the column's least width, and everything in it would pass its edge.
 
 pragma ComponentBehavior: Bound
 
@@ -11,8 +14,10 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-RowLayout {
+Flow {
     id: actions
+
+    Layout.fillWidth: true
 
     // Sioul's backend (backend.rs): its words in your language and what it does.
     required property var sioul
@@ -38,6 +43,7 @@ RowLayout {
     Button {
         id: addButton
 
+        objectName: "thingAdd"
         enabled: actions.source !== null
         flat: true
         text: actions.sioul.text("ui-add-new") + "  ▾"
@@ -46,6 +52,7 @@ RowLayout {
         onClicked: addMenu.now().popup(addButton, 0, addButton.height)
     }
     Button {
+        objectName: "thingLink"
         enabled: actions.source !== null && actions.source.uri !== ""
         flat: true
         text: actions.sioul.text("ui-link-existing")
