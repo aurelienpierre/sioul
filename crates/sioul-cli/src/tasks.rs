@@ -315,6 +315,8 @@ pub(crate) fn run(s: &Session, command: TasksCommand) -> Result<(), String> {
                 status: status.iter().filter_map(|x| serde_json::from_value(serde_json::Value::String(x.clone())).ok()).collect(),
                 done: yes_no(done),
                 deadline: yes_no(dated),
+                // Every agenda: the window's agenda filter is its pages', not the command line's.
+                agendas_off: std::collections::BTreeSet::new(),
             };
             search(s, &query)
         }
@@ -390,7 +392,7 @@ fn search(s: &Session, query: &sioul_core::thingsearch::Query) -> Result<(), Str
     let range = query.range(&zone).map(|(from, to)| (if from == i64::MIN { to.saturating_sub(366 * 86_400) } else { from }, if to == i64::MAX { from.saturating_add(366 * 86_400) } else { to }));
     let occurrences = range.filter(|_| loaded.events.iter().any(|e| e.recurring)).map(|(from, to)| sioul_core::agenda::occurrences(from, to));
     let cx = sioul_core::thingsearch::Context { own: &own, projects: &loaded.projects, zone: &zone, today: sioul_core::zone::now().date(), tr: &s.tr };
-    for found in sioul_core::thingsearch::search(&loaded.tasks, &loaded.events, occurrences.as_deref(), query, &cx) {
+    for found in sioul_core::thingsearch::search(&loaded.tasks, &loaded.events, occurrences.as_deref(), query, &cx).found {
         let tail: Vec<String> = [found.projects.join(", "), found.place.clone(), if found.status == "confirmed" || found.status == "needs-action" { String::new() } else { found.status.clone() }].into_iter().filter(|t| !t.is_empty()).collect();
         let tail = if tail.is_empty() { String::new() } else { format!("  ·  {}", tail.join("  ·  ")) };
         println!("{:<20} {:<5} {}{}  ({})", found.date, found.thing, one_line(&found.title), tail, found.uid);

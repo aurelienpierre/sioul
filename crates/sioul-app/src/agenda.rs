@@ -1685,7 +1685,7 @@ pub(crate) fn asked(qt: &QtThread, shared: &Arc<Shared>) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use sioul_core::vdir::{self, Kind};
 
@@ -2055,7 +2055,7 @@ mod tests {
     /// (`view_read`), so that no test's calendar is hidden by another's set.
     static VIEW: std::sync::RwLock<()> = std::sync::RwLock::new(());
 
-    fn view_held() -> std::sync::RwLockWriteGuard<'static, ()> {
+    pub(crate) fn view_held() -> std::sync::RwLockWriteGuard<'static, ()> {
         VIEW.write().unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
