@@ -872,7 +872,7 @@ fn completed(text: &str, incoming: &Contact, groups: &[String], complete: bool, 
         }
     }
     let edit = if complete {
-        ContactEdit { name: if name.is_empty() { incoming.name.clone() } else { name }, emails, phones: numbers, org, title: role, addresses, birthday, notes, urls, categories: Some(categories), parts: Some(parts) }
+        ContactEdit { name: if name.is_empty() { incoming.name.clone() } else { name }, emails, phones: numbers, org, title: role, addresses, birthday, notes, urls, categories: Some(categories), parts: Some(parts), book: None }
     } else {
         // Groups alone: everything else as the card holds it.
         let mut adds_only = adds.clone();

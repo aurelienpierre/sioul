@@ -4,8 +4,11 @@
 // Contacts, names first: the list is names with one line under each, of one
 // category when chosen; a contact opens on the right with its categories, its
 // addresses and numbers, "Write" and "Call" next to each; the rest (postal
-// addresses, birthday, notes, web sites) folded under "More". Editing happens
-// in place; deleting waits ten seconds with "Undo". "Duplicates" opens in the
+// addresses, birthday, notes, web sites) folded under "More"; its address
+// book in sight when there are several, under More when there is one. Editing
+// happens in place; deleting (Delete beside Edit under the card, or the row's
+// menu) waits ten seconds with "Undo". A new card's form asks its address
+// book when more than one can take it. "Duplicates" opens in the
 // place of a card. Right click on a name for what is not in view. At the
 // head, the household (« Proches », docs/persons.md): a person's page opens
 // in the place of a card too. A contact you bill shows its client profile
@@ -108,12 +111,39 @@ Item {
 
     // The address books a selection can move to: those that can be written.
     readonly property var writableBooks: (page.shown.books || []).filter(b => !b.read_only)
+    // More than one address book: a card's own is in its main part, its chooser
+    // in sight; with one, under More (a card's book, 20 November 2026).
+    readonly property bool manyBooks: (page.shown.books || []).length > 1
+    // The address books a card can go into ({id, name}, `addressBooks`): the
+    // open card's chooser and a new card's form. Read for each card opened or
+    // started, and again when the contacts change (a book made or removed since).
+    property string booksText: "[]"
+    readonly property var cardBooks: JSON.parse(page.booksText)
+    // The open card's book among them; -1 when it is not one (a book you only read).
+    readonly property int cardBookIndex: page.person ? page.cardBooks.findIndex(b => b.id === page.person.place) : -1
+
+    function readBooks() {
+        page.booksText = page.sioul.addressBooks() || "[]"
+    }
+
+    // A key on the card's book chooser opens its list, never moves the card by
+    // itself: Basic's box takes an arrow, Home, End or a letter on a closed box
+    // for a choice made, and a choice there moves the card.
+    function keyOnBook(box, event) {
+        const moves = [Qt.Key_Up, Qt.Key_Down, Qt.Key_Home, Qt.Key_End, Qt.Key_PageUp, Qt.Key_PageDown]
+        if (box.popup.visible || (moves.indexOf(event.key) < 0 && event.text.trim() === ""))
+            return
+        box.popup.open()
+        event.accepted = true
+    }
 
     Connections {
         target: page.sioul
 
         function onContactsChanged() {
             page.takeShown()
+            if (page.person !== null)
+                page.readBooks()
         }
     }
     onVisibleChanged: {
@@ -217,6 +247,8 @@ Item {
         page.moreShown = false
         page.problem = ""
         page.person = key ? JSON.parse(page.sioul.contact(key) || "null") : null
+        if (page.person !== null)
+            page.readBooks()
         page.clientProfile = page.clientRef !== "" ? JSON.parse(page.sioul.clientProfile(page.clientRef) || "null") : null
         page.readMail()
         page.cardPerson = page.person && page.person.uid ? JSON.parse(page.sioul.personOfCard(page.person.uid) || "null") : null
@@ -320,10 +352,12 @@ Item {
     function startNew(number) {
         page.duplicatesShown = false
         page.openKey = ""
-        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: number || "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false }
+        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: number || "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false, photo: "" }
         page.problem = ""
         page.editing = true
-        page.formNow().load(page.person)
+        // Its address book: the one Sioul chooses first (the list's, the last one used here, the first), changed in the form.
+        page.readBooks()
+        page.formNow().loadNew(page.person, page.sioul.newContactBook())
     }
 
     // The map instead of the list: every contact placed, a pin opening its card.
@@ -1017,6 +1051,56 @@ Item {
                                     icon.color: page.theme.text
                                     onClicked: page.window.openPersonSheet(page.openKey, "")
                                 }
+                                // Its address book, in sight when there are several (with one, under More):
+                                // another moves the card there, asked first when that book would not keep
+                                // everything (Google's keeps less) or when it changes who may reach you.
+                                // One row, as wide as its label and its book's name, the card's width at most
+                                // (a phone's 372 points), where the chooser gives way: never a gap between them.
+                                RowLayout {
+                                    objectName: "contactBookRow"
+                                    visible: page.person !== null && page.manyBooks
+                                    // A row fills its column unless told not to: its own width here.
+                                    Layout.fillWidth: false
+                                    Layout.maximumWidth: cardScroll.availableWidth
+                                    spacing: 8
+
+                                    Label {
+                                        text: page.sioul.text("contact-book")
+                                        color: page.theme.muted
+                                    }
+                                    // A card of a book you only read: its book said, nothing offered.
+                                    Label {
+                                        objectName: "contactBookReadOnly"
+                                        visible: page.person !== null && page.person.read_only === true
+                                        Layout.fillWidth: true
+                                        text: page.person ? page.person.book : ""
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: page.theme.text
+                                    }
+                                    PlainComboBox {
+                                        id: bookMain
+
+                                        objectName: "contactBookMain"
+                                        visible: page.person !== null && page.person.read_only !== true
+                                        // As wide as its longest book's name (Basic's box is 140 points whatever it holds).
+                                        implicitContentWidthPolicy: ComboBox.WidestText
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        Layout.maximumWidth: 360
+                                        Accessible.name: page.sioul.text("contact-book")
+                                        model: page.cardBooks.map(b => page.theme.plain(b.name))
+                                        // The card's own book, by its place ("account/id"), never by a name two books may share.
+                                        currentIndex: page.cardBookIndex
+                                        Keys.onPressed: event => page.keyOnBook(bookMain, event)
+                                        onActivated: index => {
+                                            page.moveTo(page.cardBooks[index], false)
+                                            // The card's own book shown again until it has moved: asked first, or
+                                            // refused, it has not (the box keeps a choice it shows by itself).
+                                            bookMain.currentIndex = Qt.binding(() => page.cardBookIndex)
+                                        }
+                                    }
+                                }
 
                                 // Where they live, when the address is placed.
                                 Loader {
@@ -1117,32 +1201,36 @@ Item {
                                             }
                                         }
                                     }
+                                    // Its address book here when there is one alone; with several, in the card's main part.
                                     Label {
+                                        visible: !page.manyBooks
                                         text: page.sioul.text("contact-book")
                                         color: page.theme.muted
+                                    }
+                                    Label {
+                                        visible: !page.manyBooks && page.person !== null && page.person.read_only === true
+                                        Layout.fillWidth: true
+                                        text: page.person ? page.person.book : ""
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        color: page.theme.text
                                     }
                                     // Another address book moves the contact there, asked first
                                     // when it would not keep everything (Google's keeps less).
                                     PlainComboBox {
                                         id: bookChoice
 
-                                        property var books: []
-
+                                        objectName: "contactBookMore"
+                                        visible: !page.manyBooks && page.person !== null && page.person.read_only !== true
                                         Layout.fillWidth: true
-                                        enabled: page.person !== null && !page.person.read_only
-                                        model: bookChoice.books.map(b => page.theme.plain(b.name))
+                                        Accessible.name: page.sioul.text("contact-book")
+                                        model: page.cardBooks.map(b => page.theme.plain(b.name))
                                         // The card's own book, by its place ("account/id"), never by a name two books may share.
-                                        currentIndex: page.person ? Math.max(0, bookChoice.books.findIndex(b => b.id === page.person.place)) : 0
-                                        Component.onCompleted: bookChoice.books = JSON.parse(page.sioul.addressBooks() || "[]")
-                                        onActivated: index => page.moveTo(bookChoice.books[index], false)
-
-                                        // Read again for each card opened: a book made or removed since shows.
-                                        Connections {
-                                            target: page
-
-                                            function onPersonChanged() {
-                                                bookChoice.books = JSON.parse(page.sioul.addressBooks() || "[]")
-                                            }
+                                        currentIndex: page.cardBookIndex
+                                        Keys.onPressed: event => page.keyOnBook(bookChoice, event)
+                                        onActivated: index => {
+                                            page.moveTo(page.cardBooks[index], false)
+                                            bookChoice.currentIndex = Qt.binding(() => page.cardBookIndex)
                                         }
                                     }
                                 }
@@ -1232,6 +1320,19 @@ Item {
                                     page.editing = true
                                 }
                             }
+                            // As the row menu's Delete: ten seconds with Undo in the status line, the card
+                            // closed; none on a card of a book you only read.
+                            Button {
+                                objectName: "contactCardDelete"
+                                visible: page.person !== null && !page.person.read_only
+                                text: page.sioul.text("ui-delete")
+                                onClicked: {
+                                    // Its file read before the card closes (`open("")` empties it).
+                                    const key = page.openKey
+                                    page.open("")
+                                    page.sioul.deleteContact(key)
+                                }
+                            }
                             Item {
                                 Layout.fillWidth: true
                             }
@@ -1283,9 +1384,10 @@ Item {
                                 sioul: page.sioul
                                 theme: page.theme
                                 known: page.shown.categories || []
-                                // The card's book (a new one's: the first that can be written), when its groups are held back.
+                                books: page.cardBooks
+                                // The card's book (a new one's: the one chosen in the form), when its groups are held back.
                                 heldBook: {
-                                    const place = page.person ? page.person.place : (page.writableBooks.length > 0 ? page.writableBooks[0].place : "")
+                                    const place = page.openKey !== "" && page.person ? page.person.place : form.bookPlace
                                     const book = (page.shown.books || []).find(b => b.place === place)
                                     return book && book.groups === false ? book.name : ""
                                 }

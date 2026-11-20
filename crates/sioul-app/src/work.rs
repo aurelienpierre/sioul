@@ -66,6 +66,11 @@ pub(crate) struct WorkState {
     /// here, never in the task.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub opened: BTreeSet<String>,
+    /// The address book the last card made in the contact form on this
+    /// device went into, "account/id": a new card's form proposes it when
+    /// the list is not filtered on one book (`contacts::book_for_new`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub contact_book: String,
 }
 
 impl WorkState {
@@ -2380,6 +2385,21 @@ pub(crate) fn remove_folder(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> 
 /// How a page was left: a column folded, a section open.
 pub(crate) fn view_flag(shared: &Shared, name: &str) -> bool {
     shared.work.lock().ok().and_then(|state| state.flags.get(name).copied()).unwrap_or(false)
+}
+
+/// The address book the last card made in the form on this device went into ("account/id"; "" none).
+pub(crate) fn contact_book(shared: &Shared) -> String {
+    shared.work.lock().map(|state| state.contact_book.clone()).unwrap_or_default()
+}
+
+/// A card made in the form went into `place`: kept for the next one, written when it changes.
+pub(crate) fn keep_contact_book(shared: &Shared, place: &str) {
+    if let Ok(mut state) = shared.work.lock()
+        && state.contact_book != place
+    {
+        state.contact_book = place.to_string();
+        state.save();
+    }
 }
 
 pub(crate) fn set_view_flag(shared: &Shared, name: &str, value: bool) {

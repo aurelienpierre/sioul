@@ -5,8 +5,9 @@
 // names, family name, suffix: kept as typed, wave D), addresses and numbers
 // in view, each with what it is for; the organisation and the role; its
 // categories, chosen among those in use or typed; then, folded, postal
-// addresses, the birthday, notes and web sites. `edit()` gives what the
-// backend saves.
+// addresses, the birthday, notes and web sites. A new card (`loadNew`) shows
+// its address book above its categories when more than one can take it, the
+// one Sioul chose first already chosen. `edit()` gives what the backend saves.
 
 pragma ComponentBehavior: Bound
 
@@ -28,6 +29,14 @@ ColumnLayout {
     // The card's address book, when its groups do not decide who may reach
     // you (someone else can write it): its name; "" when they do.
     property string heldBook: ""
+    // The address books a new card can go into ({id, name}: those that can be written).
+    property var books: []
+    // A new card (`loadNew`): its address book is chosen here, by place
+    // ("account/id"), the one Sioul proposed first until changed. A card that
+    // exists stays in its book: its card's chooser moves it.
+    property bool isNew: false
+    property string bookPlace: ""
+    readonly property bool placed: form.books.some(b => b.id === form.bookPlace)
 
     // Asked to open the address book's switch (Contacts ⚙ ▸ Address books).
     signal askedSwitch()
@@ -59,6 +68,8 @@ ColumnLayout {
     }
 
     function load(person) {
+        form.isNew = false
+        form.bookPlace = ""
         name.text = person.name
         prefix.text = person.prefix || ""
         given.text = person.given || ""
@@ -89,6 +100,13 @@ ColumnLayout {
         name.forceActiveFocus()
     }
 
+    // A new card, into `place` until another book is chosen.
+    function loadNew(person, place) {
+        form.load(person)
+        form.isNew = true
+        form.bookPlace = place || ""
+    }
+
     function rows(model) {
         const out = []
         for (let i = 0; i < model.count; i++)
@@ -98,7 +116,7 @@ ColumnLayout {
     }
 
     function edit() {
-        return {
+        const out = {
             name: name.text,
             // As typed: Sioul guesses them only for a card that has none.
             parts: { prefix: prefix.text, given: given.text, family: family.text, suffix: suffix.text },
@@ -113,6 +131,9 @@ ColumnLayout {
             // A category typed and not yet added counts too.
             categories: form.plus(form.chosen, newCategory.text)
         }
+        if (form.isNew)
+            out.book = form.bookPlace
+        return out
     }
 
     spacing: 8
@@ -223,6 +244,25 @@ ColumnLayout {
             Layout.fillWidth: true
             placeholderText: form.sioul.text("contact-title")
         }
+    }
+
+    // A new card's address book, when more than one can take it (or the one chosen is gone meanwhile).
+    Label {
+        visible: bookBox.visible
+        text: form.sioul.text("contact-book")
+        color: form.theme.muted
+    }
+    PlainComboBox {
+        id: bookBox
+
+        objectName: "contactFormBook"
+        visible: form.isNew && (form.books.length > 1 || (form.bookPlace !== "" && !form.placed))
+        Layout.fillWidth: true
+        Layout.maximumWidth: 360
+        Accessible.name: form.sioul.text("contact-book")
+        model: form.books.map(b => form.theme.plain(b.name))
+        currentIndex: form.books.findIndex(b => b.id === form.bookPlace)
+        onActivated: index => form.bookPlace = form.books[index].id
     }
 
     Label {

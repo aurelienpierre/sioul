@@ -108,6 +108,13 @@ pub struct ContactEdit {
     /// has none (`wanted_n`).
     #[serde(default)]
     pub parts: Option<NameParts>,
+    /// For a new card, the address book it goes into, by its place
+    /// ("account/id"), as the form chose it (a card's book, 20 November
+    /// 2026); None (a sender added, an older Sioul's form): the book Sioul
+    /// chooses first (`book_for_new`). A card that exists stays where it is:
+    /// its card's chooser moves it.
+    #[serde(default)]
+    pub book: Option<String>,
 }
 
 /// The parts of a name the form gives, as `N` writes them: the title
@@ -1164,8 +1171,54 @@ pub fn completions(contacts: &[Contact], typed: &str, limit: usize) -> Vec<Strin
 
 /// Where a new contact goes: the first address book that can be written to.
 pub fn default_book() -> Option<Collection> {
-    // Never a book its server refused to make (review V9).
-    vdir::collections(Kind::Contacts).into_iter().find(|b| !b.read_only && !vdir::State::load(&b.state_path()).refused)
+    writable_books().into_iter().next()
+}
+
+/// The address books a contact can go into, in the order Contacts ⚙ lists
+/// them: those that can be written; never a book its server refused to make
+/// (review V9), whose cards would stay on this device alone.
+pub fn writable_books() -> Vec<Collection> {
+    vdir::collections(Kind::Contacts).into_iter().filter(|b| !b.read_only && !vdir::State::load(&b.state_path()).refused).collect()
+}
+
+/// The address book Sioul chooses first for a new card, by place
+/// ("account/id"), among `writable` (in their order): the one the list is
+/// filtered on when it shows one book alone (`shown`, the filter's books
+/// that exist) and it can be written; else the book of the last card made on
+/// this device (`last`), while it can be written; else the first. None when
+/// no book can be written. What it chooses counts until the person chooses
+/// another in the form, asked nothing more.
+pub fn book_for_new(writable: &[String], shown: &[String], last: &str) -> Option<String> {
+    let takes = |place: &str| writable.iter().any(|w| w == place);
+    if let [one] = shown
+        && takes(one)
+    {
+        return Some(one.clone());
+    }
+    if !last.is_empty() && takes(last) {
+        return Some(last.to_string());
+    }
+    writable.first().cloned()
+}
+
+/// Why a new card cannot go into the book chosen for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BookRefused {
+    /// No address book has that place any more (removed, its account gone).
+    Gone,
+    /// It is there, but takes no new card (read only, or its server refused
+    /// to make it): its name, to say it.
+    Closed(Collection),
+}
+
+/// The address book with this place ("account/id"), for a new card: refused
+/// when it is gone or cannot take one.
+pub fn book_to_write(place: &str) -> Result<Collection, BookRefused> {
+    let book = vdir::collections(Kind::Contacts).into_iter().find(|b| format!("{}/{}", b.account, b.id) == place).ok_or(BookRefused::Gone)?;
+    if book.read_only || vdir::State::load(&book.state_path()).refused {
+        return Err(BookRefused::Closed(book));
+    }
+    Ok(book)
 }
 
 /// The file a new contact gets in an address book.
@@ -1376,6 +1429,7 @@ mod tests {
             urls: c.urls.clone(),
             categories: Some(c.categories.clone()),
             parts: Some(NameParts { prefix: c.prefix.clone(), given: c.given.clone(), family: c.family.clone(), suffix: c.suffix.clone() }),
+            book: None,
         };
         assert_eq!(apply(MIXED, &same), MIXED);
         let compact = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:A\r\nBDAY;VALUE=DATE:19840512\r\nEND:VCARD\r\n";
@@ -1436,6 +1490,7 @@ mod tests {
             urls: c.urls.clone(),
             categories: Some(c.categories.clone()),
             parts: Some(NameParts { prefix: c.prefix.clone(), given: c.given.clone(), family: c.family.clone(), suffix: c.suffix.clone() }),
+            book: None,
         }
     }
 
@@ -1612,5 +1667,26 @@ mod tests {
         assert_eq!(with_categories(card, &["CLIENTS".into()], &["Famille".into()]), None, "has it, lacks the other: nothing");
         let none = with_categories(card, &[], &["Amis".into(), "clients".into()]).expect("changed");
         assert!(!none.contains("CATEGORIES"), "{none}");
+    }
+
+    /// The book a new card's form proposes (20 November 2026): the one the
+    /// list is filtered on when it is one and can be written, else the last
+    /// one a card was made in on this device while it can be written, else
+    /// the first; nothing when no book can be written. The form's choice
+    /// travels in the edit, by place; an older form's edit, without it, reads.
+    #[test]
+    fn the_book_a_new_card_goes_into() {
+        let writable = ["cloud/contacts".to_string(), "cloud/team".to_string(), "local/family".to_string()];
+        assert_eq!(book_for_new(&writable, &[], "").as_deref(), Some("cloud/contacts"), "the first");
+        assert_eq!(book_for_new(&writable, &[], "local/family").as_deref(), Some("local/family"), "the last one used");
+        assert_eq!(book_for_new(&writable, &["cloud/team".into()], "local/family").as_deref(), Some("cloud/team"), "the filter's, before the last");
+        assert_eq!(book_for_new(&writable, &["cloud/team".into(), "local/family".into()], "").as_deref(), Some("cloud/contacts"), "two books shown: neither");
+        assert_eq!(book_for_new(&writable, &["google/shared".into()], "local/family").as_deref(), Some("local/family"), "a book shown that cannot be written: the last");
+        assert_eq!(book_for_new(&writable, &[], "cloud/gone").as_deref(), Some("cloud/contacts"), "the last one gone: the first");
+        assert_eq!(book_for_new(&[], &["cloud/team".into()], "cloud/team"), None, "nothing to write into");
+        let chosen: ContactEdit = serde_json::from_str(r#"{"name": "Ada Exemple", "book": "cloud/team"}"#).unwrap();
+        assert_eq!(chosen.book.as_deref(), Some("cloud/team"));
+        let older: ContactEdit = serde_json::from_str(r#"{"name": "Ada Exemple"}"#).unwrap();
+        assert_eq!(older.book, None);
     }
 }

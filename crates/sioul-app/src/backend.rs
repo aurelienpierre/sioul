@@ -1593,6 +1593,12 @@ pub mod qobject {
         #[qinvokable]
         fn address_books(self: &Sioul) -> QString;
 
+        /// The address book a new card's form proposes, "account/id" ("" when
+        /// none can be written): the one the list is filtered on, else the
+        /// last one used on this device, else the first (`pim::new_contact_book`).
+        #[qinvokable]
+        fn new_contact_book(self: &Sioul) -> QString;
+
         /// Places by name for the weather; the answer comes in `places_found`.
         #[qinvokable]
         fn find_places(self: Pin<&mut Sioul>, name: &QString);
@@ -7592,6 +7598,10 @@ impl qobject::Sioul {
         QString::from(&pim::books())
     }
 
+    fn new_contact_book(&self) -> QString {
+        QString::from(&pim::new_contact_book(&self.shared()))
+    }
+
     fn find_places(self: Pin<&mut Self>, name: &QString) {
         let (qt, name) = (self.qt_thread(), name.to_string());
         let language = tr().text("qt-locale", None).chars().take(2).collect::<String>();
@@ -9334,7 +9344,8 @@ impl qobject::Sioul {
         // status, its place's buttons and its map, a tentative one, the event form's place suggested (pictures
         // alone; docs/client.md), "invite" a meeting you organize, its form's guests and what Save says first
         // (pictures alone, nothing saved; docs/client.md), "contact-address" a contact's card with its postal
-        // address and Directions (a picture alone), "hours" an office's card with its opening hours,
+        // address and Directions (a picture alone), "contact-card" a contact's card with two address
+        // books and a new card's form asking its book (pictures alone), "hours" an office's card with its opening hours,
         // their form, a lookup asked and its list (the demo's examples), the panel of a call that
         // follows the card (pictures alone; docs/tasks.md), "rest" the window left alone, shown, hidden, then with
         // its sites kept behind the Porch, "rest-shared" the same with sharing started first
@@ -9346,7 +9357,7 @@ impl qobject::Sioul {
         // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
         // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
         // docs/sites.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
