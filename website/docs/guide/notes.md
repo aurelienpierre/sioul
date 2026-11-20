@@ -68,7 +68,7 @@ To make a note somewhere else, right-click its folder: **New note here…**. The
 
 They are notes too, listed beside the Markdown files, and opened in place: a picture fitted to the page, a PDF's pages, a sound with play, pause and where it is. They can be tied to tasks and projects like any note.
 
-Any other file of the folder (a spreadsheet, an archive, one a site offered that you filed in Notes: [Sites](sites.md#downloads)) is listed too, by its name, and tied like any note; **Open with…** opens it in another program. A program shows **Show in its folder** instead: Sioul never starts it. Sioul's own lists and files still being written are left out.
+Office documents (a text, a spreadsheet, a presentation, an e-book: `odt`, `ods`, `odp`, `odg`, `doc`, `docx`, `xls`, `xlsx`, `ppt`, `pptx`, `rtf`, `epub`), one a site offered that you filed in Notes among them ([Sites](sites.md#downloads)), are listed too, by their name, and tied like any note; **Open with…** opens them in another program. Any other kind of file is not a note.
 
 A PDF's pages fill the width; Ctrl and the wheel, or two fingers, make them larger. Its text can be selected and copied. A link to another page goes there; a link to the web or to an address first says where it goes, under the pages ("Opens example.org: https://…"), and opens only with **Open**, an address in Sioul's writing window, as a link in mail does. Any other kind of link (to a file on your computer, a script) is not followed, and the line says so.
 
