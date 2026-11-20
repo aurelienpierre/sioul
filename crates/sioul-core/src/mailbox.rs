@@ -900,9 +900,10 @@ fn page_of_windows(addresses: &[Address], world: &World, ask: &Ask, hidden: &BTr
             let results = trust::read_auth_results(&card.headers, &address.trusted);
             let excused = card.is_list.then(|| trust::list_excused(results.as_ref(), &card.headers, &trust::sealers(&address.trusted, &world.own_domains))).flatten();
             let unproven = !matches!(trust::judge_sender(results.as_ref(), excused.as_ref(), card.sender_domain()).0, Trust::Verified);
-            let who = if unproven { Who::Stranger } else { world.senders.who_of(&card) };
+            // Forged mail is a stranger's, never one of your people's.
+            let judged = if unproven { crate::porch::Judged::stranger() } else { card.from_address.as_deref().map_or_else(crate::porch::Judged::stranger, |a| world.senders.judge(a)) };
             let always = !unproven && card.from_address.as_deref().is_some_and(|a| world.always.admits_address(a));
-            world.attention.mail_from(who, always, from_own, Some(area_of(&address.account)), &world.now).shown
+            world.attention.mail_from(judged.who, judged.circle, always, from_own, Some(area_of(&address.account)), &world.now).shown
         };
         let at = jiff::Timestamp::from_second(first.sent).map(|t| t.to_zoned(zone.clone())).unwrap_or_else(|_| jiff::Timestamp::UNIX_EPOCH.to_zoned(zone.clone()));
         let mut subject = item.subject.clone();

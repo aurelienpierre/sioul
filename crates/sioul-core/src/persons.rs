@@ -117,6 +117,7 @@ impl Relation {
     }
 }
 
+
 /// One person.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Person {
@@ -190,6 +191,15 @@ impl Person {
     /// Whether the relation ended (`until` past).
     pub fn ended(&self, today: Date) -> bool {
         self.until.is_some_and(|until| until < today)
+    }
+
+    /// Whether they are in the circle Your people of what reaches you today
+    /// (docs/attention.md, §1.2; design of 20 November 2026): everyone
+    /// added, whatever their relation, but you, a child's other parent
+    /// (their card keeps its own list) and someone whose relation ended.
+    /// Their cards say who they are by mail, call or message (`Circle`).
+    pub fn in_circle(&self, today: Date) -> bool {
+        self.id != ME && !self.ended(today) && !matches!(self.relation(), Relation::Me | Relation::OtherParent)
     }
 
     /// Whether `text` is their name or their full name, case and accents aside.
@@ -491,6 +501,22 @@ impl Persons {
         (inside, others)
     }
 
+    /// Whether a card is one of your people's today (`Person::in_circle`),
+    /// by its UID: the one answer for who a card is to you in what reaches
+    /// you. A card tied to two people is in the circle when one of them is;
+    /// a card nobody here holds is not.
+    pub fn in_circle(&self, uid: &str, today: Date) -> bool {
+        let uid = uid.trim();
+        !uid.is_empty() && self.persons.iter().any(|p| p.cards.iter().any(|c| c.trim() == uid) && p.in_circle(today))
+    }
+
+    /// The people of the circle today, in the household's order
+    /// (`household`), for the page that says who is in it; their cards tied or not.
+    pub fn circle(&self, today: Date) -> Vec<&Person> {
+        let (inside, _) = self.household(today);
+        inside.into_iter().filter(|p| p.in_circle(today)).collect()
+    }
+
     /// Old texts read once on this device (docs/persons.md, "Read from old
     /// texts"), while `names_read` does not say so: each agenda said a
     /// child's, a partner's or another parent's with a name gives a person;
@@ -773,6 +799,48 @@ impl Persons {
         let mut persons = Persons::load(path);
         persons.read_names(agendas, papers, own);
         persons
+    }
+}
+
+/// The circle Your people, by card: `Persons::in_circle` read once for
+/// every card tied to someone, for a day, so that each sender is judged
+/// without reading the store again (`porch::Senders`), with the name of the
+/// person each card is (the first of two in the store's order), for the
+/// sentence that says why. Empty: nobody tied, as before the circle.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Circle {
+    cards: BTreeMap<String, String>,
+}
+
+impl Circle {
+    /// Every card tied to someone of the circle today.
+    pub fn of(persons: &Persons, today: Date) -> Circle {
+        let mut cards = BTreeMap::new();
+        for person in persons.persons.iter().filter(|p| p.in_circle(today)) {
+            for uid in person.cards.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+                cards.entry(uid.to_string()).or_insert_with(|| person.name.clone());
+            }
+        }
+        Circle { cards }
+    }
+
+    /// The name of the person a card of the circle is; none for any other card.
+    pub fn person(&self, uid: &str) -> Option<&str> {
+        self.cards.get(uid.trim()).map(String::as_str)
+    }
+
+    /// The store as the file holds it now (`Persons::cached`), for today.
+    pub fn now() -> Circle {
+        Circle::of(&Persons::cached(), crate::zone::now().date())
+    }
+
+    /// Whether a card is one of your people's (`Persons::in_circle`).
+    pub fn holds(&self, uid: &str) -> bool {
+        self.cards.contains_key(uid.trim())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
     }
 }
 
@@ -1286,6 +1354,55 @@ mod tests {
         assert_eq!(inside[0].age(today), Some(12));
         assert_eq!(inside[0].age(day("2026-05-12")), Some(12));
         assert_eq!(inside[0].age(day("2026-05-11")), Some(11));
+    }
+
+    /// Who is in the circle Your people: everyone added, whatever their
+    /// relation or age (a child, someone you help, a parent, someone
+    /// unsaid); never a relation ended yesterday (one that ends today still
+    /// holds), a child's other parent, nor you. A card answers for its
+    /// person; a card tied to two people is in it when one of them is; a
+    /// person with no card is in the circle, and no card answers for them.
+    #[test]
+    fn who_is_in_the_circle() {
+        let today = day("2026-11-20");
+        let mut persons = Persons::default();
+        let mut add = |name: &str, relation: &str, born: Option<&str>, until: Option<&str>, cards: &[&str]| {
+            persons.put(Person { name: name.into(), relation: relation.into(), born: born.map(day), until: until.map(day), cards: cards.iter().map(|c| c.to_string()).collect(), ..Person::default() })
+        };
+        let child = add("Léa", "child", Some("2014-05-12"), None, &["c-lea"]);
+        let grown = add("Tom", "child", Some("2001-01-02"), None, &["c-tom"]);
+        let helped = add("Odile", "helped", None, None, &["c-odile"]);
+        let parent = add("Jean", "parent", None, None, &["c-jean"]);
+        let unsaid = add("Maud", "", None, None, &["c-maud"]);
+        let ended = add("Old", "partner", None, Some("2026-11-19"), &["c-old"]);
+        let ends_today = add("Robin", "partner", None, Some("2026-11-20"), &["c-robin"]);
+        let other = add("Sam", "other-parent", None, None, &["c-sam"]);
+        let no_card = add("Alix", "kin", None, None, &[]);
+        persons.put(Person { id: ME.into(), name: "You".into(), cards: vec!["c-me".into()], ..Person::default() });
+        let inside = |id: &str| persons.get(id).unwrap().in_circle(today);
+        for id in [&child, &grown, &helped, &parent, &unsaid, &ends_today, &no_card] {
+            assert!(inside(id), "{}", persons.get(id).unwrap().name);
+        }
+        assert!(!inside(&ended), "ended yesterday");
+        assert!(!inside(&other), "a child's other parent keeps their own list");
+        assert!(!inside(ME), "never yourself");
+        // By card: one function answers.
+        assert!(persons.in_circle("c-lea", today) && persons.in_circle(" c-tom ", today) && persons.in_circle("c-odile", today));
+        for uid in ["c-old", "c-sam", "c-me", "c-nobody", ""] {
+            assert!(!persons.in_circle(uid, today), "{uid:?}");
+        }
+        // A card of two people (two devices tied it apart): in the circle when one of them is.
+        persons.get_mut(&other).unwrap().cards.push("c-lea".into());
+        persons.get_mut(&ended).unwrap().cards.push("c-sam".into());
+        assert!(persons.in_circle("c-lea", today), "the child's card, shared with the other parent's");
+        assert!(!persons.in_circle("c-sam", today), "two people, neither in the circle");
+        // Read once for every card.
+        let circle = Circle::of(&persons, today);
+        assert!(circle.holds("c-lea") && circle.holds("c-jean") && !circle.holds("c-sam") && !circle.holds("c-old") && !circle.holds("c-me"));
+        assert_eq!((circle.person("c-lea"), circle.person(" c-jean "), circle.person("c-sam")), (Some("Léa"), Some("Jean"), None), "the person each card is, for the reason said");
+        assert!(Circle::default().is_empty());
+        // Its people, in the household's order, cards or none.
+        assert_eq!(persons.circle(today).iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Tom", "Léa", "Jean", "Robin", "Alix", "Odile", "Maud"]);
     }
 
     /// An agenda's role names its person: one of the relation linked, an

@@ -978,13 +978,15 @@ fn person_with(someone: &Someone, note: String) -> String {
     let attention = crate::hours::attention();
     let list = someone.list();
     let who = list["who"].as_str().and_then(Who::read).unwrap_or(Who::Stranger);
+    // One of your people: the row Your people (their card's, judged as every sender is).
+    let row = Person::of(who, list["circle"] == true);
     let always = someone.always(&config).is_some() && who != Who::Blocked;
     let reach = reach();
     let lines: Vec<String> = Channel::ALL
         .iter()
         .filter_map(|channel| {
             // Someone no list nor address book knows: their calls are the call screening's, apart.
-            let line = if *channel == Channel::Calls && !always && attention::screened(Row::People(Channel::Calls, Person::of(who))) { text("attention-sheet-line-calls-screening") } else { channel_line(&attention, *channel, Person::of(who), always, "attention-sheet-line")? };
+            let line = if *channel == Channel::Calls && !always && attention::screened(Row::People(Channel::Calls, row)) { text("attention-sheet-line-calls-screening") } else { channel_line(&attention, *channel, row, always, "attention-sheet-line")? };
             let missing = match channel {
                 Channel::Calls if !reach.calls => Some(text("attention-sheet-calls-none")),
                 Channel::Calls if someone.phones().is_empty() => Some(text("attention-sheet-no-number")),
@@ -1003,6 +1005,7 @@ fn person_with(someone: &Someone, note: String) -> String {
         "card": someone.card.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
         "addresses": someone.addresses,
         "who": who.id(),
+        "circle": row == Person::People,
         "said": list["said"],
         "choice": list["choice"],
         "choices": list["choices"],

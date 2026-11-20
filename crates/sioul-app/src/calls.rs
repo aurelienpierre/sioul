@@ -591,14 +591,15 @@ fn a_day_since(last: &mut i64, now: i64) -> bool {
 
 // ---------------------------------------------------------------- the list
 
-/// Who a call's caller is now, as your lists and address books say (a number
-/// only in the phone's contacts: neutral); none for a hidden number.
-fn who_now(senders: &Senders, held: &Held) -> Option<Who> {
+/// A call's caller's row now, as your lists, your address books and your
+/// people say (a number only in the phone's contacts: neutral); none for a
+/// hidden number.
+fn who_now(senders: &Senders, held: &Held) -> Option<Person> {
     if held.hidden {
         return None;
     }
-    let who = senders.judge_number(&held.key).who;
-    Some(if who == Who::Stranger && !held.name.trim().is_empty() { Who::Neutral } else { who })
+    let judged = senders.judge_number(&held.key);
+    Some(if judged.who == Who::Stranger && !held.name.trim().is_empty() { Person::Neutral } else { judged.row() })
 }
 
 /// The calls a device lists, every phone's of the month (`everywhere`:
@@ -690,7 +691,7 @@ pub(crate) fn view() -> String {
     let always = People::load(&People::default_path());
     let shows = |h: &Held| match who_now(&senders, h) {
         None => attention.listed(Person::Hidden, false, &moment),
-        Some(who) => attention.listed(Person::of(who), always.admits_number(&h.key, senders.region()), &moment),
+        Some(person) => attention.listed(person, always.admits_number(&h.key, senders.region()), &moment),
     };
     let name_of = |key: &str| {
         let judged = senders.judge_number(key);
@@ -767,7 +768,7 @@ pub(crate) fn for_card() -> Option<CardCalls> {
     Some(Box::new(move |moment, at| {
         let shows = |h: &Held| match who_now(&senders, h) {
             None => attention.listed(Person::Hidden, false, moment),
-            Some(who) => attention.listed(Person::of(who), always.admits_number(&h.key, senders.region()), moment),
+            Some(person) => attention.listed(person, always.admits_number(&h.key, senders.region()), moment),
         };
         let name_of = |key: &str| {
             let judged = senders.judge_number(key);

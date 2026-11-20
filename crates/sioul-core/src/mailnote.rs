@@ -809,7 +809,7 @@ mod tests {
         let attention = Attention::usual();
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
         let evening = |lines: Lines| mode(Time::Leisure, Why::Evening).on(&lines);
-        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::PERSONAL)), &Now::of(m));
+        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), circle: false, always: false, lane: MailLane::Usual }).for_area(Some(Area::PERSONAL)), &Now::of(m));
         let fate = |m: Mode| {
             let decided = &decided;
             move |t: &Triaged| match decided(t, &m) {
@@ -849,7 +849,7 @@ mod tests {
         let usual = crate::config::Priority::default();
         let stranger = message("work", "Someone <someone@elsewhere.example>", "", "A question", "10@elsewhere.example", &senders, usual);
         let attention = Attention::usual();
-        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
+        let decided = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: senders.who_of(&t.card), circle: false, always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
         let fate_at = |m: Mode| {
             let decided = &decided;
             move |t: &Triaged| match decided(t, &m) {
@@ -865,7 +865,7 @@ mod tests {
         // it waits, shown on the Porch, and comes with "The Porch opens" once work begins.
         let safe_senders = Senders { safe: crate::porch::SenderList::parse("ana@example.org"), ..Senders::default() };
         let ana = message("work", "Ana <ana@example.org>", "", "The invoice", "11@example.org", &safe_senders, usual);
-        let to_work = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: safe_senders.who_of(&t.card), always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
+        let to_work = |t: &Triaged, m: &Mode| attention.decide(&Event::of(Source::Mail { who: safe_senders.who_of(&t.card), circle: false, always: false, lane: MailLane::Usual }).for_area(Some(Area::WORK)), &Now::of(m));
         let evening = to_work(&ana, &mode(Time::Leisure, Why::Evening));
         assert!(evening.shown && !evening.told, "{evening:?}");
         let fate_of = |out: crate::attention::Output| if out.told { Fate::Now } else if out.level == Level::Never { Fate::Never } else { Fate::Later };
@@ -877,7 +877,7 @@ mod tests {
         let morning = waited(&[ana.clone()], &ledger, false, |t| to_work(t, &mode(Time::Work, Why::Working)).told);
         assert_eq!(opens(&Translator::new("en"), &morning).0, "The Porch opens: one e-mail waits for you.");
         // As usual, sleep, the pause and Free time hold the telling of a safe sender's mail; work, the evening and meals do not.
-        let safe_told = |m: &Mode| attention.decide(&Event::of(Source::Mail { who: crate::reach::Who::Safe, always: false, lane: MailLane::Usual }), &Now::of(m)).told;
+        let safe_told = |m: &Mode| attention.decide(&Event::of(Source::Mail { who: crate::reach::Who::Safe, circle: false, always: false, lane: MailLane::Usual }), &Now::of(m)).told;
         assert!(!safe_told(&mode(Time::Sleep, Why::Sleep)) && !safe_told(&mode(Time::Sleep, Why::Paused)) && !safe_told(&mode(Time::Leisure, Why::FreeTime)));
         assert!(safe_told(&mode(Time::Work, Why::Working)) && safe_told(&mode(Time::Leisure, Why::Evening)) && safe_told(&mode(Time::Meals, Why::Meal)));
         // A time beginning is a change of moment; the same moment twice is none.

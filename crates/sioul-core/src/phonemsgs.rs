@@ -302,6 +302,11 @@ pub struct Line {
     /// The Always through list holds them (the phone's judgement).
     #[serde(default, skip_serializing_if = "is_false")]
     pub always: bool,
+    /// Their card is one of your people's (the phone's judgement, with
+    /// `who` "safe"): what a computer reads when it cannot judge them by
+    /// number. An older Sioul passes over it and reads Safe's row.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub circle: bool,
     /// The words, cut at `TEXT_MAX` characters.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub text: String,
@@ -372,6 +377,8 @@ pub struct Notice<'a> {
     pub kind: &'a Kind,
     /// Who wrote, as your lists say (`appnotes::decide`'s), none when nobody knows them.
     pub who: Option<Who>,
+    /// Their card is one of your people's (`porch::Judged::circle`).
+    pub circle: bool,
     /// The Always through list holds them.
     pub listed: bool,
     pub decision: &'a Decision,
@@ -483,7 +490,7 @@ pub fn lines_of(n: &Notice) -> Vec<Line> {
             let service = sms && n.who.is_none() && matches!(talk.sender, Sender::Named { .. });
             let who = if service { "automaton".to_string() } else { n.who.unwrap_or(Who::Stranger).id().to_string() };
             let (talk_key, title, group) = talk.conversation.as_ref().map_or((String::new(), String::new(), false), |c| (c.key.clone(), title_of(c), c.group));
-            let line = Line { kind: kind.into(), talk: talk_key, title, group, who, always: n.listed && !group, ..base };
+            let line = Line { kind: kind.into(), talk: talk_key, title, group, circle: n.circle && n.who == Some(Who::Safe) && !service, who, always: n.listed && !group, ..base };
             messages_of(n, line, heard)
         }
         Kind::Automaton { .. } | Kind::AtOnce => {
@@ -691,11 +698,12 @@ pub fn trim_others(root: &Path, here: &str, now_ms: i64) -> Result<usize, String
 /// holds them, at once. The app's and the conversation's own rows, set on
 /// the phone, are read over them. A row that lets them through at no time
 /// shows them in work and admin time, as the calls' list does: no message is
-/// never listed. `who`: as this device's lists judge their number now, else
-/// as the phone judged them. `persons`: the sender's own rows (decision 16;
+/// never listed. `who`: as this device's lists judge their number now, with
+/// whether their card is one of your people's, else as the phone judged
+/// them. `persons`: the sender's own rows (decision 16;
 /// `porch::Senders::person_rows` of their number), read after the
 /// conversation's and before the app's, as on the phone.
-pub fn reaches_now(attention: &Attention, line: &Line, who: Option<Who>, always: bool, persons: &[String], now: &attention::Now) -> bool {
+pub fn reaches_now(attention: &Attention, line: &Line, who: Option<(Who, bool)>, always: bool, persons: &[String], now: &attention::Now) -> bool {
     if line.code {
         return true;
     }
@@ -704,16 +712,16 @@ pub fn reaches_now(attention: &Attention, line: &Line, who: Option<Who>, always:
         let kind = if line.who == "at-once" { attention::Kind::AppAtOnce } else { attention::Kind::AppAutomatons };
         return matches!(attention.decide(&Event::own(kind).from_sources(sources), now).level, Level::Now | Level::Quiet | Level::Gathered);
     }
-    let who = who.or_else(|| Who::read(&line.who)).unwrap_or(Who::Stranger);
+    let (who, circle) = who.or_else(|| Who::read(&line.who).map(|who| (who, line.circle))).unwrap_or((Who::Stranger, false));
     if who == Who::Blocked {
         return false;
     }
     let via = if line.kind == "mail" { Channel::Mail } else { Channel::Messages };
     let always = always && !line.group;
-    if attention.decide(&Event::of(Source::Message { via, who, group: line.group, always }).from_sources(sources.clone()), now).level == Level::Now {
+    if attention.decide(&Event::of(Source::Message { via, who, circle, group: line.group, always }).from_sources(sources.clone()), now).level == Level::Now {
         return true;
     }
-    let person = if line.group { attention::Person::Groups } else { attention::Person::of(who) };
+    let person = if line.group { attention::Person::Groups } else { attention::Person::of(who, circle) };
     let row = Row::People(via, person);
     let never = !always && !attention.has_sources(&sources) && Column::TIMES.iter().all(|c| attention.cell(row, *c) != Level::Now);
     never && !now.dnd && now.times.iter().any(|c| matches!(c, Column::Work | Column::Admin))
@@ -1073,7 +1081,7 @@ mod tests {
     fn decided(posted: &Posted, extra: &Extra, who: Option<Who>, decision: Decision, send: Send) -> Vec<Line> {
         let words = words();
         let kind = appnotes::classify(posted, &AppChoices::default(), &words);
-        lines_of(&Notice { posted, extra, kind: &kind, who, listed: false, decision: &decision, send, now_ms: NOW, region: fr(), words: &words })
+        lines_of(&Notice { posted, extra, kind: &kind, who, circle: false, listed: false, decision: &decision, send, now_ms: NOW, region: fr(), words: &words })
     }
 
     fn now_through() -> Decision {
@@ -1278,7 +1286,7 @@ mod tests {
         assert!(reaches_now(&attention, &line("automaton"), None, false, &[], &at(Column::Work)));
         assert!(!reaches_now(&attention, &line("automaton"), None, false, &[], &at(Column::Sleep)));
         // This device's lists now: blocked here since, never.
-        assert!(!reaches_now(&attention, &line("safe"), Some(Who::Blocked), false, &[], &at(Column::Work)));
+        assert!(!reaches_now(&attention, &line("safe"), Some((Who::Blocked, false)), false, &[], &at(Column::Work)));
         // A code's line: whatever the time.
         assert!(reaches_now(&attention, &Line { code: true, ..line("") }, None, false, &[], &at(Column::Sleep)));
     }

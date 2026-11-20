@@ -19,8 +19,9 @@
 //! - **A row reads a behaviour** when it acts as the pattern at every time
 //!   and layer (`same_effect`: a layer's cell that can change nothing is not
 //!   compared); otherwise it reads "Your own" (`reading` gives none).
-//! - **Circles** (`Circle`): Always through, Safe, Your contacts,
-//!   Restricted, Everyone else, on mail and messages; a group conversation's
+//! - **Circles** (`Circle`): Always through, Your people (shown while it
+//!   holds someone), Safe, Your contacts, Restricted, Everyone else, on mail
+//!   and messages; Your people take Safe's patterns; a group conversation's
 //!   row (`messages.groups`) goes with your contacts' messages, as it ships
 //!   and as every preset moves it. Calls leave the page: their rows stay in
 //!   the store and the engine.
@@ -99,6 +100,9 @@ impl Behaviour {
 pub enum Circle {
     /// The Always through list.
     Always,
+    /// Your people (`attention::Person::People`): the people of Contacts ▸
+    /// Your people, by their cards; their patterns are Safe's.
+    People,
     Safe,
     /// Everyone in your address books, with nothing to set (`neutral`).
     Contacts,
@@ -108,11 +112,12 @@ pub enum Circle {
 }
 
 impl Circle {
-    pub const ALL: [Circle; 5] = [Circle::Always, Circle::Safe, Circle::Contacts, Circle::Restricted, Circle::Others];
+    pub const ALL: [Circle; 6] = [Circle::Always, Circle::People, Circle::Safe, Circle::Contacts, Circle::Restricted, Circle::Others];
 
     pub fn id(self) -> &'static str {
         match self {
             Circle::Always => "always",
+            Circle::People => "people",
             Circle::Safe => "safe",
             Circle::Contacts => "contacts",
             Circle::Restricted => "restricted",
@@ -128,6 +133,7 @@ impl Circle {
     pub fn person(self) -> Person {
         match self {
             Circle::Always => Person::Always,
+            Circle::People => Person::People,
             Circle::Safe => Person::Safe,
             Circle::Contacts => Person::Neutral,
             Circle::Restricted => Person::Restricted,
@@ -166,8 +172,8 @@ pub fn cells_of(attention: &Attention, row: Row) -> [Level; 9] {
 /// | Work | ● o o o o o o ◑ ◑ |
 /// | Never told | ◑ everywhere |
 ///
-/// where o is ◑ for Always through and Safe (shown on the Porch, untold) and
-/// ○ for the others (out of sight).
+/// where o is ◑ for Always through, your people and Safe (shown on the
+/// Porch, untold) and ○ for the others (out of sight).
 ///
 /// | Messages | cells |
 /// |---|---|
@@ -177,8 +183,9 @@ pub fn cells_of(attention: &Attention, row: Row) -> [Level; 9] {
 /// | Work | ● ○ ○ ○ ○ ○ ○ ● ○ |
 /// | Never told | ○ everywhere |
 ///
-/// where f is ● for Safe (Free time lets your safe people through) and ○ for
-/// the others. Gathered is no people's row's; a message cannot be shown.
+/// where f is ● for your people and Safe (Free time lets your safe people
+/// through) and ○ for the others. Gathered is no people's row's; a message
+/// cannot be shown.
 pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
     use Level::{Later, Now, Quiet};
     let Row::People(channel, person) = row else { return None };
@@ -187,7 +194,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
     }
     let cells: [Level; 9] = match channel {
         Channel::Mail => {
-            let off = if matches!(person, Person::Always | Person::Safe) { Quiet } else { Later };
+            let off = if matches!(person, Person::Always | Person::People | Person::Safe) { Quiet } else { Later };
             match behaviour {
                 Behaviour::Always => [Now, Now, Now, Now, Quiet, Quiet, Now, Now, Now],
                 Behaviour::Awake => [Now, Now, Now, Now, off, off, off, Quiet, Quiet],
@@ -198,7 +205,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
             }
         }
         Channel::Messages => {
-            let free = if person == Person::Safe { Now } else { Later };
+            let free = if person.safe() { Now } else { Later };
             match behaviour {
                 Behaviour::Always => [Now; 9],
                 Behaviour::Awake => [Now, Now, Now, Now, Later, Later, free, Now, Quiet],
@@ -409,6 +416,8 @@ mod tests {
         let mail = |p: Person, b: Behaviour| pattern(Row::People(Channel::Mail, p), b);
         let messages = |p: Person, b: Behaviour| pattern(Row::People(Channel::Messages, p), b);
         assert_eq!(mail(Person::Safe, Behaviour::Always), Some([N, N, N, N, Q, Q, N, N, N]));
+        assert_eq!(mail(Person::People, Behaviour::Awake), mail(Person::Safe, Behaviour::Awake), "Your people take Safe's patterns");
+        assert_eq!(messages(Person::People, Behaviour::Awake), Some([N, N, N, N, L, L, N, N, Q]));
         assert_eq!(mail(Person::Safe, Behaviour::Awake), Some([N, N, N, N, Q, Q, Q, Q, Q]));
         assert_eq!(mail(Person::Neutral, Behaviour::Awake), Some([N, N, N, N, L, L, L, Q, Q]));
         assert_eq!(mail(Person::Safe, Behaviour::WorkAdmin), Some([N, N, Q, Q, Q, Q, Q, Q, Q]));
@@ -439,11 +448,13 @@ mod tests {
         let usual = Attention::usual();
         let read = |channel: Channel, circle: Circle| reading(&usual, channel, circle);
         assert_eq!(read(Channel::Mail, Circle::Always), Some(Behaviour::Always));
+        assert_eq!(read(Channel::Mail, Circle::People), Some(Behaviour::Awake), "Your people: Safe's");
         assert_eq!(read(Channel::Mail, Circle::Safe), Some(Behaviour::Awake));
         assert_eq!(read(Channel::Mail, Circle::Contacts), Some(Behaviour::WorkAdmin));
         assert_eq!(read(Channel::Mail, Circle::Restricted), Some(Behaviour::Work));
         assert_eq!(read(Channel::Mail, Circle::Others), Some(Behaviour::WorkAdmin));
         assert_eq!(read(Channel::Messages, Circle::Always), Some(Behaviour::Always));
+        assert_eq!(read(Channel::Messages, Circle::People), Some(Behaviour::Awake), "Your people: Safe's");
         assert_eq!(read(Channel::Messages, Circle::Safe), Some(Behaviour::Awake));
         assert_eq!(read(Channel::Messages, Circle::Contacts), Some(Behaviour::Awake));
         assert_eq!(read(Channel::Messages, Circle::Restricted), Some(Behaviour::Work));
@@ -463,6 +474,10 @@ mod tests {
     fn the_presets_read_as_far_as_they_go() {
         let quieter = Preset::Quieter.matrix();
         assert_eq!(reading(&quieter, Channel::Mail, Circle::Safe), Some(Behaviour::WorkAdmin));
+        // Your people go as Safe in a preset (never louder than your safe senders).
+        for channel in CHANNELS {
+            assert_eq!(reading(&quieter, channel, Circle::People), reading(&quieter, channel, Circle::Safe), "{channel:?}");
+        }
         assert_eq!(reading(&quieter, Channel::Messages, Circle::Contacts), Some(Behaviour::WorkAdmin));
         assert_eq!(reading(&quieter, Channel::Messages, Circle::Safe), None);
         assert_eq!(group_reading(&quieter, Group::Reminders), None);
@@ -617,6 +632,8 @@ mod tests {
         use Behaviour::*;
         assert_eq!(offered(Channel::Mail, Circle::Always), vec![Always, Awake, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Mail, Circle::Safe), vec![Always, Awake, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Mail, Circle::People), vec![Always, Awake, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Messages, Circle::People), vec![Always, Awake, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Messages, Circle::Always), vec![Always]);
         assert_eq!(offered(Channel::Messages, Circle::Contacts), vec![Always, Awake, WorkAdmin, Work, Never]);
         // Two rows set apart from each other read as yours, whatever each says.

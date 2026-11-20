@@ -147,7 +147,7 @@ impl Look {
         let attention = sioul_core::attention::Attention::of(config);
         // This phone's own line (Settings ▸ Devices): As Android does screens nothing, as a phone without the role.
         let line = if cfg!(target_os = "android") { crate::calls::line_here(config) } else { None };
-        let phone = if line.as_ref().is_some_and(sioul_core::calls_line::Grid::screens_nothing) { sioul_core::attention::Phone::default() } else { phone_does() };
+        let phone = if line.as_ref().is_some_and(sioul_core::calls_line::Grid::screens_nothing) { sioul_core::attention::Phone { people: phone_does().people, ..sioul_core::attention::Phone::default() } } else { phone_does() };
         let own_line = phone.screens && line.is_some();
         // While this phone screens calls: whether the call screening lets numbers nobody knows ring at each
         // mode's moment by itself (`calls::unknown_rings`), so that the mode silences nothing it lets ring; the
@@ -226,7 +226,8 @@ fn phone_does() -> sioul_core::attention::Phone {
     if !cfg!(target_os = "android") {
         return sioul_core::attention::Phone::default();
     }
-    sioul_core::attention::Phone { screens: crate::calls::screens_here(), unknown: false }
+    // Your people's row opens a mode only while Contacts ▸ Your people holds someone.
+    sioul_core::attention::Phone { screens: crate::calls::screens_here(), unknown: false, people: !sioul_core::persons::Circle::now().is_empty() }
 }
 
 /// Why do-not-disturb holds now, on every device alike.

@@ -557,7 +557,7 @@ mod tests {
                 _ => Reason::Evening,
             };
             let mode = Mode { quiet: time != Time::Work, time, week: self.week, reason, until: None, back: None, label: String::new(), here: Default::default() }.on(&lines);
-            let event = Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Usual }).for_area(Some(area));
+            let event = Event::of(Source::Mail { who: Who::Safe, circle: false, always: false, lane: Lane::Usual }).for_area(Some(area));
             (Attention::usual().decide(&event, &Now::of(&mode)).told, sure)
         }
 

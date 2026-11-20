@@ -281,12 +281,14 @@ pub struct Frame {
 }
 
 /// The rows a frame says, as Java looks a caller up (version 2): the people
-/// you know, and Always through read against each state ("always-neutral":
-/// someone on the list whose own row is neutral; "always-stranger": someone
-/// on the list in none of your address books, known by the list). Numbers
-/// nobody knows and hidden numbers are the screening's. A table of version 1
-/// also said "stranger" and "hidden".
-pub const ROWS: [&str; 7] = ["safe", "neutral", "restricted", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
+/// you know, your people among them ("people", a number of a card of
+/// Contacts ▸ Your people: Java reads any row a frame names, so the same
+/// Java decides them), and Always through read against each state
+/// ("always-neutral": someone on the list whose own row is neutral;
+/// "always-stranger": someone on the list in none of your address books,
+/// known by the list). Numbers nobody knows and hidden numbers are the
+/// screening's. A table of version 1 also said "stranger" and "hidden".
+pub const ROWS: [&str; 9] = ["people", "safe", "neutral", "restricted", "always-people", "always-safe", "always-neutral", "always-restricted", "always-stranger"];
 
 /// A frame's row: its person, on the Always through list or not.
 fn person_of(row: &str) -> (Person, bool) {
@@ -339,13 +341,15 @@ pub fn frames(attention: &Attention, clock: &Clock, layers: &Layers, from: &Zone
 /// A row of the calls' table for the people's own rows: its name in the
 /// frames ("own-0"), the own rows a number reads in their order
 /// (`porch::Senders::person_rows` of that number: its cards' first, then the
-/// number's), and who its list makes that number. Numbers that read the same
-/// rows with the same list share one.
+/// number's), who its list makes that number, and whether its card is one
+/// of your people's (`porch::Judged::circle`: "As their list" then reads the
+/// row Your people). Numbers that read the same rows with the same list share one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OwnRow {
     pub row: String,
     pub ids: Vec<String>,
     pub who: Who,
+    pub circle: bool,
 }
 
 /// The people's own rows for the calls' table (decision 16; review of part 6,
@@ -359,7 +363,8 @@ pub fn own_rows(attention: &Attention, senders: &crate::porch::Senders) -> (Vec<
     let keys: BTreeSet<String> = set.iter().flat_map(|id| senders.numbers_of_person(id.strip_prefix(attention::PERSON_ROW).unwrap_or_default())).collect();
     let (mut numbers, mut rows): (Vec<(String, String)>, Vec<OwnRow>) = (Vec::new(), Vec::new());
     for key in keys {
-        let who = senders.judge_number(&key).who;
+        let judged = senders.judge_number(&key);
+        let (who, circle) = (judged.who, judged.circle);
         if matches!(who, Who::Blocked | Who::Stranger) {
             continue;
         }
@@ -367,11 +372,11 @@ pub fn own_rows(attention: &Attention, senders: &crate::porch::Senders) -> (Vec<
         if ids.is_empty() {
             continue;
         }
-        let row = match rows.iter().find(|r| r.ids == ids && r.who == who) {
+        let row = match rows.iter().find(|r| r.ids == ids && r.who == who && r.circle == circle) {
             Some(r) => r.row.clone(),
             None => {
                 let row = format!("own-{}", rows.len());
-                rows.push(OwnRow { row: row.clone(), ids, who });
+                rows.push(OwnRow { row: row.clone(), ids, who, circle });
                 row
             }
         };
@@ -405,7 +410,7 @@ pub fn frames_with(attention: &Attention, clock: &Clock, layers: &Layers, from: 
                 })
                 .collect();
             for o in own {
-                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
+                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), circle: o.circle, always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
                 ring.insert(o.row.clone(), attention.decide(&call, &now).level == Level::Now);
             }
             let column = column_of(&now).to_string();
@@ -420,12 +425,13 @@ pub fn frames_with(attention: &Attention, clock: &Clock, layers: &Layers, from: 
 }
 
 /// The numbers of the people Always through, each as a row of its own read
-/// against who the number is (`judge`: "always-safe"), whole numbers only;
-/// never a blocked number: blocked beats Always through.
-pub fn always_numbers(people: &People, region: Option<&Region>, judge: &dyn Fn(&str) -> Who) -> Vec<(String, String)> {
+/// against the row the number has (`judge`, `porch::Judged::row`:
+/// "always-safe", "always-people"), whole numbers only; never a blocked
+/// number: blocked beats Always through.
+pub fn always_numbers(people: &People, region: Option<&Region>, judge: &dyn Fn(&str) -> Person) -> Vec<(String, String)> {
     people_keys(people, region).into_iter().filter_map(|key| match judge(&key) {
-        Who::Blocked => None,
-        who => Some((key, format!("always-{}", who.id()))),
+        Person::Blocked => None,
+        person => Some((key, format!("always-{}", person.id()))),
     }).collect()
 }
 
@@ -434,7 +440,7 @@ pub struct Made {
     /// When (ms).
     pub made: i64,
     pub region: Option<&'static Region>,
-    /// Every number known, by key, and who it is ("safe"…, "blocked"; `porch::Senders::numbers`).
+    /// Every number known, by key, and its row ("people", "safe"…, "blocked"; `porch::Senders::numbers`).
     pub numbers: Vec<(String, String)>,
     /// The lists' prefixes ("+3346571*") and who they make a number (`porch::Senders::prefixes`), in the order ties are decided.
     pub prefixes: Vec<(String, String)>,
@@ -543,9 +549,10 @@ pub struct Inputs<'a> {
 pub fn build(inputs: &Inputs, line: Option<&crate::calls_line::Said>) -> Table {
     let i = inputs;
     let region = i.senders.region();
-    let always = always_numbers(i.people, region, &|key| i.senders.judge_number(key).who);
+    let always = always_numbers(i.people, region, &|key| i.senders.judge_number(key).row());
     let (own_numbers, own) = own_rows(i.attention, i.senders);
-    let numbers: Vec<(String, String)> = i.senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect();
+    // Each number by its row: your people's "people" (safe to everything else of Sioul).
+    let numbers: Vec<(String, String)> = i.senders.numbers().into_iter().map(|(key, judged)| (key, judged.row().id().to_string())).collect();
     let prefixes: Vec<(String, String)> = i.senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect();
     let today = i.from.date();
     let Some(grid) = line.filter(|l| l.says()).map(crate::calls_line::Said::grid) else {
@@ -744,6 +751,10 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
             let mut ring: BTreeMap<String, bool> = BTreeMap::new();
             for row in ROWS {
                 let rings = match row {
+                    // Your people: the matrix's row on every phone, a line or none (a line's value keeps no
+                    // row of theirs: 0.0.12 rewrites it whole with the rows it knows, docs/attention.md
+                    // §7); while busy as do-not-disturb where being busy turns it on, as a person's own row.
+                    "people" => android || now.reachable || every(Person::People, busy && m.busy_is_dnd),
                     "safe" => known(m.grid.cells(&Row::Safe), Person::Safe),
                     "neutral" => known(m.grid.cells(&Row::Contacts), Person::Neutral),
                     "restricted" => known(m.grid.cells(&Row::Restricted), Person::Restricted),
@@ -764,7 +775,7 @@ pub fn line_frames(m: &LineMoments, from: &Zoned, until: &Zoned) -> Vec<Frame> {
             let mut own_now = now.clone();
             own_now.dnd = dnd || (busy && m.busy_is_dnd);
             for o in m.own {
-                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
+                let call = attention::Event::of(attention::Source::Call { who: Some(o.who), circle: o.circle, always: false, emergency: false, repeat: false }).from_sources(o.ids.clone());
                 ring.insert(o.row.clone(), android || m.attention.decide(&call, &own_now).level == Level::Now);
             }
             let column = if busy && !held && !android { "busy" } else { column_of(&now) }.to_string();
@@ -1835,7 +1846,7 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         ("automated" | "impossible" | "unverified", _) => tr.text(&format!("calls-why-{}", first.why), None),
         ("screening", "hidden") => tr.text("calls-why-screening-hidden", None),
         ("screening", _) => tr.text("calls-why-screening-stranger", None),
-        (_, "safe" | "neutral" | "restricted" | "stranger" | "hidden") => tr.text(&format!("calls-why-{row}"), Some(&why_args)),
+        (_, "people" | "safe" | "neutral" | "restricted" | "stranger" | "hidden") => tr.text(&format!("calls-why-{row}"), Some(&why_args)),
         _ => String::new(),
     };
     // A number nobody knows from a block ARCEP had given to no operator, while
@@ -2411,7 +2422,7 @@ mod tests {
     fn decision_table() -> Table {
         let mut people = People::default();
         people.add(Person { name: "Carer".into(), phones: vec!["01 99 00 00 09".into(), "01 99 00 00 04".into()], ..Person::default() }, fr());
-        let blocked = |key: &str| if key == "+33199000004" { Who::Blocked } else { Who::Stranger };
+        let blocked = |key: &str| if key == "+33199000004" { attention::Person::Blocked } else { attention::Person::Stranger };
         let work = (ms("2026-10-05T09:00[Europe/Paris]"), ms("2026-10-05T17:00[Europe/Paris]"));
         let leisure = (work.1, ms("2026-10-05T22:00[Europe/Paris]"));
         let sleep = (leisure.1, ms("2026-10-06T07:00[Europe/Paris]"));
@@ -2903,11 +2914,12 @@ mod tests {
         let frames = super::frames(&attention, &clock, &none, &from, &until);
         assert!(frames.windows(2).all(|w| w[0].until == w[1].from));
         assert_eq!(frames.last().unwrap().until - frames.first().unwrap().from, 25 * 3_600_000);
-        // In the pause: the pause's column to the end, nobody ringing.
+        // In the pause: the pause's column to the end, nobody ringing but Always through and your
+        // people, whose calls ring at every time as Sioul ships it (20 November 2026).
         let paused = crate::quiet::Overrides { paused_since: Some(from.timestamp().as_second()), ..crate::quiet::Overrides::default() };
         let clock = Clock::new(&config, paused, Needs::default(), Days::default(), Vec::new());
         let frames = super::frames(&attention, &clock, &none, &from, &until);
-        assert!(frames.iter().all(|f| f.column == "pause" && f.ring.iter().all(|(row, r)| *r == row.starts_with("always-"))), "{frames:?}");
+        assert!(frames.iter().all(|f| f.column == "pause" && f.ring.iter().all(|(row, r)| *r == (row.starts_with("always-") || row == "people"))), "{frames:?}");
         assert_eq!(frames.last().unwrap().until, until.timestamp().as_millisecond());
     }
 
@@ -2930,8 +2942,8 @@ mod tests {
         let mut people = People::default();
         people.add(Person { name: "Alice".into(), phones: vec!["01 99 00 00 01".into(), "3114".into()], ..Person::default() }, fr());
         assert_eq!(people_keys(&people, fr()), vec!["+33199000001".to_string()], "a short code is nobody's");
-        assert_eq!(always_numbers(&people, fr(), &|_| Who::Neutral), vec![("+33199000001".to_string(), "always-neutral".to_string())]);
-        assert!(always_numbers(&people, fr(), &|_| Who::Blocked).is_empty(), "blocked beats Always through");
+        assert_eq!(always_numbers(&people, fr(), &|_| attention::Person::Neutral), vec![("+33199000001".to_string(), "always-neutral".to_string())]);
+        assert!(always_numbers(&people, fr(), &|_| attention::Person::Blocked).is_empty(), "blocked beats Always through");
         // 0639 is Mayotte's plan: its own country code, as phones reads it.
         assert_eq!(phones::key("06 39 98 00 01", fr()), "+262639980001");
     }
@@ -2956,7 +2968,7 @@ mod tests {
         let mut attention = Attention::usual();
         let id = attention::person_row("contact:card-2");
         attention.set_source(&id, attention::Column::Work, Level::Later).unwrap();
-        let own = [OwnRow { row: "own-0".into(), ids: vec![id.clone()], who: Who::Neutral }];
+        let own = [OwnRow { row: "own-0".into(), ids: vec![id.clone()], who: Who::Neutral, circle: false }];
         let frames = frames_with(&attention, &clock, &Layers::default(), &at("2026-10-05T00:00[Europe/Paris]"), &at("2026-10-06T00:00[Europe/Paris]"), &own);
         let work = frames.iter().find(|f| f.column == "work").unwrap();
         assert_eq!((work.ring["neutral"], work.ring["own-0"]), (true, false), "their row holds them at work, their list would ring");
@@ -2972,7 +2984,7 @@ mod tests {
             region: fr(),
             numbers: vec![("+33199000002".into(), "neutral".into()), ("+33199000004".into(), "blocked".into()), ("+33199000001".into(), "safe".into())],
             prefixes: Vec::new(),
-            always: always_numbers(&people, fr(), &|_| Who::Safe),
+            always: always_numbers(&people, fr(), &|_| attention::Person::Safe),
             own: vec![("+33199000002".into(), "own-0".into()), ("+33199000004".into(), "own-0".into()), ("+33199000001".into(), "own-0".into())],
             expecting: None,
             screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::built_in(), "2026-10-05".parse().unwrap())),
@@ -3030,7 +3042,7 @@ mod tests {
             region: fr(),
             numbers: vec![("+262639980002".into(), "safe".into()), ("+33199001234".into(), "blocked".into()), ("+33199009999".into(), "stranger".into()), (String::new(), "safe".into())],
             prefixes: vec![("+33465711*".into(), "blocked".into()), ("+3346571*".into(), "safe".into()), ("+334657112*".into(), "neutral".into()), ("*".into(), "blocked".into())],
-            always: always_numbers(&people, fr(), &|_| Who::Safe),
+            always: always_numbers(&people, fr(), &|_| attention::Person::Safe),
             own: Vec::new(),
             expecting: Some(Through { pressed: 5, on: true, until: 0 }),
             screening: Some(screening::TablePart::of(&screening::Screening::default(), &screening::Numbers::built_in(), "2026-10-20".parse().unwrap())),
@@ -3688,7 +3700,7 @@ mod tests {
             .map(|k| k.to_string())
             .collect();
             keys.extend(["work", "admin", "leisure", "meals", "sleep", "pause", "free", "slot", "dnd", "reachable", "busy"].iter().map(|c| format!("calls-context-{c}")));
-            keys.extend(["safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| format!("calls-why-{r}")));
+            keys.extend(["people", "safe", "neutral", "restricted", "stranger", "hidden"].iter().map(|r| format!("calls-why-{r}")));
             for key in keys {
                 let mut args = crate::i18n::args();
                 for name in ["context", "day", "who", "time", "first", "second", "count", "length", "until", "phone", "name", "when", "head", "outcome"] {
@@ -3816,12 +3828,12 @@ mod line_tests {
         /// a467d9cd's `make`, step for step), for the comparison.
         fn as_before(&self) -> Table {
             let (from, until) = (at("2026-11-16T00:00"), at("2026-11-20T00:00"));
-            let always = always_numbers(&self.people, self.senders.region(), &|key| self.senders.judge_number(key).who);
+            let always = always_numbers(&self.people, self.senders.region(), &|key| self.senders.judge_number(key).row());
             let (own_numbers, own_rows) = own_rows(&self.attention, &self.senders);
             table(Made {
                 made: 7,
                 region: self.senders.region(),
-                numbers: self.senders.numbers().into_iter().map(|(key, who)| (key, who.id().to_string())).collect(),
+                numbers: self.senders.numbers().into_iter().map(|(key, judged)| (key, judged.row().id().to_string())).collect(),
                 prefixes: self.senders.prefixes().into_iter().map(|(prefix, who)| (prefix, who.id().to_string())).collect(),
                 always,
                 own: own_numbers,
@@ -3842,6 +3854,52 @@ mod line_tests {
 
     fn line(profile: Profile) -> Said {
         Said { grid: profile.grid() }
+    }
+
+    /// Your people's numbers (decision of 20 November 2026): a number of a
+    /// card tied to one of your people is written "people" in the table, read
+    /// by the frames' row of that name, which rings at every time as Sioul
+    /// ships it, under do-not-disturb's switch too, where a safe caller goes to
+    /// voicemail; on a phone with a line of its own the same row, the
+    /// matrix's (no line keeps a row of theirs); their own entry on a list,
+    /// the blocked and Always through come first; their row changed holds
+    /// them alone.
+    #[test]
+    fn your_people_s_calls_ring_by_their_row() {
+        use crate::persons::{Circle, Person as Someone, Persons};
+        let mut persons = Persons::default();
+        persons.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["lea".into(), "claire".into()], ..Someone::default() });
+        persons.put(Someone { name: "Fred".into(), relation: "kin".into(), cards: vec!["fred".into(), "boss".into()], ..Someone::default() });
+        let mut cards = vec![card("lea", "01 99 00 00 08", &[])];
+        cards.extend([card("sam", "01 99 00 00 01", &[]), card("fred", "01 99 00 00 02", &[]), card("teacher", "01 99 00 00 03", &["School"]), card("boss", "01 99 00 00 04", &[]), card("claire", "01 99 00 00 06", &["school"]), card("ann", "01 99 00 00 07", &[])]);
+        let senders = Senders { contacts: std::sync::Arc::new(Book::of(&cards, fr())), circle: std::sync::Arc::new(Circle::of(&persons, at("2026-11-16T00:00").date())), ..senders() };
+        let dnd = Layers { dnd: Some((s("2026-11-16T18:00"), Some(s("2026-11-16T19:00")))), ..Layers::default() };
+        let world = World { senders, layers: dnd, ..World::new() };
+        let (table, _) = world.build(None);
+        assert_eq!(table.numbers.get("+33199000008").map(String::as_str), Some("people"), "Léa's");
+        assert_eq!(table.numbers.get("+33199000002").map(String::as_str), Some("people"), "Fred's, a contact before");
+        assert_eq!(table.numbers.get("+33199000004").map(String::as_str), Some("restricted"), "the boss's card's own entry wins, though tied to Fred");
+        assert_eq!(table.numbers.get("+33199000006").map(String::as_str), Some("always-people"), "Always through, read against their row");
+        assert_eq!(table.numbers.get("+33199000005").map(String::as_str), Some("blocked"));
+        assert_eq!(table, world.as_before(), "made as every table is made");
+        for time in ["03:00", "10:00", "18:30", "23:30"] {
+            assert!(rings(&table, "01 99 00 00 08", time), "Léa at {time}");
+        }
+        assert!(!rings(&table, "01 99 00 00 01", "03:00") && !rings(&table, "01 99 00 00 01", "18:30"), "a safe caller: voicemail at night and under do-not-disturb");
+        assert!(!rings(&table, "01 99 00 00 05", "10:00"), "the blocked never");
+        // Their row changed holds them alone: no call at night.
+        let mut quiet = Attention::usual();
+        quiet.set(attention::Row::People(Channel::Calls, Person::People), attention::Column::Sleep, Level::Later).unwrap();
+        let world = World { attention: quiet, ..world };
+        let (held, _) = world.build(None);
+        assert!(!rings(&held, "01 99 00 00 08", "03:00") && rings(&held, "01 99 00 00 08", "18:30"));
+        assert!(rings(&held, "01 99 00 00 06", "03:00"), "Always through rings whatever their row says");
+        // A phone with a line of its own: the matrix's row Your people, the line's for the others.
+        for profile in [Profile::Professional, Profile::Personal] {
+            let (lined, _) = world.build(Some(&line(profile)));
+            assert!(lined.line && lined.numbers.get("+33199000008").map(String::as_str) == Some("people"));
+            assert!(!rings(&lined, "01 99 00 00 08", "03:00") && rings(&lined, "01 99 00 00 08", "21:00") && rings(&lined, "01 99 00 00 08", "18:30"), "{profile:?}: the matrix's row");
+        }
     }
 
     /// Nothing changes on any phone until its line is set: over matrices,

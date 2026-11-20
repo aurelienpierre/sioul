@@ -31,10 +31,12 @@ fn said(judged: &Judged) -> String {
         By::LetIn => say("sender-from-let-in", &[("list", one)]),
         By::Book => say("sender-from-book", &[("list", one)]),
         By::Default => say("sender-from-default", &[("list", one)]),
+        // Their card is one of your people's: the circle's own words, never "Safe".
+        By::Circle => say("sender-from-circle", &[("name", judged.name.clone())]),
     }
 }
 
-/// What decided, as the window reads it: "address", "number", "card", "category", "domain", "prefix", "let-in", "book", "default".
+/// What decided, as the window reads it: "address", "number", "card", "category", "domain", "prefix", "let-in", "book", "default", "circle".
 fn by_id(by: By) -> String {
     serde_json::to_value(by).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
 }
@@ -68,6 +70,7 @@ pub(crate) fn standing_json(text: &str) -> String {
         .collect();
     serde_json::json!({
         "standing": judged.who.id(),
+        "circle": judged.circle,
         "from": by_id(judged.by),
         "name": judged.name,
         "own": own,
@@ -135,11 +138,14 @@ pub(crate) fn person_json(key: &str) -> String {
         .collect();
     // On their own card, their own choice is theirs, not "as you chose for" them.
     let sentence = if judged.by == By::Card { say("sender-from-address", &[("list", tr().text(&format!("sender-one-{}", judged.who.id()), None))]) } else { said(&judged) };
-    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text("sender-categories", None) }))
+    // No list of its own: a card of one of your people is theirs, as Your people says; any other, as its groups say.
+    let unlisted = if senders.circle.holds(&card.uid) { "sender-circle" } else { "sender-categories" };
+    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text(unlisted, None) }))
         .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": tr().text(&format!("sender-one-{}", s.as_str()), None) })))
         .collect();
     serde_json::json!({
         "who": judged.who.id(),
+        "circle": judged.circle,
         "from": by_id(judged.by),
         "choice": choice,
         "said": sentence,
@@ -181,5 +187,21 @@ pub(crate) fn unblock(entry: &str) -> String {
     match porch::unblock(&config, entry) {
         Ok(()) => say("ui-unblocked", &[("entry", porch::Entry::read(entry, sioul_core::reach::region(&config)).map_or_else(|| entry.to_string(), |e| e.shown()))]),
         Err(e) => e,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One of your people's sheet says why in the circle's words, with the
+    /// person's name, never as Safe's (decision of 20 November 2026).
+    #[test]
+    fn your_people_s_reason_names_the_circle() {
+        let judged = Judged { who: Who::Safe, by: By::Circle, name: "Léa".into(), card: "Léa Martin".into(), circle: true };
+        let reason = said(&judged);
+        assert!(reason.contains("Léa") && !reason.contains("Martin") && !reason.contains("sender-"), "{reason}");
+        assert_eq!(reason, say("sender-from-circle", &[("name", "Léa".to_string())]));
+        assert_eq!(by_id(By::Circle), "circle");
     }
 }
