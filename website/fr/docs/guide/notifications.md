@@ -35,13 +35,16 @@ Un choix pour chaque cercle de personnes, pour les **courriels** et pour les **m
 | | Courriels | Messages |
 |---|---|---|
 | Passent toujours | Toujours | Toujours |
+| Vos proches | Quand vous ne dormez pas | Quand vous ne dormez pas |
 | Sûrs | Quand vous ne dormez pas | Quand vous ne dormez pas |
 | Vos contacts | Aux heures de travail et de démarches | Quand vous ne dormez pas |
 | Restreints | Aux heures de travail | Aux heures de travail |
 | Tous les autres | Aux heures de travail et de démarches | Aux heures de travail et de démarches |
 | Bloqués | Jamais | Jamais |
 
-C’est ce que fait Sioul sauf si vous le changez. Les choix, les mêmes sur chaque ligne, sauf pour les messages de Passent toujours, qui n’offrent que **Toujours** :
+C’est ce que fait Sioul sauf si vous le changez. **Vos proches** n’a de ligne qu’une fois que vous avez ajouté quelqu’un dans Contacts ▸ [Vos proches](contacts.md#household) : toutes les personnes ajoutées là, un enfant, une personne que vous aidez, un conjoint, la famille, quoi qu’elles soient pour vous, sauf l’autre parent d’un enfant et une personne dont la relation a pris fin. Rien à remplir : ce qu’elles sont pour vous les met sur la ligne, sur chaque appareil, dès que vous les ajoutez ou leur liez un contact. D’ici là, une phrase sous le tableau dit que la ligne vient dès que vous ajoutez quelqu’un, avec **Ouvrir Contacts ▸ Proches**. Leurs courriels et leurs messages viennent comme ceux de vos expéditeurs sûrs tant que vous ne les changez pas ; leurs **appels sonnent à tout moment**, la nuit, en pause et sous « Ne pas déranger » aussi : quelqu’un de chez vous qui appelle ne peut d’ordinaire pas attendre, alors qu’un SMS peut attendre le matin. Sur un téléphone qui filtre les appels, la carte de chaque téléphone dans Paramètres ▸ Appareils montre leur ligne, la même sur chaque téléphone ; les cases de leurs appels se changent dans Ce qui vient quand.
+
+Les choix, les mêmes sur chaque ligne, sauf pour les messages de Passent toujours, qui n’offrent que **Toujours** :
 
 - **Toujours** : à tout moment, la nuit, une pause et « Ne pas déranger » compris. Les courriels s’affichent sur le Porche sans bruit la nuit et en pause.
 - **Quand vous ne dormez pas** : au travail, aux démarches, aux loisirs et aux repas ; retenus pendant le sommeil et une pause ; sous « Ne pas déranger », un courriel s’affiche sans bruit et un SMS arrive dans le volet, en silence. Pendant le temps libre, les messages de vos personnes sûres viennent quand même.
@@ -63,13 +66,14 @@ Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur
 
 - **Vos contacts**, c’est toute personne de vos carnets d’adresses, et quiconque vous laissez entrer depuis le filtre : rien à régler.
 - **Passent toujours** : les personnes qui doivent toujours vous joindre ([plus bas](#always-through)).
+- **Vos proches**, une fois que quelqu’un y est : leurs noms, lus dans Contacts ▸ Proches, où vous les ajoutez ou les changez. Sioul reconnaît leurs courriels, leurs appels et leurs messages par les contacts qui leur sont liés ; pour une personne sans contact lié, la page dit qu’il ne peut pas encore la reconnaître, avec **Lier un contact…**, qui ouvre sa page.
 - **Sûrs**, **Restreints** et **Bloqués** : trois listes. Chaque ligne est une adresse, un numéro de téléphone (`+33 1 99 00 12 34`, écrit comme vous voulez), ou un motif avec `*` : `*@example.org` pour tout le monde là-bas, `+33899*` pour chaque numéro qui commence ainsi. Personne n’est bloqué parce qu’il partage un serveur ou un domaine avec quelqu’un d’autre.
 - **Les personnes sur une liste** : chacune mise sur une liste depuis sa fiche, avec **Comme le disent ses groupes**, **Sûr**, **Restreint** ou **Bloqué**.
 - **Les groupes** : une ligne pour chaque groupe auquel vos contacts appartiennent (Amis, Famille, Clients…), avec **Aucune liste** ou l’une des trois. Toute personne du groupe le prend, sauf si son propre choix dit autre chose.
 - **Garder une personne simple contact** dans un groupe restreint : sur sa fiche, **Vos contacts** ([plus bas](#a-persons-sheet)).
 - **Les adresses, numéros et domaines que vous avez nommés comme contacts** : une ligne, montrée seulement quand il y en a, pour ce qu’une version plus ancienne, une fiche ou un déblocage a nommé comme vos contacts hors de vos carnets d’adresses (`*@ecole.example.org`, par exemple). Appuyez dessus pour les lire ; retirez-en un pour qu’il soit jugé comme tous les autres. Un groupe ou une personne nommés ainsi disent **Vos contacts**, jamais **Aucune liste** ; **Aucune liste** les en retire.
 
-**De la personne à la liste** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis ses groupes, puis un domaine ou le début d’un numéro ; puis vos contacts ; toute autre personne est inconnue. **La preuve d’abord** : un courriel qui échoue à ses vérifications est pesé comme celui d’un inconnu, et un courriel contrefait est mis de côté, même quand il se réclame de l’adresse d’un expéditeur sûr.
+**De la personne à la liste** : le choix propre à une personne passe d’abord (son adresse ou son numéro, puis sa fiche), puis Vos proches, puis ses groupes, puis un domaine ou le début d’un numéro ; puis vos contacts ; toute autre personne est inconnue. Bloqué reste bloqué, quoi qui vienne après. Une personne de vos proches compte comme sûre partout ailleurs dans Sioul (le Porche, le filtre à spam) ; seule cette page lui donne une ligne à elle. **La preuve d’abord** : un courriel qui échoue à ses vérifications est pesé comme celui d’un inconnu, et un courriel contrefait est mis de côté, même quand il se réclame de l’adresse d’un expéditeur sûr.
 
 ## D’où vous partez {#presets}
 
@@ -218,6 +222,8 @@ Sur Android, son propre mode « Ne pas déranger » ne nomme aucune liste 
 - Des favoris qui disparaissent à deux ou plus à la fois (un compte synchronisé de nouveau, un téléphone restauré) ne retirent personne : une notification les nomme, et la liste reste à vous de changer.
 - Un contact que Sioul n’a pas pu lire cette fois, un numéro que deux contacts ou deux personnes partagent, un contact dont le numéro a changé : rien ne change, et la liste dit combien de contacts n’ont pu être rattachés à une seule personne. Un carnet d’adresses dont le serveur n’a encore montré aucun favori est nommé aussi : mettez-y un contact en favori, et Sioul tient ses favoris au même point dès lors.
 - Désactivé, l’interrupteur oublie ce que chaque endroit tenait ; réactivé, il ajoute et met en favori, et ne retire personne.
+
+**Vos proches sont mis en favori aussi**, sur un téléphone, tant que leurs appels sonnent sous « Ne pas déranger » (comme Sioul le livre) : c’est ce qui laisse passer leurs appels à travers le mode « Ne pas déranger » d’Android. La même ligne, **En favori sur ce téléphone**, les nomme avec les personnes de votre liste, et l’interrupteur activé, Sioul les met en favori comme il le fait pour la liste. Ils ne rejoignent jamais la liste Passent toujours pour autant. Sioul retire un favori qu’il a mis pour l’un d’eux dès qu’il ne fait plus partie de vos proches, ou dès que vous changez la case de leurs appels sous « Ne pas déranger » ; un favori que vous retirez vous-même reste retiré tant qu’il fait partie de vos proches ; un favori qui était là avant que Sioul ne regarde n’est jamais retiré.
 
 ### Les notifications des autres applications, sur Android {#other-apps-on-a-phone}
 
@@ -421,8 +427,8 @@ Sa carte dit pourquoi (« Activé depuis votre téléphone. », « Pendant
 
 Depuis la fiche d’un contact dans [Les contacts](contacts.md), **Comment … vous joint** ; depuis un message, dans son menu (⋮), **Comment cette personne vous joint…** :
 
-- **Qui elle est pour vous, et pourquoi** : « Sûr, comme le dit le groupe Amis. », « Vos contacts : dans votre carnet d’adresses, sur aucune liste. »
-- **Sa liste** : **Comme le disent ses groupes**, **Sûr**, **Vos contacts**, **Restreint** ou **Bloqué**, pour toutes ses adresses et tous ses numéros. Une adresse ou un numéro à elle qui a sa propre liste est dit en dessous : il passe d’abord.
+- **Qui elle est pour vous, et pourquoi** : « Sûr, comme le dit le groupe Amis. », « Vos contacts : dans votre carnet d’adresses, sur aucune liste. », « Parmi Vos proches, car Léa fait partie de vos proches. »
+- **Sa liste** : **Comme le disent ses groupes** (pour une personne de vos proches, **Comme vos proches**), **Sûr**, **Vos contacts**, **Restreint** ou **Bloqué**, pour toutes ses adresses et tous ses numéros. Une liste choisie ici l’emporte sur Vos proches. Une adresse ou un numéro à elle qui a sa propre liste est dit en dessous : il passe d’abord.
 - **Passe toujours** : coché ou non. Le blocage et Passe toujours s’excluent : choisir l’un la retire de l’autre, et la fiche le dit.
 - **Ce qui vous joint de sa part** : une phrase par canal, d’après sa ligne, à chaque moment : « Ses appels sonnent pendant le travail, les démarches, les loisirs, les repas et le temps libre. Ils vont sur la messagerie pendant le sommeil et une pause, et Sioul les liste plus tard sur le Porche. Pendant « Ne pas déranger », ses appels vont sur la messagerie. » Ce qui manque est dit aussi : « Aucun de ses numéros n’est connu : ses appels ne peuvent pas être reconnus. »
 
