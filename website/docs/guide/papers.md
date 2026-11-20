@@ -68,7 +68,7 @@ To send one, the writing window has **A paper**, beside **Attach**. One that has
 
 Rent receipts, payslips and attestations have no end: they are said older than three months. A tax notice is usually asked as the last one.
 
-**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet): a phone does not tell it; a tablet does, as a computer.
+**A reminder** comes once, when renewing starts, at the next working hours: "Passport: valid until Sunday 20 December", with what renewing takes. Not for a paper you added after renewing began (you have just seen it), nor once its renewal is planned. It comes from a computer or a tablet, never from a phone; on a computer, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet).
 
 **Plan the renewal** makes a task in your usual list, so your phone has it, from when renewing starts to the day the paper ends, tied to the paper, with the steps known for its kind.
 
@@ -80,7 +80,7 @@ The list, `sioul-papers.toml`, is one of Sioul's own lists, a plain text file in
 
 The envelope stays outside. A scan, a phone photo or a PDF dropped in a folder, by you, a scanner, or someone who opens the post for you, is read by Sioul on a computer (Android does not read them) and waits for your hours as a card, like mail. Opening post is part of admin anxiety (Money and Mental Health 2018), and a delay written "within two months" is remembered by no one: the card says it as a date.
 
-The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does, and opens here.
+The letters have their own page, **Letters** in the sidebar. It opens on the letters waiting, each a card, then those filed, by year, the newest first. A new letter also comes on the Porch, as mail does: while the Porch is open, never while you sleep, and with no notification; it opens here.
 
 ### Setting it up {#setting-it-up}
 
@@ -103,7 +103,7 @@ On the Letters page, each letter waiting is a card: who sent it and what it is, 
 Then:
 
 - **See the scan**;
-- **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay the water bill €86.40";
+- **A task for that date**: a task in your usual list, due that day, tied to the scan, such as "Pay Eau Exemple €86.40", from the sender's name and the amount;
 - **Into the agenda**, for an appointment;
 - **A payment…**: a payment in your budgets, its form filled from what the letter says ([Mail about money](budgets.md#mail-about-money));
 - **For…**: whom it is for, when it is one of your people: its address block's name is read ("For Léa"), and you can tick others;
@@ -128,7 +128,7 @@ The rules read French and English, by rules rather than guesses: each of the two
 
 ### Where the tasks go {#where-the-tasks-go}
 
-A task made from a letter or a renewal goes to your usual task list, so that your phone has it. If that list is on your calendar server, its title is there too ("Pay the water bill €86.40", "Renew: Passport"): choose a list kept on this device if you would rather not.
+A task made from a letter or a renewal goes to your usual task list, so that your phone has it. If that list is on your calendar server, its title is there too ("Pay Eau Exemple €86.40", "Renew: Passport"): choose a list kept on this device if you would rather not.
 
 ### Contracts {#contracts}
 

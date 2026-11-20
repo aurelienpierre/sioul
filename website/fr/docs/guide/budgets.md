@@ -55,7 +55,7 @@ Chaque budget dit ensuite ce qui reste, en mots : « Payé : Loyer, Énerg
 
 ### Ce qui arrive {#what-is-coming}
 
-Chaque paiement et chaque entrée attendus sur les six semaines qui viennent, ou jusqu’à l’entrée d’après, semaine par semaine : son jour, qui, le montant ou « environ », son budget, où il en est (« prévu le… », « annoncé pour le… », « pas encore définitif », « s’il arrive d’ici le… »), et ce qui le dit, ensemble : la facture du courriel, le courrier, le contrat, la ligne de la banque. **En mois** pose les mêmes sur un calendrier, à côté de la liste, sur un ordinateur. Les dépenses inhabituelles de l’année passée (une réparation, un voyage) sont comptées dans la prévision comme une ligne à part, environ tant par mois.
+Chaque paiement et chaque entrée attendus sur les six semaines qui viennent, ou jusqu’à l’entrée d’après, semaine par semaine : son jour, qui, le montant ou « environ », son budget, où il en est (« prévu le… », « annoncé pour le… », « pas encore définitif », « s’il arrive d’ici le… »), et ce qui le dit, ensemble : la facture du courriel, le courrier, le contrat, la ligne de la banque. **En mois** pose les mêmes sur un calendrier, à côté de la liste, dans une fenêtre d’au moins 720 pixels de large : sur un ordinateur ou une tablette, pas sur un téléphone. Les dépenses inhabituelles de l’année passée (une réparation, un voyage) sont comptées dans la prévision comme une ligne à part, environ tant par mois.
 
 Un appui long sur un écran tactile, un clic droit ou **⋯** à la souris : **Où il va…**, **Répartir…** entre deux budgets, **Pas le même paiement** à côté de celui que Sioul croit sans doute le même, **Le même que…**, et ce qui le dit, ouvert.
 
@@ -153,7 +153,7 @@ Un prélèvement qui s’arrête ne le dit pas. Sioul compare les mouvements de 
 - **ce qui a changé** : « Électricité a pris 71,40 € le 5 septembre, là où 62 € était attendu. » ;
 - **ce que le compte risque de ne pas tenir** : un compte qui ne tiendrait pas un paiement avant sa prochaine entrée, avec ce qui le couvre ([Renfloué à temps](#topped-up-in-time)), dit quelle que soit l’heure.
 
-**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant (**Paiements prévus : jours travaillés avant**, dans le ⚙ de la page, en haut à droite ; 0 pour aucun) un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils ne viennent que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows). Un téléphone ne les dit pas ; une tablette, si, comme un ordinateur.
+**Des rappels**, une fois chacun, au début du travail : deux jours ouvrés avant (**Paiements prévus : jours travaillés avant**, dans le ⚙ de la page, en haut à droite ; 0 pour aucun) un paiement que vous faites vous-même (une facture prévue, un impôt, la facture d’un courrier, un paiement régulier coché **Vous le payez vous-même**) ou une facture que vous envoyez (**Vous envoyez sa facture**), en disant si le compte le tiendra ; une semaine après un paiement qui n’est pas sorti ; cinq jours ouvrés avant un jour où le compte ne tiendrait pas un paiement, un prélèvement aussi. Un prélèvement n’a pas de rappel sinon. Ils viennent d’un ordinateur ou d’une tablette, jamais d’un téléphone ; sur un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows).
 
 ## Contrats et abonnements {#contracts-and-subscriptions}
 
@@ -163,7 +163,7 @@ Ce qui vous engage : loyer, énergie, téléphone et internet, assurances, com
 
 - **Où il en est**, en une phrase : « Se renouvelle le mardi 1er décembre ; pour l’arrêter, le préavis doit partir au plus tard le 2 octobre. »
 - **Le préavis habituel** pour son type est proposé, avec la règle d’où il vient (en France). Le vôtre est celui que dit votre contrat.
-- **Un rappel**, une fois, deux semaines avant le dernier jour où un préavis peut partir, pour les contrats qui se renouvellent chaque année. Comme les rappels sur l’argent, il ne vient que d’un ordinateur.
+- **Un rappel**, une fois, deux semaines avant le dernier jour où un préavis peut partir, pour les contrats qui se renouvellent chaque année. Comme les rappels sur l’argent, il vient d’un ordinateur ou d’une tablette, jamais d’un téléphone.
 - **L’arrêter…** : **Ouvrir sa page de résiliation**, ou **Écrire la lettre** : un brouillon de lettre de résiliation, à son adresse, avec votre numéro, qui demande une confirmation écrite. Vous la relisez, la signez et l’envoyez. **Il est fini** garde le contrat, estompé, comme trace.
 
 Les paiements réguliers sans contrat noté sont listés dessous, chacun avec **Le noter**. Un courriel peut en devenir un avec **Garder comme contrat…**, dans son menu.

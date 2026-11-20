@@ -55,7 +55,7 @@ Each budget then says what remains, in words: "Paid: Rent, Energy." "Still to co
 
 ### What is coming {#what-is-coming}
 
-Every payment and every income expected over the next six weeks, or until the income after next, week by week: its day, who, the amount or "about", its budget, where it stands ("expected on…", "announced for…", "not final yet", "if it comes by…"), and what tells of it, together: the mail's invoice, the letter, the contract, the bank's line. **As a month** lays the same on a calendar beside the list, on a computer. The past year's unusual spending (a repair, a trip) is counted in the forecast as its own line, about so much a month.
+Every payment and every income expected over the next six weeks, or until the income after next, week by week: its day, who, the amount or "about", its budget, where it stands ("expected on…", "announced for…", "not final yet", "if it comes by…"), and what tells of it, together: the mail's invoice, the letter, the contract, the bank's line. **As a month** lays the same on a calendar beside the list, in a window at least 720 pixels wide: on a computer or a tablet, not on a phone. The past year's unusual spending (a repair, a trip) is counted in the forecast as its own line, about so much a month.
 
 A long press on a touch screen, a right click or **⋯** with a mouse: **Where it goes…**, **Split…** between two budgets, **Not the same payment** beside one Sioul thinks is probably the same, **The same as…**, and what tells of it, opened.
 
@@ -153,7 +153,7 @@ A debit that stops does not say so. Sioul holds your bank's movements against th
 - **what changed**: "Electricity took €71.40 on 5 September, where €62 was expected.";
 - **what may not be held**: an account that would not hold a payment before its next income, with what covers it ([Topped up in time](#topped-up-in-time)), said whatever the hour.
 
-**Reminders**, each once, when work starts: two working days before (**Payments planned: working days before**, in the page's ⚙ at its top right; 0 for none) a payment you make yourself (a planned bill, a tax, a letter's bill, a recurring payment ticked **You pay it yourself**) or an invoice you send (**You send its invoice**), saying whether the account will hold it; a week after a payment that did not leave; five working days before a day the account would not hold a payment, a direct debit too. A direct debit gets no reminder otherwise. They come from a computer only, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet). A phone does not tell them; a tablet does, as a computer.
+**Reminders**, each once, when work starts: two working days before (**Payments planned: working days before**, in the page's ⚙ at its top right; 0 for none) a payment you make yourself (a planned bill, a tax, a letter's bill, a recurring payment ticked **You pay it yourself**) or an invoice you send (**You send its invoice**), saying whether the account will hold it; a week after a payment that did not leave; five working days before a day the account would not hold a payment, a direct debit too. A direct debit gets no reminder otherwise. They come from a computer or a tablet, never from a phone; on a computer, while Sioul is open or, if you ask, with its window closed (Settings ▸ [Reminders](settings.md#reminders); not on Windows yet).
 
 ## Contracts and subscriptions {#contracts-and-subscriptions}
 
@@ -163,7 +163,7 @@ What you are bound to: rent, energy, phone and internet, insurances, health cove
 
 - **Where it stands**, in a sentence: "Renews on Tuesday 1 December; to stop it, the notice must leave by 2 October."
 - **The usual notice** for its kind is proposed, with the rule it comes from (in France). Yours is what your contract says.
-- **A reminder**, once, two weeks before the last day a notice can leave, for contracts that renew each year. Like the money reminders, it comes from a computer only.
+- **A reminder**, once, two weeks before the last day a notice can leave, for contracts that renew each year. Like the money reminders, it comes from a computer or a tablet, never from a phone.
 - **Stop it…**: **Open its cancel page**, or **Write the letter**: a formal draft to its address, with your number, asking for a written confirmation. You read it, sign it and send it. **It has ended** keeps it, faded, as a record.
 
 Recurring payments with no contract yet are listed below, each with **Note it**. A message can become one with **Keep as a contract…**, in its menu.

@@ -68,7 +68,7 @@ Pour en envoyer un, la fenêtre d’écriture a **Un papier**, à côté de **Jo
 
 Quittances de loyer, bulletins de paie et attestations n’ont pas de fin : passé trois mois, ils sont dits plus vieux que ce qui est demandé d’habitude. Pour un avis d’impôt, c’est d’habitude le dernier qui est demandé.
 
-**Un rappel** vient une fois, quand le renouvellement commence, aux prochaines heures de travail : « Passeport : valable jusqu’au dimanche 20 décembre », avec ce que demande le renouvellement. Pas pour un papier ajouté une fois le renouvellement commencé (vous venez de le voir), ni une fois son renouvellement prévu. Il ne vient que d’un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows) : un téléphone ne le dit pas ; une tablette, si, comme un ordinateur.
+**Un rappel** vient une fois, quand le renouvellement commence, aux prochaines heures de travail : « Passeport : valable jusqu’au dimanche 20 décembre », avec ce que demande le renouvellement. Pas pour un papier ajouté une fois le renouvellement commencé (vous venez de le voir), ni une fois son renouvellement prévu. Il vient d’un ordinateur ou d’une tablette, jamais d’un téléphone ; sur un ordinateur, quand Sioul est ouvert ou, si vous le demandez, fenêtre fermée (Paramètres ▸ [Rappels](settings.md#reminders) ; pas encore sous Windows).
 
 **Prévoir le renouvellement** crée une tâche dans votre liste habituelle, pour que votre téléphone l’ait, du début du renouvellement au jour où le papier finit, liée au papier, avec les étapes connues pour son type.
 
@@ -80,7 +80,7 @@ La liste, `sioul-papers.toml`, est une des propres listes de Sioul, un fichier t
 
 L’enveloppe reste dehors. Un scan, une photo prise au téléphone ou un PDF déposé dans un dossier, par vous, par un scanner, ou par une personne qui ouvre le courrier pour vous, est lu par Sioul sur un ordinateur (Android ne les lit pas) et attend vos heures sous forme de carte, comme un courriel. Ouvrir le courrier fait partie de l’angoisse administrative (Money and Mental Health 2018), et un délai écrit « dans un délai de deux mois » n’est retenu par personne : la carte le dit sous forme de date.
 
-Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s’ouvre sur les lettres qui attendent, chacune une carte, puis sur celles classées, par année, la plus récente d’abord. Une nouvelle lettre vient aussi sur le Porche, comme un courriel, et s’ouvre ici.
+Les lettres ont leur propre page, **Courrier** dans la barre latérale. Elle s’ouvre sur les lettres qui attendent, chacune une carte, puis sur celles classées, par année, la plus récente d’abord. Une nouvelle lettre vient aussi sur le Porche, comme un courriel : tant que le Porche est ouvert, jamais pendant votre sommeil, et sans notification ; elle s’ouvre ici.
 
 ### Mise en place {#setting-it-up}
 
@@ -103,7 +103,7 @@ Sur la page Courrier, chaque lettre qui attend est une carte : qui l’a envoy
 Puis :
 
 - **Voir le scan** ;
-- **Une tâche pour cette date** : une tâche dans votre liste habituelle, à faire pour ce jour-là, liée au scan, comme « Payer la facture d’eau 86,40 € » ;
+- **Une tâche pour cette date** : une tâche dans votre liste habituelle, à faire pour ce jour-là, liée au scan, comme « Payer Eau Exemple 86,40 € », d’après le nom de l’expéditeur et le montant ;
 - **Dans l’agenda**, pour un rendez-vous ;
 - **Un paiement…** : un paiement dans vos budgets, son formulaire rempli d’après ce que dit la lettre ([Les courriels qui parlent d’argent](budgets.md#mail-about-money)) ;
 - **Pour…** : pour qui elle est, quand c’est une personne de vos proches : le nom de son bloc d’adresse est lu (« Pour Léa »), et vous pouvez en cocher d’autres ;
@@ -128,7 +128,7 @@ Les règles lisent le français et l’anglais, par des règles plutôt que des 
 
 ### Où vont les tâches {#where-the-tasks-go}
 
-Une tâche faite à partir d’une lettre ou d’un renouvellement va dans votre liste de tâches habituelle, pour que votre téléphone l’ait. Si cette liste est sur votre serveur d’agenda, son titre y est aussi (« Payer la facture d’eau 86,40 € », « Renouveler : Passeport ») : choisissez une liste gardée sur cet appareil si vous préférez que non.
+Une tâche faite à partir d’une lettre ou d’un renouvellement va dans votre liste de tâches habituelle, pour que votre téléphone l’ait. Si cette liste est sur votre serveur d’agenda, son titre y est aussi (« Payer Eau Exemple 86,40 € », « Renouveler : Passeport ») : choisissez une liste gardée sur cet appareil si vous préférez que non.
 
 ### Les contrats {#contracts}
 
