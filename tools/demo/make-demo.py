@@ -339,6 +339,8 @@ class World:
         self.marc = ("Marc Duval", f"marc@{self.accounts}")
         self.nimbus = pick("Nimbus Hosting", "Nimbus Hébergement")
         self.bank_name = pick("Riverside Bank", "Banque des Berges")
+        # An online wallet of invented name, of the kind Sioul reads as PayPal's (its exports, its fees).
+        self.wallet_name = "Kestrel Pay"
         self.energy_name = pick("Brightwatt", "Clairwatt")
         self.phone_name = pick("Wavecell", "Ondéa Mobile")
         self.health_name = pick("Health cover office", "Caisse santé")
@@ -707,7 +709,7 @@ Nimbus Hébergement"""), flags="S", key="nimbus-invoice"),
 Order #4471
 Lantern Serif, desktop and web licence (1 site)
 Total: €48.00
-Paid with PayPal.
+Paid with Kestrel Pay.
 
 Foundry North""",
             """Merci pour votre commande.
@@ -715,7 +717,7 @@ Foundry North""",
 Commande n° 4471
 Lanterne Serif, licence bureau et web (1 site)
 Total : 48,00 €
-Payé avec PayPal.
+Payé avec Kestrel Pay.
 
 Fonderie du Nord"""), flags="S", key="fonts"),
         Mail("work", c.at(c.weekday_before(-6), "11:05"), iris, t("Re: Opening hours page", "Re : Page des horaires"), t(
@@ -1641,7 +1643,9 @@ def write_calendars(p: Profile, mails: list[Mail]):
                            extra=["X-SIOUL-PAUSE-DURING:public", f"X-SIOUL-PAUSE-DURING:school/{SCHOOL_ID}", f"X-SIOUL-PAUSE-DURING:vacations/{VACATIONS_OWNER}"])
          # It ends with the season, at the end of June.
          .replace("RRULE:FREQ=WEEKLY", f"RRULE:FREQ=WEEKLY;UNTIL={utc(c.at(date(c.today.year + 1, 6, 30), '23:59'))}")),
-        ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:30", "13:45", location="Café du Quai")),
+        # Over Friday's lunch, which Sioul then moves after it: ended by 13:10, so that the
+        # meal moved is over at 14:00, when the pictures' afternoon of work begins.
+        ("work", event(c, "tom-lunch", t("Lunch with Tom", "Déjeuner avec Tom"), c.this_week(4), "12:00", "13:00", location="Café du Quai")),
         # To be confirmed: its outline dashed on the timeline, its status chosen in its card.
         ("personal", event(c, "climbing", t("Climbing with Jonas", "Escalade avec Jonas"), c.this_week(5), "10:00", "12:00",
                            location=t("Bloc & Boulder gym", "Salle Bloc et Prise"), extra=["STATUS:TENTATIVE"])),
@@ -2276,7 +2280,7 @@ every = "{every}"
         (t("fernhill|silkworks|print", "fougeres|soierie|tirage").split("|"), "credit", None, "work"),
         ([t("bloc & boulder", "bloc et prise")], None, "gym", None),
         ([t("two rivers voices", "deux rivieres")], None, "choir-fee", None),
-        (t("cinema|bookshop|rail|tidal notes", "cinema|librairie|billets|disquaire").split("|"), None, None, "leisure"),
+        (t("cinema|bookshop|rail|harbour notes", "cinema|librairie|billets|disquaire").split("|"), None, None, "leisure"),
         (t("market|greengrocer|bakery|supermarket|pharmacy", "supermarche|primeur|halles|boulangerie|pharmacie").split("|"), None, "food", None),
         ([t("health cover", "caisse sante")], "credit", None, "household"),
     ]
@@ -2402,7 +2406,7 @@ topped_up_by = ["instant", "longterm"]
 
 [[bank_account]]
 id = "paypal"
-title = "PayPal"
+title = {toml_string(W.wallet_name)}
 kind = "paypal"
 fills = ["work", "leisure"]
 
@@ -2450,11 +2454,12 @@ def write_bank(p: Profile):
                                   (-15, -90.00, t("VIR TWO RIVERS VOICES CHOIR FEE", "VIR CHOEUR DEUX RIVIERES COTISATION"))]:
         add("bank", c.weekday_before(offset), amount, label)
     rows.append((paid_day(c), "bank", 990.00, t("VIR FERNHILL LIBRARY FACT 2026-001", "VIR MEDIATHEQUE FOUGERES FACT 2026-001")))
-    for offset, amount, label in [(-40, -9.00, t("Tidal Notes music", "Disquaire Notes")), (-20, 25.00, t("Payment from Ewan Price (print)", "Paiement de Lucie Perrin (tirage)")),
+    for offset, amount, label in [(-40, -9.00, t("Harbour Notes records", "Disquaire Notes")), (-20, 25.00, t("Payment from Ewan Price (print)", "Paiement de Lucie Perrin (tirage)")),
                                   (-4, -48.00, t("Foundry North", "Fonderie du Nord")), (-11, -12.00, W.paper_name),
                                   (-33, 40.00, t("Payment from Lise Moreau (print)", "Paiement de Lise Moreau (tirage)"))]:
         add("paypal", c.weekday_before(offset), amount, label)
-    # What PayPal received moved to the bank: one payout, on both accounts.
+    # What the wallet received moved to the bank: one payout, on both accounts (the
+    # bank's label names PayPal, whose kind the wallet has: Sioul pairs the two by it).
     add("paypal", c.weekday_before(-17), -65.00, t("Withdrawal to bank", "Retrait vers la banque"))
     add("bank", c.weekday_before(-15), 65.00, "VIR PAYPAL EUROPE SARL")
     rows.sort()
@@ -2462,7 +2467,7 @@ def write_bank(p: Profile):
     paypal_balance = sum(r[2] for r in rows if r[1] == "paypal") + 61.50
     out = ["# Your bank's movements, read from its exports (docs/accounting.md). Kept here only.", "",
            "[[account]]", 'id = "bank"', f"title = {toml_string(W.bank_name)}", f"balance = {bank_balance:.2f}", f"as_of = {end}", "",
-           "[[account]]", 'id = "paypal"', 'title = "PayPal"', f"balance = {paypal_balance:.2f}", f"as_of = {end}", ""]
+           "[[account]]", 'id = "paypal"', f"title = {toml_string(W.wallet_name)}", f"balance = {paypal_balance:.2f}", f"as_of = {end}", ""]
     for n, (day, account, amount, label) in enumerate(rows):
         out += ["[[movement]]", f'account = "{account}"', f"date = {day}", f"amount = {amount:.2f}", f"label = {toml_string(label)}", f'id = "demo-{n:03d}"', ""]
     p.write(p.notes / "sioul-bank.toml", "\n".join(out))
