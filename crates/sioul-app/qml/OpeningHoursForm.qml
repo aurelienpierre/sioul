@@ -153,8 +153,11 @@ SafeDialog {
                         spacing: 8
 
                         Label {
+                            readonly property string day: form.sioul.text("weekday-" + (dayRow.index + 1))
+
                             Layout.preferredWidth: 96
-                            text: form.sioul.text("weekday-" + (dayRow.index + 1))
+                            // A day starts its row with a capital, in French too ("lundi" → "Lundi").
+                            text: day.charAt(0).toUpperCase() + day.slice(1)
                             color: form.theme.text
                             elide: Text.ElideRight
                         }
