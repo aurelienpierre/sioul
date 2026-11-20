@@ -7,7 +7,8 @@
 // addresses, birthday, notes, web sites) folded under "More"; its address
 // book in sight when there are several, under More when there is one. Editing
 // happens in place; deleting (Delete beside Edit under the card, or the row's
-// menu) waits ten seconds with "Undo". "Duplicates" opens in the
+// menu) waits ten seconds with "Undo". A new card's form asks its address
+// book when more than one can take it. "Duplicates" opens in the
 // place of a card. Right click on a name for what is not in view. At the
 // head, the household (« Proches », docs/persons.md): a person's page opens
 // in the place of a card too. A contact you bill shows its client profile
@@ -351,10 +352,12 @@ Item {
     function startNew(number) {
         page.duplicatesShown = false
         page.openKey = ""
-        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: number || "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false }
+        page.person = { name: "", emails: [{ label: "", value: "" }], phones: [{ label: "", value: number || "" }], org: "", title: "", addresses: [], birthday: "", notes: "", urls: [], categories: [], book: "", read_only: false, photo: "" }
         page.problem = ""
         page.editing = true
-        page.formNow().load(page.person)
+        // Its address book: the one Sioul chooses first (the list's, the last one used here, the first), changed in the form.
+        page.readBooks()
+        page.formNow().loadNew(page.person, page.sioul.newContactBook())
     }
 
     // The map instead of the list: every contact placed, a pin opening its card.
@@ -1373,9 +1376,10 @@ Item {
                                 sioul: page.sioul
                                 theme: page.theme
                                 known: page.shown.categories || []
-                                // The card's book (a new one's: the first that can be written), when its groups are held back.
+                                books: page.cardBooks
+                                // The card's book (a new one's: the one chosen in the form), when its groups are held back.
                                 heldBook: {
-                                    const place = page.person ? page.person.place : (page.writableBooks.length > 0 ? page.writableBooks[0].place : "")
+                                    const place = page.openKey !== "" && page.person ? page.person.place : form.bookPlace
                                     const book = (page.shown.books || []).find(b => b.place === place)
                                     return book && book.groups === false ? book.name : ""
                                 }

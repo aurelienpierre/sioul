@@ -9,8 +9,10 @@
 // card of a book you only read offers none. With two address books, the
 // card's own is in its main part, in sight, a move asked of the backend and
 // the card's book shown until it has moved, a key opening its list and moving
-// nothing; with one, under More. Run by
-// tools/qml-test.sh. Fiction only.
+// nothing; with one, under More. A new
+// card's form asks its book when two can be written, the one Sioul chose
+// first already chosen, and its edit carries the place; a card that exists
+// carries none. Run by tools/qml-test.sh. Fiction only.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -87,9 +89,12 @@ Item {
         property var moved: ({})
         // What a move answers: null moves it; {losses: […]} asks first, as the backend does.
         property var moveAnswer: null
-        // What was asked: the cards deleted, the moves.
+        // The book the backend proposes for a new card (`newContactBook`).
+        property string proposed: "cloud/contacts"
+        // What was asked: the cards deleted, the moves, the forms saved.
         property var deleted: []
         property var moves: []
+        property var saved: []
         // The list, as the backend's property is (its change is `contactsChanged`).
         property string contacts: JSON.stringify({ contacts: root.cards.map(c => ({ key: c.key, name: c.name, detail: "", title: "", photo: "", place: c.place, read_only: c.read_only })), sentence: "", can_add: true, categories: [], category: "", filter: {}, books: mock.books, counted: "", shown: root.cards.length, total: root.cards.length })
 
@@ -112,6 +117,7 @@ Item {
         function household() { return JSON.stringify({ persons: [], others: [], relations: [] }) }
         // As the backend: only the books a contact can go into, those that can be written.
         function addressBooks() { return JSON.stringify(mock.books.filter(b => !b.read_only).map(b => ({ id: b.place, name: b.name }))) }
+        function newContactBook() { return mock.proposed }
         // Scheduled with Undo by the backend; the stand-in keeps what was asked.
         function deleteContact(key) { mock.deleted = mock.deleted.concat([key]) }
         function moveContact(key, book, confirmed) {
@@ -122,6 +128,10 @@ Item {
             next[key] = book
             mock.moved = next
             return JSON.stringify({ key: key })
+        }
+        function saveContact(key, edit) {
+            mock.saved = mock.saved.concat([{ key: key, edit: JSON.parse(edit) }])
+            return JSON.stringify({ key: key || "/books/new.vcf" })
         }
         function placeOf(address) { return "" }
         function related(uri) {
@@ -189,8 +199,10 @@ Item {
             mock.books = [root.contactsBook]
             mock.moved = {}
             mock.moveAnswer = null
+            mock.proposed = "cloud/contacts"
             mock.deleted = []
             mock.moves = []
+            mock.saved = []
         }
 
         // The page with a card open, laid out.
@@ -326,6 +338,57 @@ Item {
             const box = shown(page, "contactBookMore")
             verify(box, "under More")
             compare(box.currentText, "Contacts")
+        }
+
+        // A new card with two books that can be written: its form asks the book, the one
+        // Sioul chose first chosen; another chosen goes with the edit, by place. Untouched,
+        // Sioul's choice goes. With one book that can be written (another read only), the
+        // form asks nothing and the edit names that one. A card that exists asks nothing
+        // and names none: its card's chooser moves it.
+        function test_a_new_card_s_book() {
+            mock.books = [root.contactsBook, root.teamBook]
+            mock.proposed = "cloud/team"
+            const page = createTemporaryObject(pageComponent, root)
+            page.startNew("")
+            waitForRendering(page)
+            const box = shown(page, "contactFormBook")
+            verify(box, "the form asks the book")
+            compare(box.currentText, "Team", "Sioul's choice, already chosen")
+            within(box)
+            choose(box, 0)
+            compare(box.currentText, "Contacts")
+            shown(page, "contactFormName").text = "Ada Exemple"
+            mouseClick(says(page, "ui-save"))
+            compare(mock.saved.length, 1)
+            compare(mock.saved[0].key, "")
+            compare(mock.saved[0].edit.book, "cloud/contacts", "the book chosen, by place")
+            // Untouched: Sioul's choice.
+            page.startNew("")
+            waitForRendering(page)
+            compare(shown(page, "contactFormBook").currentText, "Team")
+            shown(page, "contactFormName").text = "Ben Exemple"
+            mouseClick(says(page, "ui-save"))
+            compare(mock.saved[1].edit.book, "cloud/team")
+            // One book that can be written, one read only: nothing asked, that one named.
+            mock.books = [root.contactsBook, root.sharedBook]
+            mock.proposed = "cloud/contacts"
+            page.startNew("")
+            waitForRendering(page)
+            verify(!shown(page, "contactFormBook"), "one book takes it: nothing asked")
+            shown(page, "contactFormName").text = "Cleo Exemple"
+            mouseClick(says(page, "ui-save"))
+            compare(mock.saved[2].edit.book, "cloud/contacts")
+            // A card that exists: Edit, no book asked, none named.
+            mock.books = [root.contactsBook, root.teamBook]
+            page.open(root.jeanne.key)
+            waitForRendering(page)
+            mouseClick(says(page, "ui-edit"))
+            waitForRendering(page)
+            verify(page.editing)
+            verify(!shown(page, "contactFormBook"), "a card that exists: its card moves it")
+            mouseClick(says(page, "ui-save"))
+            compare(mock.saved[3].key, root.jeanne.key)
+            compare(mock.saved[3].edit.book, undefined, "no book in its edit")
         }
 
         // The card's scroll view, the one that holds the opening hours.

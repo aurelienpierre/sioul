@@ -9,8 +9,11 @@
 // for a book whose groups decide, nor for a card in no group; its "Its
 // groups…" asks for the book's switch (Contacts ⚙ ▸ Address books); the
 // line stays within the edge. The rule itself is the core's
-// (addressbooks.rs); this is the window's side. Fiction only. Run by
-// tools/qml-test.sh.
+// (addressbooks.rs); this is the window's side. A new card's address book:
+// asked when two books can take it, the one Sioul chose first chosen, carried
+// by its edit; still asked when the one chosen went meanwhile, so that
+// another can be chosen; never asked of a card that exists. Fiction only. Run
+// by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -110,6 +113,40 @@ Item {
                 form.load(Object.assign({}, root.card, { categories: ["Team"] }))
                 verify(line.visible, "a card already in a group")
                 compare(form.edit().categories, ["Team"], "the groups saved as they are: the line only says")
+            }
+        }
+
+        // A new card asks its book when two can take it, Sioul's choice chosen and carried
+        // by the edit; a book chosen that went meanwhile leaves the question open, its
+        // box empty, rather than another book chosen in its place; a card that exists
+        // asks nothing and carries none. Within a phone's width.
+        function test_a_new_card_s_book() {
+            for (const width of [1000, 392]) {
+                const form = make(width, "")
+                const books = [{ id: "cloud/contacts", name: "Contacts" }, { id: "cloud/team", name: "Team" }]
+                form.books = books
+                const box = root.named(form, "contactFormBook")[0]
+                verify(!box.visible, "a card that exists: nothing asked")
+                compare(form.edit().book, undefined, "nor carried")
+                form.loadNew(Object.assign({}, root.card, { name: "" }), "cloud/team")
+                verify(box.visible, "two books: asked")
+                compare(box.currentText, "Team")
+                compare(form.edit().book, "cloud/team")
+                test.waitForRendering(form)
+                const x = box.mapToItem(form, 0, 0).x
+                verify(x >= 0 && x + box.width <= width + 1, "within " + width)
+                // The book chosen gone, one left: still asked, nothing chosen in its place.
+                form.books = [books[0]]
+                verify(box.visible, "the one chosen went: asked again")
+                compare(box.currentIndex, -1)
+                compare(form.edit().book, "cloud/team", "the edit says the book chosen, which the backend refuses in words")
+                form.loadNew(Object.assign({}, root.card, { name: "" }), "cloud/contacts")
+                verify(!box.visible, "one book, chosen: nothing asked")
+                compare(form.edit().book, "cloud/contacts")
+                // Then a card that exists, in the same form: no book.
+                form.load(root.card)
+                verify(!box.visible)
+                compare(form.edit().book, undefined)
             }
         }
 

@@ -373,30 +373,62 @@ pub(crate) fn contact(key: &str) -> String {
     contacts::read(&path, &book).map(|c| json(&c)).unwrap_or_default()
 }
 
-/// Saves the contact form: into its file, or a new one in the first address book; then sent.
-/// Returns the contact's file.
+/// Saves the contact form: into its file, or a new one in the address book
+/// the form chose (else the one Sioul chooses first, `new_contact_book`);
+/// then sent. Returns the contact's file.
 pub(crate) fn save_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &str) -> Result<String, String> {
-    let edit: ContactEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
-    if edit.name_or_parts().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
-        return Err(tr().text("contact-no-name", None));
-    }
-    let (path, text) = match ours(key) {
-        Some(path) => {
-            let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            (path, contacts::apply(&current, &edit))
-        }
-        None => {
-            let book = contacts::default_book().ok_or_else(|| tr().text("dav-no-book", None))?;
-            (contacts::new_path(&book), contacts::new_card(&edit))
-        }
-    };
-    vdir::write_item(&path, &text)?;
+    let path = write_contact(shared, key, edit)?;
     if let Some(account) = account_of(&path) {
         nudge(shared, &account);
     }
     tell(qt, shared, tr().text("contact-saved", None));
     show_pim(qt, shared);
     Ok(path.display().to_string())
+}
+
+/// `save_contact`'s writing: a card that exists changed in its file, where it
+/// stays; a new one written into the book its edit names (`ContactEdit::book`),
+/// refused in words when that book is gone or takes no new card, and kept
+/// as the book of the last card made on this device; a new one that names
+/// none (a sender added) goes where Sioul chooses first.
+fn write_contact(shared: &Shared, key: &str, edit: &str) -> Result<PathBuf, String> {
+    let edit: ContactEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
+    if edit.name_or_parts().is_empty() && edit.emails.iter().all(|e| e.value.trim().is_empty()) {
+        return Err(tr().text("contact-no-name", None));
+    }
+    if let Some(path) = ours(key) {
+        let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        vdir::write_item(&path, &contacts::apply(&current, &edit))?;
+        return Ok(path);
+    }
+    let chosen = edit.book.as_deref().map(str::trim).filter(|place| !place.is_empty());
+    let book = match chosen {
+        Some(place) => contacts::book_to_write(place).map_err(|refused| match refused {
+            contacts::BookRefused::Gone => tr().text("contact-book-gone", None),
+            contacts::BookRefused::Closed(book) => say("contact-book-closed", &[("book", book.label(&load_config(), tr()))]),
+        })?,
+        None => {
+            let place = new_contact_book(shared);
+            contacts::writable_books().into_iter().find(|b| format!("{}/{}", b.account, b.id) == place).ok_or_else(|| tr().text("dav-no-book", None))?
+        }
+    };
+    let path = contacts::new_path(&book);
+    vdir::write_item(&path, &contacts::new_card(&edit))?;
+    if let Some(place) = chosen {
+        crate::work::keep_contact_book(shared, place);
+    }
+    Ok(path)
+}
+
+/// The address book a new card's form proposes, "account/id" ("" when none
+/// can be written): the one the list is filtered on when it is one, else
+/// the book of the last card made on this device, else the first
+/// (`contacts::book_for_new`).
+pub(crate) fn new_contact_book(shared: &Shared) -> String {
+    let writable: Vec<String> = contacts::writable_books().iter().map(|b| format!("{}/{}", b.account, b.id)).collect();
+    let existing: Vec<String> = vdir::collections(Kind::Contacts).iter().map(|b| format!("{}/{}", b.account, b.id)).collect();
+    let shown: Vec<String> = shared.pim.lock().map(|state| state.filter.books.clone()).unwrap_or_default().into_iter().filter(|b| existing.contains(b)).collect();
+    contacts::book_for_new(&writable, &shown, &crate::work::contact_book(shared)).unwrap_or_default()
 }
 
 /// A contact's photo that its card names on the web, loaded because you
@@ -427,7 +459,7 @@ pub(crate) fn load_contact_photo(qt: &QtThread, shared: &Arc<Shared>, url: &str)
 pub(crate) fn books() -> String {
     let config = load_config();
     // A book its server refused to make is never offered: its cards would stay on this device alone (review V9).
-    let rows: Vec<serde_json::Value> = vdir::collections(Kind::Contacts).into_iter().filter(|c| !c.read_only && !vdir::State::load(&c.state_path()).refused).map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
+    let rows: Vec<serde_json::Value> = contacts::writable_books().into_iter().map(|c| serde_json::json!({ "id": format!("{}/{}", c.account, c.id), "name": c.label(&config, tr()) })).collect();
     json(&rows)
 }
 
@@ -3014,5 +3046,47 @@ mod tests {
         if let Some(dir) = sioul_core::mailcache::account_dir(&roots[0].account) {
             let _ = std::fs::remove_dir_all(dir);
         }
+    }
+
+    /// A new card goes into the address book its form chose, kept as the
+    /// last one made on this device and proposed the next time, after the
+    /// book the list is filtered on when it can be written; a book that can
+    /// only be read, or that is gone, is refused in words, nothing written
+    /// (a card's book, 20 November 2026).
+    #[test]
+    fn a_new_card_goes_into_the_book_its_form_chose() {
+        sioul_core::config::stand_ins_only();
+        let home = vdir::create(Kind::Contacts, vdir::LOCAL, "Chosen book home", None, &[]).unwrap();
+        let team = vdir::create(Kind::Contacts, vdir::LOCAL, "Chosen book team", None, &[]).unwrap();
+        let place = |b: &Collection| format!("{}/{}", b.account, b.id);
+        let edit = |book: &str| serde_json::json!({ "name": "Ada Exemple", "emails": [{ "label": "", "value": "ada@example.org" }], "book": book }).to_string();
+        let cards = |b: &Collection| std::fs::read_dir(&b.dir).unwrap().filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "vcf")).count();
+        let shared = Shared::default();
+        let made = write_contact(&shared, "", &edit(&place(&team))).unwrap();
+        assert_eq!(made.parent(), Some(team.dir.as_path()), "written into the book named");
+        assert!(std::fs::read_to_string(&made).unwrap().contains("FN:Ada Exemple"));
+        assert_eq!(crate::work::contact_book(&shared), place(&team), "kept as the last book used here");
+        assert_eq!(new_contact_book(&shared), place(&team), "proposed the next time");
+        // The list filtered on one book that can be written: that one first.
+        shared.pim.lock().unwrap().filter.books = vec![place(&home)];
+        assert_eq!(new_contact_book(&shared), place(&home), "the book the list shows");
+        // Changed, the card stays in its book, whatever the edit names.
+        let changed = serde_json::json!({ "name": "Ada Exemple-Martin", "book": place(&home) }).to_string();
+        assert_eq!(write_contact(&shared, &made.display().to_string(), &changed).unwrap(), made, "a card that exists stays where it is");
+        // A book that can only be read: refused, said with its name, nothing written.
+        let state_path = home.state_path();
+        let mut state = vdir::State::load(&state_path);
+        state.read_only = true;
+        state.save(&state_path).unwrap();
+        let before = cards(&home);
+        let label = home.label(&load_config(), tr());
+        assert_eq!(write_contact(&shared, "", &edit(&place(&home))).err(), Some(say("contact-book-closed", &[("book", label)])));
+        assert_eq!(cards(&home), before, "nothing written");
+        assert_eq!(new_contact_book(&shared), place(&team), "a filter on a book that can only be read: the last one used");
+        // A book gone.
+        assert_eq!(write_contact(&shared, "", &edit("local/no-such-book")).err(), Some(tr().text("contact-book-gone", None)));
+        let _ = std::fs::remove_dir_all(&home.dir);
+        let _ = std::fs::remove_dir_all(&team.dir);
+        let _ = std::fs::remove_file(&state_path);
     }
 }
