@@ -177,7 +177,11 @@ public final class SiteScreen extends Activity
             finish();
             return;
         }
-        setContentView(layout());
+        LinearLayout root = layout();
+        setContentView(root);
+        // After the content is set: before it the window has no decor yet, and asking it for
+        // the bars' controller ends the screen (Android 16; found on a phone, 21 November 2026).
+        insets(root);
         // A site's page is not pictured in Recents, as a health card is not (section 10): banks, mail.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             setRecentsScreenshotEnabled(false);
@@ -216,8 +220,8 @@ public final class SiteScreen extends Activity
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    /** The bar, the find row, a line, the pages: kept out of the system's bars and above the keyboard. */
-    private View layout()
+    /** The bar, the find row, a line, the pages; {@link #insets} then keeps them out of the system's bars and above the keyboard. */
+    private LinearLayout layout()
     {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -262,7 +266,6 @@ public final class SiteScreen extends Activity
         pages = new FrameLayout(this);
         pages.setBackgroundColor(site.background);
         root.addView(pages, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-        insets(root);
         return root;
     }
 
