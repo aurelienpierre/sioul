@@ -340,6 +340,21 @@ Item {
             verify(narrow.listed, "the list at the next visit")
         }
 
+        // The doors to What reaches you's line Your people (a person's page, the notice said once) and to
+        // Who is in which circle, through the page's own door (review M3): Your rules, never What comes
+        // when; a time still opens What comes when. On a computer and on a phone.
+        function test_the_doors_to_your_people() {
+            mock.language = "en"
+            for (const page of [wide, narrow]) {
+                for (const [key, view] of [["attention.people", "rules"], ["attention.pause", "table"], ["attention.circles", "rules"], ["attention.pause", "table"], ["attention.people", "rules"]]) {
+                    page.showSetting(key)
+                    compare(page.section, "attention", key)
+                    tryVerify(() => named(page, "reachesTab").length === 1, 3000, key + ": What reaches you")
+                    tryCompare(named(page, "reachesTab")[0], "view", view, 3000, key)
+                }
+            }
+        }
+
         // Opened from the list: Back returns to it; a section left open, the list at the next visit.
         function test_back_and_the_next_visit_on_a_phone() {
             mock.language = "en"

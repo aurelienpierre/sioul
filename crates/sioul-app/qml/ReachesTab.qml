@@ -40,7 +40,7 @@ ColumnLayout {
     // A part asked for (a door from elsewhere): the page scrolled to it.
     signal reveal(var item)
 
-    property var shown: ({ now: [], state: "usual", column: "", now_columns: [], presets: [], presets_note: "", changed: "", people: { channels: [], rows: [], blocked: { label: "", help: "", word: "" }, notes: [], own_help: "" }, own: [], moments: { columns: [], rows: [], holds_title: "", holds_columns: [], holds: [], principle: "" }, elsewhere: { line: "", links: [] }, calls: "", rows: [], grid: { columns: [], marks: [], rows: [] }, phone: false })
+    property var shown: ({ now: [], state: "usual", column: "", now_columns: [], presets: [], presets_note: "", changed: "", people: { channels: [], rows: [], blocked: { label: "", help: "", word: "" }, notes: [], own_help: "", none: "", circle: { title: "", help: "", people: [] } }, own: [], moments: { columns: [], rows: [], holds_title: "", holds_columns: [], holds: [], principle: "" }, elsewhere: { line: "", links: [] }, calls: "", rows: [], grid: { columns: [], marks: [], rows: [] }, phone: false })
     // "rules" or "table".
     property string view: "rules"
     // On a phone, What comes when: the row whose times are open; "" for the list.
@@ -53,6 +53,10 @@ ColumnLayout {
     readonly property bool narrow: tab.width > 0 && tab.width < 560
     // The window (main.qml): its status line's button and a person's sheet.
     readonly property var host: tab.Window.window
+    // Your people (20 November 2026): the sentence while the circle holds nobody, and the
+    // circle's people for Who is in which circle (a view of before has neither).
+    readonly property string peopleNone: tab.shown.people.none || ""
+    readonly property var circle: tab.shown.people.circle || ({ title: "", help: "", people: [] })
     // What comes when's rows, as the grid has them.
     readonly property var gridRows: tab.shown.grid.rows.filter(r => tab.shown.rows.indexOf(r.id) >= 0)
     readonly property var openRowData: tab.gridRows.find(r => r.id === tab.rowOpen) || null
@@ -104,7 +108,7 @@ ColumnLayout {
     // notices, "dnd" to Moments, "calls" to the calls' line; "table", and a
     // time or a layer ("pause", "sleep"), to What comes when.
     function show(view, detail) {
-        const parts = { "person": "people", "mail": "people", "messages": "people", "calls": "calls", "exceptions": "circles", "own": "own", "dnd": "moments", "rules": "", "time": "" }
+        const parts = { "person": "people", "people": "people", "mail": "people", "messages": "people", "calls": "calls", "exceptions": "circles", "circles": "circles", "own": "own", "dnd": "moments", "rules": "", "time": "" }
         tab.rowOpen = ""
         if (view === "table" || (view === "time" && (detail || "") !== "")) {
             tab.view = "table"
@@ -666,6 +670,19 @@ ColumnLayout {
                 text: modelData
             }
         }
+        // No one in Your people yet: their line comes once someone is added, in Contacts.
+        Note {
+            objectName: "peopleNone"
+            visible: tab.peopleNone !== ""
+            Layout.topMargin: 4
+            text: tab.peopleNone
+        }
+        GoButton {
+            objectName: "peopleNoneOpen"
+            visible: tab.peopleNone !== ""
+            text: tab.sioul.text("reach-people-open")
+            onClicked: tab.sioul.reminderOpened("person", "", "")
+        }
         // Mail's own: new mail told at all, newsletters.
         Repeater {
             model: ["reminders.mail", "reminders.mail_newsletters"].map(k => tab.setting(k)).filter(s => s !== null)
@@ -709,6 +726,77 @@ ColumnLayout {
                     part: "list"
                 }
             }
+        }
+        // Your people, read from Contacts ▸ Your people (never edited here): each by name, by the row
+        // they are judged on: no card linked, none on this device, a card or an address held out by a
+        // restriction, each said with its door (their page, where a card is linked; a card's sheet).
+        Strong {
+            objectName: "circlePeople"
+            visible: tab.circle.people.length > 0
+            Layout.topMargin: 6
+            text: tab.circle.title
+        }
+        Note {
+            visible: tab.circle.people.length > 0
+            text: tab.circle.help
+        }
+        Repeater {
+            model: tab.circle.people
+
+            delegate: ColumnLayout {
+                id: close
+
+                required property var modelData
+
+                objectName: "close-" + close.modelData.id
+                Layout.fillWidth: true
+                spacing: 0
+
+                Label {
+                    Layout.fillWidth: true
+                    text: close.modelData.name
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: tab.theme.text
+                }
+                Repeater {
+                    model: close.modelData.notes || []
+
+                    delegate: ColumnLayout {
+                        id: held
+
+                        required property var modelData
+                        required property int index
+
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Note {
+                            objectName: "closeNote-" + close.modelData.id + "-" + held.index
+                            text: held.modelData.text
+                        }
+                        // Their page, where a card is linked (Link a card…); a card's sheet, where its list is chosen.
+                        Button {
+                            objectName: "closeDoor-" + close.modelData.id + "-" + held.index
+                            visible: held.modelData.door !== ""
+                            flat: true
+                            text: tab.theme.plain(held.modelData.label)
+                            onClicked: {
+                                if (held.modelData.door === "page")
+                                    tab.sioul.reminderOpened("person", "", held.modelData.key)
+                                else if (tab.host && tab.host.openPersonSheet)
+                                    tab.host.openPersonSheet(held.modelData.key, "")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        GoButton {
+            objectName: "circleOpen"
+            visible: tab.circle.people.length > 0
+            text: tab.sioul.text("reach-people-open")
+            onClicked: tab.sioul.reminderOpened("person", "", "")
         }
         Note {
             Layout.topMargin: 6

@@ -593,7 +593,9 @@ pub fn now(s: &Session, _args: &Args) -> Result<Answer, String> {
     moment.reachable = dnd.reachable.is_some();
     let mut reach = Vec::new();
     let mut by_group: std::collections::BTreeMap<&str, Vec<String>> = Default::default();
-    for row in Row::ALL {
+    // Your people's rows only while Contacts ▸ Your people holds someone, as the window shows them (review L9).
+    let people = !sioul_core::persons::Persons::cached().circle(now.date()).is_empty();
+    for row in Row::ALL.into_iter().filter(|r| people || !matches!(r, Row::People(_, attention::Person::People))) {
         let level = matrix.level(row, &moment);
         let label = attention::row_label(&s.tr, row);
         let said = attention::level_label(&s.tr, row, level);

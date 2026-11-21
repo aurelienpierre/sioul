@@ -124,6 +124,140 @@ fn shown_rows(phone: bool) -> Vec<Row> {
 thread_local! {
     /// The language a test speaks; the window's otherwise.
     static SPOKEN: std::cell::Cell<Option<&'static Translator>> = const { std::cell::Cell::new(None) };
+    /// The people and the address books a test stands in for Contacts ▸
+    /// Your people and the lists (`porch::Senders`); the store's and the
+    /// files' otherwise.
+    static STORE: std::cell::RefCell<Option<(sioul_core::persons::Persons, sioul_core::porch::Senders)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// One of your people as Who is in which circle lists them (reviews M1, M5,
+/// L8): their id, name, and what holds them away from the row Your people,
+/// each said with its door; nothing said: their cards here are judged on it.
+struct Close {
+    id: String,
+    name: String,
+    notes: Vec<Value>,
+}
+
+/// Whether Contacts ▸ Your people holds someone today besides you
+/// (`persons::Persons::circle`): their line, rows and words show only then.
+fn circle_holds_someone() -> bool {
+    let today = sioul_core::zone::now().date();
+    STORE.with(|kept| kept.borrow().as_ref().map(|(store, _)| !store.circle(today).is_empty())).unwrap_or_else(|| !sioul_core::persons::Persons::cached().circle(today).is_empty())
+}
+
+/// Your people today, in the household's order, each by the row they are
+/// judged on (`close_of`); none: the page shows no line of theirs.
+fn your_people() -> Vec<Close> {
+    let today = sioul_core::zone::now().date();
+    STORE.with(|kept| kept.borrow().as_ref().map(|(store, senders)| close_of(store, senders, today))).unwrap_or_else(|| close_of(&sioul_core::persons::Persons::cached(), &sioul_core::porch::Senders::load(&load_config()), today))
+}
+
+/// Each of your people, by the row their cards here are judged on, as the
+/// lists judge every sender (`porch::Senders`): no card linked, or none on
+/// this device (deleted, merged, in a book this device does not have),
+/// said, with the door that links one (their page); a card of a book
+/// someone else can write, said (L8); a card, an address or a number held
+/// out of the circle by what restricts or blocks it, said with its reason
+/// and the door to that card's sheet (M1). Absence proves nothing: said.
+fn close_of(store: &sioul_core::persons::Persons, senders: &sioul_core::porch::Senders, today: jiff::civil::Date) -> Vec<Close> {
+    let page = |said: String, id: &str| json!({ "text": said, "door": "page", "key": id, "label": text("reach-circles-tie") });
+    let sheet = |said: String, key: &str| json!({ "text": said, "door": "sheet", "key": key, "label": text("person-card-sheet") });
+    store
+        .circle(today)
+        .into_iter()
+        .map(|person| {
+            let name = person.name.clone();
+            let mut notes: Vec<Value> = Vec::new();
+            let linked: Vec<&str> = person.cards.iter().map(|c| c.trim()).filter(|c| !c.is_empty()).collect();
+            let found: Vec<usize> = linked.iter().filter_map(|uid| senders.contacts.find(uid)).collect();
+            if linked.is_empty() {
+                notes.push(page(say("reach-circles-untied", &[("name", name.clone())]), &person.id));
+            } else if found.is_empty() {
+                notes.push(page(say("reach-circles-missing", &[("name", name.clone())]), &person.id));
+            } else if found.len() < linked.len() {
+                let mut args = tr().counted(linked.len() - found.len());
+                args.set("name", name.clone());
+                notes.push(json!({ "text": tr().text("reach-circles-missing-some", Some(&args)), "door": "", "key": "", "label": "" }));
+            }
+            for index in found {
+                let Some(card) = senders.contacts.card(index) else { continue };
+                if card.held {
+                    notes.push(json!({ "text": say("reach-circles-book", &[("name", name.clone())]), "door": "", "key": "", "label": "" }));
+                    continue;
+                }
+                match senders.judge_card(&card.uid) {
+                    Some(judged) if !judged.circle => {
+                        notes.push(sheet(say("reach-circles-held", &[("name", name.clone()), ("why", why(&judged))]), &card.key));
+                        continue;
+                    }
+                    _ => {}
+                }
+                // Each address and number of the card, judged as a sender is: one held out by its own entry.
+                let entries = card.addresses.iter().map(|a| (a.clone(), senders.judge(a))).chain(senders.contacts.numbers_of_card(index).into_iter().map(|k| (k.clone(), senders.judge_number(&k))));
+                for (entry, judged) in entries.filter(|(_, j)| !j.circle) {
+                    notes.push(sheet(say("reach-circles-held-entry", &[("name", name.clone()), ("entry", entry), ("why", why(&judged))]), &card.key));
+                }
+            }
+            Close { id: person.id.clone(), name, notes }
+        })
+        .collect()
+}
+
+/// Why a sender stands where the lists put them, as their sheet says it
+/// (`senders::said`), in this file's language: "Restricted, as you chose for
+/// Léa Martin.", "Blocked, as the group Bloqués says."; an own entry, "Restricted, by your own choice.".
+fn why(judged: &sioul_core::porch::Judged) -> String {
+    use sioul_core::porch::By;
+    let one = text(&format!("sender-one-{}", judged.who.id()));
+    match judged.by {
+        By::Address | By::Number => say("reach-circles-own", &[("list", one)]),
+        By::Card => say("sender-from-card", &[("list", one), ("name", judged.name.clone())]),
+        By::Category => say("sender-from-category", &[("list", one), ("name", judged.name.clone())]),
+        By::Domain | By::Prefix => say("sender-from-domain", &[("list", one), ("name", judged.name.trim_start_matches("*@").to_string())]),
+        By::LetIn => say("sender-from-let-in", &[("list", one)]),
+        By::Book => say("sender-from-book", &[("list", one)]),
+        By::Default => say("sender-from-default", &[("list", one)]),
+        By::Circle => say("sender-from-circle", &[("name", judged.name.clone())]),
+    }
+}
+
+/// The notice that your people have a line of their own (review M2), when
+/// it is due (`persons::Persons::circle_untold`): one informative notice,
+/// opening What reaches you at their line.
+fn circle_notice(store: &sioul_core::persons::Persons, today: jiff::civil::Date) -> Option<sioul_core::notice::Notice> {
+    use sioul_core::notice::{Kind as NoticeKind, Notice, address};
+    store.circle_untold(today).then(|| Notice::new(address::settings("attention.people"), NoticeKind::Minor, text("reach-people-told-title"), text("reach-people-told")))
+}
+
+/// The first time this version starts with someone in Contacts ▸ Your
+/// people (review M2): one calm notice says that they have a line of their
+/// own in What reaches you and that their calls ring at every time, with
+/// the door to it. Said once on the devices that share the persons, never
+/// at a start again: the mark (`Persons::circle_told`) is written in the
+/// store, read from its file here, never from the window's state, as the
+/// notice is posted (a computer's claim, made just before it is posted; on
+/// a phone, once handed to Android). One that waits, held by a pause or a
+/// do-not-disturb, comes when it ends; one never posted comes at the next
+/// start. Never lost comes before never doubled: two devices starting
+/// before the mark travels may each say it.
+pub(crate) fn tell_circle_once() {
+    let path = sioul_core::persons::Persons::default_path();
+    let today = sioul_core::zone::now().date();
+    let Some(notice) = sioul_core::persons::Persons::read(&path).ok().and_then(|store| circle_notice(&store, today)) else { return };
+    let mark = move || {
+        sioul_core::persons::change(&path, |store| store.circle_told = store.circle_told.max(sioul_core::persons::CIRCLE_TOLD))
+            .map_err(|e| eprintln!("sioul: your people's notice: {e}"))
+            .is_ok()
+    };
+    if cfg!(target_os = "android") {
+        if let Some(json) = crate::eventalarms::notice_json(&notice.key(), &notice, false, None, jiff::Timestamp::now().as_second()) {
+            crate::steps::java("notice", &json.to_string());
+            mark();
+        }
+        return;
+    }
+    crate::tell::tell_with(notice, sioul_core::notice::told(None), None, Some(Box::new(mark)), true);
 }
 
 /// This file's words: the window's language, or a test's.
@@ -203,7 +337,7 @@ fn who_words(persons: &[Person], everyone: bool, rest: bool) -> String {
         args.set("kinds", listed(&known, false));
         items.push(tr().text("attention-who-senders", Some(&args)));
     }
-    for person in persons.iter().filter(|p| matches!(p, Person::Neutral | Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
+    for person in persons.iter().filter(|p| matches!(p, Person::People | Person::Neutral | Person::Stranger | Person::Hidden | Person::Groups | Person::Always)) {
         items.push(text(&format!("attention-who-{}", person.id())));
     }
     listed(&items, false)
@@ -265,9 +399,11 @@ fn people_words(subjects: &[(Channel, Person)], said: &mut Vec<(Channel, Person)
 }
 
 /// The people of a channel the matrix decides for (the states), the call
-/// screening's aside: numbers nobody knows and hidden numbers, on calls.
+/// screening's aside: numbers nobody knows and hidden numbers, on calls; Your
+/// people only while the circle holds someone.
 fn matrix_persons(channel: Channel) -> Vec<Person> {
-    attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p))).collect()
+    let people = circle_holds_someone();
+    attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p)) && (people || *p != Person::People)).collect()
 }
 
 /// Sioul's own kinds in words, the four reminders together when all are
@@ -393,8 +529,11 @@ pub(crate) fn view(realtime: bool) -> String {
 /// own (Settings ▸ Devices), and still decide there in a pause and during
 /// do-not-disturb: the full ledger shows them, changeable as every row
 /// (review of `phones`, "For `reach`"); Your rules has no calls' column.
+/// Your people's rows only while the circle holds someone: no row of
+/// controls for a circle that holds nobody.
 fn table_rows(phone: bool) -> Vec<Row> {
-    shown_rows(phone)
+    let people = circle_holds_someone();
+    shown_rows(phone).into_iter().filter(|r| people || !matches!(r, Row::People(_, Person::People))).collect()
 }
 
 /// A behaviour, or "Your own", in words.
@@ -411,8 +550,11 @@ fn behaviour_label(behaviour: Option<Behaviour>) -> String {
 /// what stays automatic.
 fn people(attention: &Attention, reach: Reach) -> Value {
     let channels: Vec<Value> = behaviours::CHANNELS.iter().map(|c| json!({ "id": c.id(), "label": text(&format!("attention-group-{}", c.id())), "note": channel_note(*c, reach) })).collect();
+    // Your people's line only while the circle holds someone besides you (decision 6 of 20 November 2026).
+    let close = your_people();
     let rows: Vec<Value> = Circle::ALL
         .iter()
+        .filter(|circle| **circle != Circle::People || !close.is_empty())
         .map(|circle| {
             let cells: Vec<Value> = behaviours::CHANNELS
                 .iter()
@@ -437,6 +579,16 @@ fn people(attention: &Attention, reach: Reach) -> Value {
         "blocked": { "label": text("reach-circle-blocked"), "help": text("reach-circle-blocked-help"), "word": text("attention-word-never") },
         "notes": [text("reach-people-automatic"), text("reach-people-mail-off"), text("reach-people-groups-note")],
         "own_help": text("reach-own-help"),
+        // No one in Your people yet: one sentence, the door to Contacts ▸ Your people.
+        "none": if close.is_empty() { text("reach-people-none") } else { String::new() },
+        // Who is in which circle: Your people by name, read from Contacts, not edited here, each by the
+        // row they are judged on: what holds one of them out said, with its door (their page, where a
+        // card is linked; a card's sheet, where its list is chosen).
+        "circle": {
+            "title": text("reach-circle-people"),
+            "help": text("reach-circles-people-help"),
+            "people": close.iter().map(|p| json!({ "id": p.id, "name": p.name, "notes": p.notes })).collect::<Vec<_>>(),
+        },
     })
 }
 
@@ -978,13 +1130,15 @@ fn person_with(someone: &Someone, note: String) -> String {
     let attention = crate::hours::attention();
     let list = someone.list();
     let who = list["who"].as_str().and_then(Who::read).unwrap_or(Who::Stranger);
+    // One of your people: the row Your people (their card's, judged as every sender is).
+    let row = Person::of(who, list["circle"] == true);
     let always = someone.always(&config).is_some() && who != Who::Blocked;
     let reach = reach();
     let lines: Vec<String> = Channel::ALL
         .iter()
         .filter_map(|channel| {
             // Someone no list nor address book knows: their calls are the call screening's, apart.
-            let line = if *channel == Channel::Calls && !always && attention::screened(Row::People(Channel::Calls, Person::of(who))) { text("attention-sheet-line-calls-screening") } else { channel_line(&attention, *channel, Person::of(who), always, "attention-sheet-line")? };
+            let line = if *channel == Channel::Calls && !always && attention::screened(Row::People(Channel::Calls, row)) { text("attention-sheet-line-calls-screening") } else { channel_line(&attention, *channel, row, always, "attention-sheet-line")? };
             let missing = match channel {
                 Channel::Calls if !reach.calls => Some(text("attention-sheet-calls-none")),
                 Channel::Calls if someone.phones().is_empty() => Some(text("attention-sheet-no-number")),
@@ -1003,6 +1157,7 @@ fn person_with(someone: &Someone, note: String) -> String {
         "card": someone.card.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
         "addresses": someone.addresses,
         "who": who.id(),
+        "circle": row == Person::People,
         "said": list["said"],
         "choice": list["choice"],
         "choices": list["choices"],
@@ -1343,6 +1498,153 @@ mod tests {
         let contacts = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "contacts").unwrap();
         assert_eq!(contacts["label"], "Vos contacts");
         assert_eq!(contacts["cells"][1]["label"], "Quand vous ne dormez pas");
+    }
+
+    /// Your people (decision of 20 November 2026): no line, no row of What
+    /// comes when and no word of theirs while Contacts ▸ Your people holds
+    /// nobody besides you, one sentence and its door instead; once someone is
+    /// there, their line between Always through and Safe, reading When awake
+    /// as Safe's, their rows in What comes when, and Who is in which circle
+    /// listing each by the row they are judged on (reviews M1, M5, L8): no
+    /// card linked, none on this device, a card of a book someone else can
+    /// write, a card or an address held out by a restriction, each said with
+    /// its door; in both languages, said well. The stand-ins are the store
+    /// and the address books, judged by the program's own `porch::Senders`.
+    #[test]
+    fn your_people_get_a_line_once_someone_is_in_it() {
+        use sioul_core::persons::{Circle, Person as Someone, Persons};
+        use sioul_core::porch::{Book, SenderList, Senders};
+        let usual = Attention::usual();
+        let ids = |page: &Value| page["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        let card = |uid: &str, name: &str, emails: &[&str], place: &str| sioul_core::contacts::Contact { uid: uid.into(), key: format!("/stand-in/{uid}.vcf"), name: name.into(), place: place.into(), emails: emails.iter().map(|e| sioul_core::contacts::Labeled { label: String::new(), value: e.to_string() }).collect(), ..sioul_core::contacts::Contact::default() };
+        let cards = [card("c-lea", "Léa Martin", &["lea@example.org"], ""), card("c-maud", "Maud", &["maud@example.org"], ""), card("c-ugo", "Ugo", &["ugo@example.org", "ugo.home@example.org"], ""), card("c-vic", "Vic", &["vic@example.org"], "nextcloud/shared")];
+        let held: std::collections::BTreeSet<String> = ["nextcloud/shared".to_string()].into();
+        let today = sioul_core::zone::now().date();
+        let stand_in = |store: &Persons| {
+            let senders = Senders { restricted: SenderList::parse("contact:c-maud\nugo@example.org"), contacts: std::sync::Arc::new(Book::trusting(&cards, None, &held)), circle: std::sync::Arc::new(Circle::of(store, today)), ..Senders::default() };
+            STORE.with(|kept| *kept.borrow_mut() = Some((store.clone(), senders)));
+        };
+        for language in ["en", "fr"] {
+            speak(language);
+            // Nobody but you, and a child's other parent: no line.
+            let mut store = Persons::default();
+            store.put(Someone { name: "Sam".into(), relation: "other-parent".into(), cards: vec!["c-sam".into()], ..Someone::default() });
+            stand_in(&store);
+            let page = people(&usual, Reach::default());
+            assert_eq!(ids(&page), ["always", "safe", "contacts", "restricted", "others"], "{language}");
+            said_well(page["none"].as_str().unwrap(), language);
+            assert!(page["circle"]["people"].as_array().unwrap().is_empty());
+            assert!(!table_rows(false).iter().any(|r| matches!(r, Row::People(_, Person::People))), "no row of controls for nobody");
+            assert!(!matrix_persons(Channel::Calls).contains(&Person::People));
+            // Léa, a card here; Alix, none linked; Noé, a card linked that is not on this device; Maud, a
+            // card on Restricted by hand; Ugo, one address restricted; Vic, a card of a book others can write.
+            store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Someone::default() });
+            store.put(Someone { name: "Alix".into(), relation: "helped".into(), ..Someone::default() });
+            store.put(Someone { name: "Noé".into(), relation: "kin".into(), cards: vec!["c-gone".into()], ..Someone::default() });
+            store.put(Someone { name: "Maud".into(), relation: "kin".into(), cards: vec!["c-maud".into()], ..Someone::default() });
+            store.put(Someone { name: "Ugo".into(), relation: "kin".into(), cards: vec!["c-ugo".into(), "c-gone-too".into()], ..Someone::default() });
+            store.put(Someone { name: "Vic".into(), relation: "kin".into(), cards: vec!["c-vic".into()], ..Someone::default() });
+            stand_in(&store);
+            let page = people(&usual, Reach::default());
+            assert_eq!(ids(&page), ["always", "people", "safe", "contacts", "restricted", "others"], "{language}");
+            assert_eq!(page["none"], "", "{language}");
+            let line = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "people").unwrap();
+            worded(line["label"].as_str().unwrap(), language);
+            said_well(line["help"].as_str().unwrap(), language);
+            assert_eq!(line["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect::<Vec<_>>(), ["awake", "awake"], "as Safe until changed");
+            // Review M9: as Safe is now, tuned by a preset or by hand, in the page's line and its table.
+            let quieter = Preset::Quieter.matrix();
+            let tuned = people(&quieter, Reach::default());
+            let values = |id: &str| tuned["rows"].as_array().unwrap().iter().find(|r| r["id"] == id).unwrap()["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+            assert_eq!(values("people"), values("safe"), "{language}");
+            assert_ne!(values("safe"), ["awake", "awake"], "{language}: Safe tuned");
+            let grid = attention::grid(&quieter, tr(), &table_rows(false), Preset::Quieter);
+            let cells = |id: &str| grid.rows.iter().find(|r| r.id == id).map(|r| r.cells.iter().map(|c| c.value.clone()).collect::<Vec<_>>()).unwrap();
+            assert_eq!(cells("mail.people"), cells("mail.safe"), "What comes when: theirs as Safe's");
+            let circle = &page["circle"];
+            worded(circle["title"].as_str().unwrap(), language);
+            said_well(circle["help"].as_str().unwrap(), language);
+            let listed: Vec<(String, Vec<(String, String, String)>)> = circle["people"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|p| (p["name"].as_str().unwrap().to_string(), p["notes"].as_array().unwrap().iter().map(|n| (n["text"].as_str().unwrap().to_string(), n["door"].as_str().unwrap().to_string(), n["key"].as_str().unwrap().to_string())).collect()))
+                .collect();
+            let notes = |name: &str| listed.iter().find(|(n, _)| n == name).map(|(_, notes)| notes.clone()).unwrap();
+            assert_eq!(listed.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().len(), 6, "everyone but the other parent: {listed:?}");
+            assert!(notes("Léa").is_empty(), "Léa's card here, judged on Your people: nothing to say");
+            for name in ["Alix", "Noé"] {
+                let said = notes(name);
+                assert_eq!(said.len(), 1, "{name}: {said:?}");
+                said_well(&said[0].0, language);
+                let id = &store.persons.iter().find(|p| p.name == name).unwrap().id;
+                assert!(said[0].0.contains(name) && said[0].1 == "page" && &said[0].2 == id, "{name}: their page, where a card is linked: {said:?}");
+            }
+            assert_ne!(notes("Alix")[0].0, notes("Noé")[0].0, "no card linked, and a card linked that is not here: two sentences");
+            let maud = notes("Maud");
+            assert_eq!((maud.len(), maud[0].1.as_str(), maud[0].2.as_str()), (1, "sheet", "/stand-in/c-maud.vcf"), "{maud:?}");
+            said_well(&maud[0].0, language);
+            assert!(maud[0].0.starts_with("Maud") && maud[0].0.contains(&text("sender-one-restricted")), "{}", maud[0].0);
+            let ugo = notes("Ugo");
+            assert_eq!(ugo.len(), 2, "one card not here, one address restricted: {ugo:?}");
+            assert!(ugo.iter().any(|(t, d, _)| t.contains("ugo@example.org") && d == "sheet") && ugo.iter().any(|(_, d, _)| d.is_empty()), "{ugo:?}");
+            for (said, _, _) in &ugo {
+                said_well(said, language);
+            }
+            let vic = notes("Vic");
+            assert_eq!(vic.len(), 1, "{vic:?}");
+            said_well(&vic[0].0, language);
+            for id in ["reach-circles-tie", "reach-people-open", "sender-circle", "person-reaches-open", "person-card-sheet", "phone-calls-row-people"] {
+                worded(&text(id), language);
+            }
+            // A person's sheet and page say why, in the circle's words.
+            for id in ["sender-from-circle", "person-reaches", "person-reaches-untied"] {
+                said_well(&say(id, &[("name", "Léa".to_string())]), language);
+            }
+            said_well(&text("phone-calls-people-note"), language);
+            said_well(&text("phone-calls-people-dnd"), language);
+            for channel in [Channel::Mail, Channel::Calls, Channel::Messages] {
+                assert!(table_rows(true).contains(&Row::People(channel, Person::People)), "{channel:?}");
+                said_well(&channel_line(&usual, channel, Person::People, false, "attention-sheet-line").unwrap(), language);
+            }
+            assert!(matrix_persons(Channel::Calls).contains(&Person::People));
+            // The moment now names them where they come.
+            assert!(!who_words(&[Person::People], false, false).is_empty());
+        }
+        STORE.with(|kept| *kept.borrow_mut() = None);
+        speak("en");
+        assert_eq!(who_words(&[Person::People, Person::Neutral], false, false), "your people and your contacts");
+        // Their calls ring at every time: the sheet's line says so.
+        assert_eq!(channel_line(&usual, Channel::Calls, Person::People, false, "attention-sheet-line").unwrap(), tr().text("attention-sheet-line-calls-now", Some(&{
+            let mut args = sioul_core::i18n::args();
+            args.set("during", text("attention-during-any"));
+            args.set("first", "yes");
+            args
+        })));
+    }
+
+    /// The notice that your people have a line of their own (review M2):
+    /// due while the circle holds someone and it was never told, about What
+    /// reaches you's People line, informative, said well in both languages;
+    /// none once told, none for nobody.
+    #[test]
+    fn your_people_are_told_once_with_the_door() {
+        use sioul_core::persons::{CIRCLE_TOLD, Person as Someone, Persons};
+        let today = jiff::civil::date(2026, 11, 20);
+        let mut store = Persons::default();
+        assert!(circle_notice(&store, today).is_none(), "nobody: nothing");
+        store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Someone::default() });
+        for language in ["en", "fr"] {
+            speak(language);
+            let notice = circle_notice(&store, today).expect("due");
+            assert_eq!(notice.about, "sioul:settings/attention.people", "its door: the People line");
+            assert_eq!(notice.kind, sioul_core::notice::Kind::Minor, "to know");
+            worded(&notice.title, language);
+            said_well(&notice.body, language);
+        }
+        speak("en");
+        store.circle_told = CIRCLE_TOLD;
+        assert!(circle_notice(&store, today).is_none(), "told: never again");
     }
 
     /// The page's choices name their rows and cells, and refuse what they do not offer.

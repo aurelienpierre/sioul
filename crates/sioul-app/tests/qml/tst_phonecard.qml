@@ -104,7 +104,7 @@ Item {
             return {
                 set: true, profile: "personal", offered: "personal",
                 profiles: [
-                    { id: "professional", label: "Professional", said: "Numbers nobody knows ring in your work hours; commercial callers never. Outside work hours everything but Always through goes to voicemail: a second call within 15 minutes does not ring outside work hours.", chosen: false },
+                    { id: "professional", label: "Professional", said: "Numbers nobody knows ring in your work hours; commercial callers never. Outside work hours everything goes to voicemail but Always through and your people, who ring as What reaches you says: a second call within 15 minutes does not ring outside work hours.", chosen: false },
                     { id: "personal", label: "Personal", said: "Your contacts ring in the day; numbers nobody knows go to voicemail unless they call twice within 15 minutes.", chosen: true },
                     { id: "both", label: "Both", said: "Professional in your work hours, Personal outside them.", chosen: false },
                     { id: "as-android", label: "As Android does", said: "Sioul screens nothing on this phone: Android decides.", chosen: false }
@@ -113,6 +113,8 @@ Item {
                 columns: [{ id: "work", label: "Work hours" }, { id: "day", label: "The rest of the day" }, { id: "night", label: "The night" }, { id: "busy", label: "While busy" }],
                 rows: [
                     { id: "always", label: "Always through", fixed: true, group: false, cells: mock.cells(["R", "R", "R", "R"]) },
+                    // Your people (share::calls_views, calls::people_row): the matrix's row, fixed here.
+                    { id: "people", label: "Your people", fixed: true, group: false, cells: mock.cells(["R", "R", "R", "U"]), words: "Work hours: Rings · The rest of the day: Rings · The night: Rings · While busy: As usual", note: "Your people ring as What reaches you ▸ What comes when says, the same on every phone: a phone's own table leaves them as they are." },
                     { id: "safe", label: "Safe", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "R"]) },
                     { id: "contacts", label: "Your contacts", fixed: false, group: false, cells: mock.cells(["R", "R", "V", "U"]) },
                     { id: "group:School", label: "School", fixed: false, group: true, cells: mock.cells(["R", "R", "V", "R"]) },
@@ -126,6 +128,8 @@ Item {
                 groups: ["Clients"],
                 screens: false,
                 not_screening: "This phone does not screen calls yet.",
+                // Your people are never starred: where Sioul does not screen, do-not-disturb holds them (share::calls_views).
+                people_dnd: "Sioul does not screen calls on this phone, so its do-not-disturb holds your people's calls as any contact's. To have them ring then, turn the call screening on there, or put that person on Always through.",
                 sims: "Android does not tell a screening app which SIM a call comes on.",
                 always: "Whatever this table says, emergency numbers ring."
             }
@@ -381,6 +385,15 @@ Item {
             named("callsSwitch-unverified").toggled()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.switch.unverified on")
             verify(all("callsCell-always-work").length === 0, "Always through shows no button: it always rings")
+            // Your people's row: fixed here, its cells in words, where it is set said under the table.
+            verify(all("callsCell-people-night").length === 0, "Your people show no button: set in What reaches you")
+            verify(showing(named("callsRow-people")))
+            const where = named("callsPeople")
+            verify(showing(where) && where.text.indexOf("What comes when") > 0, where ? where.text : "none")
+            // This phone does not screen: do-not-disturb holds your people there, the two ways out said.
+            const held = named("callsPeopleDnd")
+            verify(showing(held) && held.text.indexOf("Always through") > 0, held ? held.text : "none")
+            verify(!showing(named("callsPeopleOlder")), "this phone's Sioul knows them")
             // A profile, a switch, a group taken off, a group given its row.
             professional.clicked()
             compare(mock.asked[mock.asked.length - 1], "say phone calls.profile professional")
@@ -422,6 +435,12 @@ Item {
             press(named("foldCalls"))
             wait(20)
             verify(!showing(named("callsGrid")), "no grid on a phone")
+            // Your people: a line that opens nothing, its cells said under it, where it is set under the table.
+            const people = named("callsRow-people")
+            verify(showing(people) && !people.enabled, "fixed: nothing to open")
+            verify(walk(card, i => i.text !== undefined && String(i.text).indexOf("The night: Rings") >= 0 && showing(i), []).length > 0, "its cells in words")
+            verify(showing(named("callsPeople")))
+            verify(showing(named("callsPeopleDnd")), "do-not-disturb holds them on a phone that does not screen")
             const contacts = named("callsRow-contacts")
             verify(showing(contacts))
             verify(named("callsCell-contacts-night") === null, "a row's choices made once opened")

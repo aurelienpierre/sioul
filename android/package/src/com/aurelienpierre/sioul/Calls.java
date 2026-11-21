@@ -789,6 +789,16 @@ final class Calls
                 who = "stranger";
             }
         }
+        // Proof first for your people too (review M4 of reach-household; calls.rs's `decide`): a number the
+        // network says it could not verify is no one of your people's, as forged mail is a stranger's: the
+        // circle's row is read as a stranger's (on Always through, against a stranger's row). Absence of a
+        // verdict changes nothing.
+        if ("failed".equals(verified)) {
+            if ("people".equals(who))
+                who = "stranger";
+            else if ("always-people".equals(who))
+                who = "always-stranger";
+        }
         decision.who = who;
 
         // 2. Blocked: refused, whenever and however often they call, Expecting a call or not.

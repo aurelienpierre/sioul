@@ -5281,6 +5281,11 @@ impl qobject::Sioul {
         crate::agents::watch(&qt, &shared);
         // The notices' presses heard, the previous run's taken away (tell.rs, docs/notifications.md).
         crate::tell::start(&qt);
+        // Your people's line, said once (review M2): read from the persons' file, never the window's
+        // state; not while pictures are taken, which tell nothing.
+        if std::env::var_os("SIOUL_GRAB").is_none() {
+            std::thread::spawn(crate::reaches::tell_circle_once);
+        }
         // On a phone, a notification tapped while Sioul was not running opens
         // its thing once the window is up (`take_taps`: Qt may start Active,
         // and `back_here` never come); the notices to know posted meanwhile
@@ -9385,8 +9390,9 @@ impl qobject::Sioul {
         // list of sections, Tasks ▸ List, the Agenda's Week, Money, Accounts and a movement's form
         // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
         // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
-        // docs/sites.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads"].contains(&steps.as_str()) && offline()) {
+        // docs/sites.md), "household" Your people in What reaches you, their sheet and page, and a
+        // phone's calls with their row (pictures alone; docs/attention.md), on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

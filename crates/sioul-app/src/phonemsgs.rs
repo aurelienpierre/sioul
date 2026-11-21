@@ -56,7 +56,7 @@ fn phone() -> bool {
 /// (`sioul_core::phonemsgs::Extra` reads what `Posted` passes over); `who`
 /// and `listed` as the decision judged the sender. Whether a line was
 /// written: Java asks for a step soon then.
-pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, listed: bool, decision: &Decision) -> bool {
+pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, circle: bool, listed: bool, decision: &Decision) -> bool {
     if !phone() {
         return false;
     }
@@ -79,7 +79,7 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, l
     let extra = Extra::read(json);
     let words = sioul_core::words::Words::of(&config);
     let now_ms = jiff::Timestamp::now().as_millisecond();
-    let notice = rules::Notice { posted, extra: &extra, kind, who, listed, decision, send, now_ms, region: sioul_core::reach::region(&config), words: &words };
+    let notice = rules::Notice { posted, extra: &extra, kind, who, circle, listed, decision, send, now_ms, region: sioul_core::reach::region(&config), words: &words };
     let lines = rules::lines_of(&notice);
     if lines.is_empty() {
         return false;
@@ -203,12 +203,12 @@ pub(crate) fn before_exchange() {
 
 /// Who a number is now, as this device's lists and address books say;
 /// none when they say nothing of it (the phone's judgement stands).
-fn who_now(senders: &Senders, key: &str) -> Option<Who> {
+fn who_now(senders: &Senders, key: &str) -> Option<(Who, bool)> {
     if key.is_empty() {
         return None;
     }
     let judged = senders.judge_number(key);
-    (judged.by != By::Default).then_some(judged.who)
+    (judged.by != By::Default).then_some((judged.who, judged.circle))
 }
 
 /// The part of the day a moment fell in, by this device's clock: a column of
@@ -297,7 +297,7 @@ fn porch_lines(config: &Config, all: &[Line], now: &Zoned) -> Vec<rules::PorchLi
         let always = line.always || (!line.key.is_empty() && people.admits_number(&line.key, region));
         let who = who_now(&senders, &line.key);
         let persons = line_persons(&senders, line);
-        rules::reaches_now(&attention, line, who, always, &persons, &moment) || (who != Some(Who::Blocked) && answered.holds(line))
+        rules::reaches_now(&attention, line, who, always, &persons, &moment) || (who.is_none_or(|(who, _)| who != Who::Blocked) && answered.holds(line))
     };
     let name_of = |key: &str| {
         let judged = senders.judge_number(key);
@@ -508,6 +508,6 @@ mod tests {
         assert_eq!(view(), json!({ "lines": [], "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string());
         assert!(history(&["+33199001234".to_string()]).is_empty());
         let posted = Posted { package: "foundation.e.message".into(), sms_app: true, ..Posted::default() };
-        assert!(!note("{}", &posted, &Kind::Untouched, None, false, &Decision::through(sioul_core::appnotes::Why::Allowed)));
+        assert!(!note("{}", &posted, &Kind::Untouched, None, false, false, &Decision::through(sioul_core::appnotes::Why::Allowed)));
     }
 }

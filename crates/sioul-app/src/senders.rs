@@ -31,10 +31,12 @@ fn said(judged: &Judged) -> String {
         By::LetIn => say("sender-from-let-in", &[("list", one)]),
         By::Book => say("sender-from-book", &[("list", one)]),
         By::Default => say("sender-from-default", &[("list", one)]),
+        // Their card is one of your people's: the circle's own words, never "Safe".
+        By::Circle => say("sender-from-circle", &[("name", judged.name.clone())]),
     }
 }
 
-/// What decided, as the window reads it: "address", "number", "card", "category", "domain", "prefix", "let-in", "book", "default".
+/// What decided, as the window reads it: "address", "number", "card", "category", "domain", "prefix", "let-in", "book", "default", "circle".
 fn by_id(by: By) -> String {
     serde_json::to_value(by).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
 }
@@ -63,11 +65,14 @@ pub(crate) fn standing_json(text: &str) -> String {
             (judged, own)
         }
     };
-    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text("sender-categories", None) }))
+    // No list of its own: a sender whose card is one of your people's is theirs, as Your people says (L3).
+    let unlisted = if circled(&senders, &first) { "sender-circle" } else { "sender-categories" };
+    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text(unlisted, None) }))
         .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": sioul_core::attention::list_choice(tr(), Who::of(*s), &attention, true) })))
         .collect();
     serde_json::json!({
         "standing": judged.who.id(),
+        "circle": judged.circle,
         "from": by_id(judged.by),
         "name": judged.name,
         "own": own,
@@ -76,6 +81,17 @@ pub(crate) fn standing_json(text: &str) -> String {
         "choices": choices,
     })
     .to_string()
+}
+
+/// Whether an address or a number (`tel:…`) is on a card of one of your
+/// people's (`porch::Senders::circle`): with no list of its own, the circle
+/// takes it, said so (L3).
+fn circled(senders: &porch::Senders, text: &str) -> bool {
+    let cards = match text.strip_prefix(porch::TEL) {
+        Some(number) => porch::number_key(number, senders.region()).map(|key| senders.contacts.cards_of_number(&key).to_vec()).unwrap_or_default(),
+        None => senders.contacts.cards_of_address(text).to_vec(),
+    };
+    cards.iter().filter_map(|i| senders.contacts.card(*i)).any(|card| senders.circle.holds(&card.uid))
 }
 
 /// "Their mail" for every address given: on one list ("safe", "neutral",
@@ -98,9 +114,12 @@ pub(crate) fn set_standing_of(text: &str, standing: &str) -> String {
             return e;
         }
     }
+    let circle = circled(&porch::Senders::load(&config), &first);
     let entry = porch::normalize(&first).unwrap_or(first).trim_start_matches("*@").to_string();
     match wanted {
         Some(standing) => say(&format!("sender-now-{}", standing.as_str()), &[("entry", entry)]),
+        // As one of your people, where the circle takes it (L3); else as their groups say.
+        None if circle => say("sender-now-circle", &[("entry", entry)]),
         None => say("sender-now-categories", &[("entry", entry)]),
     }
 }
@@ -135,11 +154,14 @@ pub(crate) fn person_json(key: &str) -> String {
         .collect();
     // On their own card, their own choice is theirs, not "as you chose for" them.
     let sentence = if judged.by == By::Card { say("sender-from-address", &[("list", tr().text(&format!("sender-one-{}", judged.who.id()), None))]) } else { said(&judged) };
-    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text("sender-categories", None) }))
+    // No list of its own: a card of one of your people is theirs, as Your people says; any other, as its groups say.
+    let unlisted = if senders.circle.holds(&card.uid) { "sender-circle" } else { "sender-categories" };
+    let choices: Vec<serde_json::Value> = std::iter::once(serde_json::json!({ "value": "", "label": tr().text(unlisted, None) }))
         .chain(Standing::ALL.iter().map(|s| serde_json::json!({ "value": s.as_str(), "label": tr().text(&format!("sender-one-{}", s.as_str()), None) })))
         .collect();
     serde_json::json!({
         "who": judged.who.id(),
+        "circle": judged.circle,
         "from": by_id(judged.by),
         "choice": choice,
         "said": sentence,
@@ -168,6 +190,8 @@ pub(crate) fn set_person(key: &str, standing: &str) -> String {
     let name = if card.name.trim().is_empty() { addresses.first().cloned().unwrap_or_default() } else { card.name.trim().to_string() };
     match wanted {
         Some(standing) => say(&format!("person-now-{}", standing.as_str()), &[("name", name)]),
+        // As one of your people, where the circle takes the card (L3); else as their groups say.
+        None if porch::Senders::load(&config).circle.holds(&card.uid) => say("person-now-circle", &[("name", name)]),
         None => say("person-now-categories", &[("name", name)]),
     }
 }
@@ -181,5 +205,39 @@ pub(crate) fn unblock(entry: &str) -> String {
     match porch::unblock(&config, entry) {
         Ok(()) => say("ui-unblocked", &[("entry", porch::Entry::read(entry, sioul_core::reach::region(&config)).map_or_else(|| entry.to_string(), |e| e.shown()))]),
         Err(e) => e,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One of your people's sheet says why in the circle's words, with the
+    /// person's name, never as Safe's (decision of 20 November 2026).
+    #[test]
+    fn your_people_s_reason_names_the_circle() {
+        let judged = Judged { who: Who::Safe, by: By::Circle, name: "Léa".into(), card: "Léa Martin".into(), circle: true };
+        let reason = said(&judged);
+        assert!(reason.contains("Léa") && !reason.contains("Martin") && !reason.contains("sender-"), "{reason}");
+        assert_eq!(reason, say("sender-from-circle", &[("name", "Léa".to_string())]));
+        assert_eq!(by_id(By::Circle), "circle");
+    }
+
+    /// An address or a number on a card of one of your people's (L3): with
+    /// no list of its own, the circle takes it, and the sheet's first choice
+    /// and the line said after it say so; anyone else's, as their groups say.
+    #[test]
+    fn your_people_s_unlisted_choice_says_the_circle() {
+        use sioul_core::persons::{Circle, Person as Someone, Persons};
+        let mut store = Persons::default();
+        store.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["lea-1".into()], ..Someone::default() });
+        let card = sioul_core::contacts::Contact { uid: "lea-1".into(), name: "Léa".into(), emails: vec![sioul_core::contacts::Labeled { label: String::new(), value: "lea@example.org".into() }], phones: vec![sioul_core::contacts::Labeled { label: String::new(), value: "+33 1 99 00 00 08".into() }], ..sioul_core::contacts::Contact::default() };
+        let senders = porch::Senders { contacts: std::sync::Arc::new(porch::Book::of(&[card], sioul_core::phones::region_named("FR"))), circle: std::sync::Arc::new(Circle::of(&store, jiff::civil::date(2026, 11, 20))), ..porch::Senders::default() };
+        assert!(circled(&senders, "lea@example.org") && circled(&senders, "tel:01 99 00 00 08"));
+        assert!(!circled(&senders, "sam@example.org") && !circled(&senders, "tel:01 99 00 00 09"));
+        for language in ["en", "fr"] {
+            let tr = sioul_core::i18n::Translator::new(language);
+            assert!(!tr.text("sender-circle", None).is_empty() && !tr.text("sender-now-circle", None).contains("sender-"));
+        }
     }
 }

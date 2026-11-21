@@ -63,6 +63,9 @@ pub const FILE: &str = "persons.toml";
 pub const FORMAT: u32 = 1;
 /// What `names_read` says once old texts were read on this device.
 pub const NAMES_READ: u32 = 1;
+/// What `circle_told` says once the notice that your people have a line of
+/// their own in What reaches you was told (review M2 of 20 November 2026).
+pub const CIRCLE_TOLD: u32 = 1;
 /// You, always a person, with nothing to fill.
 pub const ME: &str = "me";
 /// How a paper's tie to a person reads in `links.toml`.
@@ -192,6 +195,22 @@ impl Person {
         self.until.is_some_and(|until| until < today)
     }
 
+    /// Whether they are in the circle Your people of what reaches you today
+    /// (docs/attention.md, §1.2; design of 20 November 2026): everyone
+    /// added, whatever their relation, but you, a child's other parent
+    /// (their card keeps its own list) and someone whose relation ended.
+    /// A relation ended today is ended (review H1): "Ends…" with its own
+    /// date, today, takes them out at once, the night after it included,
+    /// where the household's row keeps them until the day is over.
+    /// A relation word a later version writes, which this Sioul cannot know
+    /// the meaning of, reads as outside the circle (review L6): it may name
+    /// someone the household keeps apart, as a child's other parent.
+    /// Their cards say who they are by mail, call or message (`Circle`).
+    pub fn in_circle(&self, today: Date) -> bool {
+        let unknown = !self.relation.trim().is_empty() && self.relation() == Relation::Unsaid;
+        self.id != ME && !unknown && self.until.is_none_or(|until| until > today) && !matches!(self.relation(), Relation::Me | Relation::OtherParent)
+    }
+
     /// Whether `text` is their name or their full name, case and accents aside.
     pub fn named(&self, text: &str) -> bool {
         let wanted = key(text);
@@ -212,6 +231,12 @@ pub struct Persons {
     /// Names that are no person ("Banque"): no later read makes one of them again.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_persons: Vec<String>,
+    /// `CIRCLE_TOLD` once the notice that your people have a line of their
+    /// own in What reaches you was told (`circle_untold`): said once on the
+    /// devices that share this store, never at a start again. An older Sioul
+    /// keeps it as it is (`other`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub circle_told: u32,
     /// Each person, their id from their table's name; in the file's order (by id) once read.
     pub persons: Vec<Person>,
     /// What a later version writes here, kept as it is.
@@ -227,6 +252,8 @@ struct File {
     names_read: u32,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     not_persons: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    circle_told: u32,
     #[serde(default, rename = "person", skip_serializing_if = "BTreeMap::is_empty")]
     persons: BTreeMap<String, Person>,
     #[serde(flatten)]
@@ -236,14 +263,14 @@ struct File {
 impl From<File> for Persons {
     fn from(file: File) -> Persons {
         let persons = file.persons.into_iter().map(|(id, person)| Person { id, ..person }).collect();
-        Persons { format: file.format, names_read: file.names_read, not_persons: file.not_persons, persons, other: file.other }
+        Persons { format: file.format, names_read: file.names_read, not_persons: file.not_persons, circle_told: file.circle_told, persons, other: file.other }
     }
 }
 
 impl From<Persons> for File {
     fn from(store: Persons) -> File {
         let persons = store.persons.into_iter().filter(|p| !p.id.is_empty()).map(|p| (p.id.clone(), p)).collect();
-        File { format: store.format, names_read: store.names_read, not_persons: store.not_persons, persons, other: store.other }
+        File { format: store.format, names_read: store.names_read, not_persons: store.not_persons, circle_told: store.circle_told, persons, other: store.other }
     }
 }
 
@@ -489,6 +516,30 @@ impl Persons {
         let mut others: Vec<&Person> = self.persons.iter().filter(|p| !p.ended(today) && !p.relation().holds_papers()).collect();
         others.sort_by_key(|p| key(&p.name));
         (inside, others)
+    }
+
+    /// Whether a card is one of your people's today (`Person::in_circle`),
+    /// by its UID: the one answer for who a card is to you in what reaches
+    /// you. A card tied to two people is in the circle when one of them is;
+    /// a card nobody here holds is not.
+    pub fn in_circle(&self, uid: &str, today: Date) -> bool {
+        let uid = uid.trim();
+        !uid.is_empty() && self.persons.iter().any(|p| p.cards.iter().any(|c| c.trim() == uid) && p.in_circle(today))
+    }
+
+    /// The people of the circle today, in the household's order
+    /// (`household`), for the page that says who is in it; their cards tied or not.
+    pub fn circle(&self, today: Date) -> Vec<&Person> {
+        let (inside, _) = self.household(today);
+        inside.into_iter().filter(|p| p.in_circle(today)).collect()
+    }
+
+    /// Whether the notice that your people have a line of their own is due
+    /// (review M2): the circle holds someone today and it was never told
+    /// with this store (`circle_told`). Nobody there: nothing is due, and it
+    /// comes at the first start that finds someone.
+    pub fn circle_untold(&self, today: Date) -> bool {
+        self.circle_told < CIRCLE_TOLD && !self.circle(today).is_empty()
     }
 
     /// Old texts read once on this device (docs/persons.md, "Read from old
@@ -773,6 +824,48 @@ impl Persons {
         let mut persons = Persons::load(path);
         persons.read_names(agendas, papers, own);
         persons
+    }
+}
+
+/// The circle Your people, by card: `Persons::in_circle` read once for
+/// every card tied to someone, for a day, so that each sender is judged
+/// without reading the store again (`porch::Senders`), with the name of the
+/// person each card is (the first of two in the store's order), for the
+/// sentence that says why. Empty: nobody tied, as before the circle.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Circle {
+    cards: BTreeMap<String, String>,
+}
+
+impl Circle {
+    /// Every card tied to someone of the circle today.
+    pub fn of(persons: &Persons, today: Date) -> Circle {
+        let mut cards = BTreeMap::new();
+        for person in persons.persons.iter().filter(|p| p.in_circle(today)) {
+            for uid in person.cards.iter().map(|c| c.trim()).filter(|c| !c.is_empty()) {
+                cards.entry(uid.to_string()).or_insert_with(|| person.name.clone());
+            }
+        }
+        Circle { cards }
+    }
+
+    /// The name of the person a card of the circle is; none for any other card.
+    pub fn person(&self, uid: &str) -> Option<&str> {
+        self.cards.get(uid.trim()).map(String::as_str)
+    }
+
+    /// The store as the file holds it now (`Persons::cached`), for today.
+    pub fn now() -> Circle {
+        Circle::of(&Persons::cached(), crate::zone::now().date())
+    }
+
+    /// Whether a card is one of your people's (`Persons::in_circle`).
+    pub fn holds(&self, uid: &str) -> bool {
+        self.cards.contains_key(uid.trim())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cards.is_empty()
     }
 }
 
@@ -1286,6 +1379,90 @@ mod tests {
         assert_eq!(inside[0].age(today), Some(12));
         assert_eq!(inside[0].age(day("2026-05-12")), Some(12));
         assert_eq!(inside[0].age(day("2026-05-11")), Some(11));
+    }
+
+    /// Who is in the circle Your people: everyone added, whatever their
+    /// relation or age (a child, someone you help, a parent, someone
+    /// unsaid); never a relation ended yesterday or today (review H1: "Ends…"
+    /// with today's date takes them out at once), a child's other parent,
+    /// nor you. A card answers for its
+    /// person; a card tied to two people is in it when one of them is; a
+    /// person with no card is in the circle, and no card answers for them.
+    #[test]
+    fn who_is_in_the_circle() {
+        let today = day("2026-11-20");
+        let mut persons = Persons::default();
+        let mut add = |name: &str, relation: &str, born: Option<&str>, until: Option<&str>, cards: &[&str]| {
+            persons.put(Person { name: name.into(), relation: relation.into(), born: born.map(day), until: until.map(day), cards: cards.iter().map(|c| c.to_string()).collect(), ..Person::default() })
+        };
+        let child = add("Léa", "child", Some("2014-05-12"), None, &["c-lea"]);
+        let grown = add("Tom", "child", Some("2001-01-02"), None, &["c-tom"]);
+        let helped = add("Odile", "helped", None, None, &["c-odile"]);
+        let parent = add("Jean", "parent", None, None, &["c-jean"]);
+        let unsaid = add("Maud", "", None, None, &["c-maud"]);
+        let ended = add("Old", "partner", None, Some("2026-11-19"), &["c-old"]);
+        let ends_today = add("Robin", "partner", None, Some("2026-11-20"), &["c-robin"]);
+        let other = add("Sam", "other-parent", None, None, &["c-sam"]);
+        let no_card = add("Alix", "kin", None, None, &[]);
+        let later = add("Ines", "godchild", None, None, &["c-ines"]);
+        persons.put(Person { id: ME.into(), name: "You".into(), cards: vec!["c-me".into()], ..Person::default() });
+        let inside = |id: &str| persons.get(id).unwrap().in_circle(today);
+        for id in [&child, &grown, &helped, &parent, &unsaid, &no_card] {
+            assert!(inside(id), "{}", persons.get(id).unwrap().name);
+        }
+        assert!(!inside(&ended), "ended yesterday");
+        assert!(!inside(&ends_today), "ended today: out at once, the night after included");
+        assert!(persons.get(&ends_today).unwrap().in_circle(day("2026-11-19")), "the day before its end: inside");
+        assert!(!persons.get(&ends_today).unwrap().ended(today), "the household's row keeps them until the day is over");
+        assert!(!inside(&other), "a child's other parent keeps their own list");
+        assert!(!inside(&later), "a relation word of a later version: outside, its meaning unknown here (review L6)");
+        assert_eq!(persons.get(&later).unwrap().relation(), Relation::Unsaid, "read as unsaid everywhere else, as before");
+        assert!(!inside(ME), "never yourself");
+        // By card: one function answers.
+        assert!(persons.in_circle("c-lea", today) && persons.in_circle(" c-tom ", today) && persons.in_circle("c-odile", today));
+        for uid in ["c-old", "c-sam", "c-me", "c-nobody", ""] {
+            assert!(!persons.in_circle(uid, today), "{uid:?}");
+        }
+        // A card of two people (two devices tied it apart): in the circle when one of them is.
+        persons.get_mut(&other).unwrap().cards.push("c-lea".into());
+        persons.get_mut(&ended).unwrap().cards.push("c-sam".into());
+        assert!(persons.in_circle("c-lea", today), "the child's card, shared with the other parent's");
+        assert!(!persons.in_circle("c-sam", today), "two people, neither in the circle");
+        // Read once for every card.
+        let circle = Circle::of(&persons, today);
+        assert!(circle.holds("c-lea") && circle.holds("c-jean") && !circle.holds("c-sam") && !circle.holds("c-old") && !circle.holds("c-me"));
+        assert_eq!((circle.person("c-lea"), circle.person(" c-jean "), circle.person("c-sam")), (Some("Léa"), Some("Jean"), None), "the person each card is, for the reason said");
+        assert!(Circle::default().is_empty());
+        // Its people, in the household's order, cards or none.
+        assert_eq!(persons.circle(today).iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["Tom", "Léa", "Jean", "Alix", "Odile", "Maud"]);
+        assert!(!Circle::of(&persons, today).holds("c-robin"), "their card neither");
+    }
+
+    /// The notice that your people have a line of their own (review M2): due
+    /// once the circle holds someone, never again once told, with the store
+    /// on every device; nobody in it, not due; the mark kept through the
+    /// file, and an older file without it reads as never told.
+    #[test]
+    fn your_people_are_told_once() {
+        let today = day("2026-11-20");
+        let mut persons = Persons::default();
+        persons.put(Person { name: "Sam".into(), relation: "other-parent".into(), ..Person::default() });
+        assert!(!persons.circle_untold(today), "nobody in the circle: nothing to tell");
+        persons.put(Person { name: "Léa".into(), relation: "child".into(), cards: vec!["c-lea".into()], ..Person::default() });
+        assert!(persons.circle_untold(today), "someone there, never told");
+        let dir = std::env::temp_dir().join(format!("sioul-persons-told-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(FILE);
+        persons.save(&path).unwrap();
+        assert!(Persons::read(&path).unwrap().circle_untold(today), "as written");
+        change(&path, |store| store.circle_told = CIRCLE_TOLD).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("circle_told = 1"), "{text}");
+        let again = Persons::read(&path).unwrap();
+        assert!(!again.circle_untold(today), "told: never at a start again");
+        assert_eq!(again.persons.len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// An agenda's role names its person: one of the relation linked, an

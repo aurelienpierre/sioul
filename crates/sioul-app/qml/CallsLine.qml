@@ -12,6 +12,9 @@
 // or taken off; what "as usual" means while busy, what a pause and
 // do-not-disturb do here; what always rings; the SIMs; on a phone that does
 // not screen yet, what to do; on a phone whose Sioul reads no table yet, so.
+// Your people's row, fixed (the matrix's, the same on every phone), where it
+// is set, what do-not-disturb does with them where Sioul does not screen,
+// and, on a phone whose Sioul does not know them yet, no row but a line.
 // At a computer's width the table is a grid of buttons; at a phone's, a list
 // of rows, each opening its four choices. The words are the core's
 // (`calls_line::view`, through `share::devices`); each change is said as a
@@ -229,14 +232,18 @@ ColumnLayout {
                         Layout.preferredWidth: 10
                         implicitHeight: Math.max(fixedWord.implicitHeight, cellButton.implicitHeight)
 
-                        // Always through rings at every moment: words, no button.
+                        // A fixed row (Always through, Your people): words, no button, within its column
+                        // ("As usual", « Comme d’habitude »: review L10).
                         Label {
                             id: fixedWord
 
                             visible: gridRow.modelData.fixed === true
                             anchors.centerIn: parent
+                            width: Math.min(implicitWidth, place.width)
                             text: place.modelData.word || ""
                             textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            horizontalAlignment: Text.AlignHCenter
                             color: line.theme.muted
                         }
                         Cell {
@@ -302,7 +309,9 @@ ColumnLayout {
             Note {
                 visible: listRow.modelData.fixed === true
                 Layout.leftMargin: 8
-                text: line.sioul.text("phone-calls-always-rings")
+                // Under a fixed row: Your people's, its cells in words (where it is set is said under
+                // the table, `callsPeople`); Always through's, that it always rings.
+                text: listRow.modelData.id === "people" ? (listRow.modelData.words || "") : line.sioul.text("phone-calls-always-rings")
             }
             // Its four choices, each moment on a line of its own.
             Repeater {
@@ -427,6 +436,27 @@ ColumnLayout {
         }
     }
 
+    // Your people's row: the matrix's, the same on every phone, set in What reaches you.
+    Note {
+        objectName: "callsPeople"
+        readonly property var people: (line.view.rows || []).find(r => r.id === "people") || null
+
+        visible: !line.android && people !== null
+        text: people ? people.note || "" : ""
+    }
+    // A phone whose Sioul does not know Your people yet: no row of theirs, and why (M8).
+    Note {
+        objectName: "callsPeopleOlder"
+        visible: (line.view.people_older || "") !== ""
+        text: line.view.people_older || ""
+    }
+    // Where Sioul does not screen calls here, do-not-disturb holds your people's calls as any
+    // contact's (they are never starred), with the two ways out; As Android does included.
+    Note {
+        objectName: "callsPeopleDnd"
+        visible: (line.view.people_dnd || "") !== ""
+        text: line.view.people_dnd || ""
+    }
     // What "as usual" means while busy (M1); what a pause and do-not-disturb do on this phone (M4).
     Note {
         objectName: "callsBusy"

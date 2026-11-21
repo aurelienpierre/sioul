@@ -405,7 +405,7 @@ pub(crate) fn notified(qt: &QtThread, shared: &Arc<Shared>, id: &str, key: &str,
     // resting, or the matrix holds calls in sites now.
     let call = sites::is_call(title, text) && !site.muted;
     let chat = site.kind == "chat";
-    let named = if chat { sioul_core::porch::Senders::load(&config).judge_name(title.trim()).map(|j| j.who) } else { None };
+    let named = if chat { sioul_core::porch::Senders::load(&config).judge_name(title.trim()).map(|j| j.row()) } else { None };
     let mut now = crate::hours::attention_here();
     now.realtime = everywhere;
     now.holds.chats = chat && crate::health::chats_covered();

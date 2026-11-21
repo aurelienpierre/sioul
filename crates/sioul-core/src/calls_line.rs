@@ -58,7 +58,8 @@ pub const MORE: [&str; 2] = ["impossible", "unverified"];
 #[serde(rename_all = "kebab-case")]
 pub enum Profile {
     /// A phone for work: numbers nobody knows ring in work hours, commercial
-    /// callers never, everything but Always through to voicemail outside.
+    /// callers never, everything but Always through to voicemail outside, and
+    /// your people, whose row is the matrix's on every phone (`calls::line_frames`).
     Professional,
     /// A phone of your own: your contacts ring, numbers nobody knows go to
     /// voicemail unless they call twice.

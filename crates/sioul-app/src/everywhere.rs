@@ -226,7 +226,9 @@ fn phone_does() -> sioul_core::attention::Phone {
     if !cfg!(target_os = "android") {
         return sioul_core::attention::Phone::default();
     }
-    sioul_core::attention::Phone { screens: crate::calls::screens_here(), unknown: false }
+    // Your people's row opens a mode only while Contacts ▸ Your people holds someone, and only
+    // where this phone screens calls (`Phone::people`).
+    sioul_core::attention::Phone { screens: crate::calls::screens_here(), unknown: false, people: !sioul_core::persons::Circle::now().is_empty() }
 }
 
 /// Why do-not-disturb holds now, on every device alike.

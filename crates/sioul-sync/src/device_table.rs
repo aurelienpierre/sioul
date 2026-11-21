@@ -104,6 +104,10 @@ pub struct Row {
     /// Its Sioul reads no phone's own calls' table (`Entry::calls_lines` 0): its card says so (M12).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub no_lines: bool,
+    /// Its Sioul does not know the circle Your people (`Entry::circle` 0): a
+    /// phone's card shows no row of theirs, and says so (review M8).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub no_circle: bool,
     /// Its Sioul in words: "Sioul 0.0.3 (eff8661abcde).", said calmly when
     /// older than this device's; "" when its entry does not say.
     pub build: String,
@@ -282,6 +286,7 @@ fn of_entry(row: &mut Row, entry: &Entry, clock: &Clock) {
     row.version = entry.build();
     row.older = sioul_core::build::older(&entry.version, sioul_core::build::VERSION);
     row.no_lines = entry.calls_lines < crate::devices::CALLS_LINES;
+    row.no_circle = entry.circle < crate::devices::CIRCLE;
     row.build = match (row.version.is_empty(), row.older) {
         (true, _) => String::new(),
         (false, true) => said(words, "share-device-build-older", &[("build", row.version.clone()), ("here", sioul_core::build::DESCRIBED.to_string())]),
@@ -422,6 +427,7 @@ fn here(facts: &Facts, clock: &Clock) -> Row {
     row.version = sioul_core::build::DESCRIBED.to_string();
     row.older = false;
     row.no_lines = false;
+    row.no_circle = false;
     row.build = said(words, "share-device-build", &[("build", row.version.clone())]);
     if facts.sharing {
         let parts = in_order(facts.parts);
@@ -647,6 +653,7 @@ mod tests {
         add(&mut kept, entry("c-laptop", "computer", "laptop", true, NOW - 4 * 3_600, false), NOW - 4 * 3_600, 0);
         add(&mut kept, entry("d-old", "computer", "old", true, NOW - 9 * 86_400, true), NOW - 9 * 86_400, 0);
         add(&mut kept, entry("j-tower", "computer", "tower", true, NOW - 30, true), NOW - 25, 0);
+        add(&mut kept, Entry { circle: crate::devices::CIRCLE, ..entry("l-phone", "phone", "Fern", false, NOW - 600, true) }, NOW - 590, 0);
         kept.peers.insert("e-older".into(), PeerSeen { peer: Peer { id: "e-older".into(), name: "tower".into(), heard: NOW - 120, ..Peer::default() }, renewed: NOW - 120, ..PeerSeen::default() });
         kept.peers.insert("k-unread".into(), PeerSeen { peer: Peer { id: "k-unread".into(), heard: NOW - 120, ..Peer::default() }, ..PeerSeen::default() });
         kept.peers.get_mut("b-desk").unwrap().peer.off = true;
@@ -664,6 +671,8 @@ mod tests {
         // What each entry says of itself: when it opened and shared, its Sioul.
         assert_eq!((row("a-phone").started, row("a-phone").exported, row("a-phone").shared.as_str()), (NOW - 7_200, NOW - 600, clock.short(NOW - 600).as_str()));
         assert!(!row("a-phone").opened.is_empty() && row("e-older").opened.is_empty() && row("e-older").shared.is_empty());
+        // Whether its Sioul knows the circle Your people (review M8 of reach-household): an entry that does not say, no.
+        assert!(row("a-phone").no_circle && !row("l-phone").no_circle);
         // The devices holding the newer form of what travels back: each has its
         // line; one not listed is added, with Forget; one listed keeps its own.
         let mut rows = rows;

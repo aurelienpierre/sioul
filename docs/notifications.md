@@ -107,6 +107,7 @@ A source may say its notice is to do though its kind's row is to know (`Notice::
 | Your sites have news | sites.rs `gather_tick` | sites, to know | `sioul:porch` | its minutes |
 | New mail | mailnote.rs `show`, `mail_notice` | mail, to know | its first message, a button for each it names | its minutes, or each message settled |
 | A language found in your mail | languages.rs | minor, to know | `sioul:settings/words.languages` | its minutes |
+| Your people have a line of their own, said once on the devices that share the persons (the first start of this version with someone in Contacts ▸ Your people; review M2 of `reach-household`) | reaches.rs `tell_circle_once`, marked as it is posted (`persons::Persons::circle_told`) | minor, to know | `sioul:settings/attention.people` | its minutes |
 | Calendar files for an older Sioul | outside.rs `to_older` | minor, to know | none (the process leaves) | its minutes |
 | A file a site offered, placed ([sites.md](sites.md#downloads)) | downloads.rs `done` | minor, to know | about `sioul:download/<id>`: in a folder of the system's, the file (its folder for a program or a name without extension), with Open and Show in its folder; in Notes the note, in Papers the paper, in Letters the letter | its minutes |
 | A file a site offered that failed, was cut, or was found infected | downloads.rs `failed`, `done` | minor, to know | about `sioul:download/<id>`, saying why and that nothing was kept; no button | its minutes |
@@ -150,6 +151,7 @@ Phase 3, 14 November 2026. Android posts what Rust says (crates/sioul-app/src/ev
 | The time to leave | eventalarms.rs `shown`, at its alarm or the window's minute | to know | `sioul:event/<UID>#<start>` | its event's start |
 | An event's own alarm, where no calendar app rings it (`eventalarms::calendar_app`) | eventalarms.rs `shown` | to do | `sioul:event/<UID>#<start>` | a quarter of an hour after its event began |
 | Who rings an event's own alarms here, said once | eventalarms.rs `handover` | to know | none | its minutes once seen; the end of the day at the latest |
+| Your people have a line of their own, said once (as on a computer) | reaches.rs `tell_circle_once`, marked once handed to Android | to know | `sioul:settings/attention.people` | its minutes once seen |
 | Work hours are over | reviews.rs `decide_work`, at its alarm | to know | `sioul:day/work:<date>` | its minutes once seen; the night's start at the latest, never past 05:00 after the hours' end |
 | The night's own notice | health.rs `decide_night` | to know | `sioul:need/<block>` | its minutes once seen; the night's end at the latest |
 | A meal's or a nap's heads-up, and its own at its time | health.rs `decide_need` (new) | to know | `sioul:need/<block>` | its minutes once seen; the block's start for the heads-up, its end for its own |

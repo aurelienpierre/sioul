@@ -317,15 +317,17 @@ fn mail_due(config: &Config, now: i64, last: i64, tellable: bool) -> bool {
 
 /// Whether some new mail fetched now could be told now, as the matrix of
 /// what reaches you decides a message (`Attention::mail_from`): a sender's
-/// row (safe, your contacts, restricted, strangers) that tells mail to the
-/// area of one of the addresses fetched, or Always through's when someone on
-/// that list has an address (`listed`), whose mail is told to any address;
-/// Reachable lets everyone's through; the Porch resting after a pause, nobody's.
+/// row (your people's while someone's card is among them, safe, your
+/// contacts, restricted, strangers) that tells mail to the area of one of the
+/// addresses fetched, or Always through's when someone on that list has an
+/// address (`listed`), whose mail is told to any address; Reachable lets
+/// everyone's through; the Porch resting after a pause, nobody's.
 fn could_tell(config: &Config, attention: &sioul_core::attention::Attention, listed: bool, now: &sioul_core::attention::Now) -> bool {
     use sioul_core::reach::Who;
-    let whos = [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger];
+    let people = !sioul_core::persons::Circle::now().is_empty();
+    let whos: Vec<(Who, bool)> = [(Who::Safe, true)].into_iter().filter(|_| people).chain([Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger].map(|who| (who, false))).collect();
     config.accounts.iter().filter(|a| a.syncs()).map(sioul_core::mailbox::said_area).any(|area| {
-        whos.iter().any(|who| attention.mail_from(*who, false, false, area, now).told || (listed && attention.mail_from(*who, true, false, area, now).told))
+        whos.iter().any(|(who, circle)| attention.mail_from(*who, *circle, false, false, area, now).told || (listed && attention.mail_from(*who, *circle, true, false, area, now).told))
     })
 }
 

@@ -8,8 +8,9 @@
 //! notifications, calls), and what it silences (the system's do-not-disturb).
 //!
 //! **One matrix**: a row per who on each channel (mail, calls, messages from
-//! other apps: Always through, safe, neutral, restricted, strangers, hidden
-//! numbers for calls, groups for messages, the blocked fixed at never), and a
+//! other apps: Always through, your people, safe, neutral, restricted,
+//! strangers, hidden numbers for calls, groups for messages, the blocked fixed
+//! at never), and a
 //! row per kind of Sioul's own and of the automated sources (codes, doses,
 //! reminders, sites, other apps' automatons…). Nine columns: the seven times
 //! (work, admin, leisure, meals, sleep, the pause, Free time) and two layers
@@ -61,6 +62,10 @@ pub enum Person {
     /// Always through (« Passent toujours »): the people on that list, one
     /// list on every device (`everywhere::People`), and a conversation set so.
     Always,
+    /// Your people (« Vos proches »; decision of 20 November 2026): a card of
+    /// someone in Contacts ▸ Your people (`persons::Circle`), unless their
+    /// own entry or their card's says otherwise; safe everywhere but here.
+    People,
     Safe,
     Neutral,
     Restricted,
@@ -75,11 +80,12 @@ pub enum Person {
 }
 
 impl Person {
-    pub const ALL: [Person; 8] = [Person::Always, Person::Safe, Person::Neutral, Person::Restricted, Person::Stranger, Person::Hidden, Person::Groups, Person::Blocked];
+    pub const ALL: [Person; 9] = [Person::Always, Person::People, Person::Safe, Person::Neutral, Person::Restricted, Person::Stranger, Person::Hidden, Person::Groups, Person::Blocked];
 
     pub fn id(self) -> &'static str {
         match self {
             Person::Always => "always",
+            Person::People => "people",
             Person::Safe => "safe",
             Person::Neutral => "neutral",
             Person::Restricted => "restricted",
@@ -99,9 +105,13 @@ impl Person {
         }
     }
 
-    /// The row of one of the five states.
-    pub fn of(who: Who) -> Person {
+    /// The row of someone judged (`porch::Judged::row`): one of the five
+    /// states, or Your people for a safe sender whose card is one of your
+    /// people's (`circle`). Never Your people for anyone not judged safe: the
+    /// blocked, mail nothing proves, an own entry that says otherwise.
+    pub fn of(who: Who, circle: bool) -> Person {
         match who {
+            Who::Safe if circle => Person::People,
             Who::Safe => Person::Safe,
             Who::Neutral => Person::Neutral,
             Who::Restricted => Person::Restricted,
@@ -114,15 +124,22 @@ impl Person {
     pub fn state(self) -> bool {
         !matches!(self, Person::Always | Person::Blocked)
     }
+
+    /// Safe, as the rest of Sioul reads who someone is (`reach::Who::Safe`):
+    /// your safe senders and your people, for what an address or an app is
+    /// for (step 8), whose rows alone differ.
+    pub fn safe(self) -> bool {
+        matches!(self, Person::Safe | Person::People)
+    }
 }
 
 /// The rows of a channel, in the order they are shown.
 pub fn persons(channel: Channel) -> &'static [Person] {
     use Person::*;
     match channel {
-        Channel::Mail => &[Always, Safe, Neutral, Restricted, Stranger, Blocked],
-        Channel::Calls => &[Always, Safe, Neutral, Restricted, Stranger, Hidden, Blocked],
-        Channel::Messages => &[Always, Safe, Neutral, Restricted, Stranger, Groups, Blocked],
+        Channel::Mail => &[Always, People, Safe, Neutral, Restricted, Stranger, Blocked],
+        Channel::Calls => &[Always, People, Safe, Neutral, Restricted, Stranger, Hidden, Blocked],
+        Channel::Messages => &[Always, People, Safe, Neutral, Restricted, Stranger, Groups, Blocked],
     }
 }
 
@@ -265,6 +282,9 @@ impl Kind {
     }
 }
 
+/// How many rows the matrix has (`Row::ALL`).
+pub const ROWS: usize = 39;
+
 /// A row of the matrix: a who on a channel, or a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Row {
@@ -274,14 +294,16 @@ pub enum Row {
 
 impl Row {
     /// Every row, in the order they are shown: mail's, calls', messages', then the kinds.
-    pub const ALL: [Row; 36] = [
+    pub const ALL: [Row; ROWS] = [
         Row::People(Channel::Mail, Person::Always),
+        Row::People(Channel::Mail, Person::People),
         Row::People(Channel::Mail, Person::Safe),
         Row::People(Channel::Mail, Person::Neutral),
         Row::People(Channel::Mail, Person::Restricted),
         Row::People(Channel::Mail, Person::Stranger),
         Row::People(Channel::Mail, Person::Blocked),
         Row::People(Channel::Calls, Person::Always),
+        Row::People(Channel::Calls, Person::People),
         Row::People(Channel::Calls, Person::Safe),
         Row::People(Channel::Calls, Person::Neutral),
         Row::People(Channel::Calls, Person::Restricted),
@@ -289,6 +311,7 @@ impl Row {
         Row::People(Channel::Calls, Person::Hidden),
         Row::People(Channel::Calls, Person::Blocked),
         Row::People(Channel::Messages, Person::Always),
+        Row::People(Channel::Messages, Person::People),
         Row::People(Channel::Messages, Person::Safe),
         Row::People(Channel::Messages, Person::Neutral),
         Row::People(Channel::Messages, Person::Restricted),
@@ -504,7 +527,10 @@ pub fn usual(row: Row, column: Column) -> Level {
         Row::People(_, Person::Blocked) => Never,
         Row::People(Channel::Mail, Person::Always) => if matches!(column, Sleep | Pause) { Quiet } else { Now },
         Row::People(_, Person::Always) => Now,
-        Row::People(Channel::Mail, Person::Safe) => if hours { Now } else { Quiet },
+        // Your people (decision of 20 November 2026): as Safe, and their calls ring at every
+        // time, sleep, a pause and do-not-disturb included, where Sioul screens calls (never starred).
+        Row::People(Channel::Calls, Person::People) => Now,
+        Row::People(Channel::Mail, Person::Safe | Person::People) => if hours { Now } else { Quiet },
         Row::People(Channel::Mail, Person::Neutral | Person::Stranger) => match column {
             Work | Admin => Now,
             Slot | Dnd => Quiet,
@@ -518,8 +544,8 @@ pub fn usual(row: Row, column: Column) -> Level {
         // Under do-not-disturb, the texts of your safe people, your contacts and
         // groups come in the shade without a sound (◑), their calls to
         // voicemail (decisions 13 and 14 of 18 October 2026).
-        Row::People(Channel::Messages, Person::Safe | Person::Neutral | Person::Groups) if column == Dnd => Quiet,
-        Row::People(Channel::Calls | Channel::Messages, Person::Safe) => if matches!(column, Sleep | Pause | Dnd) { Later } else { Now },
+        Row::People(Channel::Messages, Person::Safe | Person::People | Person::Neutral | Person::Groups) if column == Dnd => Quiet,
+        Row::People(Channel::Calls, Person::Safe) | Row::People(Channel::Messages, Person::Safe | Person::People) => if matches!(column, Sleep | Pause | Dnd) { Later } else { Now },
         // People in your address books: at work and in your admin, and in your
         // leisure and meals too (a friend's text on a weekend is not held until
         // Monday); held while you sleep, pause or take free time. A group of
@@ -822,9 +848,33 @@ impl Now {
 /// `conversation.<key>`), each with its name when written with one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attention {
-    cells: [[Level; 9]; 36],
+    cells: [[Level; 9]; ROWS],
     sources: BTreeMap<String, [Level; 9]>,
     names: BTreeMap<String, String>,
+    /// Your people's mail and messages rows that read Safe's as it stands,
+    /// each while it is not written (`follows`; review M9).
+    follows: [bool; 2],
+}
+
+/// Your people's rows that read Safe's as it stands while they are not
+/// written (review M9 of 20 November 2026): mail's and messages', by their
+/// place in `Attention::follows`. "As Safe" means as Safe is now, tuned by
+/// hand or by a preset, so that someone who was Safe yesterday loses nothing
+/// today; their calls ring at every time, as shipped, a row of their own.
+fn follower(row: Row) -> Option<usize> {
+    match row {
+        Row::People(Channel::Mail, Person::People) => Some(0),
+        Row::People(Channel::Messages, Person::People) => Some(1),
+        _ => None,
+    }
+}
+
+/// The row of Your people that follows this Safe row, mail's or messages'.
+fn following(row: Row) -> Option<Row> {
+    match row {
+        Row::People(channel @ (Channel::Mail | Channel::Messages), Person::Safe) => Some(Row::People(channel, Person::People)),
+        _ => None,
+    }
 }
 
 impl Default for Attention {
@@ -836,24 +886,30 @@ impl Default for Attention {
 impl Attention {
     /// What Sioul does unless you change it (`usual`).
     pub fn usual() -> Attention {
-        let mut cells = [[Level::Now; 9]; 36];
+        let mut cells = [[Level::Now; 9]; ROWS];
         for row in Row::ALL {
             for column in Column::ALL {
                 cells[row.index()][column.index()] = usual(row, column);
             }
         }
-        Attention { cells, sources: BTreeMap::new(), names: BTreeMap::new() }
+        Attention { cells, sources: BTreeMap::new(), names: BTreeMap::new(), follows: [true; 2] }
     }
 
     /// As the configuration says: the usual cells; while no `[attention]` is
     /// written, what the older keys changed (`seeded`); then each row's words.
     /// A fixed cell, a value not offered there and a word not understood are
     /// left aside; of two words for one column, the later counts.
+    /// Your people's mail and messages read Safe's as it stands while they
+    /// are not written (`follows`, review M9).
     pub fn of(config: &Config) -> Attention {
         let Some(settings) = config.attention.as_ref() else { return seeded(config) };
         let mut attention = Attention::usual();
         for row in Row::ALL {
-            for (column, level) in settings.words(&row.id()).unwrap_or_default().iter().filter_map(|w| word(w)) {
+            let words = settings.words(&row.id());
+            if words.is_some() {
+                attention.unfollow(row);
+            }
+            for (column, level) in words.unwrap_or_default().iter().filter_map(|w| word(w)) {
                 let _ = attention.set(row, column, level);
             }
         }
@@ -879,6 +935,20 @@ impl Attention {
         self.cells[row.index()][column.index()]
     }
 
+    /// Whether this row reads Safe's as it stands, not written (review M9):
+    /// Your people's mail or messages while nobody changed them.
+    pub fn follows(&self, row: Row) -> bool {
+        follower(row).is_some_and(|i| self.follows[i])
+    }
+
+    /// Your people's row made theirs, written whole from now on even where
+    /// it says what Sioul ships: the person changed it (review M9).
+    pub fn unfollow(&mut self, row: Row) {
+        if let Some(i) = follower(row) {
+            self.follows[i] = false;
+        }
+    }
+
     /// A cell changed; refused when it is fixed, or when the value is not one
     /// it may take (`choices`).
     pub fn set(&mut self, row: Row, column: Column, level: Level) -> Result<(), String> {
@@ -893,6 +963,11 @@ impl Attention {
             return Err(format!("attention.{}: {}: {}", row.id(), column.id(), offered.join(", ")));
         }
         self.cells[row.index()][column.index()] = level;
+        // Your people's row changed: theirs from now on; Safe's: theirs follows while not written (M9).
+        self.unfollow(row);
+        if let Some(people) = following(row).filter(|people| self.follows(*people)) {
+            self.cells[people.index()][column.index()] = level;
+        }
         Ok(())
     }
 
@@ -916,9 +991,11 @@ impl Attention {
     }
 
     /// `changes_from` over `rows` alone (the rows a page shows: review R3,
-    /// the calls' rows among them since What comes when shows them again).
+    /// the calls' rows among them since What comes when shows them again);
+    /// Your people's row that follows Safe's in both counts no change of its
+    /// own, Safe's counted already (review M9).
     pub fn changes_in(&self, other: &Attention, rows: &[Row]) -> usize {
-        rows.iter().filter(|r| !screened(**r)).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
+        rows.iter().filter(|r| !screened(**r) && !(self.follows(**r) && other.follows(**r))).flat_map(|r| Column::ALL.iter().map(move |c| (*r, *c))).filter(|(r, c)| self.cell(*r, *c) != other.cell(*r, *c)).count()
     }
 
     /// A source's own row (`app.<package>`, `conversation.<key>`): its nine
@@ -1296,18 +1373,21 @@ pub enum Source {
     Own(Kind),
     /// A message come to one of your addresses. `who` as the Porch weighs it:
     /// set aside or unproven, a stranger's (a blocked sender stays blocked);
-    /// `always`, on the Always through list.
-    Mail { who: Who, always: bool, lane: Lane },
-    /// A phone call; `who` none for a hidden number. `emergency`: an
-    /// emergency number or its callback, or within a day of calling one;
-    /// `repeat`: a second call within 15 minutes.
-    Call { who: Option<Who>, always: bool, emergency: bool, repeat: bool },
+    /// `circle`, their card one of your people's (`porch::Judged::circle`;
+    /// read only for a safe sender, so never for unproven mail); `always`, on
+    /// the Always through list.
+    Mail { who: Who, circle: bool, always: bool, lane: Lane },
+    /// A phone call; `who` none for a hidden number; `circle` as for mail.
+    /// `emergency`: an emergency number or its callback, or within a day of
+    /// calling one; `repeat`: a second call within 15 minutes.
+    Call { who: Option<Who>, circle: bool, always: bool, emergency: bool, repeat: bool },
     /// Another app's message between people (a phone): its channel (a mail
-    /// app's: mail; a missed call: calls), who wrote, a group.
-    Message { via: Channel, who: Who, group: bool, always: bool },
-    /// A site's notification (a computer): a call in it; in real time; a
-    /// person a chat site names, as your cards know their name.
-    Site { call: bool, live: bool, named: Option<Who> },
+    /// app's: mail; a missed call: calls), who wrote, their circle, a group.
+    Message { via: Channel, who: Who, circle: bool, group: bool, always: bool },
+    /// A site's notification (a computer): a call in it; in real time; the
+    /// row of a person a chat site names, as your cards know their name
+    /// (`porch::Judged::row`).
+    Site { call: bool, live: bool, named: Option<Person> },
 }
 
 /// What the Porch's lanes decide of mail (docs/attention.md, §2, step 6).
@@ -1379,9 +1459,9 @@ impl Attention {
     pub fn decide(&self, event: &Event, now: &Now) -> Output {
         match &event.source {
             Source::Own(kind) => self.own(*kind, event, now),
-            Source::Mail { who, always, lane } => self.letter(*who, *always, *lane, event, now),
-            Source::Call { who, always, emergency, repeat } => self.call(*who, *always, *emergency, *repeat, event, now),
-            Source::Message { via, who, group, always } => self.message(*via, *who, *group, *always, event, now),
+            Source::Mail { who, circle, always, lane } => self.letter(Person::of(*who, *circle), *always, *lane, event, now),
+            Source::Call { who, circle, always, emergency, repeat } => self.call(who.map(|who| Person::of(who, *circle)), *always, *emergency, *repeat, event, now),
+            Source::Message { via, who, circle, group, always } => self.message(*via, Person::of(*who, *circle), *group, *always, event, now),
             Source::Site { call, live, named } => self.site(*call, *live, *named, event, now),
         }
     }
@@ -1424,9 +1504,11 @@ impl Attention {
     /// whether the Porch shows it now, told whether new mail's notification
     /// may name it (its lane aside: `mailnote::never`).
     pub fn mail(&self, t: &crate::porch::Triaged, senders: &crate::porch::Senders, always: &crate::everywhere::People, area: Option<Area>, now: &Now) -> Output {
-        use crate::porch::{Lane as PorchLane, Reason};
+        use crate::porch::{Judged, Lane as PorchLane, Reason};
         let unproven = t.lane == PorchLane::SetAside || t.reasons.contains(&Reason::NotAuthenticated);
-        let who = if unproven { Who::Stranger } else { senders.who_of(&t.card) };
+        // Forged mail is a stranger's, whoever it claims to be: never one of your people's.
+        let judged = if unproven { Judged::stranger() } else { t.card.from_address.as_deref().map_or_else(Judged::stranger, |a| senders.judge(a)) };
+        let (who, circle) = (judged.who, judged.circle);
         let always = !unproven && t.card.from_address.as_deref().is_some_and(|address| always.admits_address(address));
         let lane = if t.lane == PorchLane::RightNow {
             Lane::Code
@@ -1435,16 +1517,17 @@ impl Attention {
         } else {
             Lane::Usual
         };
-        self.decide(&Event::of(Source::Mail { who, always, lane }).for_address(area), now)
+        self.decide(&Event::of(Source::Mail { who, circle, always, lane }).for_address(area), now)
     }
 
     /// The same for a message the Porch has not read (the mailbox, part 4,
     /// from a folder's index): its sender as `senders` weigh it (`who`, a
-    /// stranger when its sender is not proven), Always through, and `own`
-    /// for what you sent yourself (shown, never told).
-    pub fn mail_from(&self, who: Who, always: bool, own: bool, area: Option<Area>, now: &Now) -> Output {
+    /// stranger when its sender is not proven; `circle`, one of your
+    /// people's), Always through, and `own` for what you sent yourself
+    /// (shown, never told).
+    pub fn mail_from(&self, who: Who, circle: bool, always: bool, own: bool, area: Option<Area>, now: &Now) -> Output {
         let lane = if own { Lane::Own } else { Lane::Usual };
-        self.decide(&Event::of(Source::Mail { who, always, lane }).for_address(area), now)
+        self.decide(&Event::of(Source::Mail { who, circle, always, lane }).for_address(area), now)
     }
 
     fn own(&self, kind: Kind, event: &Event, now: &Now) -> Output {
@@ -1493,7 +1576,7 @@ impl Attention {
         Output { level, shown: true, told, pierce: told && kind.pierces(), step }
     }
 
-    fn letter(&self, who: Who, always: bool, lane: Lane, event: &Event, now: &Now) -> Output {
+    fn letter(&self, person: Person, always: bool, lane: Lane, event: &Event, now: &Now) -> Output {
         // Step 6, content: a code has its own row, what you sent yourself is shown and never told.
         match lane {
             Lane::Code => {
@@ -1503,7 +1586,6 @@ impl Attention {
             Lane::Own => return Output { level: Level::Quiet, shown: true, told: false, pierce: false, step: Step::Content },
             _ => {}
         }
-        let person = Person::of(who);
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
@@ -1530,20 +1612,21 @@ impl Attention {
             && !always
             && matches!(level, Level::Now | Level::Quiet)
         {
-            // An address nobody classified has no closed hours for your safe senders, on any device.
-            let narrowed = !(person == Person::Safe && event.unsaid);
+            // An address nobody classified has no closed hours for your safe senders (your people
+            // among them), on any device.
+            let narrowed = !(person.safe() && event.unsaid);
             let (hours, here) = (in_view(area, now.time, now.week), now.brings(area));
             if !hours && !(narrowed && here) {
-                match (person, level) {
-                    (Person::Safe, Level::Now) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Area),
-                    (Person::Safe, _) => {}
+                match (person.safe(), level) {
+                    (true, Level::Now) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Area),
+                    (true, _) => {}
                     _ if self.meets(Channel::Mail, person, area, now.week) => (level, step) = (Level::Later, Step::Area),
                     _ => {}
                 }
             } else if hours && !here && narrowed {
-                match (person, level) {
-                    (Person::Safe, Level::Now) if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Device),
-                    (Person::Safe, _) => {}
+                match (person.safe(), level) {
+                    (true, Level::Now) if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Device),
+                    (true, _) => {}
                     _ if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now, Level::Quiet]) => (level, step) = (Level::Later, Step::Device),
                     _ => {}
                 }
@@ -1559,12 +1642,12 @@ impl Attention {
         out
     }
 
-    fn call(&self, who: Option<Who>, always: bool, emergency: bool, repeat: bool, event: &Event, now: &Now) -> Output {
+    fn call(&self, who: Option<Person>, always: bool, emergency: bool, repeat: bool, event: &Event, now: &Now) -> Output {
         let rings = |step: Step| Output { level: Level::Now, shown: true, told: true, pierce: true, step };
         if emergency {
             return rings(Step::Emergency);
         }
-        let person = who.map_or(Person::Hidden, Person::of);
+        let person = who.unwrap_or(Person::Hidden);
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
@@ -1588,8 +1671,8 @@ impl Attention {
         out
     }
 
-    fn message(&self, via: Channel, who: Who, group: bool, always: bool, event: &Event, now: &Now) -> Output {
-        let person = if who == Who::Blocked { Person::Blocked } else if group && via == Channel::Messages { Person::Groups } else { Person::of(who) };
+    fn message(&self, via: Channel, who: Person, group: bool, always: bool, event: &Event, now: &Now) -> Output {
+        let person = if who == Person::Blocked { Person::Blocked } else if group && via == Channel::Messages { Person::Groups } else { who };
         if person == Person::Blocked {
             return Output { level: Level::Never, shown: false, told: false, pierce: false, step: Step::Blocked };
         }
@@ -1629,7 +1712,7 @@ impl Attention {
         // the hours bring and this phone does not waits, with the same people
         // let through. A cell the person changed may bring here what the hour
         // does not.
-        let safe = person == Person::Safe && (via != Channel::Mail || event.unsaid);
+        let safe = person.safe() && (via != Channel::Mail || event.unsaid);
         if !chosen
             && !now.reachable
             && level == Level::Now
@@ -1645,7 +1728,7 @@ impl Attention {
         out
     }
 
-    fn site(&self, call: bool, live: bool, named: Option<Who>, event: &Event, now: &Now) -> Output {
+    fn site(&self, call: bool, live: bool, named: Option<Person>, event: &Event, now: &Now) -> Output {
         let kind = if call {
             Kind::SiteCalls
         } else if live || now.realtime {
@@ -1656,11 +1739,11 @@ impl Attention {
         let mut level = self.level(Row::Own(kind), now);
         let mut step = Step::Matrix;
         // A chat site naming someone your cards know: their messages' row, which may only hold more.
-        if let Some(who) = named {
-            let theirs = self.person(Channel::Messages, Person::of(who), false, now);
+        if let Some(person) = named {
+            let theirs = self.person(Channel::Messages, person, false, now);
             if theirs > level {
                 level = if theirs == Level::Never { Level::Never } else { Level::Later };
-                step = if who == Who::Blocked { Step::Blocked } else { Step::Matrix };
+                step = if person == Person::Blocked { Step::Blocked } else { Step::Matrix };
             }
         }
         // What it is for, by the hour and by this device: a site for an area that does not come
@@ -1735,6 +1818,16 @@ pub struct Phone {
     /// beyond them: review of part 2, F3). The Calls rows of strangers and
     /// hidden numbers are no part of it any more: the screening is apart.
     pub unknown: bool,
+    /// Contacts ▸ Your people holds someone (`persons::Circle`): their row
+    /// lets the mode through where it says at once (their calls at every
+    /// time, as Sioul ships it), on a phone that screens calls alone, where
+    /// the mode lets every contact through, Sioul having declined the
+    /// others. Nobody there: their row opens no mode. Your people are never
+    /// starred (review H2 to H4, 20 November 2026): on a phone that does not
+    /// screen, or for messages, which a mode lets through for the starred
+    /// alone, their row opens nothing, so that the starred of your list never
+    /// ring where their own row says voicemail (review L11).
+    pub people: bool,
 }
 
 impl Attention {
@@ -1759,7 +1852,9 @@ impl Attention {
             // While this phone screens calls, numbers nobody knows are the screening's, apart from the matrix,
             // and never ring where your contacts' row declines (review of part 2, F3).
             let strangers = if channel == Channel::Calls && own { phone.unknown && passes(channel, Person::Neutral) } else { [Person::Stranger, Person::Hidden, Person::Groups].iter().any(|p| persons(channel).contains(p) && passes(channel, *p)) };
-            let known = [Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| passes(channel, *p));
+            // Your people count where the mode lets every contact through (`own`, a phone that screens
+            // calls), never where it lets the starred alone: they are not starred (`Phone::people`).
+            let known = [Person::People, Person::Safe, Person::Neutral, Person::Restricted].iter().any(|p| (*p != Person::People || (own && phone.people)) && passes(channel, *p));
             match (own, strangers, known || always(channel)) {
                 (true, true, _) => Senders::Anyone,
                 (true, false, true) => Senders::Contacts,
@@ -1836,6 +1931,8 @@ impl Preset {
         let mut matrix = Attention::usual();
         let changes: &[(Row, &[Column], Level)] = match self {
             Preset::Usual => &[],
+            // Your people's mail and messages go as your safe senders' (their rows follow Safe's
+            // while not written: review M9), never louder than them; a preset writes none of theirs.
             Preset::Quieter => &[
                 (Row::People(Channel::Mail, Person::Safe), &[Leisure, Meals], Quiet),
                 (Row::People(Channel::Messages, Person::Neutral), &[Leisure, Meals], Later),
@@ -1961,9 +2058,9 @@ pub fn seeded(config: &Config) -> Attention {
 }
 
 /// What the older keys made Sioul do, written as cells (docs/attention.md, §5).
-fn older(config: &Config) -> [[Level; 9]; 36] {
+fn older(config: &Config) -> [[Level; 9]; ROWS] {
     use Column::*;
-    let mut cells = [[Level::Now; 9]; 36];
+    let mut cells = [[Level::Now; 9]; ROWS];
     // `[notify]`: each kind's row, as `column[:value]` words.
     let notify = |row: &str, column: Column| -> &'static str {
         let usual = older_notify(row, column);
@@ -2204,6 +2301,7 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
             return Err(screened_refusal(key));
         }
         let ticked: Vec<Column> = words.iter().filter_map(|w| Column::read(w)).collect();
+        attention.unfollow(row);
         for column in [Column::Work, Column::Admin, Column::Leisure, Column::Meals, Column::Sleep, Column::Pause] {
             let comes = matches!(attention.cell(row, column), Level::Now | Level::Quiet);
             let level = match (ticked.contains(&column), comes) {
@@ -2233,6 +2331,8 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
     if screened(row) {
         return Err(screened_refusal(key));
     }
+    // Your people's row named: theirs from now on, even where it says what Safe says (review M9).
+    attention.unfollow(row);
     for text in words {
         let (column, level) = word(text).ok_or_else(|| format!("{key}: {text}: not understood"))?;
         attention.set(row, column, level)?;
@@ -2254,6 +2354,7 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9]
             if screened(*row) {
                 return Err(screened_refusal(&format!("attention.{}", row.id())));
             }
+            attention.unfollow(*row);
             for (column, level) in Column::ALL.iter().zip(cells) {
                 if let Some(level) = level {
                     attention.set(*row, *column, *level)?;
@@ -2291,6 +2392,9 @@ pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), 
 
 /// `rows` written as `attention` has them, each whole or taken out when
 /// usual; the first time, every row that is not usual too, and the older keys out.
+/// Your people's mail and messages are taken out while they follow Safe's,
+/// and once theirs written whole, even where they say what Sioul ships
+/// (review M9).
 fn write(path: &Path, config: &Config, attention: &Attention, rows: &[Row]) -> Result<(), String> {
     write_with(path, config, attention, rows, &[])
 }
@@ -2310,7 +2414,10 @@ fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row],
         .filter(|r| !matches!(r, Row::People(_, Person::Blocked)))
         .map(|row| {
             let attention = if screened(*row) { &now } else { attention };
-            let same = Column::ALL.iter().all(|c| attention.cell(*row, *c) == usual.cell(*row, *c));
+            if attention.follows(*row) {
+                return (row.id(), None);
+            }
+            let same = follower(*row).is_none() && Column::ALL.iter().all(|c| attention.cell(*row, *c) == usual.cell(*row, *c));
             (row.id(), (!same).then(|| attention.words(*row)))
         })
         .collect();
@@ -2717,11 +2824,12 @@ pub fn source_sentence(attention: &Attention, tr: &Translator, id: &str) -> Stri
 /// A state with the times its mail comes or shows, for a list's choice:
 /// "Your contacts: work, admin", "Safe: any time", "Blocked: never"; `one`: as
 /// said of one person (French says "Sûr" of a person, "Sûrs" of the list).
+/// A list chosen by hand, never the circle Your people.
 pub fn list_choice(tr: &Translator, who: Who, attention: &Attention, one: bool) -> String {
     let times: Vec<Column> = if who == Who::Blocked {
         Vec::new()
     } else {
-        Column::TIMES.iter().copied().filter(|c| *c != Column::Free).filter(|c| matches!(attention.cell(Row::People(Channel::Mail, Person::of(who)), *c), Level::Now | Level::Quiet)).collect()
+        Column::TIMES.iter().copied().filter(|c| *c != Column::Free).filter(|c| matches!(attention.cell(Row::People(Channel::Mail, Person::of(who, false)), *c), Level::Now | Level::Quiet)).collect()
     };
     let words = if times.len() == 6 {
         tr.text("reach-any", None)
@@ -2777,12 +2885,15 @@ mod tests {
     fn the_usual_matrix_as_decided() {
         let expected = [
             ("mail.always", "●●●●◑◑●●●"),
+            // Your people (decision of 20 November 2026): Safe's mail and messages, calls at every time.
+            ("mail.people", "●●●●◑◑◑◑◑"),
             ("mail.safe", "●●●●◑◑◑◑◑"),
             ("mail.neutral", "●●○○○○○◑◑"),
             ("mail.restricted", "●○○○○○○◑◑"),
             ("mail.stranger", "●●○○○○○◑◑"),
             ("mail.blocked", "–––––––––"),
             ("calls.always", "●●●●●●●●●"),
+            ("calls.people", "●●●●●●●●●"),
             ("calls.safe", "●●●●○○●●○"),
             ("calls.neutral", "●●●●○○○●○"),
             ("calls.restricted", "●○○○○○○●○"),
@@ -2790,6 +2901,7 @@ mod tests {
             ("calls.hidden", "●●○○○○○●○"),
             ("calls.blocked", "–––––––––"),
             ("messages.always", "●●●●●●●●●"),
+            ("messages.people", "●●●●○○●●◑"),
             ("messages.safe", "●●●●○○●●◑"),
             ("messages.neutral", "●●●●○○○●◑"),
             ("messages.restricted", "●○○○○○○●○"),
@@ -2827,6 +2939,14 @@ mod tests {
         }
         assert_eq!(Attention::of(&Config::default()), usual, "an empty configuration is the usual matrix");
         assert_eq!(Row::read("calls.groups"), None, "calls have no groups' row");
+        for channel in Channel::ALL {
+            assert_eq!(&persons(channel)[..3], &[Person::Always, Person::People, Person::Safe], "Your people between Always through and Safe");
+            for column in Column::ALL {
+                if channel != Channel::Calls {
+                    assert_eq!(usual.cell(Row::People(channel, Person::People), column), usual.cell(Row::People(channel, Person::Safe), column), "{channel:?} {column:?}: as Safe");
+                }
+            }
+        }
         assert_eq!(Row::read("Day_Before"), Some(Row::Own(Kind::DayBefore)));
     }
 
@@ -2980,12 +3100,12 @@ mod tests {
                 let said = format!("{:?} {:?} slot {slot} dnd {dnd}", m.time, m.reason);
                 for who in [Who::Safe, Who::Neutral, Who::Restricted, Who::Stranger] {
                     // Mail shown on the Porch: as before, but no hours set now read as work and admin (the same, as usual).
-                    let mail = a.decide(&Event::of(Source::Mail { who, always: false, lane: Lane::Usual }), &now);
+                    let mail = a.decide(&Event::of(Source::Mail { who, circle: false, always: false, lane: Lane::Usual }), &now);
                     assert_eq!(mail.shown, shown_before(who, m.time, m.paused(), m.free()), "shown {who:?} {said}");
                     assert_eq!(mail.told, told_before(who, false, &m, slot, dnd), "told {who:?} {said}");
                     // The list's people (Q2): before, told under do-not-disturb when their row let them through,
                     // else as their row; now at once whatever their row, but shown, not told, in sleep and a pause.
-                    let listed = a.decide(&Event::of(Source::Mail { who, always: true, lane: Lane::Usual }), &now);
+                    let listed = a.decide(&Event::of(Source::Mail { who, circle: false, always: true, lane: Lane::Usual }), &now);
                     assert!(!told_before(who, true, &m, slot, dnd) || listed.told, "nothing told before is held now: {who:?} {said}");
                     assert_eq!(listed.told, !(m.sleeps() || m.paused()), "listed {who:?} {said}");
                     assert_eq!(listed.pierce, listed.told, "Always through mail passes the system's do-not-disturb {said}");
@@ -3010,7 +3130,7 @@ mod tests {
         let night = Now::of(&mode(Time::Sleep, Reason::Sleep));
         let paused = Now::of(&mode(Time::Sleep, Reason::Paused));
         let free = Now::of(&mode(Time::Leisure, Reason::FreeTime));
-        let message = |who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, group: false, always }), now);
+        let message = |who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle: false, group: false, always }), now);
         // Q4: a safe friend's message at 03:00 waits for waking (before: let through); in Free time it comes.
         assert!(!message(Who::Safe, false, &night).told && !message(Who::Safe, false, &paused).told);
         assert!(message(Who::Safe, false, &free).told);
@@ -3018,7 +3138,7 @@ mod tests {
         assert!(message(Who::Neutral, true, &night).told && message(Who::Neutral, true, &paused).told);
         // Q3: blocked beats Always through.
         assert_eq!(message(Who::Blocked, true, &night).step, Step::Blocked);
-        let call = |who: Option<Who>, always: bool, now: &Now| a.decide(&Event::of(Source::Call { who, always, emergency: false, repeat: false }), now);
+        let call = |who: Option<Who>, always: bool, now: &Now| a.decide(&Event::of(Source::Call { who, circle: false, always, emergency: false, repeat: false }), now);
         assert!(call(Some(Who::Blocked), true, &Now::time(Column::Work)).level == Level::Never);
         assert!(call(Some(Who::Stranger), true, &night).told, "on the list, at any time");
         // Q11: calls carry the layers: a safe caller under the switch goes to voicemail, the list's rings.
@@ -3029,30 +3149,30 @@ mod tests {
         through.through = true;
         assert!(call(Some(Who::Stranger), false, &through).told && call(None, false, &through).told && !call(Some(Who::Blocked), false, &through).told);
         assert!(!call(Some(Who::Neutral), false, &through).told, "the people you know as their row says");
-        let repeat = a.decide(&Event::of(Source::Call { who: None, always: false, emergency: false, repeat: true }), &night);
+        let repeat = a.decide(&Event::of(Source::Call { who: None, circle: false, always: false, emergency: false, repeat: true }), &night);
         assert!(!repeat.told, "hidden numbers cannot be told apart: no second call");
-        assert!(a.decide(&Event::of(Source::Call { who: Some(Who::Blocked), always: false, emergency: true, repeat: false }), &night).told, "an emergency number rings, even blocked");
+        assert!(a.decide(&Event::of(Source::Call { who: Some(Who::Blocked), circle: false, always: false, emergency: true, repeat: false }), &night).told, "an emergency number rings, even blocked");
         // Q5: a mail app's notification takes the Mail rows, shown-not-told held: a safe sender at 03:00 waits.
-        let mail_app = a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, group: false, always: false }), &night);
+        let mail_app = a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, circle: false, group: false, always: false }), &night);
         assert_eq!((mail_app.level, mail_app.told), (Level::Later, false));
         // Q22: groups have a row of their own, as strangers until changed.
         let mut groups = Attention::usual();
         groups.set(row("messages.groups"), Column::Work, Level::Later).unwrap();
         let work = Now::time(Column::Work);
-        let group = groups.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Safe, group: true, always: false }), &work);
-        let stranger = groups.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Stranger, group: false, always: false }), &work);
+        let group = groups.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Safe, circle: false, group: true, always: false }), &work);
+        let stranger = groups.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Stranger, circle: false, group: false, always: false }), &work);
         assert!(!group.told && stranger.told);
         // Q15: Free time as cells: a neutral row's Free cell let through (before: code, the safe only).
         let mut cells = Attention::usual();
         cells.set(row("mail.neutral"), Column::Free, Level::Now).unwrap();
-        assert!(cells.decide(&Event::of(Source::Mail { who: Who::Neutral, always: false, lane: Lane::Usual }), &free).told);
+        assert!(cells.decide(&Event::of(Source::Mail { who: Who::Neutral, circle: false, always: false, lane: Lane::Usual }), &free).told);
         // Q14: no hours set: mail reads work and admin; a neutral row held in both is held (before: everything came).
         let mut held = Attention::usual();
         held.set(row("mail.neutral"), Column::Work, Level::Later).unwrap();
         held.set(row("mail.neutral"), Column::Admin, Level::Later).unwrap();
-        assert!(!held.decide(&Event::of(Source::Mail { who: Who::Neutral, always: false, lane: Lane::Usual }), &Now::of(&mode(Time::Any, Reason::NoHours))).shown);
+        assert!(!held.decide(&Event::of(Source::Mail { who: Who::Neutral, circle: false, always: false, lane: Lane::Usual }), &Now::of(&mode(Time::Any, Reason::NoHours))).shown);
         // Q13: a chat site naming someone your cards know: their row, which may only hold more.
-        let site = |named: Option<Who>, now: &Now| a.decide(&Event::of(Source::Site { call: false, live: true, named }), now);
+        let site = |named: Option<Who>, now: &Now| a.decide(&Event::of(Source::Site { call: false, live: true, named: named.map(|who| Person::of(who, false)) }), now);
         assert!(site(None, &Now::time(Column::Leisure)).told);
         assert!(site(Some(Who::Neutral), &Now::time(Column::Leisure)).told, "someone of your address books comes in your leisure");
         assert!(!site(Some(Who::Neutral), &Now::time(Column::Sleep)).told, "and waits while you sleep");
@@ -3180,7 +3300,7 @@ mod tests {
         let a = Attention::usual();
         let (computer, phone) = (Line::for_area(Area::WORK), Line::for_area(Area::PERSONAL));
         let on = |mine: Line, other: Line, time: Time, reason: Reason| Now::of(&mode(time, reason).on(&Lines::of(mine, &[other])));
-        let mail = |area: Area, who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, always, lane: Lane::Usual }).for_area(Some(area)), now);
+        let mail = |area: Area, who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, circle: false, always, lane: Lane::Usual }).for_area(Some(area)), now);
         // A friend's mail to the personal address in the evening: told on the phone; on the work computer, shown on the Porch, not told.
         let (evening_computer, evening_phone) = (on(computer, phone, Time::Leisure, Reason::Evening), on(phone, computer, Time::Leisure, Reason::Evening));
         let there = mail(Area::PERSONAL, Who::Safe, false, &evening_phone);
@@ -3204,11 +3324,11 @@ mod tests {
         reachable.reachable = true;
         let open = mail(Area::PERSONAL, Who::Stranger, false, &reachable);
         assert!(open.told);
-        let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, always: false, lane: Lane::Usual }).for_address(None), now);
+        let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, circle: false, always: false, lane: Lane::Usual }).for_address(None), now);
         assert!(unsaid(Who::Safe, &work_phone).told, "no device keeps it back");
         assert!(unsaid(Who::Safe, &evening_computer).told);
         assert_eq!(unsaid(Who::Neutral, &work_phone).step, Step::Device, "the others': work's, as unsaid says");
-        let code = a.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Code }).for_area(Some(Area::WORK)), &evening_phone);
+        let code = a.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }).for_area(Some(Area::WORK)), &evening_phone);
         assert!(code.told);
         // A cell the person changed: friends reach the phone during work, which the hour does not bring; on
         // the computer the hour still holds it, shown.
@@ -3258,11 +3378,11 @@ mod tests {
         }
         // Another app's notification on the phone: an app for work waits there in working hours; a safe
         // person's chat in it still comes, and Always through's.
-        let app = |who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, group: false, always }).for_area(Some(Area::WORK)), now);
+        let app = |who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle: false, group: false, always }).for_area(Some(Area::WORK)), now);
         assert_eq!(app(Who::Neutral, false, &work_phone).step, Step::Device);
         assert!(app(Who::Safe, false, &work_phone).told && app(Who::Neutral, true, &work_phone).told && app(Who::Neutral, false, &work_computer).told);
         // A call never reads what a device is for.
-        let call = |now: &Now| a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), always: false, emergency: false, repeat: false }).for_area(Some(Area::WORK)), now);
+        let call = |now: &Now| a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), circle: false, always: false, emergency: false, repeat: false }).for_area(Some(Area::WORK)), now);
         assert_eq!(call(&work_phone), call(&Now::of(&mode(Time::Work, Reason::Working))));
     }
 
@@ -3292,16 +3412,16 @@ mod tests {
                         for who in whos {
                             for always in [false, true] {
                                 for lane in [Lane::Usual, Lane::Code, Lane::Own, Lane::Untold] {
-                                    same(Event::of(Source::Mail { who, always, lane }).for_area(area));
-                                    same(Event::of(Source::Mail { who, always, lane }).for_address(area));
+                                    same(Event::of(Source::Mail { who, circle: false, always, lane }).for_area(area));
+                                    same(Event::of(Source::Mail { who, circle: false, always, lane }).for_address(area));
                                 }
                                 for via in [Channel::Mail, Channel::Messages, Channel::Calls] {
-                                    same(Event::of(Source::Message { via, who, group: false, always }).for_area(area));
+                                    same(Event::of(Source::Message { via, who, circle: false, group: false, always }).for_area(area));
                                 }
-                                same(Event::of(Source::Call { who: Some(who), always, emergency: false, repeat: false }).for_area(area));
+                                same(Event::of(Source::Call { who: Some(who), circle: false, always, emergency: false, repeat: false }).for_area(area));
                             }
                             for (call, live) in [(false, false), (false, true), (true, true)] {
-                                same(Event::of(Source::Site { call, live, named: Some(who) }).for_area(area));
+                                same(Event::of(Source::Site { call, live, named: Some(Person::of(who, false)) }).for_area(area));
                             }
                         }
                         walked += 1;
@@ -3317,7 +3437,7 @@ mod tests {
         let a = Attention::usual();
         let evening = Now::of(&mode(Time::Leisure, Reason::Evening));
         let admin = Now::of(&mode(Time::Admin, Reason::AdminTime));
-        let to = |area: Area, who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, always, lane: Lane::Usual }).for_area(Some(area)), now);
+        let to = |area: Area, who: Who, always: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, circle: false, always, lane: Lane::Usual }).for_area(Some(area)), now);
         let work_mail = |who: Who| to(Area::WORK, who, false, &admin);
         // A stranger to the work address in admin time: held for work, off the Porch.
         let stranger = work_mail(Who::Stranger);
@@ -3340,23 +3460,23 @@ mod tests {
         assert!(to(Area::WORK, Who::Safe, false, &reachable).told && to(Area::WORK, Who::Stranger, false, &reachable).told);
         // An address you did not classify (no area said): work's hours for the others, but no
         // closed hours for your safe senders, told at their times, as before (review of phase 2, M8).
-        let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, always: false, lane: Lane::Usual }).for_address(None), now);
+        let unsaid = |who: Who, now: &Now| a.decide(&Event::of(Source::Mail { who, circle: false, always: false, lane: Lane::Usual }).for_address(None), now);
         assert!(unsaid(Who::Safe, &evening).told && unsaid(Who::Safe, &admin).told);
         assert_eq!((unsaid(Who::Neutral, &admin).step, unsaid(Who::Neutral, &admin).told), (Step::Area, false), "the others wait for work, as unsaid says");
         let said = to(Area::WORK, Who::Safe, false, &evening);
         assert!(!said.told, "said work: held, as above");
-        let app_unsaid = a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, group: false, always: false }).for_address(None), &evening);
+        let app_unsaid = a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, circle: false, group: false, always: false }).for_address(None), &evening);
         assert!(app_unsaid.told, "a mail app's notification to it alike");
         // Your safe senders' row shows without telling where the address is open (Quieter's ◑ in
         // leisure and meals): no time to wait for, so the row alone decides (review of phase 2, L3).
         let quieter = Preset::Quieter.matrix();
-        let leisure_only = |now: &Now| quieter.decide(&Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Usual }).for_area(Some(Area::LEISURE)), now);
+        let leisure_only = |now: &Now| quieter.decide(&Event::of(Source::Mail { who: Who::Safe, circle: false, always: false, lane: Lane::Usual }).for_area(Some(Area::LEISURE)), now);
         let at_ten = Now::of(&mode(Time::Work, Reason::Working));
         assert!(leisure_only(&at_ten).told, "told at 10:00, never waiting for good");
         assert!(!leisure_only(&evening).told && leisure_only(&evening).shown, "in leisure, its row's ◑");
         // A mail app's notification of the same message on a phone: held until then too; a safe
         // person's chat in an app for work still comes.
-        let app = |via: Channel| a.decide(&Event::of(Source::Message { via, who: Who::Safe, group: false, always: false }).for_area(Some(Area::WORK)), &evening);
+        let app = |via: Channel| a.decide(&Event::of(Source::Message { via, who: Who::Safe, circle: false, group: false, always: false }).for_area(Some(Area::WORK)), &evening);
         assert_eq!((app(Channel::Mail).told, app(Channel::Mail).step), (false, Step::Area));
         assert!(app(Channel::Messages).told);
         // Work's dates wait while work rests.
@@ -3370,7 +3490,7 @@ mod tests {
         // The Porch resting after a pause: shown, not told.
         let mut rests = Now::time(Column::Work);
         rests.holds.porch_rests = true;
-        let resting = a.decide(&Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Usual }), &rests);
+        let resting = a.decide(&Event::of(Source::Mail { who: Who::Safe, circle: false, always: false, lane: Lane::Usual }), &rests);
         assert_eq!((resting.shown, resting.told, resting.step), (true, false, Step::Hold));
         // A meeting: no meal's notice; the chat limit: chat sites wait.
         let mut meeting = Now::time(Column::Work);
@@ -3378,15 +3498,15 @@ mod tests {
         assert_eq!(a.decide(&Event::own(Kind::Needs), &meeting).step, Step::Hold);
         // Codes: on top of the Porch, told as their row: in sleep, on the Porch only (decision 5
         // of 13 November 2026), told in a pause and at every other time; your own mail never told.
-        let code = |now: &Now| a.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Code }), now);
+        let code = |now: &Now| a.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }), now);
         let asleep = code(&Now::of(&mode(Time::Sleep, Reason::Sleep)));
         assert!(asleep.shown && !asleep.told && !asleep.pierce);
         let paused = code(&Now::of(&mode(Time::Sleep, Reason::Paused)));
         assert!(paused.shown && paused.told && paused.pierce);
         let mut chose = Attention::usual();
         chose.set(row("codes"), Column::Sleep, Level::Now).unwrap();
-        assert!(chose.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Code }), &Now::of(&mode(Time::Sleep, Reason::Sleep))).told, "At once stays a choice in sleep");
-        let own = a.decide(&Event::of(Source::Mail { who: Who::Safe, always: false, lane: Lane::Own }), &Now::time(Column::Work));
+        assert!(chose.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }), &Now::of(&mode(Time::Sleep, Reason::Sleep))).told, "At once stays a choice in sleep");
+        let own = a.decide(&Event::of(Source::Mail { who: Who::Safe, circle: false, always: false, lane: Lane::Own }), &Now::time(Column::Work));
         assert!(own.shown && !own.told);
     }
 
@@ -3417,10 +3537,10 @@ mod tests {
                     assert_eq!(a.person(Channel::Calls, person, false, &now), a.person(Channel::Calls, person, false, &usual), "{person:?} at {column:?}");
                 }
                 // Mail to an address for another time, from a stranger: shown and told, the Porch resting or not.
-                let mail = a.decide(&Event::of(Source::Mail { who: Who::Stranger, always: false, lane: Lane::Usual }).for_area(Some(Area::WORK)), &now);
+                let mail = a.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Usual }).for_area(Some(Area::WORK)), &now);
                 assert!(mail.shown && mail.told && mail.level == Level::Now, "{column:?}: {mail:?}");
                 // A stranger's message and a group's: at once.
-                let message = |who: Who, group: bool| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, group, always: false }), &now).level;
+                let message = |who: Who, group: bool| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle: false, group, always: false }), &now).level;
                 assert_eq!((message(Who::Stranger, false), message(Who::Neutral, true)), (Level::Now, Level::Now));
                 assert_eq!(message(Who::Blocked, false), Level::Never);
             }
@@ -3430,7 +3550,7 @@ mod tests {
         rows.set_source("conversation.c2", Column::Work, Level::Later).unwrap();
         let mut now = Now::time(Column::Work);
         now.reachable = true;
-        let talk = |id: &str| rows.decide(&Event { sources: vec![id.to_string()], ..Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: false }) }, &now).level;
+        let talk = |id: &str| rows.decide(&Event { sources: vec![id.to_string()], ..Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, circle: false, group: false, always: false }) }, &now).level;
         assert_eq!(talk("conversation.c2"), Level::Now);
         // Sioul's own rows as they are: dates at night still wait.
         let mut night = Now::time(Column::Sleep);
@@ -3445,7 +3565,7 @@ mod tests {
     #[test]
     fn a_mode_lets_nobody_unknown_through_where_your_contacts_wait() {
         let a = Attention::usual();
-        let unknown = Phone { screens: true, unknown: true };
+        let unknown = Phone { screens: true, unknown: true, people: false };
         assert_eq!(a.silence(&[Column::Work], false, unknown).calls, Senders::Anyone);
         assert_eq!(a.silence(&[Column::Work, Column::Dnd], false, unknown).calls, Senders::Contacts);
         assert_eq!(a.silence(&[Column::Dnd], false, unknown).calls, Senders::Contacts);
@@ -3482,7 +3602,7 @@ mod tests {
     #[test]
     fn what_each_mode_lets_through() {
         let a = Attention::usual();
-        let phone = Phone { screens: true, unknown: false };
+        let phone = Phone { screens: true, unknown: false, people: false };
         // The pause: Always through only, their calls through the mode as contacts' while this phone screens; doses and alarms pass.
         let pause = a.silence(&[Column::Pause], false, phone);
         assert_eq!((pause.calls, pause.messages, pause.repeat, pause.conversations, pause.doses, pause.events), (Senders::Contacts, Senders::Starred, true, true, true, true));
@@ -3524,14 +3644,14 @@ mod tests {
         // While this phone screens calls, numbers nobody knows are the call screening's, apart: anyone's call
         // through the mode when it lets them ring and your contacts may ring then (before: the Calls rows of
         // strangers and hidden numbers).
-        let unknown = Phone { screens: true, unknown: true };
+        let unknown = Phone { screens: true, unknown: true, people: false };
         assert_eq!(a.silence(&[Column::Work], false, unknown).calls, Senders::Anyone);
         assert_eq!(a.silence(&[Column::Pause], false, unknown).calls, Senders::Contacts, "never where your contacts wait");
         assert_eq!(a.silence(&[Column::Pause], false, phone).calls, Senders::Contacts);
         let mut loose = Attention::usual();
         loose.set(row("calls.stranger"), Column::Dnd, Level::Now).unwrap();
         assert_eq!(loose.silence(&[Column::Dnd], false, phone).calls, Senders::Contacts, "the strangers' row is the screening's now");
-        assert_eq!(Attention::usual().silence(&[Column::Work], false, Phone { screens: false, unknown: true }).calls, Senders::Starred, "without screening, starred only");
+        assert_eq!(Attention::usual().silence(&[Column::Work], false, Phone { screens: false, unknown: true, people: false }).calls, Senders::Starred, "without screening, starred only");
         // Do-not-disturb over the time now, as `level` reads a layer (before: the layer's column alone): a cell
         // loosened under the switch lets no more through than the time does. Restricted alone: work only.
         let mut only = none.clone();
@@ -3673,7 +3793,7 @@ mod tests {
     #[test]
     fn texts_in_the_shade_come_while_the_phone_is_silenced() {
         let a = Attention::usual();
-        let message = |person: Who, group: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: person, group, always: false }), now).level;
+        let message = |person: Who, group: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: person, circle: false, group, always: false }), now).level;
         let mut dnd = Now::time(Column::Work).layers(false, true);
         for (who, group) in [(Who::Safe, false), (Who::Neutral, false), (Who::Neutral, true)] {
             assert_eq!(message(who, group, &dnd), Level::Later, "{who:?} {group}: not silenced, it waits");
@@ -3688,14 +3808,14 @@ mod tests {
         assert_eq!(message(Who::Neutral, false, &night), Level::Later, "at night, whatever");
         // A mail app's notification, its cell ◑ (safe senders at night, under do-not-disturb): held
         // on the phone, silenced or not (review of part 4, S-1).
-        let mail = |now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, group: false, always: false }), now).level;
+        let mail = |now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Mail, who: Who::Safe, circle: false, group: false, always: false }), now).level;
         for column in [Column::Sleep, Column::Pause, Column::Work] {
             let mut now = Now::time(column).layers(false, column == Column::Work);
             now.silenced = true;
             assert_eq!(a.cell(Row::People(Channel::Mail, Person::Safe), if column == Column::Work { Column::Dnd } else { column }), Level::Quiet);
             assert_eq!(mail(&now), Level::Later, "mail at {column:?}, the phone silenced: held, as before");
         }
-        let call = a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), always: false, emergency: false, repeat: false }), &dnd);
+        let call = a.decide(&Event::of(Source::Call { who: Some(Who::Neutral), circle: false, always: false, emergency: false, repeat: false }), &dnd);
         assert!(!call.told, "a call under do-not-disturb: voicemail");
         // The phone's mode under do-not-disturb lets no more texts ring than before: the starred at most.
         let silence = a.silence_at(&Now::time(Column::Work).layers(false, true), Phone::default());
@@ -3749,7 +3869,7 @@ mod tests {
         rows.set_source("app.org.example.chat", Column::Work, Level::Now).unwrap();
         rows.set_source("app.org.example.chat", Column::Sleep, Level::Now).unwrap();
         let work = Now::time(Column::Work);
-        let text = |rows: &Attention, who: Who, always: bool, sources: Vec<String>, now: &Now| rows.decide(&Event::of(Source::Message { via: Channel::Messages, who, group: false, always }).from_sources(sources), now).level;
+        let text = |rows: &Attention, who: Who, always: bool, sources: Vec<String>, now: &Now| rows.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle: false, group: false, always }).from_sources(sources), now).level;
         let with = |conversation: &str| source_rows_with("org.example.chat", conversation, std::slice::from_ref(&person));
         assert_eq!(with("c1"), vec!["conversation.c1".to_string(), person.clone(), "app.org.example.chat".to_string()], "conversation, person, app");
         assert_eq!(text(&rows, Who::Neutral, false, with(""), &work), Level::Later, "the person's row over the app's");
@@ -3757,9 +3877,9 @@ mod tests {
         rows.set_source("conversation.c1", Column::Work, Level::Now).unwrap();
         assert_eq!(text(&rows, Who::Neutral, false, with("c1"), &work), Level::Now, "the conversation's over the person's");
         assert_eq!(text(&rows, Who::Blocked, false, with("c1"), &work), Level::Never, "the blocked first");
-        assert_eq!(text(&rows, Who::Neutral, true, with(""), &work), rows.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: true }), &work).level, "Always through: no row of their own");
+        assert_eq!(text(&rows, Who::Neutral, true, with(""), &work), rows.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, circle: false, group: false, always: true }), &work).level, "Always through: no row of their own");
         // Their calls: held at work, at once in leisure (the list's usual otherwise).
-        let call = |rows: &Attention, who: Option<Who>, now: &Now| rows.decide(&Event::of(Source::Call { who, always: false, emergency: false, repeat: false }).from_sources(vec![person.clone()]), now).told;
+        let call = |rows: &Attention, who: Option<Who>, now: &Now| rows.decide(&Event::of(Source::Call { who, circle: false, always: false, emergency: false, repeat: false }).from_sources(vec![person.clone()]), now).told;
         assert!(!call(&rows, Some(Who::Neutral), &work), "held at work by their row");
         // Reachable: the people you know ring, their own row as their list, as their texts come (review of part 6, F1).
         let mut reachable = Now::time(Column::Work);
@@ -3858,7 +3978,7 @@ mod tests {
             let mut a = Attention::usual();
             a.set(row("mail.neutral"), Column::Leisure, Level::Now).unwrap();
             let grid = grid(&a, &tr, &Row::ALL, Preset::Usual);
-            assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.presets.len()), (9, 36, 8, 3));
+            assert_eq!((grid.columns.len(), grid.rows.len(), grid.marks.len(), grid.presets.len()), (9, ROWS, 8, 3));
             assert!(grid.rows.iter().find(|r| r.id == "mail.neutral").unwrap().changed && !grid.presets[0].current && grid.presets[0].changes == 1);
             assert!(!grid.changed.is_empty());
             let words = grid
@@ -3897,7 +4017,7 @@ mod tests {
         let app = "app.com.example.chat".to_string();
         let talk = "conversation.0123456789abcdef".to_string();
         let both = vec![talk.clone(), app.clone()];
-        let message = |who: Who, group: bool| Event::of(Source::Message { via: Channel::Messages, who, group, always: false });
+        let message = |who: Who, group: bool| Event::of(Source::Message { via: Channel::Messages, who, circle: false, group, always: false });
         let at = |column: Column| Now::time(column);
         let usual = Attention::usual();
         // Nothing set: every person, every time, layer or none, as before.
@@ -3940,7 +4060,7 @@ mod tests {
         c.set_source(&app, Column::Dnd, Level::Now).unwrap();
         assert_eq!(c.decide(&stranger, &at(Column::Leisure).layers(false, true)).level, Level::Now);
         // Someone Always through stays so, whatever the app's row says.
-        let listed = Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, group: false, always: true }).from_sources(both.clone());
+        let listed = Event::of(Source::Message { via: Channel::Messages, who: Who::Neutral, circle: false, group: false, always: true }).from_sources(both.clone());
         assert_eq!(a.decide(&listed, &at(Column::Sleep)).level, Level::Now);
         // A conversation's choice wins over its app's.
         a.set_source(&talk, Column::Leisure, Level::Now).unwrap();
@@ -4028,6 +4148,297 @@ mod tests {
         assert!(!text.contains("example.chat") && Attention::of(&Config::load(&path).unwrap()).sources().is_empty(), "{text}");
         // An older Sioul's reading leaves it aside: no row of the matrix is a source's.
         assert!(Row::read("app.com.example.chat").is_none() && Row::read("conversation.0123").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Your people (decision of 20 November 2026) reach you by the row Your
+    /// people on every channel, wherever the circle is passed: their calls
+    /// ring at every time, sleep, a pause and do-not-disturb included, as a
+    /// safe caller's do not; their mail and messages go as Safe's until
+    /// changed, and each change of their row moves them alone. The circle is
+    /// read for a sender judged safe only: the blocked stay blocked, mail
+    /// nothing proves is a stranger's; Always through wins, and its "As
+    /// their list" reads Your people's row; they count as safe for what an
+    /// address or an app is for (step 8); a mode lets their calls through.
+    #[test]
+    fn your_people_reach_you_by_their_own_row() {
+        let usual = Attention::usual();
+        let night = Now::time(Column::Sleep);
+        let pause = Now::time(Column::Pause);
+        let dnd = Now::time(Column::Leisure).layers(false, true);
+        let free = Now::time(Column::Free);
+        let call = |a: &Attention, who: Who, circle: bool, always: bool, now: &Now| a.decide(&Event::of(Source::Call { who: Some(who), circle, always, emergency: false, repeat: false }), now).told;
+        let text = |a: &Attention, who: Who, circle: bool, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle, group: false, always: false }), now).level;
+        let mail = |a: &Attention, who: Who, circle: bool, now: &Now| a.decide(&Event::of(Source::Mail { who, circle, always: false, lane: Lane::Usual }), now);
+        for now in [&night, &pause, &dnd, &free, &Now::time(Column::Work)] {
+            assert!(call(&usual, Who::Safe, true, false, now), "{:?}: your people ring", now.times);
+        }
+        assert!(!call(&usual, Who::Safe, false, false, &night) && !call(&usual, Who::Safe, false, false, &dnd), "a safe caller who is not one of them: voicemail");
+        // Messages and mail: Safe's.
+        for now in [&night, &pause, &dnd, &free, &Now::time(Column::Leisure)] {
+            assert_eq!(text(&usual, Who::Safe, true, now), text(&usual, Who::Safe, false, now), "{:?}", now.times);
+            assert_eq!(mail(&usual, Who::Safe, true, now), mail(&usual, Who::Safe, false, now), "{:?}", now.times);
+        }
+        assert_eq!(text(&usual, Who::Safe, true, &night), Level::Later, "a text can wait for the morning");
+        // Their row changed moves them alone.
+        let mut quiet = Attention::usual();
+        quiet.set(row("calls.people"), Column::Pause, Level::Later).unwrap();
+        quiet.set(row("messages.people"), Column::Sleep, Level::Now).unwrap();
+        assert!(!call(&quiet, Who::Safe, true, false, &pause) && call(&quiet, Who::Safe, true, false, &night));
+        assert_eq!((text(&quiet, Who::Safe, true, &night), text(&quiet, Who::Safe, false, &night)), (Level::Now, Level::Later));
+        // The circle is read for the safe alone: the blocked never, a stranger (unproven mail) by the strangers' row.
+        assert!(!call(&usual, Who::Blocked, true, false, &Now::time(Column::Work)));
+        assert_eq!(mail(&usual, Who::Blocked, true, &Now::time(Column::Work)).step, Step::Blocked);
+        assert_eq!(Person::of(Who::Stranger, true), Person::Stranger);
+        assert_eq!(Person::of(Who::Restricted, true), Person::Restricted, "an own entry that says otherwise wins");
+        assert!(!call(&usual, Who::Neutral, true, false, &night));
+        // Always through wins; its "As their list" reads Your people's row.
+        assert!(call(&quiet, Who::Safe, true, true, &pause), "Always through rings in a pause");
+        let mut as_list = quiet.clone();
+        as_list.set(row("calls.always"), Column::Pause, Level::As).unwrap();
+        assert!(!call(&as_list, Who::Safe, true, true, &pause), "= reads their row: Your people's, held in a pause");
+        as_list.set(row("calls.people"), Column::Pause, Level::Now).unwrap();
+        assert!(call(&as_list, Who::Safe, true, true, &pause));
+        // Step 8: safe for what an app or an address is for: a chat to an app for work comes in the evening.
+        let evening = Now::of(&mode(Time::Leisure, Reason::Evening));
+        let app = |circle: bool, who: Who| usual.decide(&Event::of(Source::Message { via: Channel::Messages, who, circle, group: false, always: false }).for_area(Some(Area::WORK)), &evening).level;
+        assert_eq!((app(true, Who::Safe), app(false, Who::Safe), app(false, Who::Neutral)), (Level::Now, Level::Now, Level::Later));
+        let to_work = |circle: bool| usual.decide(&Event::of(Source::Mail { who: Who::Safe, circle, always: false, lane: Lane::Usual }).for_address(Some(Area::WORK)), &evening);
+        assert_eq!(to_work(true), to_work(false), "shown on the Porch meanwhile, as your safe senders'");
+        // A chat site naming one of them: their messages' row, which may only hold more.
+        let mut chats = Attention::usual();
+        chats.set(row("messages.people"), Column::Work, Level::Later).unwrap();
+        let site = |named: Option<Person>| chats.decide(&Event::of(Source::Site { call: false, live: true, named }), &Now::time(Column::Work)).level;
+        assert_eq!((site(Some(Person::People)), site(Some(Person::Safe)), site(None)), (Level::Later, Level::Now, Level::Now));
+        // A mode under do-not-disturb lets their calls through where the phone screens calls, every
+        // contact's (Sioul declined the others); never by a star, which they are not given (review H2
+        // to H4): on a phone that does not screen, and for messages, their row opens no mode, so that
+        // the starred of your list never ring where their own row says voicemail (review L11); while
+        // Contacts ▸ Your people holds nobody, their row opens no mode either.
+        let people = Phone { people: true, ..Phone::default() };
+        assert_eq!(usual.silence(&[Column::Dnd], false, Phone { screens: true, ..people }).calls, Senders::Contacts);
+        let mut none = Attention::usual();
+        for channel in [Channel::Calls, Channel::Messages] {
+            for column in Column::ALL {
+                none.set(Row::People(channel, Person::Always), column, Level::As).unwrap();
+            }
+        }
+        assert_eq!(none.silence(&[Column::Pause], false, Phone { screens: true, ..people }).calls, Senders::Contacts, "your people ring in a pause");
+        assert_eq!(none.silence(&[Column::Pause], false, Phone { screens: true, people: false, unknown: false }).calls, Senders::None, "nobody in Your people: nobody through the pause");
+        assert_eq!(none.silence(&[Column::Pause], false, people).calls, Senders::None, "a phone that does not screen: no star opened for them");
+        let mut texts = none.clone();
+        texts.set(row("messages.people"), Column::Pause, Level::Now).unwrap();
+        assert_eq!(texts.silence(&[Column::Pause], false, Phone { screens: true, ..people }).messages, Senders::None, "their texts open no star either");
+        // Listed after the fact by their row: a declined call of theirs at night is listed at once.
+        assert!(usual.listed(Person::People, false, &night) && !usual.listed(Person::Safe, false, &night));
+    }
+
+    /// Mail from one of your people (the Porch's reading, `Attention::mail`):
+    /// by their row; forged in their name, a stranger's, never theirs. Safe
+    /// set by hand on their address or number gives way to their row, for
+    /// mail and for messages; Restricted wins (review M1).
+    #[test]
+    fn your_people_s_mail_and_forged_mail() {
+        use crate::persons::{Circle, Person as Someone, Persons};
+        use crate::porch::{Book, Senders};
+        let mut persons = Persons::default();
+        persons.put(Someone { name: "Léa".into(), relation: "child".into(), cards: vec!["lea-1".into()], ..Someone::default() });
+        let card = crate::contacts::Contact { uid: "lea-1".into(), name: "Léa".into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: "lea@example.org".into() }], ..crate::contacts::Contact::default() };
+        let senders = Senders { contacts: std::sync::Arc::new(Book::of(&[card], None)), circle: std::sync::Arc::new(Circle::of(&persons, jiff::civil::date(2026, 11, 20))), ..Senders::default() };
+        let nobody = crate::everywhere::People::default();
+        let mut quiet = Attention::usual();
+        // Their mail held at night, Safe's shown.
+        quiet.set(row("mail.people"), Column::Sleep, Level::Later).unwrap();
+        quiet.set(row("mail.people"), Column::Work, Level::Later).unwrap();
+        let night = Now::of(&mode(Time::Sleep, Reason::Sleep));
+        let work = Now::of(&mode(Time::Work, Reason::Working));
+        let lea = message("Léa <lea@example.org>", "Authentication-Results: mx.example.net; dmarc=pass header.from=example.org\r\n", "Coucou", &senders);
+        assert!(!quiet.mail(&lea, &senders, &nobody, None, &night).shown, "their row: held at night");
+        assert!(Attention::usual().mail(&lea, &senders, &nobody, None, &night).shown, "as Safe until changed");
+        let forged = message("Léa <lea@example.org>", "Authentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=example.org\r\n", "Coucou", &senders);
+        assert_eq!(forged.lane, crate::porch::Lane::SetAside);
+        let mut strangers_held = quiet.clone();
+        strangers_held.set(row("mail.stranger"), Column::Work, Level::Later).unwrap();
+        let mut people_open = strangers_held.clone();
+        people_open.set(row("mail.people"), Column::Work, Level::Now).unwrap();
+        assert!(!people_open.mail(&forged, &senders, &nobody, None, &work).shown, "forged: the strangers' row, never theirs");
+        assert!(people_open.mail(&lea, &senders, &nobody, None, &work).shown);
+        // The mailbox's reading, from a judgment: the same.
+        let judged = senders.judge("lea@example.org");
+        assert_eq!(people_open.mail_from(judged.who, judged.circle, false, false, None, &work).shown, people_open.mail(&lea, &senders, &nobody, None, &work).shown);
+        // Review M1: Léa's address and number put on Safe by hand long ago give way to the circle, by mail and
+        // by message; on Restricted, the restriction wins.
+        let card = crate::contacts::Contact { uid: "lea-1".into(), name: "Léa".into(), emails: vec![crate::contacts::Labeled { label: String::new(), value: "lea@example.org".into() }], phones: vec![crate::contacts::Labeled { label: String::new(), value: "+33 1 99 00 00 08".into() }], ..crate::contacts::Contact::default() };
+        let by_hand = Senders { safe: crate::porch::SenderList::parse("lea@example.org\ntel:+33199000008"), contacts: std::sync::Arc::new(Book::of(&[card], crate::phones::region_named("FR"))), ..senders.clone() };
+        let lea = message("Léa <lea@example.org>", "Authentication-Results: mx.example.net; dmarc=pass header.from=example.org\r\n", "Coucou", &by_hand);
+        assert!(!quiet.mail(&lea, &by_hand, &nobody, None, &night).shown, "Safe by hand: Your people's row, held at night as set");
+        let text = |a: &Attention, judged: crate::porch::Judged, now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: judged.who, circle: judged.circle, group: false, always: false }), now).level;
+        let mut texts = Attention::usual();
+        texts.set(row("messages.people"), Column::Sleep, Level::Now).unwrap();
+        assert_eq!(text(&texts, by_hand.judge_number("01 99 00 00 08"), &night), Level::Now, "a text from Léa's number on Safe by hand: Your people's row");
+        let restricted = Senders { restricted: crate::porch::SenderList::parse("tel:+33199000008"), safe: crate::porch::SenderList::default(), ..by_hand.clone() };
+        assert_eq!(text(&texts, restricted.judge_number("01 99 00 00 08"), &night), Level::Later, "on Restricted by hand: the restriction wins");
+    }
+
+    /// Review M9: while Your people's mail and messages rows are not written,
+    /// they read Safe's as it stands, tuned by hand or by a preset, in every
+    /// reader: the pipeline, the behaviours' reading, the changes counted
+    /// (once), a preset; tuning Safe writes none of theirs; once the person
+    /// changes theirs, it is written whole, even as Sioul ships it, and stays
+    /// theirs; a preset takes it out again, "as Safe" being what a preset
+    /// says of them. Their calls keep their own row, as shipped.
+    #[test]
+    fn your_people_read_safe_s_rows_until_their_own_are_written() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-follow-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|s| s.to_string()).collect());
+        let read = || Attention::of(&Config::load(&path).unwrap());
+        let same_as_safe = |a: &Attention| [Channel::Mail, Channel::Messages].iter().all(|c| Column::ALL.iter().all(|col| a.cell(Row::People(*c, Person::People), *col) == a.cell(Row::People(*c, Person::Safe), *col)));
+        // Safe tuned by hand: mail at once in sleep (shown), messages at once at night.
+        apply(&path, &Config::load(&path).unwrap(), "attention.mail.safe", &words(&["leisure:quiet"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.safe", &words(&["sleep"])).unwrap();
+        let tuned = read();
+        assert!(tuned.follows(row("mail.people")) && tuned.follows(row("messages.people")) && !tuned.follows(row("calls.people")));
+        assert!(same_as_safe(&tuned), "as Safe is now");
+        assert_eq!((tuned.cell(row("messages.people"), Column::Sleep), tuned.cell(row("mail.people"), Column::Leisure)), (Level::Now, Level::Quiet));
+        assert_eq!(tuned.cell(row("calls.people"), Column::Sleep), Level::Now, "their calls: their own row");
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("people"), "tuning Safe writes none of theirs: {text}");
+        // The pipeline: someone who was Safe yesterday loses nothing today.
+        let night = Now::time(Column::Sleep);
+        let message = |a: &Attention, circle: bool| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Safe, circle, group: false, always: false }), &night).level;
+        assert_eq!((message(&tuned, true), message(&tuned, false)), (Level::Now, Level::Now));
+        // The behaviours' reading; the changes counted once (Safe's two cells).
+        for channel in crate::behaviours::CHANNELS {
+            assert_eq!(crate::behaviours::reading(&tuned, channel, crate::behaviours::Circle::People), crate::behaviours::reading(&tuned, channel, crate::behaviours::Circle::Safe), "{channel:?}");
+        }
+        assert_eq!(tuned.changes_from(&Attention::usual()), 2, "Safe's, once");
+        // A preset: theirs as its Safe, none written.
+        apply_preset(&path, &Config::load(&path).unwrap(), Preset::Quieter).unwrap();
+        let quieter = read();
+        assert!(same_as_safe(&quieter) && quieter == Preset::Quieter.matrix(), "Quieter, current");
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("people"));
+        // Theirs changed: written whole, then Safe's changes move them no more.
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.people", &words(&["free"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.safe", &words(&["work:later"])).unwrap();
+        let theirs = read();
+        assert!(!theirs.follows(row("messages.people")) && theirs.follows(row("mail.people")));
+        assert_eq!((theirs.cell(row("messages.people"), Column::Work), theirs.cell(row("messages.safe"), Column::Work)), (Level::Now, Level::Later));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("\"messages.people\""));
+        // Chosen as Sioul ships it on their line: still theirs, written as such.
+        apply_rows(&path, &Config::load(&path).unwrap(), &[(row("mail.people"), Column::ALL.map(|c| Some(usual(row("mail.people"), c))))]).unwrap();
+        let chosen = read();
+        assert!(!chosen.follows(row("mail.people")) && std::fs::read_to_string(&path).unwrap().contains("\"mail.people\""), "theirs, even as shipped");
+        // As Sioul does now: theirs taken out, following Safe again.
+        apply_preset(&path, &Config::load(&path).unwrap(), Preset::Usual).unwrap();
+        let back = read();
+        assert!(back.follows(row("mail.people")) && back.follows(row("messages.people")) && back == Attention::usual());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("people"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// What 0.0.12 reads of `[attention]`, word for word but its enums
+    /// (`git show v0.0.12:crates/sioul-core/src/attention.rs`, `Person::read`
+    /// and `Row::read`): its rows' ids, the 36 of its `Row::ALL`.
+    mod v0_0_12 {
+        use crate::attention::Kind;
+        use crate::reach::Channel;
+
+        pub const ROWS: [&str; 36] = [
+            "mail.always", "mail.safe", "mail.neutral", "mail.restricted", "mail.stranger", "mail.blocked",
+            "calls.always", "calls.safe", "calls.neutral", "calls.restricted", "calls.stranger", "calls.hidden", "calls.blocked",
+            "messages.always", "messages.safe", "messages.neutral", "messages.restricted", "messages.stranger", "messages.groups", "messages.blocked",
+            "codes", "doses", "wake", "alarms", "before", "day-before", "dates", "needs", "move", "work-over", "time",
+            "sites", "sites-live", "site-calls", "app-automatons", "app-at-once",
+        ];
+        const PERSONS: [&str; 8] = ["always", "safe", "neutral", "restricted", "stranger", "hidden", "groups", "blocked"];
+
+        fn persons(channel: Channel) -> &'static [&'static str] {
+            match channel {
+                Channel::Mail => &["always", "safe", "neutral", "restricted", "stranger", "blocked"],
+                Channel::Calls => &["always", "safe", "neutral", "restricted", "stranger", "hidden", "blocked"],
+                Channel::Messages => &["always", "safe", "neutral", "restricted", "stranger", "groups", "blocked"],
+            }
+        }
+
+        fn person(text: &str) -> Option<&'static str> {
+            let text = text.trim().to_ascii_lowercase();
+            match text.as_str() {
+                "strangers" => Some("stranger"),
+                "group" => Some("groups"),
+                _ => PERSONS.into_iter().find(|p| *p == text),
+            }
+        }
+
+        /// `Row::read` of 0.0.12: a key it knows, by its id; none otherwise.
+        pub fn read(text: &str) -> Option<String> {
+            let text = text.trim();
+            if let Some((channel, who)) = text.split_once('.') {
+                let (channel, who) = (Channel::read(channel)?, person(who)?);
+                return persons(channel).contains(&who).then(|| format!("{}.{who}", channel.id()));
+            }
+            Kind::read(text).map(|k| k.id().to_string())
+        }
+
+        /// `Settings::words` of 0.0.12: the first key that reads as `row`.
+        pub fn words(settings: &crate::attention::Settings, row: &str) -> Option<toml::Value> {
+            settings.0.iter().find(|(key, _)| read(key).is_some_and(|r| r == row)).map(|(_, v)| v.clone())
+        }
+    }
+
+    /// An older Sioul on another device neither fails on Your people's rows
+    /// nor drops them (decision of 20 November 2026, proved before any row
+    /// was written): 0.0.12 reads `[attention]` key by key through
+    /// `Row::read`, which knows no `mail.people`, so it reads none of them
+    /// and none of its own rows takes one's words; it writes through
+    /// `config::set_table`, the same function there, which sets the keys it
+    /// names and leaves every other key of the table as it is; the sharing
+    /// carries each key apart. Its 36 rows read here as they read there.
+    #[test]
+    fn an_older_sioul_neither_fails_on_nor_drops_your_people_s_rows() {
+        let new_rows = ["mail.people", "calls.people", "messages.people"];
+        for id in new_rows {
+            assert_eq!(v0_0_12::read(id), None, "{id}: no row of 0.0.12's");
+            assert!(Row::read(id).is_some() && !is_source(id), "{id}: a row here, never a source's row");
+        }
+        for id in v0_0_12::ROWS {
+            assert_eq!(v0_0_12::read(id).as_deref(), Some(id), "{id}");
+            assert_eq!(Row::read(id).map(Row::id).as_deref(), Some(id), "{id}: the same row here");
+        }
+        assert_eq!(Row::ALL.len(), v0_0_12::ROWS.len() + new_rows.len(), "three rows more, none taken away");
+        let dir = std::env::temp_dir().join(format!("sioul-attention-older-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "language = \"en\"\n").unwrap();
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|s| s.to_string()).collect());
+        // Written here: Your people's calls held in a pause, their texts at once at night.
+        apply(&path, &Config::load(&path).unwrap(), "attention.calls.people", &words(&["pause:later"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.messages.people", &words(&["sleep"])).unwrap();
+        apply(&path, &Config::load(&path).unwrap(), "attention.mail.safe", &words(&["leisure:quiet"])).unwrap();
+        let config = Config::load(&path).unwrap();
+        let settings = config.attention.clone().unwrap();
+        // Read by 0.0.12: its rows take their own words only.
+        for id in v0_0_12::ROWS {
+            assert_eq!(v0_0_12::words(&settings, id).is_some(), settings.words(id).is_some(), "{id}");
+        }
+        assert!(v0_0_12::words(&settings, "mail.safe").is_some() && v0_0_12::words(&settings, "calls.safe").is_none());
+        // Written by 0.0.12 (a row of its own changed: `write_with` names its rows, `set_table` writes them): ours stay.
+        let mut older = Attention::of(&config);
+        older.set(row("mail.safe"), Column::Meals, Level::Quiet).unwrap();
+        let said: Vec<(String, Option<Vec<String>>)> = vec![("mail.safe".to_string(), Some(older.words(row("mail.safe"))))];
+        crate::config::set_table(&path, "attention", &said, &[]).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"calls.people\"") && text.contains("\"messages.people\""), "{text}");
+        let after = Attention::of(&Config::load(&path).unwrap());
+        assert_eq!((after.cell(row("calls.people"), Column::Pause), after.cell(row("messages.people"), Column::Sleep), after.cell(row("mail.safe"), Column::Meals)), (Level::Later, Level::Now, Level::Quiet));
+        // And as 0.0.12 writes a row back to the usual: taken out alone.
+        crate::config::set_table(&path, "attention", &[("mail.safe".to_string(), None)], &[]).unwrap();
+        let after = Attention::of(&Config::load(&path).unwrap());
+        assert_eq!((after.cell(row("calls.people"), Column::Pause), after.cell(row("mail.safe"), Column::Meals)), (Level::Later, Level::Now));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

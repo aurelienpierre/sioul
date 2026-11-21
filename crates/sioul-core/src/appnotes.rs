@@ -793,6 +793,11 @@ pub struct Ask<'a> {
     /// the interruption filter: Sioul's mode or yours): a text whose cell says
     /// ◑ comes then, without a sound, and waits otherwise (`attention::Now::silenced`).
     pub silenced: bool,
+    /// The sender's card is one of your people's (`porch::Judged::circle`):
+    /// their message reads the row Your people, when they are judged safe
+    /// (`attention::Person::of`). For `decide` and `cause`; a held one is
+    /// worked out again by what it was held with (`Held::circle`).
+    pub circle: bool,
 }
 
 impl Ask<'_> {
@@ -1104,16 +1109,16 @@ fn at_once(ask: &Ask) -> Decision {
 /// fitting now for all but Always through and your safe people's chats (a
 /// mail app's, from your safe senders too: as mail to an address for another
 /// time, docs/areas.md); else at their next time.
-fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decision {
+fn person(talk: &Talk, who: Who, circle: bool, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
     }
     // Its app's or conversation's own row, set: at once, gathered or held as it says at each time.
     if ask.attention.has_sources(ask.sources) {
-        let event = Event::of(Source::Message { via: talk.via, who, group, always }).from_sources(ask.sources.to_vec());
+        let event = Event::of(Source::Message { via: talk.via, who, circle, group, always }).from_sources(ask.sources.to_vec());
         return by_matrix(ask, &[event.clone().for_area(ask.area).area_unsaid(talk.to_unsaid), event], Why::Allowed, Why::Waiting);
     }
-    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
+    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, circle, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
     // This device for its area at no moment of the coming days: the hours alone, as on a device
     // nothing is said of, so that a device never lets through what the hours hold (review of
     // phase 2, M1); its area and its times never meeting even so, the matrix alone decides:
@@ -1131,8 +1136,8 @@ fn person(talk: &Talk, who: Who, group: bool, always: bool, ask: &Ask) -> Decisi
 
 /// A conversation let through always: Always through's row (at once at any
 /// time, as usual), read against who writes, or the group's row.
-fn always(talk: &Talk, who: Who, group: bool, ask: &Ask) -> Decision {
-    match person(talk, who, group, true, ask) {
+fn always(talk: &Talk, who: Who, circle: bool, group: bool, ask: &Ask) -> Decision {
+    match person(talk, who, circle, group, true, ask) {
         Decision { until: None, why: Why::Allowed } => Decision::through(Why::Always),
         other => other,
     }
@@ -1203,8 +1208,8 @@ pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, as
         Route::Gathered(Gathering::Conversation) => conversation_gathered(ask),
         Route::Gathered(_) => gathered(ask),
         Route::ForGood => Decision::held(ask.stamp() + FOR_GOOD, Why::Never),
-        Route::Person { talk, who, group, conversation: true, .. } => always(talk, who, group, ask),
-        Route::Person { talk, who, group, always, .. } => person(talk, who, group, always, ask),
+        Route::Person { talk, who, group, conversation: true, .. } => always(talk, who, ask.circle, group, ask),
+        Route::Person { talk, who, group, always, .. } => person(talk, who, ask.circle, group, always, ask),
     }
 }
 
@@ -1279,7 +1284,7 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
             Event::own(attention::Kind::AppAutomatons)
         }
         Route::AtOnce => Event::own(attention::Kind::AppAtOnce),
-        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, group, always }).area_unsaid(talk.to_unsaid),
+        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, circle: ask.circle, group, always }).area_unsaid(talk.to_unsaid),
     };
     let event = event.for_area(ask.area).from_sources(sources);
     let out = ask.attention.decide(&event, &moment);
@@ -1317,6 +1322,10 @@ pub struct Held {
     pub via: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub who: String,
+    /// The sender's card was one of your people's (`Ask::circle`). An older
+    /// Sioul passes over it: their row is Safe's there.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub circle: bool,
     /// The Always through list holds the sender.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub admitted: bool,
@@ -1544,7 +1553,7 @@ impl Ledger {
     }
 
     /// A notification decided: the app, its conversation or site seen; held, kept to be worked out again.
-    pub fn note(&mut self, p: &Posted, kind: &Kind, who: Option<Who>, admitted: bool, area: Option<Area>, decision: &Decision, now: i64) {
+    pub fn note(&mut self, p: &Posted, kind: &Kind, who: Option<Who>, circle: bool, admitted: bool, area: Option<Area>, decision: &Decision, now: i64) {
         self.heard = now;
         let label = if p.app.trim().is_empty() { p.package.clone() } else { one_line(&p.app) };
         let app = self.apps.entry(p.package.clone()).or_default();
@@ -1618,7 +1627,7 @@ impl Ledger {
         let admitted = admitted && !group;
         let again = self.held.get(&hash).map_or(0, |h| h.again);
         let first = self.held.get(&hash).map_or(0, Held::first_held);
-        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), admitted, group, conversation, site, area, since: now, until, first, again, persons: Vec::new() });
+        self.held.insert(hash, Held { app: p.package.clone(), label, kind: kind_id.into(), via: via.to_string(), who: who.map(|w| w.id().to_string()).unwrap_or_default(), circle: circle && who == Some(Who::Safe), admitted, group, conversation, site, area, since: now, until, first, again, persons: Vec::new() });
     }
 
     /// A held notification Android brought back and that comes now: no
@@ -1681,7 +1690,7 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), to_unsaid: false, sms: false };
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
-            Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.group, ask),
+            Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.circle, held.group, ask),
             Through::Gathered => return conversation_gathered(ask),
             Through::Never => return Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
             Through::Usual => {}
@@ -1689,7 +1698,7 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     }
     match held.kind.as_str() {
         _ if app.kind == AppKind::Automaton => gathered(ask),
-        "people" | "never" => person(&talk, who.unwrap_or(Who::Stranger), held.group, held.admitted, ask),
+        "people" | "never" => person(&talk, who.unwrap_or(Who::Stranger), held.circle, held.group, held.admitted, ask),
         _ => gathered(ask),
     }
 }
@@ -2034,7 +2043,7 @@ mod tests {
     fn ask<'a>(now: &'a Zoned, clock: &'a TestClock, area: Option<Area>, gate: Option<Gate>) -> Ask<'a> {
         static GATHERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
         let gathered = GATHERED.get_or_init(|| vec!["09:00".into(), "13:00".into(), "18:00".into()]);
-        Ask { reachable: None, silenced: false, now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
+        Ask { reachable: None, silenced: false, now, clock, attention: usual(), gathered, area, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[], circle: false }
     }
 
     fn posted(json: &str) -> Posted {
@@ -2281,7 +2290,7 @@ mod tests {
         let late = vec!["06:30".to_string(), "13:00".into(), "22:30".into()];
         let ask_late = |now: &'static str| {
             let now = Box::leak(Box::new(at(now)));
-            Ask { reachable: None, silenced: false, now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] }
+            Ask { reachable: None, silenced: false, now, clock: &clock, attention: usual(), gathered: &late, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[], circle: false }
         };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &ask_late("2026-10-06T20:00[Europe/Paris]"))), "2026-10-07T13:00:00", "22:30 and 06:30 are asleep");
         // A pause: nothing gathered until it ends; asked again six hours on, brought back when it ends (`again`).
@@ -2301,7 +2310,7 @@ mod tests {
         let slot = |z: &Zoned| z.date() == at("2026-10-06T00:00[Europe/Paris]").date() && z.hour() == 13;
         let now = at("2026-10-06T10:00[Europe/Paris]");
         let usual = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
-        let with_slot = Ask { reachable: None, silenced: false, now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[], sources: &[] };
+        let with_slot = Ask { reachable: None, silenced: false, now: &now, clock: &clock, attention: self::usual(), gathered: &usual, area: None, gate: None, slot_at: &slot, nothing: false, also: &[], sources: &[], circle: false };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &with_slot)), "2026-10-06T18:00:00");
         // No time that reads: three a day.
         assert_eq!(times_of(&["later".into()]).len(), 3);
@@ -2387,7 +2396,7 @@ mod tests {
         let mut rows = usual().clone();
         rows.set_source("app.com.discord", C::Leisure, Level::Later).unwrap();
         rows.set_source(&server_rows[0], C::Work, Level::Later).unwrap();
-        let own = Ask { reachable: None, silenced: false, now: &evening, clock: &clock, attention: &rows, gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &dm_rows };
+        let own = Ask { reachable: None, silenced: false, now: &evening, clock: &clock, attention: &rows, gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &dm_rows, circle: false };
         assert_eq!(said(DISCORD_DM, Some(Who::Safe), &choices, &own), Some(Cause { own: Some(Own::App), columns: vec![C::Leisure], ..Cause::default() }));
         let own = Ask { now: &morning, sources: &server_rows, ..own };
         assert_eq!(said(DISCORD_SERVER, Some(Who::Stranger), &choices, &own), Some(Cause { own: Some(Own::Conversation), columns: vec![C::Work], ..Cause::default() }));
@@ -2400,12 +2409,12 @@ mod tests {
         // Free time's "Nothing at all": your safe people wait, and it says so.
         let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
         let afternoon = at("2026-10-06T16:00[Europe/Paris]");
-        let nothing = Ask { reachable: None, silenced: false, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
+        let nothing = Ask { reachable: None, silenced: false, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[], circle: false };
         assert_eq!(said(SMS_CONTACT, Some(Who::Safe), &choices, &nothing), Some(Cause { columns: vec![C::Free], nothing: true, ..Cause::default() }));
         // A slot of time for you at nine: an automaton waits it out.
         let in_slot = |z: &Zoned| z.hour() == 9;
         let nine = at("2026-10-06T09:20[Europe/Paris]");
-        let slotted = Ask { reachable: None, silenced: false, now: &nine, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
+        let slotted = Ask { reachable: None, silenced: false, now: &nine, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[], circle: false };
         assert_eq!(said(SHOP, None, &choices, &slotted), Some(Cause { gathered: Some(Gathering::Automaton), columns: vec![C::Slot], ..Cause::default() }));
         // Whatever holds, something says why: every fixture, hour, sender, area, layer; an app at once
         // for work, which the matrix lets come in the night, held there by what it is for.
@@ -2436,7 +2445,7 @@ mod tests {
                         let slot_at = move |z: &Zoned| slot && z.hour() == 9;
                         for area in [None, Some(Area::WORK), Some(Area::LEISURE)] {
                             for who in [None, Some(Who::Safe), Some(Who::Neutral), Some(Who::Restricted), Some(Who::Stranger), Some(Who::Blocked)] {
-                                let ask = Ask { now: &now, clock: &quick, attention: matrix, gathered: &gathered, area, gate: dnd.then_some(Gate { until: None }), slot_at: &slot_at, nothing: false, also: &[], sources: &[], reachable: None, silenced: false };
+                                let ask = Ask { now: &now, clock: &quick, attention: matrix, gathered: &gathered, area, gate: dnd.then_some(Gate { until: None }), slot_at: &slot_at, nothing: false, also: &[], sources: &[], reachable: None, silenced: false, circle: false };
                                 if decide(&kind, who, false, choices, &ask).until.is_none() {
                                     continue;
                                 }
@@ -2460,7 +2469,7 @@ mod tests {
         let shop = classify(&posted(SHOP), &choices);
         let gathered = vec!["09:00".to_string(), "13:00".into(), "18:00".into()];
         let decided = |kind: &Kind, who: Option<Who>, listed: bool, matrix: &Attention, now: &Zoned, clock: &TestClock, gate: Option<Gate>| {
-            decide(kind, who, listed, &choices, &Ask { reachable: None, silenced: false, now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[] })
+            decide(kind, who, listed, &choices, &Ask { reachable: None, silenced: false, now, clock, attention: matrix, gathered: &gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources: &[], circle: false })
         };
         let mut matrix = usual().clone();
         // Always through under do-not-disturb: at once whatever their row (Q2), as usual; their row's times with ☆.
@@ -2487,10 +2496,10 @@ mod tests {
         assert_eq!(until_of(decided(&shop, None, false, &matrix, &morning, &clock, None)), "2026-10-06T18:00:00");
         // Time for you everywhere (Q12): the listener reads the slots, which hold automatons as the window's did.
         let in_slot = |z: &Zoned| z.hour() == 9;
-        let slotted = Ask { reachable: None, silenced: false, now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[] };
+        let slotted = Ask { reachable: None, silenced: false, now: &morning, clock: &clock, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &in_slot, nothing: false, also: &[], sources: &[], circle: false };
         assert_eq!(until_of(decide(&shop, None, false, &choices, &slotted)), "2026-10-06T13:00:00");
         // "Nothing at all" in Free time: the safe wait too, Always through comes.
-        let nothing = Ask { reachable: None, silenced: false, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[] };
+        let nothing = Ask { reachable: None, silenced: false, now: &afternoon, clock: &free, attention: usual(), gathered: &gathered, area: None, gate: None, slot_at: &never_slot, nothing: true, also: &[], sources: &[], circle: false };
         assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &nothing).why, Why::Waiting);
         assert_eq!(decide(&sms, Some(Who::Safe), true, &choices, &nothing).why, Why::Allowed);
         // A mail app's notification takes the Mail rows (Q5): a safe sender's at night waits for waking (before: let through).
@@ -2515,7 +2524,7 @@ mod tests {
             let p = posted(json);
             let kind = classify(&p, &choices);
             let decision = decide(&kind, Some(Who::Stranger), false, &choices, &ask(&now, &clock, None, None));
-            ledger.note(&p, &kind, Some(Who::Stranger), false, None, &decision, stamp);
+            ledger.note(&p, &kind, Some(Who::Stranger), false, false, None, &decision, stamp);
         }
         // The shop's sounded while held: its channel to make silent.
         assert_eq!(ledger.apps["com.shop.example"].rang.keys().collect::<Vec<_>>(), ["offers"]);
@@ -2575,7 +2584,7 @@ mod tests {
         let p = posted(WHATSAPP_GROUP);
         let kind = classify(&p, &choices);
         let decision = decide(&kind, Some(Who::Safe), true, &choices, &ask(&night, &clock, None, None));
-        ledger.note(&p, &kind, Some(Who::Safe), true, None, &decision, night.timestamp().as_second());
+        ledger.note(&p, &kind, Some(Who::Safe), false, true, None, &decision, night.timestamp().as_second());
         let group = ledger.held.values().next().unwrap().clone();
         assert_eq!((group.who.as_str(), group.admitted, group.group), ("safe", false, true));
         assert_eq!(until_of(again(&group, &choices, &ask(&night, &clock, None, None))), "2026-10-07T07:00:00");
@@ -2693,7 +2702,7 @@ mod tests {
         assert_eq!(decide(&sms, Some(Who::Neutral), false, &choices, &silenced), Decision::through(Why::Allowed));
         assert_eq!(decide(&sms, Some(Who::Safe), false, &choices, &silenced), Decision::through(Why::Allowed));
         assert!(decide(&sms, Some(Who::Restricted), false, &choices, &silenced).until.is_some(), "restricted: held, as before");
-        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since: end - 3600, until: end, first: 0, again: 0, persons: Vec::new() };
+        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), circle: false, admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since: end - 3600, until: end, first: 0, again: 0, persons: Vec::new() };
         assert_eq!(again(&held, &choices, &silenced).until, None, "a review, the phone silenced now: it comes");
         assert_eq!(again(&held, &choices, &loud).until, Some(end));
     }
@@ -2731,7 +2740,7 @@ mod tests {
         let until = evening.timestamp().as_second() + 3600;
         let reach = Ask { reachable: Some(until), ..ask(&evening, &clock, None, None) };
         assert_eq!(decide(&talk, Some(Who::Neutral), false, &choices, &reach), Decision::through(Why::Allowed));
-        let held = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), admitted: false, group: true, conversation: key.clone(), site: String::new(), area: None, since: until - 7200, until: until + 7200, first: 0, again: 0, persons: Vec::new() };
+        let held = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), circle: false, admitted: false, group: true, conversation: key.clone(), site: String::new(), area: None, since: until - 7200, until: until + 7200, first: 0, again: 0, persons: Vec::new() };
         assert_eq!(again(&held, &choices, &reach).until, None, "looked at again under Reachable: at once");
         let usual = ask(&evening, &clock, None, None);
         assert!(decide(&talk, Some(Who::Neutral), false, &choices, &usual).until.is_some(), "as usual: its gathered time");
@@ -2744,7 +2753,7 @@ mod tests {
     /// stamp ahead of the phone's clock read as the phone's now.
     #[test]
     fn a_release_lets_through_what_was_held_before_it_once() {
-        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, first: 0, again: 0, persons: Vec::new() };
+        let held = |since: i64| Held { app: "com.example".into(), label: "Example".into(), kind: "people".into(), via: String::new(), who: String::new(), circle: false, admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until: since + 3600, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
         assert!(!ledger.released_before(&held(1_000)), "no release yet");
         let one = |stamp: i64| vec![("desk".to_string(), stamp)];
@@ -2780,7 +2789,7 @@ mod tests {
     #[test]
     fn an_app_s_own_row_decides_when() {
         fn with<'a>(now: &'a Zoned, clock: &'a TestClock, attention: &'a Attention, gathered: &'a [String], sources: &'a [String], gate: Option<Gate>) -> Ask<'a> {
-            Ask { reachable: None, silenced: false, now, clock, attention, gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources }
+            Ask { reachable: None, silenced: false, now, clock, attention, gathered, area: None, gate, slot_at: &never_slot, nothing: false, also: &[], sources, circle: false }
         }
         let clock = TestClock::new();
         let choices = Choices::default();
@@ -2917,7 +2926,7 @@ mod tests {
             let kind = classify(&p, &none);
             let decision = decide(&kind, Some(Who::Stranger), false, &none, &ask(&now, &clock, None, None));
             assert!(decision.until.is_some(), "{} held", p.package);
-            ledger.note(&p, &kind, Some(Who::Stranger), false, None, &decision, stamp);
+            ledger.note(&p, &kind, Some(Who::Stranger), false, false, None, &decision, stamp);
         }
         assert!(ledger.apps["com.shop.example"].rang["offers"].gathered && !ledger.apps["com.discord"].rang["dm"].gathered);
         assert!(gathered_app("com.shop.example", &ledger, &none) && gathered_app("com.android.chrome", &ledger, &none));
@@ -3014,7 +3023,7 @@ mod tests {
             edit(&mut p);
             let kind = classify(&p, &none);
             let decision = decide(&kind, Some(Who::Stranger), false, &none, &ask(&now, &clock, None, None));
-            ledger.note(&p, &kind, Some(Who::Stranger), false, None, &decision, stamp);
+            ledger.note(&p, &kind, Some(Who::Stranger), false, false, None, &decision, stamp);
         };
         note(&mut ledger, SHOP, &|_| {});
         note(&mut ledger, r#"{"key":"0|com.shop.example|2|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"miscellaneous","title":"Soldes","text":"Tout à -50 %","alerted":true}"#, &|_| {});
@@ -3056,7 +3065,7 @@ mod tests {
             p.alerted = false;
             p.importance = importance;
             p.ranked_channel = ranked.into();
-            ledger.note(&p, &Kind::AtOnce, None, false, None, &Decision::through(Why::AtOnce), stamp);
+            ledger.note(&p, &Kind::AtOnce, None, false, false, None, &Decision::through(Why::AtOnce), stamp);
         };
         quiet_talk(&mut ledger, "offers:conversation-1", 2);
         assert!(ledger.apps["com.shop.example"].rang.contains_key("offers"), "another channel's importance");
@@ -3168,7 +3177,7 @@ mod tests {
         let kind = classify(&posted(DISCORD_DM), &choices);
         let gathered = vec!["09:00".to_string(), "13:00".to_string(), "18:00".to_string()];
         let before = decide(&kind, Some(Who::Neutral), false, &choices, &ask(&evening, &plain, Some(Area::WORK), None));
-        let on_phone = Ask { reachable: None, silenced: false, now: &evening, clock: &phone, attention: usual(), gathered: &gathered, area: Some(Area::WORK), gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[] };
+        let on_phone = Ask { reachable: None, silenced: false, now: &evening, clock: &phone, attention: usual(), gathered: &gathered, area: Some(Area::WORK), gate: None, slot_at: &never_slot, nothing: false, also: &[], sources: &[], circle: false };
         let after = decide(&kind, Some(Who::Neutral), false, &choices, &on_phone);
         assert!(before.until.is_some(), "by the hours, it waits for work");
         assert_eq!((after.until, until_of(after.clone())), (before.until, until_of(before)), "the same wait on the phone");

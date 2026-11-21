@@ -1136,7 +1136,7 @@ mod tests {
             ("sioul-app/src/homecard.rs", 0, 0, 2, 2, "the home card's next step and its frames on this device"),
             ("sioul-app/src/appnotes.rs", 0, 0, 1, 1, "another app's notifications on a phone, on this device (`Clock::on`)"),
             ("sioul-app/src/agenda.rs", 0, 0, 1, 0, "the agenda's filter by time in What comes (the Day, the Week and the Month by hand alone): the hours of your agendas, the person's week, on every device alike"),
-            ("sioul-app/src/calls.rs", 0, 0, 2, 0, "calls keep their own matrix, never a device's: the phone's table (`make`), and what a phone whose line says nothing does today, said on its card in Settings ▸ Devices on any device (`today`, review of `phones`, M5), both by the hours alone as the phone reads them; this device's lines would describe the device showing the card, not the phone"),
+            ("sioul-app/src/calls.rs", 0, 0, 3, 0, "calls keep their own matrix, never a device's: the phone's table (`make`), what a phone whose line says nothing does today, said on its card in Settings ▸ Devices on any device (`today`, review of `phones`, M5), and Your people's row on that card (`people_row`), all by the hours alone as the phone reads them; this device's lines would describe the device showing the card, not the phone"),
             ("sioul-app/src/phonemsgs.rs", 0, 0, 1, 0, "the phone's texts keep their own matrix: never a device's"),
             ("sioul-app/src/everywhere.rs", 0, 0, 1, 0, "do-not-disturb's look at the hours: no area"),
             ("sioul-app/src/persons.rs", 0, 0, 1, 0, "whether offices are open now, to call one: the person's week"),

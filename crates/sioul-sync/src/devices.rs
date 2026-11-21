@@ -228,6 +228,15 @@ pub struct Entry {
     /// unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub calls_lines: u32,
+    /// Whether its Sioul knows the circle Your people (`attention`'s rows
+    /// `mail.people`, `calls.people`, `messages.people`; a calls' table's
+    /// numbers "people"), format `CIRCLE`: 1 from a build that does, 0 from an
+    /// older one, which judges your people by their lists and address books;
+    /// the card of such a phone shows no row of theirs and says that it
+    /// follows it once updated (review M8 of `reach-household`). An older
+    /// Sioul reads the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub circle: u32,
     /// Its last start: Sioul opened; on a phone, Sioul back on the screen, or
     /// one of its reminders handled while it was not.
     #[serde(default)]
@@ -376,6 +385,9 @@ pub const AREAS: u32 = 1;
 
 /// What a device's entry says once its Sioul reads a phone's own calls' table (`Entry::calls_lines`).
 pub const CALLS_LINES: u32 = 1;
+
+/// What a device's entry says once its Sioul knows the circle Your people (`Entry::circle`).
+pub const CIRCLE: u32 = 1;
 
 fn is_zero_i64(n: &i64) -> bool {
     *n == 0

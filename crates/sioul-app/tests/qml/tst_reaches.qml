@@ -120,7 +120,8 @@ Item {
             return ""
         }
         function reminderOpened(kind, uri, key) {
-            mock.opened = mock.opened.concat([kind])
+            // A person's page by their id (Your people's doors).
+            mock.opened = mock.opened.concat([kind === "person" ? "person:" + key : kind])
         }
         function dndSetup() {
             return ""
@@ -349,6 +350,68 @@ Item {
             compare(mock.set.length, 1)
             compare(mock.set[0][0], "mail.safe")
             compare(mock.set[0][1], ["work", "sleep"])
+        }
+
+        // Your people (20 November 2026): no line while the circle holds nobody, a sentence and
+        // its door instead; once someone is there, their line between Always through and Safe,
+        // their names in Who is in which circle, someone with no card linked said so with the
+        // door to their page. On a computer and at 412.
+        function test_your_people_s_line_and_names() {
+            const before = JSON.parse(JSON.stringify(mock.view))
+            const view = JSON.parse(JSON.stringify(before))
+            view.people.none = "Your people get a line of their own once you add them in Contacts ▸ Your people."
+            view.people.circle = { title: "Your people", help: "Read from Contacts ▸ Your people.", people: [] }
+            mock.view = view
+            for (const page of [wide, narrow]) {
+                page.reload()
+                const none = find(page, "peopleNone")
+                verify(none !== null && none.text.indexOf("once you add them") > 0, "the sentence")
+                compare(find(page, "choice-people-mail"), null)
+                compare(find(page, "circle-people"), null, "no line for nobody")
+                compare(find(page, "circlePeople"), null, "nobody listed")
+                mock.opened = []
+                find(page, "peopleNoneOpen").clicked()
+                compare(mock.opened, ["person:"], "Contacts ▸ Your people")
+            }
+            const cell = (channel, value) => ({ channel: channel, value: value, label: "When awake", choices: [{ id: "always", label: "Always", help: "" }, { id: "awake", label: "When awake", help: "" }], rows: [channel + ".people"] })
+            const full = JSON.parse(JSON.stringify(before))
+            full.people.rows.splice(1, 0, { id: "people", label: "Your people", help: "Everyone in Contacts ▸ Your people, by their cards.", cells: [cell("mail", "awake"), cell("messages", "awake")] })
+            full.people.none = ""
+            // Each by the row they are judged on (reaches::close_of): Léa's card here, nothing to say; Alix,
+            // no card linked, the door to Alix's page; Maud held out by a card's restriction, the door to its sheet.
+            full.people.circle = { title: "Your people", help: "Read from Contacts ▸ Your people.", people: [
+                { id: "lea", name: "Léa", notes: [] },
+                { id: "alix", name: "Alix", notes: [{ text: "No card is linked to Alix: Sioul cannot recognise their mail, calls or messages until one is.", door: "page", key: "alix", label: "Link a card…" }] },
+                { id: "maud", name: "Maud", notes: [{ text: "Maud: Restricted, as you chose for Maud Dupont, a name long enough to wrap at a phone's width.", door: "sheet", key: "/stand-in/maud.vcf", label: "How this contact reaches you" }] }
+            ] }
+            mock.view = full
+            for (const page of [wide, narrow]) {
+                page.reload()
+                compare(find(page, "peopleNone"), null, "no sentence once someone is there")
+                verify(find(page, "circlePeople") !== null && find(page, "close-lea") !== null && find(page, "close-alix") !== null && find(page, "close-maud") !== null)
+                compare(find(page, "closeNote-lea-0"), null, "a card here, judged on Your people: nothing to say")
+                verify(find(page, "closeNote-alix-0").text.indexOf("Alix") >= 0)
+                verify(find(page, "closeNote-maud-0").text.indexOf("Restricted") > 0)
+                tryVerify(() => find(page, "closeNote-maud-0").width <= page.width && find(page, "closeNote-maud-0").lineCount > 1 === (page === narrow), 3000, "within the page, wrapping at a phone's width")
+                mock.opened = []
+                find(page, "closeDoor-alix-0").clicked()
+                compare(mock.opened, ["person:alix"], "their page, where a card is linked")
+            }
+            // A computer: the line's cells, between Always through and Safe; a choice writes their rows.
+            const people = find(wide, "choice-people-mail")
+            verify(people !== null && people.text.indexOf("When awake") === 0, people ? people.text : "none")
+            verify(find(wide, "choice-always-mail").modelData.row < people.modelData.row && people.modelData.row < find(wide, "choice-safe-mail").modelData.row, "between Always through and Safe")
+            mock.chosen = []
+            people.clicked()
+            inOverlay("behaviour-mail-always").triggered()
+            compare(mock.chosen, [["people.mail.people", "always"]])
+            // A phone: a line, in the same place.
+            const line = find(narrow, "circle-people")
+            verify(line !== null && line.width <= 412)
+            tryVerify(() => find(narrow, "circle-always").y < line.y && line.y < find(narrow, "circle-safe").y, 3000, "between Always through and Safe")
+            mock.view = before
+            wide.reload()
+            narrow.reload()
         }
 
         // What comes when, at 412: a line per row, now's word beside it; a row's values, a value's choices.

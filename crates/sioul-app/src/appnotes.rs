@@ -109,21 +109,28 @@ fn live(config: &Config, now: &Zoned) -> Live {
 }
 
 /// Who wrote, as your address books and lists say (`porch::Senders`): none
-/// when nobody knows a name; and whether the Always through list holds them
-/// (by a number or an address, never a name, which anyone can take).
-fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool) {
+/// when nobody knows a name; whether their card is one of your people's
+/// (`porch::Judged::circle`: by a number or an address, never by a name,
+/// which anyone can take, an SMS's sender id included: review L1); and
+/// whether the Always through list holds them (by a number or an address,
+/// never a name).
+fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool, bool) {
     match sender {
         Sender::Known { numbers, emails, contact } => {
-            let by_number = numbers.iter().map(|n| senders.judge_number(n)).find(|j| j.by != By::Default).map(|j| j.who);
-            let by_address = emails.iter().map(|e| senders.who(e)).find(|w| *w != Who::Stranger);
+            let by_number = numbers.iter().map(|n| senders.judge_number(n)).find(|j| j.by != By::Default);
+            let by_address = emails.iter().map(|e| senders.judge(e)).find(|j| j.who != Who::Stranger);
             let region = sioul_core::reach::region(config);
             let admitted = numbers.iter().any(|n| always.admits_number(n, region)) || emails.iter().any(|e| always.admits_address(e));
             // In the phone's address book though not in Sioul's: someone you know.
             let unknown = if *contact { Who::Neutral } else { Who::Stranger };
-            (Some(by_number.or(by_address).unwrap_or(unknown)), admitted)
+            match by_number.or(by_address) {
+                Some(judged) => (Some(judged.who), judged.circle, admitted),
+                None => (Some(unknown), false, admitted),
+            }
         }
-        Sender::Named { name, book } => (senders.judge_name(name).map(|j| appnotes::named(Some(j.who), *book)), false),
-        Sender::Unknown => (None, false),
+        // A name anyone can take may only hold more, and proves no one of your people (L1).
+        Sender::Named { name, book } => (senders.judge_name(name).map(|judged| appnotes::named(Some(judged.who), *book)), false, false),
+        Sender::Unknown => (None, false, false),
     }
 }
 
@@ -219,9 +226,9 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
     let gate = gate();
     let senders = Senders::load(&config);
-    let (who, admitted) = match &kind {
+    let (who, circle, admitted) = match &kind {
         Kind::People(talk) => who_of(&talk.sender, &senders, &People::load(&People::default_path()), &config),
-        _ => (None, false),
+        _ => (None, false, false),
     };
     // The person's own rows it reads, after its conversation's and before its app's (decision 16):
     // by the card's UID, each number's key, each address; by name only as the phone's address book names.
@@ -238,7 +245,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     // said so in its why and its line (review of part 2, F11).
     let machine = matches!(&kind, Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now));
     let mut kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
-    let (who, admitted) = if matches!(kind, Kind::People(_)) { (who, admitted) } else { (None, false) };
+    let (who, circle, admitted) = if matches!(kind, Kind::People(_)) { (who, circle, admitted) } else { (None, false, false) };
     let (area, unsaid) = area_of(&posted, &kind, &choices, &config);
     if let Kind::People(talk) = &mut kind {
         talk.to_unsaid = unsaid;
@@ -261,7 +268,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     let reachable = reachable_until();
     // Android silences it now (Sioul's mode or yours): a text whose cell says ◑ comes, without a sound (decision 13).
     let silenced = posted.intercepted;
-    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
+    let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced, circle };
     let hash = appnotes::key_hash(&posted.key);
     // A conversation you answered from a computer in the last twenty minutes, or a number
     // texted from one, by the SMS app: at once, but in a pause (`replies`).
@@ -318,7 +325,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
             counted.extend(ledger.held.values().filter(|h| h.until > stamp).map(|h| Counted::held(h, h.until)));
             released = Some(counted);
         }
-        ledger.note(&posted, &kind, who, admitted, area, &decision, stamp);
+        ledger.note(&posted, &kind, who, circle, admitted, area, &decision, stamp);
         if let Some(held) = ledger.held.get_mut(&hash) {
             held.persons = persons.clone();
         }
@@ -341,7 +348,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     given_back_by_hand(&posted, stamp);
     // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`);
     // a reply from a computer handed lately, looked for in it as shown (`replies`).
-    let shared = crate::phonemsgs::note(json, &posted, &kind, who, admitted, &decision) | crate::replies::heard(json, &posted);
+    let shared = crate::phonemsgs::note(json, &posted, &kind, who, circle, admitted, &decision) | crate::replies::heard(json, &posted);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
     let why = if machine && decision.why == Why::Gathered { MACHINE } else { decision.why.id() };
     // A channel that rang while held, Sioul making the gathered apps silent itself: Java asks what to change now.
@@ -533,7 +540,7 @@ fn review_at(json: &str, now: &Zoned) -> String {
             let hash = appnotes::key_hash(key);
             let Some(held) = ledger.held.get(&hash).cloned() else { continue };
             let sources = sioul_core::attention::source_rows_with(&held.app, &held.conversation, &held.persons);
-            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced };
+            let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced, circle: held.circle };
             // Its gathering come, a little late (the quiet window moved off one of Sioul's own reminders):
             // with it, never until the next.
             let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_now(&ask));
@@ -1317,7 +1324,7 @@ mod tests {
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
         let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
-        let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0, persons: Vec::new() };
+        let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), circle: false, admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
         ledger.held.insert(appnotes::key_hash(PEOPLE), held("com.google.android.apps.messaging", "people", "messages", "neutral", stamp - 3600, stamp + 7200));
         ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "gathered", "", "", stamp - 1800, stamp + 7200));
@@ -1642,7 +1649,7 @@ mod tests {
         let gathered = vec!["09:00".to_string(), "12:00".into(), "15:00".into(), "18:00".into()];
         let never = |_: &Zoned| false;
         let sources = sioul_core::attention::source_rows(&posted.package, "");
-        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources, reachable: None, silenced: false };
+        let ask = Ask { now: &now, clock: &Work, attention: &attention, gathered: &gathered, area: None, gate: Some(Gate { until: focus.until }), slot_at: &never, nothing: false, also: &[], sources: &sources, reachable: None, silenced: false, circle: false };
         let decision = appnotes::decide(&kind, Some(Who::Neutral), false, &choices, &ask);
         assert_eq!(decision.until, focus.until, "held until the session's end");
         let cause = appnotes::cause(&posted.package, &kind, Some(Who::Neutral), false, &choices, &ask);

@@ -35,13 +35,16 @@ One choice for each circle of people, for **mail** and for **messages** (texts a
 | | Mail | Messages |
 |---|---|---|
 | Always through | Always | Always |
+| Your people | When awake | When awake |
 | Safe | When awake | When awake |
 | Your contacts | In work and admin hours | When awake |
 | Restricted | In work hours | In work hours |
 | Everyone else | In work and admin hours | In work and admin hours |
 | Blocked | Never | Never |
 
-That is what Sioul does unless you change it. The choices, the same on every line but Always through's messages, which offer **Always** alone:
+That is what Sioul does unless you change it. **Your people** has a line only once you have added someone in Contacts ▸ [Your people](contacts.md#household): everyone you added there, a child, someone you help, a partner, family, whoever they are to you, but a child's other parent and someone whose relation has ended. Nothing to fill in: who they are to you puts them on the line, on every device, as soon as you add them or link a card to them. Until then a sentence under the table says that the line comes once you add someone, with **Open Contacts ▸ Your people**. Their mail and messages come as your safe senders' until you change them; their **calls ring at every time**, at night, in a pause and under do-not-disturb too: someone of your home who calls usually cannot wait, while a text can wait for the morning. On a phone that screens calls, the card of each phone in Settings ▸ Devices shows their row, the same on every phone; their calls' cells are changed in What comes when.
+
+The choices, the same on every line but Always through's messages, which offer **Always** alone:
 
 - **Always**: at every time, the night, a pause and do-not-disturb included. Mail is shown on the Porch without a sound at night and in a pause.
 - **When awake**: in work, admin, leisure and meals; held while you sleep or pause; under do-not-disturb, mail is shown without a sound and a text comes in the shade, silent. In Free time, your safe people's messages still come.
@@ -63,13 +66,14 @@ Outside a line's times, your safe senders' mail waits on the Porch, shown; every
 
 - **Your contacts** is everyone in your address books, and anyone you let in from the screener: nothing to set.
 - **Always through**: the people who must always reach you ([below](#always-through)).
+- **Your people**, once someone is there: their names, read from Contacts ▸ Your people, where you add or change them. Sioul recognises their mail, calls and messages by the cards linked to them. Under a name, the page says what keeps that person off their line: no card linked, or none on this device, with **Link a card…**, which opens their page; a card in an address book someone else can write, which counts once that book's groups decide who may reach you; their card, an address or a number on Restricted or Blocked, with **How this contact reaches you**, where it is changed.
 - **Safe**, **Restricted** and **Blocked**: three lists. Each line is an address, a phone number (`+33 1 99 00 12 34`, written as you like), or a pattern with `*`: `*@example.org` for everyone there, `+33899*` for every number that starts so. Nobody is blocked for sharing a server or a domain with someone else.
 - **People on a list**: everyone you placed on a list from their card or their sheet, each with **As their groups say**, **Safe**, **Restricted** or **Blocked**.
 - **Groups**: one line for each group your contacts belong to (Friends, Family, Clients…), with **No list** or one of the three. Everyone in the group takes it, unless their own choice says otherwise.
 - **One person kept a plain contact** inside a restricted group: on their sheet, **Your contacts** ([below](#a-persons-sheet)).
 - **Addresses, numbers and domains you named as contacts**: one line, shown only when there are some, for what an older version, a sheet or unblocking named as your contacts outside your address books (`*@school.example.org`, say). Press it to read them; remove one to have it judged as everyone else. A group or a person named so says **Your contacts**, never **No list**; **No list** takes it off.
 
-**From the person to the list**: a person's own choice comes first (their address or number, then their card), then their groups, then a domain or the start of a number; then your contacts; everyone else is a stranger. **Proof comes first**: mail that fails its checks is weighed as a stranger's, and forged mail is set aside, even when it claims a safe sender's address.
+**From the person to the list**: a person's own choice comes first (their address or number, then their card), then their groups, then a domain or the start of a number; then your contacts; everyone else is a stranger. **Your people** come over all of that but what restricts: someone you put on Safe or Your contacts by hand is on their line once you add them to Your people, while Restricted or Blocked, on their card, an address or a number, still holds them; a group or a domain you blocked still blocks them. One of your people counts as safe everywhere else in Sioul (the Porch, the spam filter); only this page gives them a line of their own. **Proof comes first**: mail that fails its checks is weighed as a stranger's, and forged mail is set aside, even when it claims a safe sender's address. A call your network says it could not verify is never taken for one of your people's: it is screened as a stranger's.
 
 ## Where you start from {#presets}
 
@@ -218,6 +222,8 @@ On Android, its own do-not-disturb names no list: Sioul's modes let through, as 
 - Stars that go two or more at once (an account synced again, a phone restored) take nobody off: a notice names them, and the list is yours to change.
 - A contact Sioul could not read this time, a number two contacts or two people share, a contact whose number changed: nothing changes, and the list says how many contacts it could not match to one person. An address book whose server has shown no favourite yet is named too: mark one contact as a favourite there, and Sioul keeps its favourites in step from then on.
 - Turned off, the switch forgets what each place held; turned on again, it adds and stars, and takes nobody off.
+
+**Your people are not starred.** Where Sioul screens calls on a phone, their calls ring as their row says, under do-not-disturb too: Sioul's modes let your contacts through and the screening decides. Where it does not, Android's do-not-disturb holds their calls as any contact's, and that phone's card in Settings ▸ Devices says so, with the two ways out: turn the call screening on there, or put that person on Always through. A star would let their texts sound at night too, which their line holds until the morning.
 
 ### Other apps' notifications, on Android {#other-apps-on-a-phone}
 
@@ -421,8 +427,8 @@ Its card says why ("Turned on from your phone.", "While you are busy."). A compu
 
 From a contact's card in [Contacts](contacts.md), **How … reaches you**; from a message, in its menu (⋮), **How they reach you…**:
 
-- **Who they are to you, and why**: "Safe, as the group Friends says.", "Your contacts: in your address book, on no list."
-- **Their list**: **As their groups say**, **Safe**, **Your contacts**, **Restricted** or **Blocked**, for all their addresses and numbers. An address or a number of theirs with a list of its own is said under it: it comes first.
+- **Who they are to you, and why**: "Safe, as the group Friends says.", "Your contacts: in your address book, on no list.", "On Your people, because Léa is one of your people."
+- **Their list**: **As their groups say** (for one of your people, **As one of your people**), **Safe**, **Your contacts**, **Restricted** or **Blocked**, for all their addresses and numbers. A list chosen here wins over Your people. An address or a number of theirs with a list of its own is said under it: it comes first.
 - **Always through**: on or off. Blocked and Always through exclude each other: choosing one takes them off the other, and the sheet says so.
 - **What reaches you from them**: a sentence per channel, from their row, at each time: "Their calls ring during work, admin, leisure, meals and free time. They go to voicemail during sleep and a pause. Under do-not-disturb, their calls go to voicemail." What is missing is said too: "No number of theirs is known: their calls cannot be told apart."
 
