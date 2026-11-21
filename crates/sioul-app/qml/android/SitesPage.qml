@@ -62,7 +62,8 @@ Item {
     function clickNotice(id, key) {
         return false
     }
-    // This page has no ⚙ on Android: calmer colours are a computer's, and the vault's fill comes later.
+    // This page has no ⚙ on Android: calmer colours are a computer's, and the
+    // vault's fill is in each site's screen (SiteScreen.java, SiteFill.qml).
     function openSettings(open, key) {
     }
 

@@ -1,0 +1,148 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright © 2026 Aurélien Pierre
+
+// A phone's site screen asks the window for a login from Bitwarden
+// (SiteScreen.java, sitefill.rs). The window comes forward with its own
+// cards, the very ones a computer's Sites page and the accounts' forms use:
+// the vault's unlock card when it is locked (VaultUnlock.qml: the master
+// password and a code; no security key on a phone), then, for Fill from
+// Bitwarden, the site's only login at once, else the chooser
+// (LoginChooser.qml; Choose a login… always opens it). The login chosen,
+// or the cancel, goes back to Rust once (`siteFillChosen`,
+// `siteFillCancelled`), which brings the site back forward: only the
+// login's id leaves here, never its password. A request is read as this is
+// made (Android may have ended Sioul meanwhile, the site's screen alone made
+// again) and at each `siteFillAsked`. Made on Android only (main.qml).
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+
+Item {
+    id: fill
+
+    // Sioul's backend (backend.rs): its words in your language and what it does.
+    required property var sioul
+    // The window's colours, sizes and fonts (Theme.qml).
+    required property var theme
+
+    // The request answered now: {serial, url, mode ("fill" or "choose")}; null when none.
+    property var asked: null
+    // Its answer handed back already: a card closing after it hands nothing more.
+    property bool answered: true
+    // For the window's tests: the unlock card and the chooser's holder.
+    property alias unlock: unlock
+    property alias chooser: chooser
+
+    // The request waiting, begun unless it is the one under way. An older
+    // one still open has its cards closed and needs no answer: Rust keeps
+    // the newer one alone.
+    function take() {
+        const said = fill.sioul.siteFillWaiting()
+        if (!said)
+            return
+        const request = JSON.parse(said)
+        if (fill.asked !== null && fill.asked.serial === request.serial)
+            return
+        fill.asked = null
+        unlock.close()
+        chooser.close()
+        fill.asked = request
+        fill.answered = false
+        const state = fill.sioul.bitwardenState()
+        if (state === "locked")
+            unlock.begin()
+        else if (state === "unlocked")
+            fill.next()
+        else
+            fill.cancel()
+    }
+
+    // The vault open: Fill from Bitwarden takes the site's only login at
+    // once (unless another was chosen there last); else the chooser.
+    function next() {
+        if (fill.asked === null || fill.answered)
+            return
+        if (fill.asked.mode === "fill") {
+            const site = JSON.parse(fill.sioul.bitwardenSite(fill.asked.url))
+            if (!site.error && site.only) {
+                fill.choose(site.only)
+                return
+            }
+        }
+        chooser.now().begin(fill.asked.url)
+    }
+
+    // A login chosen, by its id: handed back once.
+    function choose(item) {
+        if (fill.asked === null || fill.answered)
+            return
+        fill.answered = true
+        fill.sioul.siteFillChosen(fill.asked.serial, item)
+    }
+
+    // Nothing chosen: handed back once; the site comes back with nothing filled.
+    function cancel() {
+        if (fill.asked === null || fill.answered)
+            return
+        fill.answered = true
+        fill.sioul.siteFillCancelled(fill.asked.serial)
+    }
+
+    // A card closed: cancelled once the closing is over, unless a login was
+    // chosen meanwhile, the next card opened (the chooser after the vault
+    // opened), or another request came.
+    function closed() {
+        const request = fill.asked
+        Qt.callLater(() => {
+            if (fill.asked === request && !unlock.visible && !(chooser.item !== null && (chooser.item as LoginChooser).visible))
+                fill.cancel()
+        })
+    }
+
+    Component.onCompleted: fill.take()
+
+    Connections {
+        target: fill.sioul
+
+        function onSiteFillAsked() {
+            fill.take()
+        }
+    }
+
+    // Bitwarden, opened here for the session, as from Sites or Accounts.
+    VaultUnlock {
+        id: unlock
+
+        sioul: fill.sioul
+        theme: fill.theme
+        onUnlocked: fill.next()
+    }
+    Connections {
+        target: unlock
+
+        function onClosed() {
+            fill.closed()
+        }
+    }
+
+    // Which login: the site's own first, any of the vault's found by site and user name.
+    Later {
+        id: chooser
+
+        sourceComponent: Component {
+            LoginChooser {
+                sioul: fill.sioul
+                theme: fill.theme
+                onChosen: item => fill.choose(item)
+            }
+        }
+    }
+    Connections {
+        target: chooser.item
+
+        function onClosed() {
+            fill.closed()
+        }
+    }
+}

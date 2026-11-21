@@ -1333,6 +1333,22 @@ SioulWindow {
         }
     }
 
+    // A phone's site screen asks for a login from Bitwarden (SiteScreen.java,
+    // sitefill.rs): the vault's unlock card and the chooser show here, over
+    // the page in view, and the site comes back once answered (SiteFill.qml).
+    // Made at the start, on Android only, so that a request that waited for
+    // the window while Android had ended Sioul is read as the window comes up.
+    Loader {
+        active: Qt.platform.os === "android"
+
+        sourceComponent: Component {
+            SiteFill {
+                sioul: sioul
+                theme: theme
+            }
+        }
+    }
+
     // A calendar file (.ics) opened in Sioul (calendarfile.rs): its events,
     // the agenda and the categories chosen, then recorded. Made the first time.
     Later {
