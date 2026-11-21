@@ -218,6 +218,8 @@ mod senders;
 mod series;
 mod servers;
 mod share;
+// A site's login filled from Bitwarden on a phone, through the window's vault (docs/android.md, "Sites").
+mod sitefill;
 mod sites;
 // A site opened inside Sioul on Android, in a screen of its own around the system's web view (docs/android.md, "Sites").
 mod siteview;

@@ -541,7 +541,7 @@ pub(crate) struct Vault {
 }
 
 impl Vault {
-    fn of(items: Vec<bitwarden::Item>) -> Vault {
+    pub(crate) fn of(items: Vec<bitwarden::Item>) -> Vault {
         Vault { logins: bitwarden::Logins::new(items), used: std::sync::atomic::AtomicI64::new(jiff::Timestamp::now().as_second()) }
     }
 
@@ -577,6 +577,11 @@ fn remembered(email: &str) -> String {
     format!("Bitwarden device token for {}", email.trim().to_lowercase())
 }
 
+/// Whether a Bitwarden account is set on this device (Accounts' password manager card).
+pub(crate) fn account_set() -> bool {
+    load_config().bitwarden.email.as_deref().is_some_and(|e| !e.trim().is_empty())
+}
+
 /// "missing" (no account set: Accounts' password manager card), "locked", "unlocked".
 pub(crate) fn bitwarden_state(shared: &Shared) -> String {
     // A made-up vault for the window's tests, from a JSON list of logins (never in Sioul's builds).
@@ -601,7 +606,7 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
             .collect();
         *vault = Some(Vault::of(items));
     }
-    if load_config().bitwarden.email.as_deref().is_none_or(|e| e.trim().is_empty()) {
+    if !account_set() {
         return "missing".into();
     }
     if shared.bitwarden.lock().is_ok_and(|v| v.is_some()) { "unlocked".into() } else { "locked".into() }
@@ -828,15 +833,55 @@ pub(crate) fn bitwarden_site(shared: &Shared, url: &str) -> String {
     serde_json::json!({ "domain": opening.domain, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
 }
 
-/// One login of the vault, for a site: {"name", "username", "password",
-/// "code"} (the one-time code now, when it keeps its secret), or {"error"};
-/// kept as the site's choice.
-pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
-    let error = |id: &str| serde_json::json!({ "error": tr().text(id, None) }).to_string();
-    let Ok(vault) = shared.bitwarden.lock() else { return error("bitwarden-locked") };
-    let Some(vault) = vault.as_ref() else { return error("bitwarden-locked") };
+/// The login "Fill the login" fills at once for an address, as
+/// `bitwarden_site`'s "only" says: its only one, unless another was chosen
+/// there last. None when there is a choice to make, or the vault is locked.
+pub(crate) fn fill_at_once(shared: &Shared, url: &str) -> Option<String> {
+    let held = shared.bitwarden.lock().ok()?;
+    let vault = held.as_ref()?;
     vault.touch();
-    let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return error("bitwarden-none") };
+    let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
+    vault.logins.opening(url, last.as_deref()).only
+}
+
+/// A login taken out of the vault for one fill; its password and code wiped when it goes.
+pub(crate) struct Login {
+    pub(crate) name: String,
+    pub(crate) username: String,
+    pub(crate) password: String,
+    /// The one-time code now, when the login keeps its secret; else "".
+    pub(crate) code: String,
+}
+
+impl Drop for Login {
+    fn drop(&mut self) {
+        wipe(&mut self.password);
+        wipe(&mut self.code);
+    }
+}
+
+/// A secret's text overwritten before its memory goes back, then emptied.
+/// Best effort: a copy made on the way (a string grown, a JSON text, Java's
+/// own strings) is not reached.
+pub(crate) fn wipe(text: &mut String) {
+    // SAFETY: only zeros are written, which leave the text valid UTF-8.
+    let bytes = unsafe { text.as_mut_vec() };
+    for byte in bytes.iter_mut() {
+        // SAFETY: a valid, aligned byte of the vector, written through its own reference.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    text.clear();
+}
+
+/// One login of the vault by its id, for the page at `url`, kept as the
+/// site's choice (the login chosen last comes first there next time). Else
+/// the id of the words that say why not: "bitwarden-locked", "bitwarden-none".
+pub(crate) fn login(shared: &Shared, url: &str, id: &str) -> Result<Login, &'static str> {
+    let Ok(held) = shared.bitwarden.lock() else { return Err("bitwarden-locked") };
+    let Some(vault) = held.as_ref() else { return Err("bitwarden-locked") };
+    vault.touch();
+    let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return Err("bitwarden-none") };
     let host = sioul_core::sites::host_of(url);
     if !host.is_empty() {
         let mut all = chosen();
@@ -849,7 +894,24 @@ pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
         }
     }
     let code = if item.totp.is_empty() { String::new() } else { bitwarden::totp(&item.totp, jiff::Timestamp::now().as_second()).unwrap_or_default() };
-    serde_json::json!({ "name": item.name, "username": item.username, "password": item.password, "code": code }).to_string()
+    Ok(Login { name: item.name.clone(), username: item.username.clone(), password: item.password.clone(), code })
+}
+
+/// The whole call that fills one login of the vault into the page at `url`
+/// (`fill_call`), or the id of the words that say why not (`login`).
+pub(crate) fn fill_for(shared: &Shared, url: &str, id: &str) -> Result<String, &'static str> {
+    let login = login(shared, url, id)?;
+    Ok(fill_call(&login.username, &login.password, &login.code))
+}
+
+/// One login of the vault, for a site: {"name", "username", "password",
+/// "code"} (the one-time code now, when it keeps its secret), or {"error"};
+/// kept as the site's choice.
+pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
+    match login(shared, url, id) {
+        Ok(login) => serde_json::json!({ "name": login.name, "username": login.username, "password": login.password, "code": login.code }).to_string(),
+        Err(id) => serde_json::json!({ "error": tr().text(id, None) }).to_string(),
+    }
 }
 
 /// Locks the vault again: its logins leave memory.

@@ -2669,6 +2669,22 @@ pub mod qobject {
         #[qinvokable]
         fn bitwarden_login(self: &Sioul, url: &QString, id: &QString) -> QString;
 
+        /// A phone's site screen asks the window for a login (sitefill.rs,
+        /// SiteFill.qml): the request waiting, {serial, url, mode ("fill" or
+        /// "choose")}, or "" when none.
+        #[qinvokable]
+        fn site_fill_waiting(self: &Sioul) -> QString;
+
+        /// The login chosen in the window for request `serial`, by its id:
+        /// kept for the site as a one-use ticket (never its password), the
+        /// site brought back forward.
+        #[qinvokable]
+        fn site_fill_chosen(self: &Sioul, serial: i32, id: &QString);
+
+        /// Request `serial` cancelled in the window: the site brought back, nothing filled.
+        #[qinvokable]
+        fn site_fill_cancelled(self: &Sioul, serial: i32);
+
         /// Contacts on the map: {"allowed", "tiles", "pins", "waiting", "locating"}.
         #[qinvokable]
         fn map_view(self: &Sioul) -> QString;
@@ -3475,6 +3491,11 @@ pub mod qobject {
         /// lists, the password manager's card).
         #[qsignal]
         fn bitwarden_locked(self: Pin<&mut Sioul>);
+
+        /// A phone's site screen asked the window for a login: the request
+        /// is read with `site_fill_waiting` (sitefill.rs, SiteFill.qml).
+        #[qsignal]
+        fn site_fill_asked(self: Pin<&mut Sioul>);
 
         /// An account chosen among the phone's: its name (an address, usually) and its kind
         /// ("com.google", "e.foundation.webdav.eelo"…); both empty when none was.
@@ -5283,6 +5304,9 @@ impl qobject::Sioul {
         let keyboard = crate::devicekind::keyboard_now(&self.qt_thread());
         self.as_mut().set_keyboard(keyboard);
         self.as_mut().set_mode(QString::from(&mode_json()));
+        // A phone's site screen asks the window's vault for a login (sitefill.rs): a request
+        // that waited for the window while Android had ended Sioul is told now.
+        crate::sitefill::started(&self.qt_thread(), &self.shared());
         // What other applications handed (a share, a mailto: link), made drafts (docs/client.md).
         crate::outside::started(self.as_mut());
         // The pauses' do-not-disturb as they are, a "Pause" pressed on a phone's tile (docs/pauses.md).
@@ -8344,6 +8368,18 @@ impl qobject::Sioul {
 
     fn bitwarden_login(&self, url: &QString, id: &QString) -> QString {
         QString::from(&crate::sites::bitwarden_login(&self.shared(), &url.to_string(), &id.to_string()))
+    }
+
+    fn site_fill_waiting(&self) -> QString {
+        QString::from(&crate::sitefill::waiting())
+    }
+
+    fn site_fill_chosen(&self, serial: i32, id: &QString) {
+        crate::sitefill::chosen(serial, &id.to_string());
+    }
+
+    fn site_fill_cancelled(&self, serial: i32) {
+        crate::sitefill::cancelled(serial);
     }
 
     fn map_view(&self) -> QString {
