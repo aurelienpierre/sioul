@@ -604,11 +604,11 @@ public final class SiteScreenCheck
         expect("the menu's two lines of the vault only with an account set", vaultLines.find() && menuBody.split("site\\.word\\(\"fill\"\\)", -1).length == 2 && menuBody.split("site\\.word\\(\"choose_login\"\\)", -1).length == 2);
         expect("each line asks its own mode", menuBody.contains("case 6:\n                fill(\"fill\");") && menuBody.contains("case 7:\n                fill(\"choose\");"));
         String asking = body(screen, "private void fill(String mode)", "    ");
-        expect("asked with the address the web view committed for the page in front", asking.contains("String address = page == popup ? popupCommitted : committed;") && asking.contains("SiteWeb.fillAsked(address, mode)") && asking.indexOf("if (!SiteWeb.isHttps(address))") < asking.indexOf("ask(\"ask\""));
+        expect("asked with the address the web view committed for the page in front", asking.contains("String address = page == popup ? popupCommitted : committed;") && asking.contains("SiteWeb.fillAsked(address, mode)") && asking.indexOf("if (!SiteWeb.isHttps(address))") < asking.indexOf("fillQuestion(\"ask\""));
         String reaching = body(screen, "private static String rust(", "    ");
         expect("Rust loaded before it is asked, as the receivers load it", reaching.indexOf("DoseAlarms.load(context);") >= 0 && reaching.indexOf("DoseAlarms.load(context);") < reaching.indexOf("nativeFill(verb, json)"));
         expect("Rust asked in one place", screen.split("nativeFill\\(", -1).length - 1 == 2);
-        expect("off Android's main thread, the answer back on it", body(screen, "private void ask(String verb,", "    ").contains("new Thread(") && body(screen, "private void ask(String verb,", "    ").contains("runOnUiThread("));
+        expect("off Android's main thread, the answer back on it", body(screen, "private void fillQuestion(String verb,", "    ").contains("new Thread(") && body(screen, "private void fillQuestion(String verb,", "    ").contains("runOnUiThread("));
         List<String> logged = new ArrayList<>();
         int logLines = 0;
         for (String source : new String[] { screen, web }) {

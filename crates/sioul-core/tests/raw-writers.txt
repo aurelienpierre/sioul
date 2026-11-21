@@ -172,7 +172,7 @@ sioul-app/src/share.rs	begin_on_server	3	std::fs::remove_dir_all(&mirror)
 sioul-app/src/share.rs	begin_on_server	1	share::write_atomically(&mirror.join("seal.toml"), seal)
 
 # sioul-app/src/sites.rs: the password manager's login chosen (state): no item.
-sioul-app/src/sites.rs	bitwarden_login	1	std::fs::write(chosen_path(), text)
+sioul-app/src/sites.rs	login	1	std::fs::write(chosen_path(), text)
 
 # sioul-app/src/spam.rs: the training's lock files (the window's, a phone's run by itself): no item.
 sioul-app/src/spam.rs	lock	1	std::fs::OpenOptions::new()

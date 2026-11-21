@@ -608,7 +608,7 @@ public final class SiteScreen extends Activity
             say(site.word("fill_https"));
             return;
         }
-        ask("ask", SiteWeb.fillAsked(address, mode), page, address);
+        fillQuestion("ask", SiteWeb.fillAsked(address, mode), page, address);
     }
 
     /** Back from the window: its answer taken, with the address of the page in front now. */
@@ -619,14 +619,14 @@ public final class SiteScreen extends Activity
         if (page == null || fillAsking)
             return;
         WebView front = front();
-        ask("take", SiteWeb.fillAsked(front == popup ? popupCommitted : committed, null), page, address);
+        fillQuestion("take", SiteWeb.fillAsked(front == popup ? popupCommitted : committed, null), page, address);
     }
 
     /**
      * A question to Rust on a thread of its own, since Rust may have to be
      * loaded first; its answer handled on Android's main thread.
      */
-    private void ask(String verb, String json, WebView page, String address)
+    private void fillQuestion(String verb, String json, WebView page, String address)
     {
         fillAsking = true;
         Context context = getApplicationContext();
