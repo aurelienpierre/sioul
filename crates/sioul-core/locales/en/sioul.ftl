@@ -2111,9 +2111,6 @@ task-mode-timeline = Gantt
 task-mode-search = Search
 ## The Search tab of Tasks and the Agenda (ThingSearch.qml, docs/tasks.md "Search").
 things-words = Words in the title, the notes or the place
-things-which-both = Tasks and events
-things-which-tasks = Tasks
-things-which-events = Events
 things-any-project = Any project
 things-no-project = No project
 things-any-kind = Any type
@@ -2141,6 +2138,15 @@ things-coming = Coming
 things-past = Past
 things-undated = No date
 things-none-found = Nothing matches.
+things-none-found-filtered = Nothing matches in the agendas ticked.
+# Under the results: what the page's Agendas filter leaves out and the search would have found.
+things-left-out = { $n ->
+        [one] One match in an agenda not ticked.
+       *[other] { $Count } matches in agendas not ticked.
+    }
+things-show-all = Show them all
+things-every-agenda = Every agenda, for this search.
+things-agendas-shown = Back to the agendas ticked
 things-a-task = A task
 things-an-event = An event
 ## Batch edits in the full lists (batch.rs, docs/tasks.md "Search").

@@ -42,6 +42,9 @@ Item {
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
+        function textCounted(key, n) { return key + ":" + n }
+        // The Search tab's engine (thingsearch.rs): nothing found, nothing left out.
+        function findThings(query) { return JSON.stringify({ projects: [], kinds: [], categories: [], found: [], left_out: 0, agendas: { chosen: false, groups: [] } }) }
         // Its words with their arguments, long as real ones, when a test asks.
         property bool longWords: false
         function textArgs(key, args) { return mock.longWords ? key + ": " + args : key }

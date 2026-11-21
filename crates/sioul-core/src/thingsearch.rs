@@ -16,6 +16,11 @@
 //! - **Events**: with guests or not (an ATTENDEE that is not one of your own
 //!   addresses), status (confirmed, to be confirmed, cancelled).
 //! - **Tasks**: done or not, with a date asked or not.
+//! - **Agendas** (20 November 2026): those the page's agenda filter leaves
+//!   out, by place: a task by the list that holds it, an event by its
+//!   calendar, both CalDAV collections. What they hold and the search would
+//!   have found is counted, never listed (`Searched::left_out`), so that a
+//!   search that finds nothing because of a filter set elsewhere says so.
 //!
 //! Each thing found once, with the time it is listed at: what comes first,
 //! soonest first, then the past, newest first, then what has no date.
@@ -27,12 +32,13 @@ use crate::tasks::{Status, Task};
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The choice "none" of a project, a kind or a category: things without one.
 pub const NONE: &str = ":none";
 
-/// What is searched.
+/// What is searched: the window's Search tab asks the tasks (Tasks) or the
+/// events (the Agenda), as its page says; `sioul tasks search` both by default.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Which {
@@ -87,6 +93,10 @@ pub struct Query {
     pub done: Option<bool>,
     /// Tasks with a date asked (true), without (false), or both.
     pub deadline: Option<bool>,
+    /// The agendas left out, by place ("account/id"): a task by its list
+    /// (`Task::list_id`), an event by its calendar (`timeline::collection_of`).
+    /// None, every agenda.
+    pub agendas_off: BTreeSet<String>,
 }
 
 impl Query {
@@ -161,6 +171,14 @@ pub struct Found {
     pub read_only: bool,
 }
 
+/// What a search found, and how many more things the agendas left out hold
+/// that it would have found (`Query::agendas_off`).
+#[derive(Debug, Clone, Default)]
+pub struct Searched {
+    pub found: Vec<Found>,
+    pub left_out: usize,
+}
+
 /// What a search reads besides the things: your addresses (a guest that is
 /// you is no guest), the projects' names, the zone and today.
 pub struct Context<'a> {
@@ -172,9 +190,10 @@ pub struct Context<'a> {
 }
 
 /// The things asked, each once, in the order lists show them (`When`, then
-/// by time). `occurrences`, read by the caller for the range asked, places
-/// repeating events; without them a repeating event is placed by its first time.
-pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurrence]>, query: &Query, cx: &Context) -> Vec<Found> {
+/// by time), and how many the agendas left out hold. `occurrences`, read by
+/// the caller for the range asked, places repeating events; without them a
+/// repeating event is placed by its first time.
+pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurrence]>, query: &Query, cx: &Context) -> Searched {
     let words: Vec<String> = query.words.split_whitespace().map(folded).collect();
     let has_words = |title: &str, notes: &str, place: &str| words.is_empty() || {
         let all = folded(&format!("{title}\n{notes}\n{place}"));
@@ -183,6 +202,7 @@ pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurre
     let range = query.range(cx.zone);
     let now = cx.today.to_zoned(cx.zone.clone()).map_or(0, |z| z.timestamp().as_second());
     let mut out: Vec<Found> = Vec::new();
+    let mut left_out = 0;
     if query.wants_tasks() {
         for task in tasks {
             let kinds: Vec<String> = Some(task.kind.clone()).filter(|k| !k.is_empty()).into_iter().collect();
@@ -199,6 +219,11 @@ pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurre
             if let Some((from, to)) = range
                 && !days.iter().any(|d| (from..to).contains(&midnight(*d)))
             {
+                continue;
+            }
+            // Found, but in a list the filter leaves out: counted, not listed.
+            if query.agendas_off.contains(&task.list_id) {
+                left_out += 1;
                 continue;
             }
             // Listed at its date asked, with its hour when it has one.
@@ -265,6 +290,11 @@ pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurre
                 }
                 (None, false) => (Some(event.start).filter(|s| *s != 0), event.all_day),
             };
+            // Found, but in a calendar the filter leaves out: counted, not listed.
+            if !query.agendas_off.is_empty() && query.agendas_off.contains(&crate::timeline::collection_of(&event.key)) {
+                left_out += 1;
+                continue;
+            }
             out.push(Found {
                 thing: "event",
                 key: event.key.clone(),
@@ -303,7 +333,7 @@ pub fn search(tasks: &[Task], events: &[EventRef], occurrences: Option<&[Occurre
         })
         .then_with(|| folded(&a.title).cmp(&folded(&b.title)))
     });
-    out
+    Searched { found: out, left_out }
 }
 
 /// The text folded for comparison: accents and case aside.
@@ -403,7 +433,7 @@ mod tests {
         let tr = Translator::new("en");
         let own = ["you@example.org".to_string()];
         let cx = Context { own: &own, projects: &projects, zone: &zone(), today: "2026-11-08".parse().unwrap(), tr: &tr };
-        search(&tasks, &events, None, query, &cx).into_iter().map(|f| f.uid).collect()
+        search(&tasks, &events, None, query, &cx).found.into_iter().map(|f| f.uid).collect()
     }
 
     /// Everything, in the lists' order: what comes, soonest first; the past,
@@ -470,11 +500,43 @@ mod tests {
         let tr = Translator::new("en");
         let cx = Context { own: &[], projects: &[], zone: &zone(), today: "2026-11-08".parse().unwrap(), tr: &tr };
         let query = Query { words: "yoga".into(), from: "2026-11-10".into(), to: "2026-11-20".into(), ..Query::default() };
-        let hits = search(&tasks, &events, Some(&read), &query, &cx);
+        let hits = search(&tasks, &events, Some(&read), &query, &cx).found;
         assert_eq!((hits.len(), hits[0].at), (1, Some(at("2026-11-16T18:00"))));
         assert_eq!(hits[0].date, "Mon 16 Nov, 18:00");
         let none = Query { from: "2026-12-01".into(), to: "2026-12-02".into(), ..query };
-        assert!(search(&tasks, &events, Some(&read), &none, &cx).is_empty());
+        assert!(search(&tasks, &events, Some(&read), &none, &cx).found.is_empty());
+    }
+
+    /// The agendas the page's filter leaves out (20 November 2026): a task by
+    /// the list that holds it, an event by its calendar, one place for a
+    /// collection that holds both; none left out, every agenda. What they hold
+    /// is counted when the rest of the query finds it, never listed; a task's
+    /// time block is no event, left out or not.
+    #[test]
+    fn the_agendas_left_out_a_task_by_its_list_an_event_by_its_calendar() {
+        let (mut tasks, mut events) = fixture();
+        for task in &mut tasks {
+            task.list_id = if task.uid == "call" { "dav/work".into() } else { "dav/home".into() };
+        }
+        let root = crate::vdir::Kind::Calendars.root();
+        for event in &mut events {
+            let calendar = if event.uid == "meeting" { "dav/work" } else { "dav/home" };
+            event.key = root.join(calendar).join(format!("{}.ics", event.uid)).display().to_string();
+        }
+        let tr = Translator::new("en");
+        let own = ["you@example.org".to_string()];
+        let cx = Context { own: &own, projects: &[], zone: &zone(), today: "2026-11-08".parse().unwrap(), tr: &tr };
+        let ask = |off: &[&str], words: &str| {
+            let query = Query { words: words.into(), agendas_off: off.iter().map(|o| o.to_string()).collect(), ..Query::default() };
+            let searched = search(&tasks, &events, None, &query, &cx);
+            (searched.found.into_iter().map(|f| f.uid).collect::<Vec<_>>(), searched.left_out)
+        };
+        assert_eq!(ask(&[], ""), (["dentist", "caf", "meeting", "call", "done", "old", "undated"].map(String::from).to_vec(), 0), "none left out: every agenda");
+        assert_eq!(ask(&["dav/work"], ""), (["dentist", "caf", "done", "old", "undated"].map(String::from).to_vec(), 2), "the meeting by its calendar, the call by its list");
+        assert_eq!(ask(&["dav/work"], "bank"), (Vec::new(), 1), "found nowhere else: counted, so that nothing reads as absent");
+        assert_eq!(ask(&["dav/work"], "dentist"), (vec!["dentist".to_string()], 0), "counted only what the words find");
+        assert_eq!(ask(&["dav/home"], ""), (["meeting", "call"].map(String::from).to_vec(), 5), "a list and a calendar in one collection; the time block never counted");
+        assert_eq!(ask(&["dav/elsewhere"], "").1, 0, "an agenda that holds nothing found");
     }
 
     /// The query as the window and the agents send it, in JSON.

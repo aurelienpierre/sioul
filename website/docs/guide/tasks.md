@@ -153,15 +153,15 @@ One tab away from Now:
   <figcaption>The list, by project.</figcaption>
 </figure>
 
-Three choices under the tabs, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices. On a phone, the three fold behind one button, **Filters**, which says how many are set: "Filters (2)".
+Three choices under the tabs, **Every project**, **All kinds** and **Any category**, show only the tasks of one project, one kind or one category, in every view, Now included: "the next call". Search has its own, which start on these. The plan stays whole: a call that waits for a message still waits. Sioul remembers your choices. On a phone, the three fold behind one button, **Filters**, which says how many are set: "Filters (2)".
 
 **Your hours shape Now alone.** The day, List, Board, Gantt and Search show every task, work, admin and leisure, whatever the hour: a work task is there in the evening too, and The day shows today's steps of all of them. Now stays calm and shows what the hour is for.
 
-**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board and Gantt, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
+**Agendas**, beside them, is the agenda's own filter, its task lists here ([Agenda](agenda.md#several-agendas)). On Now, a list it leaves out, a work list in the evening or one you unticked, keeps its tasks out, the plan whole. On List, Board, Gantt and Search, only what you said leaves a list out: one you unticked there or keep hidden; the hours never do. What you tick holds until your working hours change. A list you only read stays as it is: its tasks open for reading.
 
 ## Search, and changing several at once {#search}
 
-**Search**, the last tab at the top of the Tasks page and of the Agenda, finds tasks and events together, whatever the hour:
+**Search**, the last tab at the top of the Tasks page and of the Agenda, finds tasks on the Tasks page and events in the Agenda, whatever the hour. It looks the same in both pages, in this order:
 
 - **words** found in the title, the notes or the place, each word somewhere, accents and case aside;
 - **Any project**, **No project** or one; the same for the **type** and the **category**. An event has no type: **No type** keeps every event, a type none;
@@ -170,6 +170,10 @@ Three choices under the tabs, **Every project**, **All kinds** and **Any categor
 - for tasks: **Done** or **Not done**, **With a date asked** or **Without a date asked**.
 
 What comes is listed first, the soonest first, then the past, the newest first, then what has no date. A tap opens its card.
+
+On the Tasks page, Search has its own project, type and category: the three choices under the tabs, and the line that adds a task, are not shown there. Search starts on the project, type and category you chose in the other tabs, shown as chosen; what you change in Search stays in Search, and the other tabs keep theirs. On a phone, the choices fold behind one button beside the words, **Filters**, which says how many are set ("Filters (2)"); they show at once when one is set.
+
+**Agendas** stays where it is: Search finds only what is in the agendas it shows, a task by its list, an event by its calendar. When it leaves out something the search would have found, a line under the results says so ("Two matches in agendas not ticked."), and **Show them all** shows them for as long as you stay on Search; **Back to the agendas ticked** returns to them.
 
 **Changing several at once**, in the task list and in Search: **Select**, beside the search field, puts a box on each row and the bar above the list at once; a click or a tap on a row then picks it or lets it go, and **Select** again, or **×** on the bar, lets everything go. As shortcuts, **Ctrl** with a click picks a row, **Shift** with a click every row from the last one picked, and on a touch screen a long press picks; each turns **Select** on. The bar changes all of them in one act: **Project**, **Type**, **Category**, **Day…** (a task's date asked, its hour kept; an event moved to that day at its time), **Status**, **List or calendar**, **Done**, **Delete**. **Undo** on the status line puts everything back; a deletion waits ten seconds, as one does. What a batch leaves as it was is said under the bar, each with why: a meeting with others (change it from its card, which tells its guests), a calendar or a list you only read, a repeating event moved to another day (from its card), a list that would not keep all of a task.
 
