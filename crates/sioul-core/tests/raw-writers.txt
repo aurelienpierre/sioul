@@ -521,14 +521,15 @@ sioul-core/src/needs.rs	write	1	std::fs::write(&temporary, text)
 sioul-core/src/needs.rs	write	1	std::fs::rename(&temporary, path)
 sioul-core/src/needs.rs	save	1	std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?)
 
-# sioul-core/src/notes.rs: notes in the notes folder: trash, rename, write: no item.
+# sioul-core/src/notes.rs: notes in the notes folder: trash, rename, write, and the days this device saw notes made (state): no item.
 sioul-core/src/notes.rs	trash	1	std::fs::rename(root.join(&path), &to)
-sioul-core/src/notes.rs	untrash	1	std::fs::rename(root.join(from), &to)
+sioul-core/src/notes.rs	untrash	1	std::fs::rename(root.join(&from), &to)
 sioul-core/src/notes.rs	rename	1	std::fs::rename(vault.root.join(path), vault.root.join(&new_path))
 sioul-core/src/notes.rs	rename_folder	1	std::fs::rename(vault.root.join(&path), vault.root.join(&new_path))
 sioul-core/src/notes.rs	remove_folder	1	std::fs::remove_dir(&full)
 sioul-core/src/notes.rs	write	1	std::fs::write(&temporary, text)
 sioul-core/src/notes.rs	write	1	std::fs::rename(&temporary, &target)
+sioul-core/src/notes.rs	change	1	std::fs::write(&path, text)
 
 # sioul-core/src/notices.rs: the notices this device's notifications told (state, never shared): no item.
 sioul-core/src/notices.rs	save	1	crate::filelock::replace(path, text.as_bytes())
