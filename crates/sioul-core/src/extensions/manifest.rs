@@ -185,11 +185,18 @@ fn file_named(file: &str) -> bool {
 /// Where a file named by the manifest is: as it is when an `https` address;
 /// else beside the manifest, whose own address (or folder) is `manifest`.
 pub fn file_address(manifest: &str, file: &str) -> String {
+    file_address_on(manifest, file, cfg!(windows))
+}
+
+/// The same, said for one system: on Windows a manifest read from this
+/// device may end its folder with `\`, which is a name's character elsewhere.
+fn file_address_on(manifest: &str, file: &str, windows: bool) -> String {
     if file.starts_with("https://") {
         return file.to_string();
     }
-    match manifest.rfind('/') {
-        Some(slash) => format!("{}/{file}", &manifest[..slash]),
+    let end = if windows && !manifest.starts_with("https://") { manifest.rfind(['/', '\\']) } else { manifest.rfind('/') };
+    match end {
+        Some(end) => format!("{}/{file}", &manifest[..end]),
         None => file.to_string(),
     }
 }
@@ -227,6 +234,10 @@ mod tests {
         assert_eq!(offer.name.said(true), "Un emploi du temps");
         assert_eq!(file_address("https://example.org/ext/manifest.toml", &offer.file), "https://example.org/ext/timetable-0.1.0.wasm");
         assert_eq!(file_address("/home/x/ext/manifest.toml", &offer.file), "/home/x/ext/timetable-0.1.0.wasm");
+        // Windows' own separator ends the folder there, and only there.
+        assert_eq!(file_address_on(r"C:\Users\x\ext\manifest.toml", &offer.file, true), r"C:\Users\x\ext/timetable-0.1.0.wasm");
+        assert_eq!(file_address_on(r"/home/x/ext/a\manifest.toml", &offer.file, false), "/home/x/ext/timetable-0.1.0.wasm");
+        assert_eq!(file_address_on(r"https://example.org/ext/a\manifest.toml", &offer.file, true), "https://example.org/ext/timetable-0.1.0.wasm");
         for (from, to) in [
             ("format = 1", "format = 2"),
             (r#"id = "timetable""#, r#"id = "../x""#),
