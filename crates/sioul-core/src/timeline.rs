@@ -363,15 +363,42 @@ pub fn block_id(key: &str, start: i64, recurring: bool) -> String {
 /// calendars' choices name it (`pim::calendars`); its folder as it is when it
 /// lies elsewhere.
 pub fn collection_of(key: &str) -> String {
-    below_calendars(key).rsplit_once('/').map_or_else(String::new, |(folder, _)| folder.to_string())
+    collection_on(key, calendars_root(), cfg!(windows))
+}
+
+/// The same, said for one system and one calendars' folder (`root`, ended by
+/// `/`).
+fn collection_on(key: &str, root: &str, windows: bool) -> String {
+    let below = below_on(key, root, windows);
+    let end = if windows { below.rfind(['/', '\\']) } else { below.rfind('/') };
+    end.map_or_else(String::new, |end| below[..end].to_string())
 }
 
 /// A calendar's file named below the calendars' folder ("local/work/a.ics"),
 /// as it is when it lies elsewhere.
-fn below_calendars(key: &str) -> &str {
+fn below_calendars(key: &str) -> std::borrow::Cow<'_, str> {
+    below_on(key, calendars_root(), cfg!(windows))
+}
+
+/// The calendars' folder, ended by `/`.
+fn calendars_root() -> &'static str {
     static ROOT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    let root = ROOT.get_or_init(|| format!("{}/", crate::vdir::Kind::Calendars.root().display()));
-    key.strip_prefix(root.as_str()).unwrap_or(key)
+    ROOT.get_or_init(|| format!("{}/", crate::vdir::Kind::Calendars.root().display()))
+}
+
+/// The same, said for one system: on Windows a file's path separates its
+/// folders with `\`, which is a name's character elsewhere; below the
+/// calendars' folder it is named there as everywhere, with `/`, so that a
+/// calendar has one name on every device.
+fn below_on<'a>(key: &'a str, root: &str, windows: bool) -> std::borrow::Cow<'a, str> {
+    use std::borrow::Cow;
+    if windows {
+        return match key.strip_prefix(root.trim_end_matches('/')).and_then(|rest| rest.strip_prefix(['/', '\\'])) {
+            Some(rest) => Cow::Owned(rest.replace('\\', "/")),
+            None => Cow::Borrowed(key),
+        };
+    }
+    Cow::Borrowed(key.strip_prefix(root).unwrap_or(key))
 }
 
 /// A step's id: its task and its day, never its time, so that a re-lay that
@@ -1536,6 +1563,28 @@ fn nearest_date<'a>(dates: &'a [Item], t: i64, zone: &TimeZone) -> Option<(Date,
 mod tests {
     use super::*;
     use crate::dayview::Block;
+
+    /// A calendar's file names its calendar the same way on every system:
+    /// Windows separates the folders of a path with `\`, which is a name's
+    /// character elsewhere (found on 21 November 2026: there no event had a
+    /// calendar, and the agendas' filter left nothing out).
+    #[test]
+    fn a_file_names_its_calendar_on_windows_as_everywhere() {
+        let root = r"C:\Users\x\AppData\Roaming\sioul\calendars/";
+        assert_eq!(collection_on(r"C:\Users\x\AppData\Roaming\sioul\calendars\local\work\a.ics", root, true), "local/work");
+        assert_eq!(collection_on(r"C:\Users\x\AppData\Roaming\sioul\calendars\dav/work\a.ics", root, true), "dav/work");
+        assert_eq!(collection_on(r"C:\Users\x\AppData\Roaming\sioul\calendars/local/work/a.ics", root, true), "local/work");
+        assert_eq!(below_on(r"C:\Users\x\AppData\Roaming\sioul\calendars\local\work\a.ics", root, true), "local/work/a.ics");
+        // Elsewhere, and beside the folder: as it is.
+        assert_eq!(collection_on(r"D:\elsewhere\cal\a.ics", root, true), r"D:\elsewhere\cal");
+        assert_eq!(collection_on(r"C:\Users\x\AppData\Roaming\sioul\calendars-old\work\a.ics", root, true), r"C:\Users\x\AppData\Roaming\sioul\calendars-old\work");
+        // On the other systems nothing changes: `\` belongs to a name.
+        assert_eq!(collection_on("/data/calendars/local/work/a.ics", "/data/calendars/", false), "local/work");
+        assert_eq!(collection_on(r"/data/calendars/local/wo\rk/a.ics", "/data/calendars/", false), r"local/wo\rk");
+        assert_eq!(below_on(r"/data/calendars/local/wo\rk/a.ics", "/data/calendars/", false), r"local/wo\rk/a.ics");
+        assert_eq!(collection_on("/elsewhere/cal/a.ics", "/data/calendars/", false), "/elsewhere/cal");
+        assert_eq!(collection_on("a.ics", "/data/calendars/", false), "");
+    }
 
     fn paris() -> TimeZone {
         TimeZone::get("Europe/Paris").unwrap()
