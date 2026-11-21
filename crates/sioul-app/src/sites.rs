@@ -488,6 +488,49 @@ pub(crate) fn announced_by(sender: &str) -> String {
 
 // Bitwarden, read here: no external program (sioul_sync::bitwarden).
 
+/// The script that writes a login into a page's form, called with the user
+/// name, the password and the one-time code: the password field and the
+/// name field before it set as typing would, and a page asking for the
+/// one-time code given the code the vault computes now. One source for every
+/// device: a computer's Sites page takes it (`sioul.fillScript()`, the values
+/// quoted by its own JSON), a phone's site screen runs the whole call Rust
+/// builds with it (`fill_call`, sitefill.rs). Word for word the script the
+/// computer's page held until 21 November 2026.
+pub(crate) const FILL_SCRIPT: &str = r#"function (user, password, code) {
+        const set = (field, value) => {
+            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value').set;
+            setter.call(field, value);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const secret = document.querySelector('input[type=password]');
+        const names = Array.from(document.querySelectorAll('input[type=email], input[type=text], input:not([type])'));
+        const before = secret ? names.filter(f => f.compareDocumentPosition(secret) & Node.DOCUMENT_POSITION_FOLLOWING) : names;
+        const name = before.length ? before[before.length - 1] : null;
+        if (name && user) set(name, user);
+        if (secret && password) set(secret, password);
+        // A page asking for the one-time code: the code the vault computes now.
+        const otp = document.querySelector('input[autocomplete="one-time-code"]') || Array.from(document.querySelectorAll('input:not([type=password]):not([type=hidden])')).find(f => /otp|totp|2fa|mfa|code|token/i.test((f.name || '') + ' ' + (f.id || '') + ' ' + (f.getAttribute('aria-label') || '')));
+        if (otp && code && !secret) set(otp, code);
+        return !!(name || secret);
+    }"#;
+
+/// A text as a JavaScript string: JSON's quoting (quotes, backslashes,
+/// control characters, line breaks escaped), then the two line separators
+/// (U+2028, U+2029), which older engines end a line at, and `<`, so that
+/// nothing in it can close a script it would be written into (`</script>`,
+/// `<!--`). Inside the quotes each escape reads back as the character itself.
+fn js_text(text: &str) -> String {
+    serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into()).replace('\u{2028}', "\\u2028").replace('\u{2029}', "\\u2029").replace('<', "\\u003c")
+}
+
+/// The whole call a page runs to fill a login (`FILL_SCRIPT`), built here:
+/// the three values quoted by Rust (`js_text`), so that nothing in a
+/// password, a user name or a code can change the script.
+pub(crate) fn fill_call(user: &str, password: &str, code: &str) -> String {
+    format!("({FILL_SCRIPT})({}, {}, {})", js_text(user), js_text(password), js_text(code))
+}
+
 /// The vault, open for the session: its logins, in memory only (wiped when
 /// dropped), with what each is searched by (`bitwarden::Logins`).
 pub(crate) struct Vault {
@@ -842,5 +885,42 @@ mod tests {
         open(now - 10 * 60);
         let _ = bitwarden_site(&shared, "https://bank.example.org/login");
         assert!(!bitwarden_lock_if_idle(&shared, 5, jiff::Timestamp::now().as_second()));
+    }
+
+    /// One fill script for every device (21 November 2026): the computer's
+    /// Sites page takes it from Rust, keeps no copy of its own and calls it
+    /// as before; the window's invokable gives this constant.
+    #[test]
+    fn the_computer_s_page_takes_the_fill_script_from_rust() {
+        let page = include_str!("../qml/SitesPage.qml");
+        assert!(page.contains("readonly property string fillScript: page.sioul.fillScript()"));
+        assert!(!page.contains("querySelector"), "no copy of the script in the page");
+        assert!(page.contains(r#"view.runJavaScript("(" + page.fillScript + ")(" + JSON.stringify(user) + ", " + JSON.stringify(password) + ", " + JSON.stringify(code || "") + ")")"#), "called as before");
+        assert!(include_str!("backend.rs").contains("fn fill_script(&self) -> QString {\n        QString::from(crate::sites::FILL_SCRIPT)\n    }"));
+        assert!(FILL_SCRIPT.starts_with("function (user, password, code) {") && FILL_SCRIPT.ends_with("return !!(name || secret);\n    }"));
+    }
+
+    /// The call a phone's screen runs is Rust's whole: whatever a password
+    /// holds (quotes, a backslash, an apostrophe, `</script>`, the line
+    /// separators, line breaks, a null, a template's marks), the three values
+    /// come back intact when the call's arguments are read as JSON, and none
+    /// of it is left raw to end a string, a line or a script.
+    #[test]
+    fn nothing_in_a_password_can_change_the_call() {
+        let password = "a\"b\\c'd</script><!--e\u{2028}f\u{2029}g\nh\ri\u{0}j${k}`l";
+        let user = "jane\"</script>@example.org";
+        let call = fill_call(user, password, "123456");
+        let prefix = format!("({FILL_SCRIPT})(");
+        assert!(call.starts_with(&prefix) && call.ends_with(')'));
+        let args = &call[prefix.len()..call.len() - 1];
+        let read: Vec<String> = serde_json::from_str(&format!("[{args}]")).expect("the arguments are three JSON strings");
+        assert_eq!(read, [user, password, "123456"]);
+        for raw in ["\n", "\r", "\u{2028}", "\u{2029}", "\u{0}", "<"] {
+            assert!(!args.contains(raw), "{raw:?} left raw in the arguments");
+        }
+        // Each value one literal: its quotes are the only ones not escaped.
+        let unescaped = args.char_indices().filter(|(at, c)| *c == '"' && args[..*at].chars().rev().take_while(|b| *b == '\\').count() % 2 == 0).count();
+        assert_eq!(unescaped, 6);
+        assert_eq!(fill_call("", "", ""), format!("({FILL_SCRIPT})(\"\", \"\", \"\")"));
     }
 }

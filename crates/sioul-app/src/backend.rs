@@ -2620,6 +2620,12 @@ pub mod qobject {
         #[qinvokable]
         fn calls_script(self: &Sioul) -> QString;
 
+        /// The script that fills a login into a page, called with the user
+        /// name, the password and the one-time code (sites.rs, `FILL_SCRIPT`):
+        /// one source for a computer's Sites page and a phone's site screen.
+        #[qinvokable]
+        fn fill_script(self: &Sioul) -> QString;
+
         /// "missing", "unauthenticated", "locked" or "unlocked".
         #[qinvokable]
         fn bitwarden_state(self: &Sioul) -> QString;
@@ -8283,6 +8289,10 @@ impl qobject::Sioul {
 
     fn calls_script(&self) -> QString {
         QString::from(include_str!("calls.js"))
+    }
+
+    fn fill_script(&self) -> QString {
+        QString::from(crate::sites::FILL_SCRIPT)
     }
 
     fn set_call_device(mut self: Pin<&mut Self>, which: &QString, name: &QString) -> QString {
