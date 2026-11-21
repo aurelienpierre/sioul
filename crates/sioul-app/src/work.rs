@@ -2376,7 +2376,8 @@ pub(crate) fn set_view_flag(shared: &Shared, name: &str, value: bool) {
     }
 }
 
-/// One note: its text, its HTML, its tags and checkboxes, and what is tied to it, as JSON.
+/// One note: its text, its blocks as read (HTML), its tags and checkboxes,
+/// its outline, and what is tied to it, as JSON.
 pub(crate) fn note(shared: &Shared, path: &str) -> String {
     let loaded = loaded(shared);
     let Some(vault) = loaded.vault.as_ref() else { return String::new() };
@@ -2391,7 +2392,7 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
             "file": file.display().to_string(),
             "url": crate::backend::file_url(&file),
             "text": "",
-            "html": "",
+            "blocks": [],
             "tags": [],
             "checkboxes": [],
             "outline": [],
@@ -2401,26 +2402,17 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
     }
     let Ok(text) = std::fs::read_to_string(&file) else { return String::new() };
     let note = notes::read(path, &text);
-    let (_, body_start) = notes::front_matter(&text);
-    // The title is shown above the text: a first heading saying the same is left out.
-    let blank = text.lines().skip(body_start).take_while(|l| l.trim().is_empty()).count();
-    let mut body_lines: Vec<&str> = text.lines().skip(body_start + blank).collect();
-    let mut title_line = 0;
-    if body_lines.first().is_some_and(|l| l.trim_start().strip_prefix("# ").is_some_and(|h| h.trim() == note.title)) {
-        body_lines.remove(0);
-        title_line = body_start + blank + 1;
-    }
-    let body = vault.with_links(note.folder(), &body_lines.join("\n"));
+    // Read as a list of its blocks, each heading of its outline to its block (`notesview::shown`).
+    let (blocks, outline) = crate::notesview::shown(vault, &note, &text);
     let related = taskview::related_views(tr(), &loaded.world().related(&notes::uri_of(path)));
     serde_json::json!({
         "path": path,
         "title": note.title,
         "text": text,
-        "html": sioul_core::compose::markdown_html(&body),
+        "blocks": crate::notesview::blocks_json(blocks),
         "tags": note.tags,
         "checkboxes": note.checkboxes,
-        // Its headings, each to its place in the note (`notesview::outline_of`).
-        "outline": crate::notesview::outline_of(vault, note.folder(), &text, title_line),
+        "outline": outline,
         "related": related,
         "file": file.display().to_string(),
         "stamp": text_stamp(&text),
@@ -2457,6 +2449,16 @@ pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &
         }
         Err(e) => answer(e, path, String::new()),
     }
+}
+
+/// The stamp of a text note's file as it is now (`text_stamp`, the note's
+/// "stamp"), "" when it is no text note or does not read: the Notes page
+/// reads the note open again only when its own file changed, never at each
+/// change elsewhere in the folder. Its file only: nothing else is read.
+pub(crate) fn note_stamp(path: &str) -> String {
+    let Some(root) = load_config().notes_root_path() else { return String::new() };
+    let Some(relative) = notes::normalize(path).filter(|p| notes::kind_of_file(p) == Some(notes::NoteKind::Text)) else { return String::new() };
+    std::fs::read_to_string(root.join(relative)).map(|text| text_stamp(&text)).unwrap_or_default()
 }
 
 /// A fingerprint of a note's text as it was read, given back when it is saved.
