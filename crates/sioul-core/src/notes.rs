@@ -120,6 +120,11 @@ pub struct Note {
     pub front: BTreeMap<String, Vec<String>>,
     /// Last changed, Unix seconds.
     pub modified: i64,
+    /// When it was made, Unix seconds: its front matter's `created`, else
+    /// its `date`, when it reads as a date (`front_made`); else the day its
+    /// file was made on this device, when the system says it (`Vault::open`,
+    /// `Births`); else not known. Never the day it was last changed.
+    pub created: Option<i64>,
 }
 
 impl Note {
@@ -156,6 +161,7 @@ pub fn trash(root: &Path, path: &str) -> Result<String, String> {
         std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     std::fs::rename(root.join(&path), &to).map_err(|e| format!("{path}: {e}"))?;
+    Births::moved(&root.join(&path), &to);
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(target)
 }
@@ -168,7 +174,8 @@ pub fn untrash(root: &Path, trashed: &str, path: &str) -> Result<(), String> {
     if to.exists() {
         return Err(format!("{path}: taken again"));
     }
-    std::fs::rename(root.join(from), &to).map_err(|e| format!("{path}: {e}"))?;
+    std::fs::rename(root.join(&from), &to).map_err(|e| format!("{path}: {e}"))?;
+    Births::moved(&root.join(&from), &to);
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(())
 }
@@ -197,6 +204,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
         return Err(format!("{new_path}: taken"));
     }
     std::fs::rename(vault.root.join(path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    Births::moved(&vault.root.join(path), &vault.root.join(&new_path));
     crate::changes::said(crate::changes::Kind::Notes);
     // The ways other notes name it, and what they say now.
     let old_name = path.rsplit('/').next().unwrap_or(path);
@@ -273,6 +281,7 @@ pub fn rename_folder(vault: &Vault, path: &str, name: &str) -> Result<(String, V
         return Err(format!("{new_path}: taken"));
     }
     std::fs::rename(vault.root.join(&path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    Births::moved(&vault.root.join(&path), &vault.root.join(&new_path));
     crate::changes::said(crate::changes::Kind::Notes);
     let prefix = format!("{path}/");
     let moved: Vec<(String, String)> = vault.notes.iter().filter_map(|n| n.path.strip_prefix(&prefix).map(|rest| (n.path.clone(), format!("{new_path}/{rest}")))).collect();
@@ -523,7 +532,124 @@ pub fn read(path: &str, text: &str) -> Note {
     if note.title.is_empty() {
         note.title = note.stem().to_string();
     }
+    // The zone is asked only of a note that says a date.
+    if front.contains_key("created") || front.contains_key("date") {
+        note.created = front_made(&front, &crate::zone::current());
+    }
     note
+}
+
+/// A date of a note's front matter, as the files write them (the budgets'
+/// files read the same forms, `budget::dates`): a day (`2026-10-05`), a
+/// moment with its offset (`2026-10-05T09:12:00+02:00`, `2026-10-05T07:12Z`),
+/// or a moment of the clock (`2026-10-05T09:12`, `2026-10-05 09:12`), read
+/// in `zone`, as is a day (its midnight). Unix seconds; None for anything
+/// else ("5 October", "soon").
+pub fn front_moment(value: &str, zone: &jiff::tz::TimeZone) -> Option<i64> {
+    let value = value.trim();
+    if let Ok(at) = value.parse::<jiff::Timestamp>() {
+        return Some(at.as_second());
+    }
+    let local = value.parse::<jiff::civil::DateTime>().ok().or_else(|| value.parse::<jiff::civil::Date>().ok().map(|day| day.to_datetime(jiff::civil::Time::midnight())))?;
+    local.to_zoned(zone.clone()).ok().map(|at| at.timestamp().as_second())
+}
+
+/// When a note was made, by its own front matter: `created`, else `date`,
+/// the first that reads as a date (`front_moment`).
+pub fn front_made(front: &BTreeMap<String, Vec<String>>, zone: &jiff::tz::TimeZone) -> Option<i64> {
+    ["created", "date"].iter().find_map(|key| front.get(*key).and_then(|values| values.first()).and_then(|value| front_moment(value, zone)))
+}
+
+/// When a file was made on this device, as its system says it (Linux's
+/// `statx`, Windows, macOS); None where it does not know it (Android, some
+/// folders). Unix seconds.
+pub fn born(metadata: &std::fs::Metadata) -> Option<i64> {
+    metadata.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok()).filter(|s| *s > 0)
+}
+
+/// The days notes were made, as Sioul's own writes found them. A note
+/// written again is written whole beside its place, then moved in
+/// (`write`): the system then dates its file as made that moment. The day
+/// the file it replaces was made is kept here, by the file's place, so that
+/// a note saved today was not "made" today (`Vault::open` takes the
+/// earliest). Moved by Sioul (`rename`, `rename_folder`, `trash`,
+/// `untrash`), its day follows it. This device's own: `notes-made.toml` in
+/// the state folder, never shared (another device's files have days of
+/// their own). A file another program writes again the same way (a sync
+/// program bringing a new version) is not known here: made, for this
+/// device, when that version arrived.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+pub struct Births {
+    /// A file's full path → Unix seconds.
+    #[serde(default)]
+    pub made: BTreeMap<String, i64>,
+}
+
+impl Births {
+    /// Where they are kept.
+    pub fn path() -> PathBuf {
+        crate::config::state_dir().join("notes-made.toml")
+    }
+
+    /// As kept, or none.
+    pub fn read() -> Births {
+        std::fs::read_to_string(Births::path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    }
+
+    /// The day `file` was made, as kept.
+    pub fn of(&self, file: &Path) -> Option<i64> {
+        self.made.get(&file.to_string_lossy().to_string()).copied()
+    }
+
+    /// Changed under their own lock, then written, the places no longer
+    /// there left out. Nothing is lost but this memory when it cannot be
+    /// written: the day falls back to the file's own.
+    fn change(change: impl FnOnce(&mut Births)) {
+        let path = Births::path();
+        crate::filelock::with_lock(&crate::config::state_dir().join("notes-made"), || {
+            let mut births = Births::read();
+            let before = births.clone();
+            change(&mut births);
+            births.made.retain(|file, _| Path::new(file).exists());
+            if births != before {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Ok(text) = toml::to_string(&births) {
+                    let _ = std::fs::write(&path, text);
+                }
+            }
+        });
+    }
+
+    /// `file` is about to be replaced by a new one: the day it was made is
+    /// kept, or an earlier one already kept.
+    fn keep(file: &Path) {
+        let Some(day) = std::fs::metadata(file).ok().as_ref().and_then(born) else { return };
+        let key = file.to_string_lossy().to_string();
+        Births::change(|births| {
+            let kept = births.made.entry(key).or_insert(day);
+            *kept = (*kept).min(day);
+        });
+    }
+
+    /// A file or a folder moved from `from` to `to`: the days kept follow.
+    fn moved(from: &Path, to: &Path) {
+        let (from, to) = (from.to_string_lossy().to_string(), to.to_string_lossy().to_string());
+        if !Births::path().exists() {
+            return;
+        }
+        Births::change(|births| {
+            // Below it, whichever separator its place was joined with ("C:\notes\admin/x.md").
+            let below = |key: &str| key.strip_prefix(from.as_str()).is_some_and(|rest| rest.starts_with(['/', std::path::MAIN_SEPARATOR]));
+            let moving: Vec<String> = births.made.keys().filter(|k| **k == from || below(k)).cloned().collect();
+            for key in moving {
+                if let Some(day) = births.made.remove(&key) {
+                    births.made.insert(format!("{to}{}", &key[from.len()..]), day);
+                }
+            }
+        });
+    }
 }
 
 /// `- [ ] text`, `* [x] text`, `1. [ ] text`.
@@ -651,7 +777,11 @@ pub struct Vault {
 impl Vault {
     /// Reads every Markdown file under `root`, and lists the pictures, PDFs
     /// and sounds beside them; hidden folders and tools' own are skipped.
+    /// When each was last changed and made come with the one look at its
+    /// file the list already takes (`DirEntry::metadata`: one `statx` on
+    /// Linux gives both).
     pub fn open(root: &Path) -> Vault {
+        let births = Births::read();
         let mut notes = Vec::new();
         let mut folders = Vec::new();
         let mut stack = vec![root.to_path_buf()];
@@ -676,7 +806,17 @@ impl Vault {
                         let title = name.rsplit_once('.').map_or(name.as_str(), |(stem, _)| stem).to_string();
                         Note { path: relative, kind: file_kind, title, ..Note::default() }
                     };
-                    note.modified = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
+                    let metadata = entry.metadata().ok();
+                    note.modified = metadata.as_ref().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
+                    if note.created.is_none() {
+                        // Its file's day, or an earlier one kept when Sioul wrote it again.
+                        let file = metadata.as_ref().and_then(born);
+                        let kept = births.of(&root.join(&note.path));
+                        note.created = match (file, kept) {
+                            (Some(file), Some(kept)) => Some(file.min(kept)),
+                            (file, kept) => file.or(kept),
+                        };
+                    }
                     notes.push(note);
                 }
             }
@@ -747,17 +887,41 @@ impl Vault {
         self.notes.iter().filter(|n| n.path != path).flat_map(|n| n.links.iter().filter(|l| l.target == uri).map(move |l| (n, l))).collect()
     }
 
-    /// The notes whose title, path or tags hold every word of `query`, case and accents ignored.
-    pub fn search(&self, query: &str) -> Vec<&Note> {
-        let folded = |text: &str| crate::text::fold(text).into_iter().collect::<String>();
-        let words: Vec<String> = query.split_whitespace().map(folded).collect();
-        self.notes
-            .iter()
-            .filter(|n| {
-                let haystack = folded(&format!("{} {} {}", n.title, n.path, n.tags.join(" ")));
-                words.iter().all(|w| haystack.contains(w.as_str()))
-            })
-            .collect()
+    /// The notes of `kinds` found by `query`: those whose title, path and
+    /// tags hold every word, case and accents aside; then, with `texts` (how
+    /// a text note's text is read, `search_text`), the text notes whose title,
+    /// path, tags and text hold them together. Found by their name first,
+    /// then by their text, each newest first (last changed); one found by its
+    /// text carries the line that holds the words (`line_holding`). A note
+    /// whose text does not read is found by its name alone. An empty query
+    /// finds every note of `kinds`. The window, `sioul notes` and the agents'
+    /// `search_notes` all ask this.
+    pub fn find<'a>(&'a self, query: &str, kinds: Kinds, texts: Option<&dyn Fn(&Note) -> Option<String>>) -> Vec<Found<'a>> {
+        let words = query_words(query);
+        let (mut by_name, mut by_text) = (Vec::new(), Vec::new());
+        for note in self.notes.iter().filter(|n| kinds.keeps(n.kind)) {
+            let name = folded(&format!("{} {} {}", note.title, note.path, note.tags.join(" ")));
+            let left: Vec<&str> = words.iter().map(String::as_str).filter(|w| !name.contains(w)).collect();
+            if left.is_empty() {
+                by_name.push(Found { note, by: FoundBy::Name, line: String::new() });
+                continue;
+            }
+            let Some(read) = texts.filter(|_| note.kind == NoteKind::Text) else { continue };
+            if let Some(line) = read(note).and_then(|text| line_holding(&text, &left)) {
+                by_text.push(Found { note, by: FoundBy::Text, line });
+            }
+        }
+        for found in [&mut by_name, &mut by_text] {
+            found.sort_by(|a, b| b.note.modified.cmp(&a.note.modified).then_with(|| a.note.path.cmp(&b.note.path)));
+        }
+        by_name.extend(by_text);
+        by_name
+    }
+
+    /// Whether a note of `kinds` is one the search finds by its name alone
+    /// (a PDF, a sound): the window then says so under what it found.
+    pub fn names_only(&self, kinds: Kinds) -> bool {
+        self.notes.iter().any(|n| kinds.keeps(n.kind) && matches!(n.kind, NoteKind::Pdf | NoteKind::Audio))
     }
 
     /// A note's Markdown with its `[[wikilinks]]` made ordinary links to the
@@ -823,6 +987,308 @@ impl Vault {
     }
 }
 
+/// What the Notes page's Type keeps: every type, text notes, sounds, PDFs,
+/// or the others (pictures and office documents).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Kinds {
+    #[default]
+    All,
+    Text,
+    Sound,
+    Pdf,
+    Other,
+}
+
+impl Kinds {
+    /// By the window's word for it; any other word is every type.
+    pub fn named(name: &str) -> Kinds {
+        match name {
+            "text" => Kinds::Text,
+            "sound" => Kinds::Sound,
+            "pdf" => Kinds::Pdf,
+            "other" => Kinds::Other,
+            _ => Kinds::All,
+        }
+    }
+
+    /// The window's word for it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Kinds::All => "all",
+            Kinds::Text => "text",
+            Kinds::Sound => "sound",
+            Kinds::Pdf => "pdf",
+            Kinds::Other => "other",
+        }
+    }
+
+    pub fn keeps(self, kind: NoteKind) -> bool {
+        match self {
+            Kinds::All => true,
+            Kinds::Text => kind == NoteKind::Text,
+            Kinds::Sound => kind == NoteKind::Audio,
+            Kinds::Pdf => kind == NoteKind::Pdf,
+            Kinds::Other => matches!(kind, NoteKind::Image | NoteKind::Document),
+        }
+    }
+}
+
+/// How a note was found: by its title, path or tags, or by its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FoundBy {
+    Name,
+    Text,
+}
+
+/// A note the search found, and how.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found<'a> {
+    pub note: &'a Note,
+    pub by: FoundBy,
+    /// Found by its text: the line that holds the words, as written, on one
+    /// line and cut around the first of them (`cut_line`); outside words, to
+    /// be shown as plain text. Else empty.
+    pub line: String,
+}
+
+/// A text, its case and accents aside (`text::fold_char`, one character for
+/// one). Most of a note's characters are ASCII: those are lowered as they
+/// are, all at once when the whole text is, the others folded one by one
+/// (folding is most of the search's time: docs/tasks.md, "Notes").
+fn folded(text: &str) -> String {
+    if text.is_ascii() {
+        return text.to_ascii_lowercase();
+    }
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        out.push(if c.is_ascii() { c.to_ascii_lowercase() } else { crate::text::fold_char(c) });
+    }
+    out
+}
+
+/// The words of a query, folded.
+pub fn query_words(query: &str) -> Vec<String> {
+    query.split_whitespace().map(folded).collect()
+}
+
+/// A text note's text as the search reads it: its file's first
+/// `TEXT_NOTE_BYTES` (a larger one is searched that far), its bytes that are
+/// no UTF-8 as "�". None when the file does not read now (gone, closed to
+/// this user, a drive not plugged in): nothing is asked of the person. The
+/// notes folder holds plain files only: notes the sharing seals travel
+/// sealed between devices and are written here plain (docs/database.md).
+pub fn search_text(file: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(file).ok()?.take(TEXT_NOTE_BYTES).read_to_end(&mut bytes).ok()?;
+    Some(String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
+}
+
+/// The line of `text` to show for `words` (folded) when `text` holds them
+/// all: the first line that holds them all, else the first that holds the
+/// first of them; cut around the first word found in it. None when the text
+/// does not hold every word.
+pub fn line_holding(text: &str, words: &[&str]) -> Option<String> {
+    let whole = folded(text);
+    if !words.iter().all(|w| whole.contains(w)) {
+        return None;
+    }
+    let lines: Vec<(&str, String)> = text.lines().map(|line| (line, folded(line))).collect();
+    let (line, low) = lines.iter().find(|(_, low)| words.iter().all(|w| low.contains(w))).or_else(|| lines.iter().find(|(_, low)| words.first().is_some_and(|w| low.contains(w))))?;
+    let at = words.iter().filter_map(|w| low.find(w)).min().map_or(0, |byte| low[..byte].chars().count());
+    Some(cut_line(line, at))
+}
+
+/// How many characters of a line the list shows, and how many before the word.
+const LINE_SHOWN: usize = 90;
+const LINE_BEFORE: usize = 30;
+
+/// A line on one line (tabs and other control characters made spaces), its
+/// blanks at both ends left out, cut to about `LINE_SHOWN` characters, the
+/// character at `at` in view with some before it; a cut side ends at a
+/// space and says "…".
+pub fn cut_line(line: &str, at: usize) -> String {
+    let chars: Vec<char> = line.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let first = chars.iter().position(|c| !c.is_whitespace()).unwrap_or(chars.len());
+    let last = chars.iter().rposition(|c| !c.is_whitespace()).map_or(first, |i| i + 1);
+    let chars = &chars[first..last];
+    let at = at.saturating_sub(first).min(chars.len());
+    if chars.len() <= LINE_SHOWN {
+        return chars.iter().collect();
+    }
+    let mut start = at.saturating_sub(LINE_BEFORE).min(chars.len().saturating_sub(LINE_SHOWN));
+    // At a word's start: after a space, unless none is near.
+    if start > 0 && !chars[start - 1].is_whitespace() {
+        start = (start..at).find(|&i| chars[i - 1].is_whitespace()).unwrap_or(start);
+    }
+    let mut end = (start + LINE_SHOWN).min(chars.len());
+    if end < chars.len() && !chars[end].is_whitespace() {
+        end = (at.max(start) + 1..end).rev().find(|&i| chars[i].is_whitespace()).unwrap_or(end);
+    }
+    let shown: String = chars[start..end].iter().collect();
+    format!("{}{}{}", if start > 0 { "…" } else { "" }, shown.trim(), if end < chars.len() { "…" } else { "" })
+}
+
+/// A heading of a text note, for its outline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Heading {
+    /// 1 for `#`, to 6 for `######`; 1 and 2 for the underlined forms.
+    pub level: u8,
+    /// Its words as the note shows them (`**marks**` and links leave their
+    /// words), on one line; outside words, to be shown as plain text.
+    pub text: String,
+    /// Its line in the file, from 1 (the front matter counted).
+    pub line: usize,
+}
+
+/// A text note's headings, in order: `#` to `######` at a line's start, and
+/// the two underlined forms (a line of text over a line of `=` or of `-`),
+/// read as the note is drawn (pulldown-cmark, as `compose::markdown_html`,
+/// with its options): never in code (fenced or indented), a quote or a list,
+/// nor in the front matter; an empty one left out.
+pub fn outline(text: &str) -> Vec<Heading> {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+    let (_, body_start) = front_matter(text);
+    let offset: usize = text.split_inclusive('\n').take(body_start).map(str::len).sum();
+    let body = &text[offset.min(text.len())..];
+    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
+    let mut out = Vec::new();
+    // Quotes, lists and footnotes around, and the heading being read: its level, line and words.
+    let mut inside = 0usize;
+    let mut reading: Option<(u8, usize, String)> = None;
+    for (event, range) in Parser::new_ext(body, options).into_offset_iter() {
+        match event {
+            Event::Start(Tag::BlockQuote(_) | Tag::List(_) | Tag::Item | Tag::FootnoteDefinition(_)) => inside += 1,
+            Event::End(TagEnd::BlockQuote(_) | TagEnd::List(_) | TagEnd::Item | TagEnd::FootnoteDefinition) => inside = inside.saturating_sub(1),
+            Event::Start(Tag::Heading { level, .. }) if inside == 0 => {
+                let line = text[..offset + range.start].matches('\n').count() + 1;
+                reading = Some((level as u8, line, String::new()));
+            }
+            Event::Text(words) | Event::Code(words) => {
+                if let Some((_, _, text)) = reading.as_mut() {
+                    text.push_str(&words);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some((_, _, text)) = reading.as_mut() {
+                    text.push(' ');
+                }
+            }
+            Event::End(TagEnd::Heading(_)) => {
+                if let Some((level, line, words)) = reading.take() {
+                    let text = words.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if !text.is_empty() {
+                        out.push(Heading { level, text, line });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Which date the Notes page's dated lists go by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dated {
+    /// Last changed (`Note::modified`).
+    Changed,
+    /// Made (`Note::created`).
+    Created,
+}
+
+/// A group of a dated list (`When::rank` gives their order).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum When {
+    /// After today: a date its front matter says, or a clock ahead.
+    After,
+    Today,
+    /// This week, from its Monday, before today.
+    Week,
+    /// This month, before this week.
+    Month,
+    /// This year, before this month.
+    Year,
+    /// A year before this one.
+    In(i16),
+    /// Not known: last.
+    Unknown,
+}
+
+impl When {
+    /// Its place among the groups: after today first, then today and back
+    /// in time, the latest year first, not known last.
+    pub fn rank(self) -> (u8, i32) {
+        match self {
+            When::After => (0, 0),
+            When::Today => (1, 0),
+            When::Week => (2, 0),
+            When::Month => (3, 0),
+            When::Year => (4, 0),
+            When::In(year) => (5, -i32::from(year)),
+            When::Unknown => (6, 0),
+        }
+    }
+
+    /// The window's word for it: "after", "today", "week", "month", "year",
+    /// the year itself ("2025"), "unknown".
+    pub fn key(self) -> String {
+        match self {
+            When::After => "after".into(),
+            When::Today => "today".into(),
+            When::Week => "week".into(),
+            When::Month => "month".into(),
+            When::Year => "year".into(),
+            When::In(year) => year.to_string(),
+            When::Unknown => "unknown".into(),
+        }
+    }
+}
+
+/// The group of a moment (Unix seconds) seen from `now`, in `now`'s zone.
+pub fn when(at: Option<i64>, now: &jiff::Zoned) -> When {
+    let Some(day) = at.filter(|s| *s > 0).and_then(|s| jiff::Timestamp::from_second(s).ok()).map(|t| t.to_zoned(now.time_zone().clone()).date()) else { return When::Unknown };
+    let today = now.date();
+    let monday = today.checked_sub(jiff::Span::new().days(i64::from(today.weekday().to_monday_zero_offset()))).unwrap_or(today);
+    if day > today {
+        When::After
+    } else if day == today {
+        When::Today
+    } else if day >= monday {
+        When::Week
+    } else if (day.year(), day.month()) == (today.year(), today.month()) {
+        When::Month
+    } else if day.year() == today.year() {
+        When::Year
+    } else {
+        When::In(day.year())
+    }
+}
+
+/// Notes as a dated list: by when each was last changed or made, newest
+/// first, under their groups (`when`), the groups in order, those not known
+/// last; an empty group is not given.
+pub fn dated<'a>(notes: impl IntoIterator<Item = &'a Note>, by: Dated, now: &jiff::Zoned) -> Vec<(When, Vec<&'a Note>)> {
+    let date = |n: &Note| match by {
+        Dated::Changed => Some(n.modified).filter(|s| *s > 0),
+        Dated::Created => n.created,
+    };
+    let mut all: Vec<&Note> = notes.into_iter().collect();
+    all.sort_by(|a, b| date(b).cmp(&date(a)).then_with(|| a.path.to_lowercase().cmp(&b.path.to_lowercase())));
+    let mut out: Vec<(When, Vec<&Note>)> = Vec::new();
+    for note in all {
+        let group = when(date(note), now);
+        match out.iter_mut().find(|(g, _)| *g == group) {
+            Some((_, notes)) => notes.push(note),
+            None => out.push((group, vec![note])),
+        }
+    }
+    out.sort_by_key(|(group, _)| group.rank());
+    out
+}
+
 /// "a/./b/../c.md" → "a/c.md"; None when it leaves the vault.
 pub fn normalize(path: &str) -> Option<String> {
     let mut parts: Vec<&str> = Vec::new();
@@ -862,6 +1328,10 @@ pub fn write(root: &Path, path: &str, text: &str) -> Result<PathBuf, String> {
     let extension = target.extension().and_then(|e| e.to_str()).unwrap_or("md");
     let temporary = target.with_extension(format!("{extension}.new"));
     std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
+    // A new file takes its place: the day the one it replaces was made is kept (`Births`).
+    if target.exists() {
+        Births::keep(&target);
+    }
     std::fs::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
     // A note's writes, its links among them: every view of notes and ties reads them again.
     crate::changes::said(crate::changes::Kind::Notes);
@@ -1061,6 +1531,10 @@ fn yaml_value(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "notes_find_tests.rs"]
+mod find_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1213,7 +1687,7 @@ mod tests {
         let back: Vec<&str> = vault.backlinks("admin/letters.md").iter().map(|(n, _)| n.path.as_str()).collect();
         assert_eq!(back, vec!["plan/plan.md"]);
         assert_eq!(vault.backlinks("plan/plan.md").len(), 2);
-        assert_eq!(vault.search("outbox ADMIN").len(), 1);
+        assert_eq!(vault.find("outbox ADMIN", Kinds::All, None).len(), 1);
         assert_eq!(vault.with_links("admin", "See [[plan#Money|money]] and [[nowhere]].\n"), "See [money](<sioul:note/plan/plan.md#Money>) and [[nowhere]].\n");
         assert_eq!(normalize("a/../../b"), None);
     }

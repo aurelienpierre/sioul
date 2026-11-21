@@ -55,9 +55,14 @@ pub(crate) struct WorkState {
     pub filter: Filter,
     #[serde(skip)]
     pub notes_query: String,
-    /// Notes as a tree of folders; else one list.
+    /// What the Notes page lists: "folder" (the tree, as it starts),
+    /// "changed", "created" (`notesview::Show`). This device's own, as is
+    /// the whole file. A `notes_tree` kept by an older Sioul is passed over.
     #[serde(default)]
-    pub notes_tree: bool,
+    pub notes_show: String,
+    /// The type of notes it lists: "all", "text", "sound", "pdf", "other" (`notes::Kinds`).
+    #[serde(default)]
+    pub notes_type: String,
     /// How other pages were left: a column folded, a section open ("sites-narrow"…).
     #[serde(default)]
     pub flags: std::collections::BTreeMap<String, bool>,
@@ -83,7 +88,7 @@ impl WorkState {
         std::fs::read_to_string(WorkState::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
-    fn save(&self) {
+    pub(crate) fn save(&self) {
         let path = WorkState::path();
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1027,7 +1032,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         if health_follows(shifts_before.as_ref(), &desk.settings.shifts) {
             crate::health::show_health(&qt, &shared);
         }
-        let notes_json = notes_list(&desk.loaded, &state.notes_query, state.notes_tree);
+        // The notes' lists, for the question the page asks now (`notesview`).
+        crate::notesview::relist(&qt, &shared, &desk.loaded);
         let focus_json = focus_json(&desk);
         // The time running, in the system's notifications as in the focus window.
         crate::timenote::follow(&qt, shared);
@@ -1037,7 +1043,6 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
                 return;
             }
             sioul.as_mut().set_tasks(QString::from(&tasks_json));
-            sioul.as_mut().set_notes(QString::from(&notes_json));
             sioul.as_mut().set_focus_session(QString::from(&focus_json));
         });
     }
@@ -2287,43 +2292,6 @@ pub(crate) fn focus_stop(qt: &QtThread, shared: &Arc<Shared>, done: bool, note: 
 
 // Notes.
 
-#[derive(Serialize)]
-struct NoteRow {
-    path: String,
-    title: String,
-    /// "text", "image", "pdf", "audio".
-    kind: notes::NoteKind,
-    /// Its folder in the vault, "" at the root.
-    folder: String,
-    tags: Vec<String>,
-    modified: i64,
-}
-
-#[derive(Serialize)]
-struct NotesShown {
-    /// No notes folder: none is set.
-    missing: bool,
-    /// Every note found, by title: the window shows them as one list or as a tree.
-    notes: Vec<NoteRow>,
-    /// The ten notes changed last, for the top of the page.
-    recent: Vec<NoteRow>,
-    /// A tree of folders, as you left it; else one list.
-    tree: bool,
-    /// Every folder, empty ones too, for the tree.
-    folders: Vec<String>,
-}
-
-fn notes_list(loaded: &Loaded, query: &str, tree: bool) -> String {
-    let Some(vault) = loaded.vault.as_ref() else { return crate::backend::json(&NotesShown { missing: true, notes: Vec::new(), recent: Vec::new(), tree, folders: Vec::new() }) };
-    let row = |n: &notes::Note| NoteRow { path: n.path.clone(), title: n.title.clone(), kind: n.kind, folder: n.folder().to_string(), tags: n.tags.clone(), modified: n.modified };
-    let mut found: Vec<&notes::Note> = if query.trim().is_empty() { vault.notes.iter().collect() } else { vault.search(query) };
-    let mut recent: Vec<&notes::Note> = found.clone();
-    recent.sort_by_key(|n| std::cmp::Reverse(n.modified));
-    found.sort_by_cached_key(|n| (n.title.to_lowercase(), n.path.to_lowercase()));
-    let folders = if query.trim().is_empty() { vault.folders.clone() } else { Vec::new() };
-    crate::backend::json(&NotesShown { missing: false, notes: found.into_iter().map(row).collect(), recent: recent.into_iter().take(10).map(row).collect(), tree, folders })
-}
-
 /// A new note in a folder of the notes ("" for the notes' own folder); returns its path.
 pub(crate) fn create_note_in(qt: &QtThread, shared: &Arc<Shared>, folder: &str, title: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return String::new() };
@@ -2381,7 +2349,6 @@ pub(crate) fn remove_folder(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> 
     }
 }
 
-/// Notes as a tree of folders, or as one list; kept between sessions.
 /// How a page was left: a column folded, a section open.
 pub(crate) fn view_flag(shared: &Shared, name: &str) -> bool {
     shared.work.lock().ok().and_then(|state| state.flags.get(name).copied()).unwrap_or(false)
@@ -2409,29 +2376,6 @@ pub(crate) fn set_view_flag(shared: &Shared, name: &str, value: bool) {
     }
 }
 
-pub(crate) fn set_notes_tree(qt: &QtThread, shared: &Arc<Shared>, tree: bool) {
-    let query = match shared.work.lock() {
-        Ok(mut state) => {
-            state.notes_tree = tree;
-            state.save();
-            state.notes_query.clone()
-        }
-        Err(_) => String::new(),
-    };
-    let json = notes_list(&loaded(shared), &query, tree);
-    let _ = qt.queue(move |mut sioul| sioul.as_mut().set_notes(QString::from(&json)));
-}
-
-/// Shows the notes matching `query`.
-pub(crate) fn search_notes(qt: &QtThread, shared: &Arc<Shared>, query: &str) {
-    if let Ok(mut state) = shared.work.lock() {
-        state.notes_query = query.to_string();
-    }
-    let tree = shared.work.lock().map(|s| s.notes_tree).unwrap_or(false);
-    let json = notes_list(&loaded(shared), query, tree);
-    let _ = qt.queue(move |mut sioul| sioul.as_mut().set_notes(QString::from(&json)));
-}
-
 /// One note: its text, its HTML, its tags and checkboxes, and what is tied to it, as JSON.
 pub(crate) fn note(shared: &Shared, path: &str) -> String {
     let loaded = loaded(shared);
@@ -2450,6 +2394,7 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
             "html": "",
             "tags": [],
             "checkboxes": [],
+            "outline": [],
             "related": related,
         })
         .to_string();
@@ -2458,9 +2403,12 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
     let note = notes::read(path, &text);
     let (_, body_start) = notes::front_matter(&text);
     // The title is shown above the text: a first heading saying the same is left out.
-    let mut body_lines: Vec<&str> = text.lines().skip(body_start).skip_while(|l| l.trim().is_empty()).collect();
+    let blank = text.lines().skip(body_start).take_while(|l| l.trim().is_empty()).count();
+    let mut body_lines: Vec<&str> = text.lines().skip(body_start + blank).collect();
+    let mut title_line = 0;
     if body_lines.first().is_some_and(|l| l.trim_start().strip_prefix("# ").is_some_and(|h| h.trim() == note.title)) {
         body_lines.remove(0);
+        title_line = body_start + blank + 1;
     }
     let body = vault.with_links(note.folder(), &body_lines.join("\n"));
     let related = taskview::related_views(tr(), &loaded.world().related(&notes::uri_of(path)));
@@ -2471,6 +2419,8 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
         "html": sioul_core::compose::markdown_html(&body),
         "tags": note.tags,
         "checkboxes": note.checkboxes,
+        // Its headings, each to its place in the note (`notesview::outline_of`).
+        "outline": crate::notesview::outline_of(vault, note.folder(), &text, title_line),
         "related": related,
         "file": file.display().to_string(),
         "stamp": text_stamp(&text),

@@ -28,7 +28,7 @@ Choisissez votre coffre Obsidian, ou le dossier **Notes** que Nextcloud Notes ga
 Une partie de ce que dessine Obsidian, Sioul le montre comme le texte que c’est : les encadrés, les surlignages, les notes de bas de page, les formules et les diagrammes. Une note intégrée dans une autre (`![[une autre note]]`) s’affiche comme un lien vers elle ; les images s’affichent sur place.
 
 <figure markdown="span">
-  [![La page Notes : un champ de recherche, Nouvelle note et les autres boutons, puis Liste et Dossiers au-dessus de toutes les notes dans leurs dossiers, Projets déplié ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, Modifier et Aa à côté, son texte avec des liens et l’image d’un croquis ; à droite, Ajouter et Lier à…, ce qui lui est lié (des tâches, un courriel, d’autres notes) avec Les voir tous, et ses lignes non cochées.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
+  [![La page Notes : un champ de recherche, Nouvelle note et les autres boutons, puis Voir et Type sur une ligne au-dessus de toutes les notes dans leurs dossiers, Projets déplié ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, Modifier et Aa à côté, son texte avec des liens et l’image d’un croquis ; à droite, Ajouter et Lier à…, ce qui lui est lié (des tâches, un courriel, d’autres notes) avec Les voir tous, et ses lignes non cochées.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
   <figcaption>Une note, en lecture, avec ce qui lui est lié sur le côté.</figcaption>
 </figure>
 
@@ -38,7 +38,16 @@ Vos notes sont de simples fichiers Markdown dans un dossier à vous, sur cet app
 
 ## Trouver une note {#finding-a-note}
 
-La recherche vient d’abord : **Chercher dans les notes** trouve une note par son titre, son dossier ou ses étiquettes ; elle ne cherche pas les mots à l’intérieur des notes. Dessous viennent les notes **changées récemment** (les dix dernières, repliées sous leur titre jusqu’à ce que vous l’ouvriez), puis **toutes les notes**, en une **Liste** ou en **Dossiers**, repliés jusqu’à ce que vous les ouvriez. Sioul se souvient de votre choix. Aucun classement ne vous est demandé.
+La recherche vient d’abord : **Chercher dans les notes** trouve une note par son titre, son dossier ou ses étiquettes dès que vous tapez, puis, après une courte pause, par les mots qu’elle contient. Chaque mot tapé compte, où qu’il soit dans la note, majuscules et accents à part. Les notes trouvées par leur titre viennent d’abord, puis celles trouvées par leur texte, les plus récemment changées en tête, chacune avec la ligne qui contient vos mots. Tant que Sioul cherche encore dans les textes, la liste le dit. Seules les notes de texte sont lues : un PDF ou un son est trouvé par son nom, et la liste le dit quand l’un d’eux aurait pu répondre.
+
+Sous la recherche, une ligne porte deux choix, que Sioul garde sur cet appareil tels que vous les laissez :
+
+- **Voir** : **Par dossier**, comme la page s’ouvre : les notes **changées récemment** (les dix dernières, repliées sous leur titre jusqu’à ce que vous l’ouvriez), puis toutes les notes dans leurs dossiers, repliés jusqu’à ce que vous les ouvriez. **Par modification** : une seule liste, la plus récente d’abord, sous Aujourd’hui, Cette semaine, Ce mois-ci, Plus tôt cette année, puis chaque année d’avant. **Par création** : de même, selon le jour où chaque note a été créée, celles dont le jour n’est pas connu à la fin, sous **Date inconnue**.
+- **Type** : **Tous**, **Texte**, **Son**, **PDF** ou **Autres** (images et documents de bureautique). Il restreint de même les dossiers, les listes datées et ce que trouve la recherche ; un dossier qui ne contient rien de ce type n’est pas montré.
+
+Aucun classement ne vous est demandé.
+
+**Quand une note a été créée.** Sioul le lit dans la note elle-même, quand ses propriétés, en haut, le disent : `created: 2026-10-05`, sinon `date:`, un jour ou un moment (`2026-10-05T09:12`). Sinon, il prend le jour où, d’après votre système, le fichier de la note a été créé sur cet appareil. Un fichier qu’un programme de synchronisation a apporté (Nextcloud, Dropbox, Syncthing, le partage de Sioul) a été créé, pour chaque appareil, le jour où il y est arrivé, et une version plus récente apportée ensuite arrive à nouveau. Quand Sioul enregistre une note, il garde le jour où elle a d’abord été créée, bien qu’il en écrive chaque fois un nouveau fichier. Là où le système ne le dit pas (sur Android, entre autres), la note est rangée sous **Date inconnue** : Sioul ne prend jamais le jour de la dernière modification d’une note pour celui de sa création. Une ligne `created:` dans les propriétés d’une note garde son jour quoi qu’il arrive à son fichier.
 
 ## Lire et écrire {#reading-and-writing}
 
@@ -48,6 +57,7 @@ Une note s’ouvre pour être lue. Ses liens se suivent d’un clic, où qu’il
 - `[[Une autre note]]` renvoie à une note par son nom, où qu’elle soit dans le dossier. Les liens Markdown, les `#étiquettes` et les propriétés en haut d’une note marchent aussi.
 - Chaque note montre ce qui renvoie vers elle, et ce à quoi elle est liée : tâches, courriels, événements, personnes, projets. **Lier à…** la lie à quelque chose qui existe déjà ; **Ajouter ▾** fait une tâche, un événement ou un courriel lié à elle.
 - **Aa** règle la police, sa taille et l’interligne, pour la lecture sur cet appareil.
+- **Plan** : une note qui a deux titres ou plus les montre, chacun en retrait selon son niveau. Là où la fenêtre est assez large pour la colonne à côté de la note, ils sont en haut de celle-ci, au-dessus de ce à quoi la note est liée ; sur un téléphone ou dans une fenêtre étroite, ils se replient en haut de la note, sous **Plan**, fermé jusqu’à ce que vous l’ouvriez. Un titre touché amène sa place en haut de la note, lue ou en cours d’écriture (le curseur va alors à sa ligne) ; dans le pli, celui-ci se referme. Pendant que vous écrivez, le plan suit votre texte après une courte pause.
 
 Une note changée sur un autre appareil, venue par le partage, s’affiche aussitôt, comme sur les pages Santé, Papiers et Temps ; pendant que vous y tapez, ce que vous avez tapé reste tel quel, et une ligne sous son titre dit qu’une version plus récente est arrivée. Si la note a changé ailleurs pendant que vous écriviez (sur un autre appareil, par une application de synchronisation, dans un autre programme), votre version n’est jamais enregistrée par-dessus : elle est gardée à côté, sous « Plan (conflict 2026-10-05 21.50) » (ce mot anglais, tel quel), et reste ouverte ; la ligne d’état le dit. L’autre version garde le nom. Sur un petit écran, la note ouverte prend toute la page, et **Retour** garde la note, enregistrée, et la ferme.
 
@@ -93,7 +103,7 @@ Une note liée qui n’est pas encore arrivée apparaît estompée, avec « Pa
 ## Pour aller plus loin {#going-further}
 
 - **Les liens écrits dans la note** : quand vous liez une note à quelque chose, Sioul écrit son adresse en haut de la note, entre deux lignes `---`, sous `links:` (ou `task:`, `event:`, `mail:`, `contact:`). Vous pouvez les y écrire vous-même, ou les retirer ; les adresses sont dans [Côté technique](#for-technical-readers).
-- **Les liens vers un titre, ou avec d’autres mots** : `[[Plan#Budget]]`, qui nomme un titre de la note comme Obsidian l’écrit, ouvre la note à son début (Sioul ne descend pas jusqu’au titre), et `[[Plan|le plan]]` montre d’autres mots pour le lien, comme dans Obsidian.
+- **Les liens vers un titre, ou avec d’autres mots** : `[[Plan#Budget]]`, qui nomme un titre de la note comme Obsidian l’écrit, ouvre la note à ce titre (ses mots, majuscules à part, ou tels qu’une page web les écrit, `#budget-2026` ; un titre introuvable ouvre la note à son début), et `[[Plan|le plan]]` montre d’autres mots pour le lien, comme dans Obsidian.
 - **Les étiquettes avec une barre oblique** : `#démarches/courriers` se lit comme une seule étiquette, comme Obsidian écrit ses étiquettes imbriquées ; chercher « démarches » la trouve.
 - **Les versions précédentes** : avant qu’un changement venu d’un autre appareil remplace ou retire une note ici, la note telle qu’elle était est gardée sur cet appareil. Le plus souvent, elle l’est comme un renvoi vers sa copie dans le dossier de partage, qui garde une note remplacée deux semaines : le renvoi part au bout de 12 jours, si peu de versions qu’il y ait. Une note dont la copie a quitté le dossier est copiée ici à la place, comme les autres fichiers : ses 20 dernières copies, et toutes celles des 30 derniers jours. Une note effacée sur un autre appareil est gardée comme une copie elle aussi, déplacée ici, ce qui ne prend aucune place : sa copie dans le dossier de partage le quitte alors dès que chacun de vos appareils a lu qu’elle était effacée. Les modifications que vous faites sur cet appareil ne créent pas de version ; votre application de synchronisation ou votre serveur peuvent garder les leurs (Nextcloud le fait).
 - **Des sons pour travailler** : les sons que vous mettez dans un dossier `sounds` (ou `sons`) de vos notes sont proposés par le bouton des sons pendant que vous travaillez ([Tâches](tasks.md#sounds)).
@@ -116,7 +126,7 @@ En octobre 2026, d’après la documentation de chaque application.
     | Une note liée à une tâche, un courriel ou un événement | ✓ | ✗⁵ | en partie⁶ | ✗ | ✗ | en partie⁷ |
     | Une ligne avec une case transformée en tâche | ✓ | ✗ | ✗ | ✗ | ✗ | ✓⁷ |
     | Images, PDF, et son enregistré dans l’application | ✓ | ✓ | ✓ | en partie⁸ | en partie⁹ | ✓ |
-    | Trouve une note par les mots qu’elle contient | ✗¹⁰ | ✓ | ✓ | ? | ? | ✓ |
+    | Trouve une note par les mots qu’elle contient | ✓¹⁰ | ✓ | ✓ | ? | ? | ✓ |
     | Dessin, écriture à la main, texte lu dans les images | ✗ | ✗ | ✓ | ✗ | ✗ | ✓ |
     | Partager des notes avec d’autres personnes | ✗ | en partie¹¹ | en partie¹² | en partie¹³ | en partie¹⁴ | ✓ |
 
@@ -129,7 +139,7 @@ En octobre 2026, d’après la documentation de chaque application.
     7. Avec Outlook, dans OneNote pour Windows : les détails d’une réunion copiés dans une page, et des mots transformés en tâche Outlook, cochée dans l’un ou l’autre.
     8. Images et fichiers ; pas d’enregistrement de son.
     9. Des fichiers avec la formule Professional seulement ; pas d’enregistrement de son.
-    10. La fenêtre de Sioul trouve une note par son titre, son dossier et ses étiquettes ; un [agent d’IA](ai-agent.md) relié à Sioul peut aussi chercher dans leur texte.
+    10. Dans le texte de ses notes en Markdown, après leur titre, leur dossier et leurs étiquettes ; un PDF ou un son par son nom seulement. Un [agent d’IA](ai-agent.md) relié à Sioul cherche dans les mêmes textes.
     11. Un coffre partagé par Obsidian Sync, payé par chaque membre ; pas d’écriture à plusieurs dans une note au même moment.
     12. Un carnet partagé par les formules payantes de Joplin Cloud.
     13. En partageant le dossier Notes dans les Fichiers de Nextcloud.

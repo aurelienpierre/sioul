@@ -34,7 +34,7 @@ SioulWindow {
     // The documentation's pictures (SIOUL_GRAB_STEPS=demo) are a landscape screen;
     // with SIOUL_GRAB_PHONE (or SIOUL_GRAB_STEPS=phone), a phone's: 412 by 891, its layout.
     readonly property bool phoneGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "phone" || sioul.grabPhone())
-    readonly property bool demoGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "demo" || sioul.grabSteps() === "invoices") && !window.phoneGrab
+    readonly property bool demoGrab: sioul.grabFolder() !== "" && (sioul.grabSteps() === "demo" || sioul.grabSteps() === "invoices" || sioul.grabSteps() === "notes-find") && !window.phoneGrab
     // A tablet's pictures (SIOUL_GRAB_STEPS=tablet): each page at 1280 by 800, the device a
     // tablet, without the window's own title bar and with touch, as on Android; a
     // computer's layout, since the room decides it, never the system.
@@ -407,10 +407,11 @@ SioulWindow {
             agendaPage.mode = "week"
     }
 
-    function openNote(path) {
+    // A note, at one of its headings when `anchor` names one ("Money").
+    function openNote(path, anchor) {
         cardHost.leave()
         window.page = 6
-        notesPage.open(path)
+        notesPage.openAt(path, anchor || "")
     }
 
     // A new event made from a message or a task, the link kept.
@@ -863,8 +864,18 @@ SioulWindow {
             cardHost.leave()
         if (item.kind === "task")
             window.openCard({ kind: "task", owner: (item.uri || "").startsWith("sioul:task/") ? id("sioul:task/") : item.key, title: item.title || "" }, fromCard)
-        else if (item.kind === "note")
-            window.openNote(id("sioul:note/").split("#")[0])
+        else if (item.kind === "note") {
+            // Its path and its heading, each decoded apart: a "#" in a name is written "%23".
+            const [path, anchor] = (item.uri || "").slice("sioul:note/".length).split("#")
+            const decoded = words => {
+                try {
+                    return decodeURIComponent(words)
+                } catch (malformed) {
+                    return words
+                }
+            }
+            window.openNote(decoded(path), decoded(anchor || ""))
+        }
         else if (item.kind === "event") {
             // Its time as the row gave it, or as a reminder named it with its file.
             const at = cardHost.eventTime(item.key)
@@ -1453,7 +1464,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps, "notes-find": grabber.notesFindSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -2509,7 +2520,7 @@ SioulWindow {
                 // Notes as folders, the project's open.
                 () => {
                     window.page = 6
-                    sioul.setNotesTree(true)
+                    sioul.setNotesView("folder", "all")
                 },
                 () => notesPage.unfold(grabber.demoFrench ? "Projets" : "Projects"),
                 () => notesPage.open(grabber.demoFrench ? "Projets/Médiathèque des Fougères.md" : "Projects/Fernhill Library.md"),
@@ -3498,7 +3509,7 @@ SioulWindow {
                 () => grabber.save("task-panel"),
                 () => {
                     window.page = 6
-                    sioul.setNotesTree(true)
+                    sioul.setNotesView("folder", "all")
                 },
                 () => notesPage.unfold("notes"),
                 () => notesPage.unfold("notes/zz-archive"),
@@ -5834,16 +5845,49 @@ SioulWindow {
                 () => {},
                 () => window.close()
             ]
-            // Notes as a list and as folders; a note with a picture, then a picture, a PDF, a memo.
+            // Notes found by their text, a note's outline, the dated lists and one type (pictures
+            // alone; docs/tasks.md, "Notes"): on a computer the outline beside the note, on a
+            // phone its fold opened, the list shown again for the lists.
+            readonly property var notesFindSteps: [
+                () => {
+                    window.page = 6
+                    sioul.setNotesView("folder", "all")
+                },
+                () => notesPage.grabSearch(grabber.demoFrench ? "ronceverte" : "brambleworth"),
+                () => {},
+                () => {},
+                () => grabber.save("notes-search"),
+                () => notesPage.grabSearch(""),
+                () => notesPage.open(grabber.demoFrench ? "Idées/Plan du jardin.md" : "Ideas/Garden plan.md"),
+                () => notesPage.grabOutline(),
+                () => {},
+                () => grabber.save("notes-outline"),
+                () => {
+                    if (window.compact)
+                        notesPage.back()
+                    sioul.setNotesView("changed", "all")
+                },
+                () => {},
+                () => grabber.save("notes-changed"),
+                () => sioul.setNotesView("created", "all"),
+                () => {},
+                () => grabber.save("notes-created"),
+                () => sioul.setNotesView("changed", "sound"),
+                () => {},
+                () => grabber.save("notes-sound"),
+                () => sioul.setNotesView("folder", "all"),
+                () => window.close()
+            ]
+            // Notes by last change and as folders; a note with a picture, then a picture, a PDF, a memo.
             readonly property var notes: [
                 () => {
-                    sioul.setNotesTree(false)
+                    sioul.setNotesView("changed", "all")
                     window.page = 6
                 },
                 () => notesPage.open("admin/lease.md"),
                 () => {},
                 () => grabber.save("notes-list"),
-                () => sioul.setNotesTree(true),
+                () => sioul.setNotesView("folder", "all"),
                 () => notesPage.unfold("admin"),
                 () => notesPage.unfold("admin/scans"),
                 () => grabber.save("notes-tree"),
@@ -5857,7 +5901,7 @@ SioulWindow {
                 () => notesPage.open("memos/2026-10-03 call with the CAF.wav"),
                 () => {},
                 () => grabber.save("notes-audio"),
-                () => sioul.setNotesTree(false),
+                () => sioul.setNotesView("folder", "all"),
                 () => window.close()
             ]
             // Folders, against a test server: one made, left on the server, kept again, deleted.

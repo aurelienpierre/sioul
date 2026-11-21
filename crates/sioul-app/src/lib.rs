@@ -186,6 +186,7 @@ mod openmail;
 mod organized;
 #[cfg(target_os = "android")]
 mod nfc;
+mod notesview;
 mod notices;
 mod offices;
 mod ledger;

@@ -2,10 +2,14 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Notes: your folder of Markdown files, read as Obsidian reads a vault.
-// Search first, folders folded: no filing asked. A note opens read, its
-// links followed with a click, wherever they lead (another note, a task, a
-// message); editing is one switch away. On the side: what is tied to it,
-// and its unticked lines, each one click from becoming a task.
+// Search first, folders folded: no filing asked. The search finds a note by
+// its title, path and tags at once, and by its text after a pause in typing
+// (notesview.rs). One line under it chooses what the list shows (by folder,
+// last changed, created) and of which type, kept on this device. A note
+// opens read, its links followed with a click, wherever they lead (another
+// note, a task, a message); editing is one switch away. On the side: its
+// outline, what is tied to it, and its unticked lines, each one click from
+// becoming a task; on a narrow screen, the outline folds at the top of the note.
 
 pragma ComponentBehavior: Bound
 
@@ -26,7 +30,11 @@ Item {
     // Read while shown: a page out of sight keeps what it showed, and reads
     // again when it comes back; results landing meanwhile cost nothing.
     property string notesText: ""
-    readonly property var shown: page.notesText ? JSON.parse(page.notesText) : ({ missing: false, notes: [], recent: [], tree: false })
+    readonly property var shown: page.notesText ? JSON.parse(page.notesText) : ({ missing: false, notes: [], recent: [], folders: [], groups: [], show: "folder", type: "all", query: "", looking: false, namesOnly: false })
+    // What the list shows and of which type, as Rust keeps them on this device; whether it shows what a search found.
+    readonly property string showing: page.shown.show || "folder"
+    readonly property string typed: page.shown.type || "all"
+    readonly property bool searching: (page.shown.query || "") !== ""
 
     function takeShown() {
         if (page.visible)
@@ -72,15 +80,42 @@ Item {
     property string query: ""
     // A memo just recorded, opened once the notes are read again.
     property string pending: ""
-    // What the left column lists: when searching, what was found; else what
-    // changed lately, then every note, as one list or as a tree of folders.
+    // What the left column lists: when searching, what was found (by name,
+    // then by text); by folder, what changed lately, then the tree of
+    // folders; last changed or created, one list under quiet headings.
     readonly property var rows: {
         const note = (n, depth, showPath) => ({ type: "note", note: n, depth: depth, showPath: showPath })
-        if (page.query !== "")
+        if (page.searching)
             return page.shown.notes.map(n => note(n, 0, true))
+        if (page.showing !== "folder") {
+            let dated = []
+            for (const group of page.shown.groups || [])
+                dated = dated.concat([{ type: "heading", title: page.whenWords(group.when), path: group.when }], group.notes.map(n => note(n, 0, true)))
+            return dated
+        }
         const recent = page.shown.recent.length > 0 ? [{ type: "recent", title: page.sioul.text("note-recent"), open: page.recentOpen, depth: 0 }].concat(page.recentOpen ? page.shown.recent.map(n => note(n, 1, true)) : []) : []
         const all = [{ type: "heading", title: page.sioul.text("note-all") }]
-        return recent.concat(all).concat(page.shown.tree ? page.tree() : page.shown.notes.map(n => note(n, 0, true)))
+        return recent.concat(all).concat(page.tree())
+    }
+
+    // A dated list's heading: "today", "week"… in words; a year as it is.
+    function whenWords(when) {
+        switch (when) {
+        case "after":
+            return page.sioul.text("note-when-after")
+        case "today":
+            return page.sioul.text("note-when-today")
+        case "week":
+            return page.sioul.text("note-when-week")
+        case "month":
+            return page.sioul.text("note-when-month")
+        case "year":
+            return page.sioul.text("note-when-year")
+        case "unknown":
+            return page.sioul.text("note-when-unknown")
+        default:
+            return when
+        }
     }
 
     // Folders first, then the notes in them, each folder folded until opened.
@@ -124,6 +159,109 @@ Item {
         page.path = path
         page.editing = false
         page.reload()
+    }
+
+    // A note opened at one of its headings ("#Money" in a link): its words,
+    // case aside, or as a web page writes them ("#money-first"); none found,
+    // the note opens at its top.
+    function openAt(path, anchor) {
+        const same = page.note !== null && path === page.path
+        page.open(path)
+        if (anchor === "")
+            return
+        // Its text drawn already, else once the window has laid it out.
+        if (same)
+            page.goToAnchor(anchor)
+        else
+            page.wanted = { anchor: anchor }
+    }
+
+    // A heading asked for while its note opens ({ anchor }), or chosen in the
+    // fold that closes ({ heading }): gone to once the window has laid the
+    // note out anew, after Qt's polish and before the frame is drawn.
+    property var wanted: null
+
+    Connections {
+        target: page.wanted !== null ? page.Window.window : null
+        ignoreUnknownSignals: true
+
+        function onAfterAnimating() {
+            const wanted = page.wanted
+            page.wanted = null
+            if (wanted.heading)
+                page.goToHeading(wanted.heading)
+            else
+                page.goToAnchor(wanted.anchor)
+        }
+    }
+
+    function goToAnchor(anchor) {
+        const slug = words => words.toLowerCase().trim().replace(/\s+/g, "-").replace(/[^\p{L}\p{N}_-]/gu, "")
+        const found = page.outline.find(h => h.text.toLowerCase() === anchor.toLowerCase()) || page.outline.find(h => slug(h.text) === slug(anchor))
+        if (found)
+            page.goToHeading(found)
+    }
+
+    // The note's headings: as read, from Rust with the note; while it is
+    // edited, from its text after a pause in typing (`outlinePause`).
+    property var editedOutline: []
+    readonly property var outline: page.note === null || page.kind !== "text" ? [] : page.editing ? page.editedOutline : (page.note.outline || [])
+    // Shown only for two headings or more.
+    readonly property bool outlined: page.outline.length >= 2
+    onEditingChanged: page.editedOutline = page.editing && page.note ? page.note.outline || [] : []
+
+    // A heading of the outline pressed: its place in the note brought to the
+    // top of the view. Read, the heading is found among the blocks of the
+    // drawn text, in order (Qt's plain text of a rich text separates its
+    // blocks with U+2029); edited, the cursor goes to its line.
+    function goToHeading(heading) {
+        if (page.editing) {
+            const text = editor.text
+            let at = 0
+            for (let line = 1; line < heading.line; ++line) {
+                const next = text.indexOf("\n", at)
+                if (next < 0)
+                    break
+                at = next + 1
+            }
+            editor.cursorPosition = at
+            // A phone's keyboard opens only on a tap in the text.
+            if (!page.window.compact)
+                editor.forceActiveFocus()
+            page.scrollTo(editView, editor.positionToRectangle(at).y)
+            return
+        }
+        if (!heading.drawn) {
+            page.scrollTo(readView, 0)
+            return
+        }
+        const drawn = page.outline.filter(h => h.drawn)
+        const wanted = drawn.findIndex(h => h.line === heading.line)
+        const blocks = reader.getText(0, reader.length).split("\u2029")
+        const plain = words => words.replace(/[\s\u2028\u00a0]+/g, " ").trim()
+        let start = 0
+        let block = 0
+        for (let i = 0; i <= wanted && block < blocks.length; ++i) {
+            let found = block
+            while (found < blocks.length && plain(blocks[found]) !== plain(drawn[i].text))
+                found += 1
+            if (found >= blocks.length)
+                continue
+            for (; block < found; ++block)
+                start += blocks[block].length + 1
+            if (i === wanted) {
+                page.scrollTo(readView, reader.positionToRectangle(start).y)
+                return
+            }
+            start += blocks[block].length + 1
+            block += 1
+        }
+    }
+
+    // A note's view scrolled so that `y` of its text is at its top, as far as it goes.
+    function scrollTo(view, y) {
+        const flick = view.contentItem
+        flick.contentY = Math.max(0, Math.min(y, flick.contentHeight - flick.height))
     }
 
     // Pictures in a note: never wider than the column, their line not spaced.
@@ -174,6 +312,20 @@ Item {
         list.contentY = list.contentY + pixels
     }
 
+    // Words searched, as if typed and left a moment, for the window's images.
+    function grabSearch(words) {
+        searchField.text = words
+        page.query = words
+        page.sioul.searchNotes(words)
+        page.sioul.searchNoteTexts()
+    }
+
+    // The outline's fold opened, where the note shows it (a phone), for the window's images.
+    function grabOutline() {
+        if (page.narrow)
+            outlineFold.open = true
+    }
+
     // Words typed at the end of the note being edited, for the window's images.
     function typeAtEnd(words) {
         editor.insert(editor.length, words)
@@ -186,8 +338,10 @@ Item {
     }
 
     function openFirst() {
-        if (page.shown.recent.length > 0)
-            page.open(page.shown.recent[0].path)
+        const groups = page.shown.groups || []
+        const first = page.shown.recent.length > 0 ? page.shown.recent[0] : groups.length > 0 ? groups[0].notes[0] : null
+        if (first)
+            page.open(first.path)
     }
 
     function reload() {
@@ -241,8 +395,21 @@ Item {
     // note made from a mail must not reach a shared folder (file://server/…,
     // smb:) nor start a program through one of the system's protocols.
     function follow(href) {
+        const decoded = words => {
+            try {
+                return decodeURIComponent(words)
+            } catch (malformed) {
+                return words
+            }
+        }
+        // A heading of this note, or of another (`[[plan#Money]]`): the note opens there.
+        if (href.startsWith("#")) {
+            page.goToAnchor(decoded(href.slice(1)))
+            return
+        }
         if (href.startsWith("sioul:note/")) {
-            page.open(decodeURIComponent(href.slice(11).split("#")[0]))
+            const [path, anchor] = href.slice(11).split("#")
+            page.openAt(decoded(path), decoded(anchor || ""))
             return
         }
         if (href.startsWith("sioul:") || href.startsWith("mid:")) {
@@ -255,8 +422,9 @@ Item {
         if (scheme === null) {
             // Another note, a picture, a PDF, a sound: shown here when the notes folder has it.
             const path = page.resolve(href)
+            const mark = href.indexOf("#")
             if (path !== "" && page.sioul.note(path) !== "")
-                page.open(path)
+                page.openAt(path, mark < 0 ? "" : decoded(href.slice(mark + 1)))
             else
                 page.sioul.status = page.sioul.textWith("note-link-not-found", "path", path)
             return
@@ -361,14 +529,25 @@ Item {
             spacing: 8
 
             // The search on a line of its own: beside an open note the column is
-            // narrow, and the buttons left it no width.
+            // narrow, and the buttons left it no width. The names answer as you
+            // type; the texts after a pause (`textPause`).
             TextField {
+                id: searchField
+
+                objectName: "noteSearch"
                 Layout.fillWidth: true
                 placeholderText: page.sioul.text("note-search")
                 onTextEdited: {
                     page.query = text
                     page.sioul.searchNotes(text)
+                    textPause.restart()
                 }
+            }
+            Timer {
+                id: textPause
+
+                interval: 300
+                onTriggered: page.sioul.searchNoteTexts()
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -425,55 +604,183 @@ Item {
                     view: "notes"
                 }
             }
-            // One list, or a tree of folders: your choice, kept.
+            // What the list shows, and of which type: one line under the search,
+            // as wide as the column gives, each choice kept on this device as it
+            // was left (notesview.rs). Their names show when the line has room
+            // for them; the boxes alone say them to a screen reader.
             RowLayout {
+                id: choices
+
+                readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.spacing + 4
+
+                objectName: "noteChoices"
                 visible: !page.shown.missing
-                spacing: 4
+                Layout.fillWidth: true
+                spacing: 6
 
-                Repeater {
-                    model: [{ tree: false, label: "note-as-list", icon: "view-list-text" }, { tree: true, label: "note-as-tree", icon: "view-list-tree" }]
+                Label {
+                    id: showName
 
-                    delegate: Button {
-                        id: shape
+                    visible: choices.named
+                    text: page.sioul.text("note-show")
+                    textFormat: Text.PlainText
+                    color: page.theme.muted
+                }
+                PlainComboBox {
+                    id: showBox
 
-                        required property var modelData
+                    objectName: "noteShow"
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: showBox.implicitWidth
+                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                    // column, its words end in "…" rather than being cut.
+                    implicitWidth: Math.ceil(Math.max(...showBox.model.map(c => showBoxMetrics.advanceWidth(c.text)))) + 13 + showBox.leftPadding + showBox.rightPadding
+                    spacing: 4
+                    textRole: "text"
+                    valueRole: "value"
+                    contentItem: Label {
+                        leftPadding: 12
+                        rightPadding: 1
+                        text: showBox.displayText
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        font: showBox.font
+                        color: showBox.palette.text
+                    }
 
-                        text: page.sioul.text(shape.modelData.label)
-                        icon.name: shape.modelData.icon
-                        icon.color: page.theme.text
-                        flat: page.shown.tree !== shape.modelData.tree
-                        checkable: true
-                        checked: page.shown.tree === shape.modelData.tree
-                        onClicked: {
-                            const already = page.shown.tree === shape.modelData.tree
-                            page.sioul.setNotesTree(shape.modelData.tree)
-                            // A click on the shape shown unticks it: its binding ticks it again.
-                            if (already)
-                                shape.checked = Qt.binding(() => page.shown.tree === shape.modelData.tree)
+                    FontMetrics {
+                        id: showBoxMetrics
+
+                        font: showBox.font
+                    }
+                    model: [{ value: "folder", text: page.sioul.text("note-show-folder") }, { value: "changed", text: page.sioul.text("note-show-changed") }, { value: "created", text: page.sioul.text("note-show-created") }]
+                    currentIndex: Math.max(0, showBox.indexOfValue(page.showing))
+                    Accessible.name: page.sioul.text("note-show")
+                    // Each box says its own choice: two chosen in a row both count, before Rust's answer.
+                    onActivated: index => page.sioul.setNotesView(showBox.model[index].value, typeBox.model[Math.max(0, typeBox.currentIndex)].value)
+
+                    // Rust's answer, or the page made again: the box follows what is kept.
+                    Connections {
+                        target: page
+
+                        function onShowingChanged() {
+                            showBox.currentIndex = Math.max(0, showBox.indexOfValue(page.showing))
                         }
                     }
                 }
+                Item {
+                    implicitWidth: 4
+                }
+                Label {
+                    id: typeName
+
+                    visible: choices.named
+                    text: page.sioul.text("note-type")
+                    textFormat: Text.PlainText
+                    color: page.theme.muted
+                }
+                PlainComboBox {
+                    id: typeBox
+
+                    objectName: "noteType"
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: typeBox.implicitWidth
+                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                    // column, its words end in "…" rather than being cut.
+                    implicitWidth: Math.ceil(Math.max(...typeBox.model.map(c => typeBoxMetrics.advanceWidth(c.text)))) + 13 + typeBox.leftPadding + typeBox.rightPadding
+                    spacing: 4
+                    textRole: "text"
+                    valueRole: "value"
+                    contentItem: Label {
+                        leftPadding: 12
+                        rightPadding: 1
+                        text: typeBox.displayText
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+                        font: typeBox.font
+                        color: typeBox.palette.text
+                    }
+
+                    FontMetrics {
+                        id: typeBoxMetrics
+
+                        font: typeBox.font
+                    }
+                    model: [{ value: "all", text: page.sioul.text("note-type-all") }, { value: "text", text: page.sioul.text("note-type-text") }, { value: "sound", text: page.sioul.text("note-type-sound") }, { value: "pdf", text: page.sioul.text("note-type-pdf") }, { value: "other", text: page.sioul.text("note-type-other") }]
+                    currentIndex: Math.max(0, typeBox.indexOfValue(page.typed))
+                    Accessible.name: page.sioul.text("note-type")
+                    onActivated: index => page.sioul.setNotesView(showBox.model[Math.max(0, showBox.currentIndex)].value, typeBox.model[index].value)
+
+                    Connections {
+                        target: page
+
+                        function onTypedChanged() {
+                            typeBox.currentIndex = Math.max(0, typeBox.indexOfValue(page.typed))
+                        }
+                    }
+                }
+                Item {
+                    Layout.fillWidth: true
+                }
             }
-            // A note added, renamed, moved or deleted, a folder folded: the list keeps its place
-            // (ListPlace.qml); a search, or the tree for the list, from its top. A note shows
-            // twice (in What changed lately and under All): its key says where.
+            // A note added, renamed, moved or deleted, a folder folded, the texts' answer
+            // after the names': the list keeps its place (ListPlace.qml); a search, another
+            // Show or Type, from its top. A note shows twice (in What changed lately and
+            // under All): its key says where.
             ListPlace {
                 id: listPlace
 
                 view: list
                 source: page.rows
                 key: r => r.type === "note" ? ["note", r.depth, r.showPath, r.note.path].join("|") : r.type + "|" + (r.path || "")
-                scope: [page.query, page.shown.tree]
+                scope: [page.shown.query, page.showing, page.typed]
             }
             ListView {
                 id: list
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                objectName: "noteList"
                 clip: true
                 spacing: 2
                 ScrollBar.vertical: ScrollBar {}
                 model: listPlace.rows
+
+                // Under what was found: still looking in the texts, nothing found, and
+                // that PDFs and sounds are found by their names; under a list of one
+                // type, that it holds nothing.
+                footer: ColumnLayout {
+                    width: list.width - 10
+                    spacing: 4
+
+                    Item {
+                        implicitHeight: 4
+                    }
+                    Repeater {
+                        model: [
+                            { name: "noteLooking", shown: page.searching && page.shown.looking, words: page.sioul.text("note-search-looking") },
+                            { name: "noteNoneFound", shown: page.searching && !page.shown.looking && page.shown.notes.length === 0, words: page.sioul.text("note-search-none") },
+                            { name: "noteNamesOnly", shown: page.searching && page.shown.namesOnly, words: page.sioul.text("note-search-names-only") },
+                            { name: "noteNoneOfType", shown: !page.searching && page.typed !== "all" && !page.rows.some(r => r.type === "note"), words: page.sioul.text("note-type-none") }
+                        ]
+
+                        delegate: Label {
+                            required property var modelData
+
+                            objectName: modelData.name
+                            visible: modelData.shown
+                            Layout.fillWidth: true
+                            leftPadding: 8
+                            text: modelData.words
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 12
+                            color: page.theme.muted
+                        }
+                    }
+                }
 
                 delegate: ItemDelegate {
                     id: row
@@ -557,6 +864,21 @@ Item {
                                 elide: Text.ElideMiddle
                                 font.pixelSize: 11
                                 color: page.theme.muted
+                            }
+                            // Found by its text: the line that holds the words, as written.
+                            Label {
+                                objectName: "noteFoundLine"
+                                visible: text !== ""
+                                Layout.fillWidth: true
+                                // It wraps in the row's width: its own, unwrapped, asks for none.
+                                Layout.preferredWidth: 0
+                                text: row.heading || row.folder ? "" : row.modelData.note.line || ""
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                                font.pixelSize: 12
+                                color: page.theme.text
                             }
                         }
                     }
@@ -658,6 +980,42 @@ Item {
                         }
                     }
 
+                    // On a phone and in a narrow window, the outline folds at the top of
+                    // the note, closed until opened; a long one scrolls in a third of the
+                    // page. A heading chosen there, it closes, as a menu does, and the
+                    // note's text, given back its room, shows that heading.
+                    CardFold {
+                        id: outlineFold
+
+                        objectName: "outlineFold"
+                        visible: page.outlined && page.narrow
+                        Layout.fillWidth: true
+                        theme: page.theme
+                        title: page.sioul.text("note-outline")
+                        titleSize: 14
+                        framed: false
+
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.maximumHeight: Math.round(page.height / 3)
+                            implicitHeight: foldOutline.implicitHeight
+                            contentWidth: availableWidth
+                            clip: true
+
+                            NoteOutline {
+                                id: foldOutline
+
+                                width: parent.width
+                                theme: page.theme
+                                headings: page.narrow ? page.outline : []
+                                onChosen: heading => {
+                                    outlineFold.open = false
+                                    page.wanted = { heading: heading }
+                                }
+                            }
+                        }
+                    }
+
                     // An office document: what Sioul does with it, in one line.
                     Label {
                         objectName: "noteFileSaid"
@@ -734,6 +1092,9 @@ Item {
                     }
 
                     ScrollView {
+                        id: readView
+
+                        objectName: "noteReadView"
                         visible: !page.editing && page.kind === "text"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -741,6 +1102,9 @@ Item {
                         clip: true
 
                         TextEdit {
+                            id: reader
+
+                            objectName: "noteReader"
                             width: parent.width
                             readOnly: true
                             selectByMouse: true
@@ -762,6 +1126,9 @@ Item {
                         }
                     }
                     ScrollView {
+                        id: editView
+
+                        objectName: "noteEditView"
                         visible: page.editing
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -769,6 +1136,7 @@ Item {
                         TextArea {
                             id: editor
 
+                            objectName: "noteEditor"
                             text: page.note ? page.note.text : ""
                             wrapMode: TextArea.Wrap
 
@@ -790,6 +1158,16 @@ Item {
                             onTextChanged: {
                                 if (page.editing && page.note && editor.text !== page.note.text)
                                     page.dirty = true
+                                // The outline follows the text after a pause, never at each key.
+                                if (page.editing)
+                                    outlinePause.restart()
+                            }
+
+                            Timer {
+                                id: outlinePause
+
+                                interval: 600
+                                onTriggered: page.editedOutline = JSON.parse(page.sioul.noteOutline(page.path, editor.text) || "[]")
                             }
                         }
                     }
@@ -810,6 +1188,29 @@ Item {
                         width: parent.width
                         spacing: 10
 
+                        // The note's outline first, where the column shows beside it.
+                        ColumnLayout {
+                            objectName: "outlineSide"
+                            visible: page.outlined && !page.narrow
+                            Layout.fillWidth: true
+                            spacing: 2
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: page.sioul.text("note-outline")
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.weight: Font.DemiBold
+                                color: page.theme.text
+                                Accessible.role: Accessible.Heading
+                            }
+                            NoteOutline {
+                                Layout.fillWidth: true
+                                theme: page.theme
+                                headings: page.narrow ? [] : page.outline
+                                onChosen: heading => page.goToHeading(heading)
+                            }
+                        }
                         Button {
                             visible: page.note !== null && page.note.related.some(r => r.kind === "event")
                             Layout.fillWidth: true

@@ -28,7 +28,7 @@ Choose your Obsidian vault, or the **Notes** folder that Nextcloud Notes keeps i
 Some of what Obsidian draws, Sioul shows as the text it is: callouts, highlights, footnotes, formulas and diagrams. A note embedded in another (`![[another note]]`) shows as a link to it; pictures show in place.
 
 <figure markdown="span">
-  [![The Notes page: a search field, New note and the other buttons, then List and Folders above every note in its folder, Projects unfolded; a note open in the middle, its path and tags under its title, Edit and Aa beside it, its text with links and a picture of a sketch; on the right, Add and Link to…, what is tied to it (tasks, a message, other notes) with See them all, and its lines not ticked.](../assets/screens/notes.png){ loading=lazy }](../assets/screens/notes.png "Open the picture at full size")
+  [![The Notes page: a search field, New note and the other buttons, then Show and Type on one line above every note in its folder, Projects unfolded; a note open in the middle, its path and tags under its title, Edit and Aa beside it, its text with links and a picture of a sketch; on the right, Add and Link to…, what is tied to it (tasks, a message, other notes) with See them all, and its lines not ticked.](../assets/screens/notes.png){ loading=lazy }](../assets/screens/notes.png "Open the picture at full size")
   <figcaption>A note, read, with what is tied to it on the side.</figcaption>
 </figure>
 
@@ -38,7 +38,16 @@ Your notes are plain Markdown files in a folder of yours, on this device, which 
 
 ## Finding a note
 
-Search comes first: **Search the notes** finds a note by its title, its folder or its tags; it does not search the words inside the notes. Below it come the notes **changed lately** (the last ten, folded under their heading until you open it), then **every note**, as one **List** or as **Folders**, folded until opened. Sioul remembers which one you chose. No filing is asked of you.
+Search comes first: **Search the notes** finds a note by its title, its folder or its tags as you type, then, after a short pause, by the words inside it. Every word you type counts, wherever it is in the note, capitals and accents aside. The notes found by their title come first, then those found by their text, the latest changed first, each with the line that holds your words. While Sioul is still looking in the texts, the list says so. Only text notes are searched inside: a PDF or a sound is found by its name, and the list says so when it could have matched one.
+
+Under the search, one line holds two choices, which Sioul keeps on this device as you leave them:
+
+- **Show**: **By folder**, as the page starts: the notes **changed lately** (the last ten, folded under their heading until you open it), then every note in its folder, folded until opened. **Last changed**: one list, the latest first, under Today, This week, This month, Earlier this year, then each year before. **Created**: the same, by the day each note was made, those whose day is not known last, under **Not known**.
+- **Type**: **Every type**, **Text**, **Sound**, **PDF**, or **Other** (pictures and office documents). It narrows the folders, the dated lists and what the search finds alike; a folder with nothing of that type in it is not shown.
+
+No filing is asked of you.
+
+**When a note was made.** Sioul reads it in the note itself, when its properties at the top say it: `created: 2026-10-05`, else `date:`, a day or a moment (`2026-10-05T09:12`). Otherwise it takes the day your system says the note's file was made on this device. A file that a sync program brought (Nextcloud, Dropbox, Syncthing, Sioul's own sharing) was made, for each device, the day it arrived there, and a newer version brought later arrives again. When Sioul saves a note, it keeps the day the note was first made, although it writes a new file each time. Where the system does not say it (on Android, among others), the note is listed under **Not known**: Sioul never takes the day a note was last changed for the day it was made. A `created:` line in a note's properties keeps its day whatever happens to its file.
 
 ## Reading and writing
 
@@ -48,6 +57,7 @@ A note opens to be read. Its links are followed with a click, wherever they lead
 - `[[Another note]]` links to a note by its name, wherever it is in the folder. Markdown links, `#tags` and the properties at the top of a note work too.
 - Each note shows what links to it, and what it is tied to: tasks, messages, events, people, projects. **Link to…** ties it to something that is already there; **Add ▾** makes a task, an event or a message tied to it.
 - **Aa** sets the font, its size and the space between lines, for reading on this device.
+- **Outline**: a note with two headings or more shows them, each indented by its level. Where the window is wide enough for the column beside the note, they are at its top, above what the note is tied to; on a phone or in a narrow window, they fold at the top of the note, under **Outline**, closed until you open it. A heading pressed brings its place to the top of the note, read or being written (the cursor then goes to its line); in the fold, the fold closes again. While you write, the outline follows your text after a short pause.
 
 A note changed on another device, come through the sharing, shows at once, as the Health, Papers and Time pages do; while you are typing in it, what you typed stays as it is, and a line under its title says that a newer version came. If the note changed elsewhere while you were writing (on another device, by a sync app, in another program), your version is never saved over it: it is kept beside it, as "Plan (conflict 2026-10-05 21.50)", and stays open; the status line says so. The other version keeps the name. On a small screen, the open note takes the whole page, and **Back** keeps the note, saved, and closes it.
 
@@ -93,7 +103,7 @@ A linked note that has not arrived yet shows faded, with "Not on this device yet
 ## Going further {#going-further}
 
 - **Ties written in the note**: when you tie a note to something, Sioul writes its address at the top of the note, between two `---` lines, under `links:` (or `task:`, `event:`, `mail:`, `contact:`). You can write them there yourself, or remove them; the addresses are under [For technical readers](#for-technical-readers).
-- **Links with a heading or other words**: `[[Plan#Budget]]`, which names a heading of the note as Obsidian writes it, opens the note at its top (Sioul does not go down to the heading), and `[[Plan|the plan]]` shows other words for the link, as in Obsidian.
+- **Links with a heading or other words**: `[[Plan#Budget]]`, which names a heading of the note as Obsidian writes it, opens the note at that heading (its words, capitals aside, or as a web page writes them, `#budget-2026`; a heading not found opens the note at its top), and `[[Plan|the plan]]` shows other words for the link, as in Obsidian.
 - **Tags with a slash**: `#admin/letters` is read as one tag, as Obsidian writes its nested tags; searching "admin" finds it.
 - **Earlier versions**: before another device's change replaces or removes a note here, the note as it was is kept on this device. Most often it is kept as a pointer to its copy in the sharing folder, which keeps a replaced note two weeks: the pointer goes after 12 days, however few versions there are. A note whose copy has left the folder is copied here instead, as other files are: its last 20 copies, and every copy of the last 30 days. A note deleted on another device is kept as a copy too, moved here, which costs no room: its copy in the sharing folder then leaves it as soon as each of your devices has read that it was deleted. Edits you make on this device do not make versions; your sync app or your server may keep its own (Nextcloud does).
 - **Sounds to work by**: sounds you put in a `sounds` folder of your notes are offered by the sounds button while you work ([Tasks](tasks.md#sounds)).
@@ -116,7 +126,7 @@ As of October 2026, from each app's own documentation.
     | A note tied to a task, a message or an event | ✓ | ✗⁵ | partly⁶ | ✗ | ✗ | partly⁷ |
     | A line with a box made into a task | ✓ | ✗ | ✗ | ✗ | ✗ | ✓⁷ |
     | Pictures, PDFs, and audio recorded in the app | ✓ | ✓ | ✓ | partly⁸ | partly⁹ | ✓ |
-    | Finds a note by the words inside it | ✗¹⁰ | ✓ | ✓ | ? | ? | ✓ |
+    | Finds a note by the words inside it | ✓¹⁰ | ✓ | ✓ | ? | ? | ✓ |
     | Drawing, handwriting, text read in pictures | ✗ | ✗ | ✓ | ✗ | ✗ | ✓ |
     | Sharing notes with other people | ✗ | partly¹¹ | partly¹² | partly¹³ | partly¹⁴ | ✓ |
 
@@ -129,7 +139,7 @@ As of October 2026, from each app's own documentation.
     7. With Outlook, in OneNote for Windows: a meeting's details copied into a page, and words made an Outlook task, ticked off in either.
     8. Pictures and files; no audio recording.
     9. Files with the Professional plan only; no audio recording.
-    10. Sioul's window finds a note by its title, its folder and its tags; an [AI agent](ai-agent.md) connected to Sioul can also look in their text.
+    10. In the text of its Markdown notes, after its title, folder and tags; a PDF or a sound by its name only. An [AI agent](ai-agent.md) connected to Sioul looks in the same texts.
     11. A vault shared through Obsidian Sync, paid by each member; no writing in one note at the same moment.
     12. A notebook shared through Joplin Cloud's paid plans.
     13. By sharing the Notes folder in Nextcloud's Files.

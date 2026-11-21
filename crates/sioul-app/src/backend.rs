@@ -1403,9 +1403,20 @@ pub mod qobject {
         #[qinvokable]
         fn focus_stop(self: Pin<&mut Sioul>, done: bool, note: &QString) -> QString;
 
-        /// Shows the notes matching `query`.
+        /// Shows the notes whose names hold the words of `query`, at once
+        /// (`notesview::search`): a new question, its number in the answer.
         #[qinvokable]
         fn search_notes(self: Pin<&mut Sioul>, query: &QString);
+
+        /// After a pause in typing: the notes' texts looked in for the last
+        /// question, off the window's thread; the answer comes as `notes`.
+        #[qinvokable]
+        fn search_note_texts(self: Pin<&mut Sioul>);
+
+        /// The outline of the text being written in the note at `path`, as
+        /// JSON (`notesview::outline_json`): its headings, level, words, line.
+        #[qinvokable]
+        fn note_outline(self: &Sioul, path: &QString, text: &QString) -> QString;
 
         /// One note: text, HTML, tags, checkboxes, what is tied to it, as JSON.
         #[qinvokable]
@@ -1920,9 +1931,11 @@ pub mod qobject {
         #[qinvokable]
         fn remove_line(self: Pin<&mut Sioul>, uri: &QString, shown: &QString) -> QString;
 
-        /// Notes as a tree of folders, or as one list.
+        /// What the Notes page lists, "folder", "changed" or "created", and
+        /// of which type, "all", "text", "sound", "pdf" or "other": kept on
+        /// this device (`notesview::set_view`).
         #[qinvokable]
-        fn set_notes_tree(self: Pin<&mut Sioul>, tree: bool);
+        fn set_notes_view(self: Pin<&mut Sioul>, show: &QString, kind: &QString);
 
         /// How a page was left ("sites-narrow", "notes-recent"…), kept between sessions.
         #[qinvokable]
@@ -7018,7 +7031,15 @@ impl qobject::Sioul {
     }
 
     fn search_notes(self: Pin<&mut Self>, query: &QString) {
-        work::search_notes(&self.qt_thread(), &self.shared(), &query.to_string());
+        crate::notesview::search(&self.qt_thread(), &self.shared(), &query.to_string());
+    }
+
+    fn search_note_texts(self: Pin<&mut Self>) {
+        crate::notesview::search_texts(&self.qt_thread(), &self.shared());
+    }
+
+    fn note_outline(&self, path: &QString, text: &QString) -> QString {
+        QString::from(&crate::notesview::outline_json(&self.shared(), &path.to_string(), &text.to_string()))
     }
 
     fn note(&self, path: &QString) -> QString {
@@ -8077,8 +8098,8 @@ impl qobject::Sioul {
         QString::from(&work::note_path_of(&url.to_string()))
     }
 
-    fn set_notes_tree(self: Pin<&mut Self>, tree: bool) {
-        work::set_notes_tree(&self.qt_thread(), &self.shared(), tree);
+    fn set_notes_view(self: Pin<&mut Self>, show: &QString, kind: &QString) {
+        crate::notesview::set_view(&self.qt_thread(), &self.shared(), &show.to_string(), &kind.to_string());
     }
 
     fn view_flag(&self, name: &QString) -> bool {
@@ -9391,8 +9412,10 @@ impl qobject::Sioul {
         // (pictures alone; docs/qt-quick.md), "downloads" a file a site offers asked in its card over
         // the site, kept in Downloads, then a program's card cancelled (a local page, no site reached;
         // docs/sites.md), "household" Your people in What reaches you, their sheet and page, and a
-        // phone's calls with their row (pictures alone; docs/attention.md), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household"].contains(&steps.as_str()) && offline()) {
+        // phone's calls with their row (pictures alone; docs/attention.md), "notes-find" Notes found by
+        // their text, a note's outline, the dated lists and one type (pictures alone; docs/tasks.md), on a
+        // demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household", "notes-find"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
