@@ -414,63 +414,217 @@ fn prefixed(subject: &str, prefix: &str, known: &[String]) -> String {
 /// ("![](https://…)", a tracking pixel) is a link to it: showing the text
 /// fetches nothing.
 pub fn markdown_html(markdown: &str) -> String {
-    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
+    let mut out = String::new();
+    pulldown_cmark::html::push_html(&mut out, shown_events(markdown).into_iter().map(|(event, _)| event));
+    out
+}
+
+/// The events of `markdown` as `markdown_html` and `markdown_blocks` write
+/// them, its rules applied (HTML written in it, pictures from elsewhere, line
+/// breaks), each with the bytes of `markdown` it comes from.
+fn shown_events(markdown: &str) -> Vec<(pulldown_cmark::Event<'_>, std::ops::Range<usize>)> {
+    use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
     let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-    let mut events: Vec<Event> = Vec::new();
+    let mut events: Vec<(Event, std::ops::Range<usize>)> = Vec::new();
     // Links open around here, the lines of a block of HTML so far, and a
     // picture from elsewhere being written: its address, whether it has words,
     // whether it is a link of its own (in a link, its words are enough).
     let (mut links, mut lines) = (0usize, 0usize);
     let mut far: Option<(String, bool, bool)> = None;
-    for event in Parser::new_ext(markdown, options) {
+    for (event, range) in Parser::new_ext(markdown, options).into_offset_iter() {
         if let (Some((_, words, _)), Event::Text(text) | Event::Code(text)) = (far.as_mut(), &event) {
             *words |= !text.trim().is_empty();
         }
+        let mut push = |event: Event<'static>| events.push((event, range.clone()));
         match event {
-            Event::SoftBreak => events.push(Event::HardBreak),
+            Event::SoftBreak => push(Event::HardBreak),
             Event::Start(Tag::HtmlBlock) => {
                 lines = 0;
-                events.push(Event::Start(Tag::Paragraph));
+                push(Event::Start(Tag::Paragraph));
             }
-            Event::End(TagEnd::HtmlBlock) => events.push(Event::End(TagEnd::Paragraph)),
+            Event::End(TagEnd::HtmlBlock) => push(Event::End(TagEnd::Paragraph)),
             Event::Html(raw) => {
                 if lines > 0 {
-                    events.push(Event::HardBreak);
+                    push(Event::HardBreak);
                 }
                 lines += 1;
-                events.push(written_html(raw.trim_end_matches('\n')));
+                push(written_html(raw.trim_end_matches('\n')));
             }
-            Event::InlineHtml(raw) => events.push(written_html(&raw)),
+            Event::InlineHtml(raw) => push(written_html(&raw)),
             Event::Start(Tag::Image { link_type, dest_url, title, id }) if !local_source(&dest_url) => {
                 far = Some((dest_url.to_string(), false, links == 0));
                 if links == 0 {
-                    events.push(Event::Start(Tag::Link { link_type, dest_url, title, id }));
+                    events.push((Event::Start(Tag::Link { link_type, dest_url, title, id }), range));
                 }
             }
             Event::End(TagEnd::Image) if far.is_some() => {
                 if let Some((address, words, link)) = far.take() {
                     if !words {
-                        events.push(Event::Text(address.into()));
+                        push(Event::Text(address.into()));
                     }
                     if link {
-                        events.push(Event::End(TagEnd::Link));
+                        push(Event::End(TagEnd::Link));
                     }
                 }
             }
             Event::Start(Tag::Link { .. }) => {
                 links += 1;
-                events.push(event);
+                events.push((event, range));
             }
             Event::End(TagEnd::Link) => {
                 links = links.saturating_sub(1);
-                events.push(event);
+                events.push((event, range));
             }
-            other => events.push(other),
+            other => events.push((other, range)),
         }
     }
-    let mut out = String::new();
-    html::push_html(&mut out, events.into_iter());
-    out
+    events
+}
+
+/// A block of a text at its top level, as `markdown_html` writes it: a
+/// heading, a paragraph, a code block, a quote, a table, a rule, a block of
+/// HTML written in it; a list at the top is cut into its items, each with
+/// what it holds (a nested list stays in its item), in a list of its own that
+/// keeps its number (`<ol start="4">`). The Notes page reads a note as a
+/// list of these, laying out only those in sight (docs/tasks.md, "Notes: a long note opens at once").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Block {
+    /// Its HTML. The blocks' joined, an item's own list said once around
+    /// its list's items (`</ol>\n<ol start="5">\n` left out between them), are
+    /// `markdown_html`'s.
+    pub html: String,
+    /// The line of the text it starts on, from 1.
+    pub line: usize,
+    /// The element the whole text draws its first line in, for the space
+    /// above it: "p", "h1" to "h6", "ul", "ol", "pre", "blockquote", "table",
+    /// "hr"; an item after the first of its list: "li" when its words start
+    /// it, "li p" when a paragraph does (a list whose items are apart),
+    /// "li pre", "li ul"… for another block.
+    pub kind: String,
+    /// The element the whole text draws its last line in, for the space
+    /// under it: as `kind` for a block at the top; for an item, "li" when its
+    /// own words end it, else its last block's ("ul" for a nested list).
+    pub end: String,
+    /// It holds a picture: its size follows the width it is shown in.
+    pub picture: bool,
+}
+
+/// The element a block's tag is drawn in; none for the marks of words (a link, emphasis).
+fn drawn_in(tag: &pulldown_cmark::Tag) -> Option<String> {
+    use pulldown_cmark::Tag;
+    Some(match tag {
+        Tag::Paragraph | Tag::HtmlBlock => "p".into(),
+        Tag::Heading { level, .. } => level.to_string(),
+        Tag::List(Some(_)) => "ol".into(),
+        Tag::List(None) => "ul".into(),
+        Tag::CodeBlock(_) => "pre".into(),
+        Tag::BlockQuote(_) => "blockquote".into(),
+        Tag::Table(_) => "table".into(),
+        _ => return None,
+    })
+}
+
+/// The blocks of `markdown` at its top level (`Block`), from the events
+/// `markdown_html` writes, never by cutting its HTML.
+pub fn markdown_blocks(markdown: &str) -> Vec<Block> {
+    use pulldown_cmark::{Event, Tag, TagEnd};
+    let mut blocks = Vec::new();
+    // Lines counted so far: up to which byte, and how many.
+    let (mut counted, mut line) = (0usize, 1usize);
+    let mut line_at = |at: usize| {
+        let at = at.clamp(counted, markdown.len());
+        line += markdown.as_bytes()[counted..at].iter().filter(|&&b| b == b'\n').count();
+        counted = at;
+        line
+    };
+    let mut write = |events: Vec<Event>, start: usize, kind: String, end: String| {
+        let mut html = String::new();
+        pulldown_cmark::html::push_html(&mut html, events.into_iter());
+        let picture = html.contains("<img ");
+        blocks.push(Block { html, line: line_at(start), kind, end, picture });
+    };
+    // The block being read: its events, where it starts, the elements its
+    // first and last lines are drawn in. A list at the top being cut: whether
+    // it is numbered, its next item's number, and whether an item of it was written.
+    let mut piece: Vec<Event> = Vec::new();
+    let (mut start, mut first, mut last) = (0usize, String::new(), String::new());
+    let mut list: Option<(bool, Option<u64>, bool)> = None;
+    let mut depth = 0usize;
+    for (event, range) in shown_events(markdown) {
+        match (&event, depth, list.is_some()) {
+            // A list at the top: its items are the blocks.
+            (Event::Start(Tag::List(number)), 0, _) => {
+                list = Some((number.is_some(), *number, false));
+                depth = 1;
+            }
+            (Event::End(TagEnd::List(_)), 1, true) => {
+                list = None;
+                depth = 0;
+            }
+            (Event::Start(Tag::Item), 1, true) => {
+                start = range.start;
+                first.clear();
+                last.clear();
+                depth = 2;
+                piece.push(event);
+            }
+            (Event::End(TagEnd::Item), 2, true) => {
+                piece.push(event);
+                depth = 1;
+                if let Some((numbered, number, written)) = list.as_mut() {
+                    let kind = match (*written, first.as_str()) {
+                        (false, _) => if *numbered { "ol" } else { "ul" }.to_string(),
+                        (true, "" | "li") => "li".to_string(),
+                        (true, block) => format!("li {block}"),
+                    };
+                    let end = if last.is_empty() { "li".to_string() } else { std::mem::take(&mut last) };
+                    let mut events = Vec::with_capacity(piece.len() + 2);
+                    events.push(Event::Start(Tag::List(*number)));
+                    events.append(&mut piece);
+                    events.push(Event::End(TagEnd::List(*numbered)));
+                    write(events, start, kind, end);
+                    *number = number.map(|n| n + 1);
+                    *written = true;
+                }
+            }
+            (_, 0, _) => {
+                start = range.start;
+                match &event {
+                    Event::Start(opened) => {
+                        first = drawn_in(opened).unwrap_or_else(|| "p".into());
+                        depth = 1;
+                        piece.push(event);
+                    }
+                    Event::Rule => write(vec![event], start, "hr".into(), "hr".into()),
+                    _ => write(vec![event], start, "p".into(), "p".into()),
+                }
+            }
+            _ => {
+                // In an item, right inside it: a block of its own, or its own words.
+                if list.is_some() && depth == 2 {
+                    let drawn = match &event {
+                        Event::Start(opened) => drawn_in(opened).unwrap_or_else(|| "li".into()),
+                        _ => "li".into(),
+                    };
+                    if first.is_empty() {
+                        first.clone_from(&drawn);
+                    }
+                    last = drawn;
+                }
+                match &event {
+                    Event::Start(_) => depth += 1,
+                    Event::End(_) => depth -= 1,
+                    _ => {}
+                }
+                piece.push(event);
+                if depth == 0 {
+                    let kind = std::mem::take(&mut first);
+                    write(std::mem::take(&mut piece), start, kind.clone(), kind);
+                }
+            }
+        }
+    }
+    blocks
 }
 
 /// Marks of plain formatting kept from HTML written in Markdown: they fetch nothing.
@@ -1138,6 +1292,122 @@ mod tests {
         for near in ["photo.png", "../pictures/p.png", "/notes/p.png", "file:///C:/Notes/p.png", "file://localhost/notes/p.png", "data:image/png;base64,AAAA"] {
             assert!(local_source(near), "{near}");
         }
+    }
+
+    /// Invented notes holding every kind of block the reader meets.
+    const BLOCK_NOTES: &[&str] = &[
+        "",
+        "One line, no blank line at its end",
+        "# Plan\n\nWords on\ntwo lines.\n\nUnderlined\n==========\n\nSecond\n------\n\n### Third, **marked** and [linked](sioul:note/a.md)\n",
+        "- one\n  - inside\n    - deeper\n      text of it\n  - back\n- two\n- three\n",
+        "3. third\n4. fourth\n   1. inner one\n   2. inner two\n5. fifth\n\nAfter the list.\n",
+        "- [ ] open line\n- [x] done line\n\n1. [ ] numbered task\n",
+        "```rust\nfn main() {\n\n    // after a blank line\n}\n```\n\n    indented code\n\n    still code\n",
+        "> Quoted words\n> - a list\n> - in the quote\n>\n> > nested quote\n",
+        "| Day | What |\n|---|:-:|\n| Monday | the *lease* |\n| Tuesday | `code` |\n\nText after the table.\n",
+        "Above the rule\n\n---\n\n***\n\nBelow the rules\n",
+        "<div>\n<b>bold</b> and <script>x()</script>\n</div>\n\nA <img src=\"https://tracker.example/p.gif\"> pixel and <img src=\"file:///notes/p.png\" width=\"900\" height=\"300\">.\n",
+        "![local](pictures/photo.png)\n\n![far](https://example.org/far.png)\n\n[![inside a link](https://example.org/b.png)](https://example.org)\n",
+        "A note[^1] with what looks like a footnote.\n\n[^1]: Written at the end.\n",
+        "- loose one\n\n- loose two\n\n  its second paragraph\n- loose three\n",
+        "- a dash list\n+ a plus list\n* a star list\n",
+        "1) one\n2) two\n\n7. seven\n8. eight\n",
+        "Para\n# Heading right after\nPara again\n- list right after\n> quote right after\n",
+        "- \n- empty item above\n",
+        "- **marked** first words\n- *leaning* first words\n- [a link](https://example.org) first\n",
+    ];
+
+    /// The blocks' HTML joined, each item's own list said once around its
+    /// list's items: what `markdown_html` writes for the whole text.
+    fn joined(blocks: &[Block]) -> String {
+        let mut out = String::new();
+        for block in blocks {
+            let mut html = block.html.as_str();
+            if block.kind.starts_with("li") {
+                for close in ["</ul>\n", "</ol>\n"] {
+                    if out.ends_with(close) {
+                        out.truncate(out.len() - close.len());
+                    }
+                }
+                let open = html.find('\n').map_or(0, |end| end + 1);
+                assert!(html.starts_with("<ul>") || html.starts_with("<ol"), "an item in a list of its own: {html}");
+                html = &html[open..];
+            }
+            out.push_str(html);
+        }
+        out
+    }
+
+    #[test]
+    fn a_text_cut_in_blocks_says_what_its_html_says() {
+        for text in BLOCK_NOTES {
+            let blocks = markdown_blocks(text);
+            assert_eq!(joined(&blocks), markdown_html(text), "{text:?}\n{blocks:#?}");
+            for block in &blocks {
+                assert_eq!(block.picture, block.html.contains("<img "), "{block:?}");
+                assert!(block.line >= 1 && block.line <= text.lines().count().max(1), "{block:?} in {text:?}");
+            }
+        }
+        assert!(markdown_blocks("").is_empty());
+        assert!(markdown_blocks("\n\n  \n").is_empty());
+        // A list at the top: one block per item, its nested lists inside, its numbers kept.
+        let blocks = markdown_blocks(BLOCK_NOTES[4]);
+        let shape: Vec<(&str, usize)> = blocks.iter().map(|b| (b.kind.as_str(), b.line)).collect();
+        assert_eq!(shape, vec![("ol", 1), ("li", 2), ("li", 5), ("p", 7)]);
+        assert!(blocks[0].html.starts_with("<ol start=\"3\">\n<li>third</li>"), "{}", blocks[0].html);
+        assert!(blocks[1].html.starts_with("<ol start=\"4\">\n<li>fourth\n<ol>\n<li>inner one</li>"), "{}", blocks[1].html);
+        assert!(blocks[2].html.starts_with("<ol start=\"5\">"), "{}", blocks[2].html);
+        let deep = markdown_blocks(BLOCK_NOTES[3]);
+        assert_eq!(deep.len(), 3, "three items at the top: {deep:#?}");
+        assert!(deep[0].html.contains("deeper") && deep[0].html.matches("<ul>").count() == 3, "{}", deep[0].html);
+        // An item's first and last lines: its words, or the nested list that ends it.
+        let ends: Vec<(&str, &str)> = deep.iter().map(|b| (b.kind.as_str(), b.end.as_str())).collect();
+        assert_eq!(ends, vec![("ul", "ul"), ("li", "li"), ("li", "li")]);
+        let marked: Vec<(String, String)> = markdown_blocks(BLOCK_NOTES[18]).into_iter().map(|b| (b.kind, b.end)).collect();
+        assert_eq!(marked, vec![("ul".into(), "li".into()), ("li".into(), "li".into()), ("li".into(), "li".into())], "marks of words are no blocks");
+        assert_eq!(markdown_blocks("# Title\n\nWords.\n").iter().map(|b| (b.kind.as_str(), b.end.as_str())).collect::<Vec<_>>(), vec![("h1", "h1"), ("p", "p")]);
+        // Apart: each item after the first says its first line is a paragraph.
+        let loose: Vec<(String, String)> = markdown_blocks(BLOCK_NOTES[13]).into_iter().map(|b| (b.kind, b.end)).collect();
+        assert_eq!(loose, vec![("ul".into(), "p".into()), ("li p".into(), "p".into()), ("li p".into(), "p".into())]);
+        // Three bullets, three lists; ")" and "." numbers, two lists.
+        let kinds = |text: &str| markdown_blocks(text).into_iter().map(|b| b.kind).collect::<Vec<_>>();
+        assert_eq!(kinds(BLOCK_NOTES[14]), vec!["ul", "ul", "ul"]);
+        assert_eq!(kinds(BLOCK_NOTES[15]), vec!["ol", "li", "ol", "li"]);
+        // A code block and a table are never cut; a quote holds its list.
+        let code = markdown_blocks(BLOCK_NOTES[6]);
+        assert_eq!((code.len(), code[0].kind.as_str(), code[1].line), (2, "pre", 8));
+        assert!(code[0].html.contains("fn main() {\n\n    // after a blank line"), "{}", code[0].html);
+        let quote = markdown_blocks(BLOCK_NOTES[7]);
+        assert_eq!(quote.len(), 1);
+        assert!(quote[0].html.contains("<ul>") && quote[0].html.matches("<blockquote>").count() == 2);
+        let table = markdown_blocks(BLOCK_NOTES[8]);
+        assert_eq!(table.iter().map(|b| b.kind.as_str()).collect::<Vec<_>>(), vec!["table", "p"]);
+        assert_eq!(kinds(BLOCK_NOTES[9]), vec!["p", "hr", "hr", "p"]);
+        // HTML written in a note stays words; a picture from elsewhere a link; one of this computer a picture.
+        let written = markdown_blocks(BLOCK_NOTES[10]);
+        assert!(!written[0].html.contains("<script") && written[0].html.contains("&lt;script&gt;") && !written[0].picture, "{}", written[0].html);
+        assert!(!written[1].html.contains("tracker.example/p.gif\">") && written[1].picture, "{}", written[1].html);
+        let pictures = markdown_blocks(BLOCK_NOTES[11]);
+        assert_eq!(pictures.iter().map(|b| b.picture).collect::<Vec<_>>(), vec![true, false, false]);
+        assert!(pictures[1].html.contains("<a href=\"https://example.org/far.png\">far</a>"), "{}", pictures[1].html);
+    }
+
+    /// Each heading of a note's outline starts a block of its own, at its line.
+    #[test]
+    fn each_heading_of_the_outline_is_a_block() {
+        for text in BLOCK_NOTES {
+            let blocks = markdown_blocks(text);
+            for heading in crate::notes::outline(text) {
+                let found: Vec<&Block> = blocks.iter().filter(|b| b.line == heading.line).collect();
+                assert_eq!(found.len(), 1, "{heading:?} in {text:?}");
+                assert_eq!(found[0].kind, format!("h{}", heading.level), "{heading:?}");
+                assert!(found[0].html.starts_with(&format!("<h{}>", heading.level)), "{}", found[0].html);
+            }
+        }
+        let lines: Vec<usize> = markdown_blocks(BLOCK_NOTES[2]).iter().map(|b| b.line).collect();
+        assert_eq!(lines, vec![1, 3, 6, 9, 12]);
+        let outline: Vec<usize> = crate::notes::outline(BLOCK_NOTES[2]).iter().map(|h| h.line).collect();
+        assert_eq!(outline, vec![1, 6, 9, 12]);
     }
 
     #[test]
