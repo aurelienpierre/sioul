@@ -164,7 +164,11 @@
 #   through rotations, above the keyboard), the web view's diagnostics off
 #   and its folder out of a transfer, no JavaScript interface, no file
 #   access, no console nor address in the log, the camera, the microphone
-#   and the location refused, a drawing process that ends handled.
+#   and the location refused, a drawing process that ends handled; a login
+#   from Bitwarden: the menu's two lines only with an account set, the
+#   same-origin rule (scheme, host, port) before the fill runs, one
+#   evaluateJavascript in all of Sioul's Java and no bridge from a page, no
+#   log line that could carry the call, the window and the site reordered.
 #   androidx.webkit is stood in for (androidx/: its WebViewFeature's names,
 #   no web view), never part of Sioul's program.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes

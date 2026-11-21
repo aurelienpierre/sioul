@@ -6,6 +6,8 @@ package com.aurelienpierre.sioul;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Insets;
@@ -54,6 +56,9 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * A site of Sioul's, inside Sioul on Android (docs/android.md, "Sites"): a
  * screen of Sioul's own around the system's web view, one site at a time,
@@ -90,9 +95,25 @@ import android.widget.Toast;
  * when it ended behind; Sioul goes on. Whatever brings Sioul up as its
  * icon does closes the screen (the manifest's finishOnTaskLaunch).
  *
+ * <p>A login from Bitwarden (docs/sites.md, "Bitwarden"): where a Bitwarden
+ * account is set on this device, the menu has Fill from Bitwarden and
+ * Choose a login…. The screen asks Rust ({@link #nativeFill}, in the
+ * window's process; Rust loaded first, as the receivers load it, where
+ * Android made the screen again without the window) with the committed
+ * address of the page in front, never one a page's script gave. The vault
+ * open and one login for the site: Rust hands back the whole call that
+ * fills the page. Else the window comes forward over the screen
+ * ({@link #toWindow}) with its own unlock card or chooser, and brings the
+ * screen back once answered ({@link #comeBack}), where it takes the login
+ * chosen from Rust. The call runs only while the page in front is still at
+ * the scheme, host and port asked ({@link SiteWeb#sameOrigin}), in its main
+ * frame, by the one {@code evaluateJavascript} of Sioul's Java; it is never
+ * kept, logged, put in an intent or in a saved state.
+ *
  * <p>Safety: https pages only, mixed content never; no file or content
  * access from a page or a service worker; third-party cookies refused; no
- * JavaScript interface; not exported, its one extra checked
+ * JavaScript interface and no message channel from a page: the fill's call
+ * goes one way, into the page; not exported, its one extra checked
  * ({@link SiteWeb.Opening#of}); nothing of a page in the log (no address,
  * no cookie, not its console); not pictured in Recents.
  */
@@ -164,6 +185,25 @@ public final class SiteScreen extends Activity
     private AlertDialog asking;
     private SiteDownload.Offer choosing;
     private boolean toldTooMany;
+    /** A fill asked through the window: the page it was asked for and its committed address then (no secret); null when none waits. */
+    private WebView fillPage;
+    private String fillAddress;
+    /** A question to Rust about a fill under way: another waits for its answer. */
+    private boolean fillAsking;
+    /** The screen whose fill the window answers ({@link #askingWindow}), in the window's process. */
+    private static java.lang.ref.WeakReference<SiteScreen> waiting = new java.lang.ref.WeakReference<>(null);
+
+    /**
+     * Rust's answer about a fill (crates/sioul-app/src/sitefill.rs,
+     * android/main.cpp): verb "ask" {url, mode} or "take" {url}, answered
+     * JSON {call}, {window}, {waiting}, {said} or {}. The call holds a
+     * password: never kept, never logged.
+     *
+     * @param verb "ask" or "take"
+     * @param json the question ({@link SiteWeb#fillAsked})
+     * @return the answer, as JSON text
+     */
+    static native String nativeFill(String verb, String json);
 
     @Override
     protected void onCreate(Bundle saved)
@@ -434,6 +474,11 @@ public final class SiteScreen extends Activity
         String asked = SiteWeb.askedLine(site, askedCamera, askedMicrophone, askedLocation, askedMedia);
         if (asked != null)
             items.add(Menu.NONE, 0, 0, asked).setEnabled(false);
+        // The vault's two lines, only where a Bitwarden account is set on this device (Accounts).
+        if (site.vault) {
+            items.add(Menu.NONE, 6, 0, site.word("fill"));
+            items.add(Menu.NONE, 7, 0, site.word("choose_login"));
+        }
         items.add(Menu.NONE, 1, 1, site.word("browser"));
         items.add(Menu.NONE, 2, 2, site.word("share"));
         items.add(Menu.NONE, 3, 3, site.word("find"));
@@ -456,6 +501,12 @@ public final class SiteScreen extends Activity
                 return true;
             case 5:
                 finish();
+                return true;
+            case 6:
+                fill("fill");
+                return true;
+            case 7:
+                fill("choose");
                 return true;
             default:
                 return false;
@@ -537,6 +588,195 @@ public final class SiteScreen extends Activity
     private void say(String words)
     {
         Toast.makeText(getApplicationContext(), words, Toast.LENGTH_LONG).show();
+    }
+
+    // ---------------------------------------------------------------- A login from Bitwarden
+
+    /**
+     * Fill from Bitwarden ({@code "fill"}) or Choose a login…
+     * ({@code "choose"}), for the page in front: asked of Rust with the
+     * address its web view committed, never one a page's script gave. A
+     * page with no https address committed is not asked for.
+     */
+    private void fill(String mode)
+    {
+        WebView page = front();
+        String address = page == popup ? popupCommitted : committed;
+        if (page == null || fillAsking)
+            return;
+        if (!SiteWeb.isHttps(address)) {
+            say(site.word("fill_https"));
+            return;
+        }
+        ask("ask", SiteWeb.fillAsked(address, mode), page, address);
+    }
+
+    /** Back from the window: its answer taken, with the address of the page in front now. */
+    private void takeFill()
+    {
+        WebView page = fillPage;
+        String address = fillAddress;
+        if (page == null || fillAsking)
+            return;
+        WebView front = front();
+        ask("take", SiteWeb.fillAsked(front == popup ? popupCommitted : committed, null), page, address);
+    }
+
+    /**
+     * A question to Rust on a thread of its own, since Rust may have to be
+     * loaded first; its answer handled on Android's main thread.
+     */
+    private void ask(String verb, String json, WebView page, String address)
+    {
+        fillAsking = true;
+        Context context = getApplicationContext();
+        new Thread(() -> {
+            String answer = rust(context, verb, json);
+            runOnUiThread(() -> {
+                fillAsking = false;
+                answered(answer, page, address);
+            });
+        }, "sioul-site-fill").start();
+    }
+
+    /**
+     * Rust's answer, Rust loaded first where Android made this screen again
+     * without the window (as the receivers load it); null when it cannot be
+     * reached.
+     */
+    private static String rust(Context context, String verb, String json)
+    {
+        try {
+            DoseAlarms.load(context);
+            return nativeFill(verb, json);
+        } catch (UnsatisfiedLinkError | RuntimeException e) {
+            Log.w(DoseAlarms.TAG, "Sites: the fill could not reach Sioul's library: " + e.getClass().getSimpleName());
+            return null;
+        }
+    }
+
+    /**
+     * Rust's answer about a fill: still waiting for the window, nothing yet;
+     * the window, brought forward ({@link #toWindow}); else the fill is
+     * over: the call run ({@link #run}), or Rust's words said when it gives
+     * some.
+     */
+    private void answered(String json, WebView page, String address)
+    {
+        if (isFinishing() || isDestroyed())
+            return;
+        JSONObject said;
+        try {
+            said = new JSONObject(json == null ? "{}" : json);
+        } catch (JSONException e) {
+            said = new JSONObject();
+        }
+        if (said.optBoolean("waiting", false))
+            return;
+        if (said.optBoolean("window", false)) {
+            toWindow(page, address);
+            return;
+        }
+        forgetFill();
+        String call = said.optString("call", "");
+        if (!call.isEmpty()) {
+            run(page, address, call);
+            return;
+        }
+        String words = said.optString("said", "");
+        if (!words.isEmpty())
+            say(words);
+    }
+
+    /**
+     * The one call that fills a login, Rust's whole (its values quoted
+     * there), run in the main frame of the page it was asked for, only while
+     * that page is in front at the same scheme, host and port
+     * ({@link SiteWeb#sameOrigin}); else nothing is written and the screen
+     * says the page changed.
+     */
+    private void run(WebView page, String address, String call)
+    {
+        WebView front = front();
+        if (front == null || front != page || !SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)) {
+            say(site.word("fill_changed"));
+            return;
+        }
+        page.evaluateJavascript(call, null);
+    }
+
+    /**
+     * The window brought forward over this screen, in Sioul's task: the
+     * window's own activity (the launcher's, singleTop) moved to the front
+     * ({@code FLAG_ACTIVITY_REORDER_TO_FRONT}), never made twice, and made
+     * again where Android ended it. It asks there (its unlock card, its
+     * chooser), then brings this screen back ({@link #comeBack}).
+     */
+    private void toWindow(WebView page, String address)
+    {
+        Intent launcher = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        ComponentName window = launcher == null ? null : launcher.getComponent();
+        if (window == null)
+            return;
+        fillPage = page;
+        fillAddress = address;
+        synchronized (SiteScreen.class) {
+            waiting = new java.lang.ref.WeakReference<>(this);
+        }
+        try {
+            startActivity(new Intent().setComponent(window).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        } catch (ActivityNotFoundException e) {
+            forgetFill();
+        }
+    }
+
+    /** No fill waits any more: neither this screen's page nor the window's answer. */
+    private void forgetFill()
+    {
+        fillPage = null;
+        fillAddress = null;
+        synchronized (SiteScreen.class) {
+            if (waiting.get() == this)
+                waiting = new java.lang.ref.WeakReference<>(null);
+        }
+    }
+
+    /**
+     * The window answered a fill (a login chosen, or cancel: Rust's verb
+     * "site-fill-back"): the screen that asked brought back forward, in
+     * Sioul's task ({@code FLAG_ACTIVITY_REORDER_TO_FRONT}: that same
+     * screen, never a new one), where it takes the answer as it resumes.
+     * Nothing when that screen is gone. Any thread.
+     *
+     * @param context the application's context
+     * @return whether the screen was asked to come back
+     */
+    static boolean comeBack(Context context)
+    {
+        if (askingWindow() == null)
+            return false;
+        try {
+            context.startActivity(new Intent(context, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+            return true;
+        } catch (RuntimeException e) {
+            Log.w(DoseAlarms.TAG, "Sites: the site's screen could not come back: " + e.getClass().getSimpleName());
+            return false;
+        }
+    }
+
+    /**
+     * The screen that brought the window forward for a fill, while it lives
+     * and the fill waits: below the window, or coming back; null when none.
+     *
+     * @return the screen, or null
+     */
+    static SiteScreen askingWindow()
+    {
+        SiteScreen screen;
+        synchronized (SiteScreen.class) {
+            screen = waiting.get();
+        }
+        return screen == null || screen.isFinishing() || screen.isDestroyed() ? null : screen;
     }
 
     // ---------------------------------------------------------------- The pages
@@ -1279,6 +1519,9 @@ public final class SiteScreen extends Activity
     {
         super.onResume();
         inFront = true;
+        // Back from the window that answered a fill: its answer taken now.
+        if (fillPage != null)
+            takeFill();
         if (againAtReturn) {
             again();
             return;
@@ -1322,6 +1565,7 @@ public final class SiteScreen extends Activity
         }
         popup = null;
         view = null;
+        forgetFill();
         flushCookies();
         super.onDestroy();
     }

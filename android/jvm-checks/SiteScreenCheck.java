@@ -36,7 +36,15 @@ import java.util.regex.Pattern;
  * camera, the microphone and the location refused; a drawing process that
  * ends handled; one extra read; StepService's door; the library in Gradle.
  * No Java of Sioul's empties every site's store: only the extensions'
- * sign-in screen empties one, its own, in a process apart.
+ * sign-in screen empties one, its own, in a process apart. A login from
+ * Bitwarden (SiteScreen's fill): the menu's two lines only with an account
+ * set, the same-origin rule on addresses (scheme, host and port; http and
+ * another host refused), the question Rust is asked; from the sources, one
+ * evaluateJavascript in all of Sioul's Java, run after the address is
+ * checked again, no JavaScript interface nor message channel anywhere, no
+ * log line that could carry the call, the window brought forward and the
+ * site back by reordering Sioul's task, Rust loaded before it is asked, the
+ * answer taken as the screen resumes, main.cpp's bridge wiping it.
  */
 public final class SiteScreenCheck
 {
@@ -114,6 +122,27 @@ public final class SiteScreenCheck
         SiteWeb.Opening other = SiteWeb.Opening.of(site("{\"url\": \"https://b\u00e4nk.example/\", \"domain\": \"b\u00e4nk.example\"}"));
         expect("a domain in other alphabets, in its ASCII form", other != null && other.domain.equals("xn--bnk-qla.example"));
         expect("no extra, not JSON, not an object: refused", SiteWeb.Opening.of(null) == null && SiteWeb.Opening.of("not json") == null && SiteWeb.Opening.of("[1]") == null);
+
+        // ------------------------------------------------ A login from Bitwarden: the menu's lines, the address
+        expect("no account said: the vault's lines hidden", !bank.vault);
+        expect("an account set: the vault's lines shown", SiteWeb.Opening.of(site("{\"vault\": true}")).vault);
+        expect("only a true that is JSON's own", !SiteWeb.Opening.of(site("{\"vault\": \"true\"}")).vault && !SiteWeb.Opening.of(site("{\"vault\": 1}")).vault && !SiteWeb.Opening.of(site("{\"vault\": false}")).vault);
+        String signInPage = "https://secure.bank.example.co.uk/login?next=%2F";
+        String[] sameOrigin = { "https://secure.bank.example.co.uk/", "https://secure.bank.example.co.uk/account#top", "HTTPS://Secure.Bank.Example.co.uk:443/x", "https://user@secure.bank.example.co.uk/" };
+        for (String now : sameOrigin)
+            expect("the same scheme, host and port: filled at " + now, SiteWeb.sameOrigin(signInPage, now));
+        String[] otherOrigin = { "http://secure.bank.example.co.uk/login", "https://secure.bank.example.co.uk:8443/login", "https://bank.example.co.uk/login", "https://secure.bank.example.co.uk.example.net/", "https://look-alike.example.net/login", "https://look-alike.example.net/@secure.bank.example.co.uk", "about:blank", "", "javascript:alert(1)", "file:///sdcard/a.html", "https://secure.bank.example.co.uk:99999/", "https://secure.bank.example.co.uk:x/" };
+        for (String now : otherOrigin)
+            expect("another scheme, host or port: nothing filled at " + now, !SiteWeb.sameOrigin(signInPage, now));
+        expect("asked on http: nothing, whatever follows", !SiteWeb.sameOrigin("http://secure.bank.example.co.uk/", "http://secure.bank.example.co.uk/") && !SiteWeb.sameOrigin(null, signInPage) && !SiteWeb.sameOrigin(signInPage, null));
+        expect("a port read, 443 unsaid", SiteWeb.port("https://a.example.org/") == 443 && SiteWeb.port("https://a.example.org:8443/x") == 8443 && SiteWeb.port("https://[::1]:8080/") == 8080 && SiteWeb.port("https://[::1]/") == 443 && SiteWeb.port("http://a.example.org/") == -1 && SiteWeb.port("https://a.example.org:70000/") == -1);
+        org.json.JSONObject askedFill = new org.json.JSONObject(SiteWeb.fillAsked(signInPage, "choose"));
+        expect("Rust is asked the committed address and the mode, nothing else", askedFill.length() == 2 && askedFill.getString("url").equals(signInPage) && askedFill.getString("mode").equals("choose"));
+        org.json.JSONObject takenFill = new org.json.JSONObject(SiteWeb.fillAsked(signInPage, null));
+        expect("and for the window's answer, the address alone", takenFill.length() == 1 && takenFill.getString("url").equals(signInPage));
+        expect("the vault's words, in English when Rust gives none", bank.word("fill").equals("Fill from Bitwarden") && bank.word("choose_login").equals("Choose a login\u2026") && !bank.word("fill_changed").isEmpty() && !bank.word("fill_https").isEmpty());
+        String sitefill = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "sitefill.rs"));
+        expect("Rust's same-origin test holds the same rule (sitefill.rs)", sitefill.contains("fn the_same_origin_is_the_scheme_the_host_and_the_port()") && sitefill.contains("\"https://bank.example.org:8443/login\"") && sitefill.contains("\"http://bank.example.org/login\""));
 
         // ------------------------------------------------ The host shown
         expect("the host alone, no user, no port, lower case", SiteWeb.host("https://user:pw@Secure.Bank.Example.org:8443/a?b#c").equals("secure.bank.example.org"));
@@ -550,7 +579,65 @@ public final class SiteScreenCheck
         expect("the window takes what was tapped as it becomes active", Pattern.compile("(?s)Qt\\.application\\.state === Qt\\.ApplicationActive\\)\\s*\\{\\s*sioul\\.backHere\\(\\)").matcher(windowQml).find());
         String backend = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "backend.rs"));
         expect("back here, Rust takes the taps, a dose's first", body(backend, "    fn back_here(mut self: Pin<&mut Self>) {", "    ").contains("self.as_mut().take_taps();") && body(backend, "    fn take_taps(mut self: Pin<&mut Self>) {", "    ").contains("crate::alarms::opened()"));
-        expect("the site's screen keeps nothing from the window coming up", !screen.contains("moveTaskToBack") && !screen.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
+        expect("the site's screen keeps nothing from the window coming up", !screen.contains("moveTaskToBack"));
+
+        // ------------------------------------------------ A login from Bitwarden, read from the sources
+        int evaluated = 0;
+        List<String> bridges = new ArrayList<>();
+        try (java.util.stream.Stream<Path> all = Files.list(java)) {
+            for (Path source : (Iterable<Path>) all::iterator) {
+                String text = code(read(source));
+                evaluated += text.split("\\.evaluateJavascript\\(", -1).length - 1;
+                for (String bridge : new String[] { "addJavascriptInterface", "addWebMessageListener", "postWebMessage", "createWebMessageChannel", "WebMessagePort", "WebMessageCompat", "JavascriptInterface" }) {
+                    if (text.contains(bridge))
+                        bridges.add(source.getFileName() + ": " + bridge);
+                }
+            }
+        }
+        expect("one evaluateJavascript in all of Sioul's Java: " + evaluated, evaluated == 1);
+        String running = body(screen, "private void run(WebView page, String address, String call)", "    ");
+        expect("it is the fill's, run in the page asked, after its address is checked again", running.contains("page.evaluateJavascript(call, null);") && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") >= 0
+            && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") < running.indexOf("page.evaluateJavascript(") && running.contains("front != page") && running.contains("say(site.word(\"fill_changed\"));"));
+        expect("no JavaScript interface, no message channel from a page, anywhere: " + bridges, bridges.isEmpty());
+        String menuBody = body(screen, "private void menu()", "    ");
+        Matcher vaultLines = Pattern.compile("(?s)if \\(site\\.vault\\) \\{\\s*items\\.add\\(Menu\\.NONE, 6, 0, site\\.word\\(\"fill\"\\)\\);\\s*items\\.add\\(Menu\\.NONE, 7, 0, site\\.word\\(\"choose_login\"\\)\\);\\s*\\}").matcher(menuBody);
+        expect("the menu's two lines of the vault only with an account set", vaultLines.find() && menuBody.split("site\\.word\\(\"fill\"\\)", -1).length == 2 && menuBody.split("site\\.word\\(\"choose_login\"\\)", -1).length == 2);
+        expect("each line asks its own mode", menuBody.contains("case 6:\n                fill(\"fill\");") && menuBody.contains("case 7:\n                fill(\"choose\");"));
+        String asking = body(screen, "private void fill(String mode)", "    ");
+        expect("asked with the address the web view committed for the page in front", asking.contains("String address = page == popup ? popupCommitted : committed;") && asking.contains("SiteWeb.fillAsked(address, mode)") && asking.indexOf("if (!SiteWeb.isHttps(address))") < asking.indexOf("ask(\"ask\""));
+        String reaching = body(screen, "private static String rust(", "    ");
+        expect("Rust loaded before it is asked, as the receivers load it", reaching.indexOf("DoseAlarms.load(context);") >= 0 && reaching.indexOf("DoseAlarms.load(context);") < reaching.indexOf("nativeFill(verb, json)"));
+        expect("Rust asked in one place", screen.split("nativeFill\\(", -1).length - 1 == 2);
+        expect("off Android's main thread, the answer back on it", body(screen, "private void ask(String verb,", "    ").contains("new Thread(") && body(screen, "private void ask(String verb,", "    ").contains("runOnUiThread("));
+        List<String> logged = new ArrayList<>();
+        int logLines = 0;
+        for (String source : new String[] { screen, web }) {
+            Matcher line = Pattern.compile("Log\\.\\w\\((.*)\\);").matcher(source);
+            while (line.find()) {
+                logLines++;
+                String arguments = line.group(1).replaceAll("\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"");
+                if (!arguments.matches("DoseAlarms\\.TAG, \"\"(\\s*\\+\\s*e\\.getClass\\(\\)\\.getSimpleName\\(\\))?"))
+                    logged.add(line.group(1));
+            }
+        }
+        expect("every log line of the screen fixed words and an exception's class, nothing it was handed: " + logged + ", of " + logLines, logged.isEmpty() && logLines >= 10);
+        expect("the call never in an intent, a saved state or the clipboard", !running.contains("putExtra") && !screen.contains("ClipboardManager") && !screen.contains("setPrimaryClip") && !body(screen, "protected void onSaveInstanceState(", "    ").contains("fill"));
+        expect("the call kept in no field: a local of the answer, then run", !Pattern.compile("(?m)^    (private |static |final )*String \\w*([Cc]all|[Aa]nswer|[Pp]assword)\\w*( =[^;]*)?;").matcher(screen).find()
+            && body(screen, "private void answered(", "    ").contains("String call = said.optString(\"call\", \"\");"));
+        String forward = body(screen, "private void toWindow(", "    ");
+        expect("the window brought forward in Sioul's task, the launcher's own activity reordered, never made twice", forward.contains("getLaunchIntentForPackage(getPackageName())") && forward.contains("new Intent().setComponent(window).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)") && !forward.contains("NEW_TASK") && !forward.contains("CLEAR_TOP"));
+        String back = body(screen, "static boolean comeBack(Context context)", "    ");
+        expect("the screen that asked brought back by reordering, never a new one, nothing when it is gone", back.contains("if (askingWindow() == null)") && back.contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT") && !back.contains("putExtra") && !back.contains("CLEAR_TOP"));
+        expect("reordering in those two places alone", screen.split("FLAG_ACTIVITY_REORDER_TO_FRONT", -1).length - 1 == 2 && !web.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
+        expect("the window's answer taken as the screen resumes", body(screen, "protected void onResume()", "    ").contains("if (fillPage != null)\n            takeFill();"));
+        expect("a fill forgotten with its screen", body(screen, "protected void onDestroy()", "    ").contains("forgetFill();"));
+        String opening = body(web, "private static boolean open(", "    ");
+        expect("a site opened while a screen waits below the window closes that screen, never clearing the window above it", opening.contains("SiteScreen below = SiteScreen.askingWindow();") && opening.contains("below.runOnUiThread(below::finish);") && opening.contains("below != null ? Intent.FLAG_ACTIVITY_NEW_TASK : Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        expect("StepService's door brings the site back", web.contains("case \"site-fill-back\":\n            return SiteScreen.comeBack(context) ? \"true\" : \"false\";"));
+        String bridge = read(Paths.get(System.getProperty("sioul.root"), "android", "main.cpp"));
+        String nativeFill = body(bridge, "extern \"C\" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_SiteScreen_nativeFill(", "");
+        expect("main.cpp's bridge: Rust's answer wiped as it is given back, nothing logged", nativeFill.contains("sioul_site_fill(") && nativeFill.contains("sioul_site_fill_free(answer);") && nativeFill.contains("utf16.fill(QChar(u'\\0'));") && !nativeFill.contains("__android_log") && !nativeFill.contains("printf"));
+        expect("and Rust's side logs nothing of a fill", !sitefill.contains("eprintln!") && !sitefill.contains("println!") && !sitefill.contains("dbg!"));
         expect("a site given is checked before the screen opens", body(web, "private static boolean open(", "    ").contains("Opening.of(asked.toString()) == null"));
         String steps = code(read(java.resolve("StepService.java")));
         expect("StepService's door to the sites' verbs", steps.contains("if (verb.startsWith(\"site-\"))") && steps.contains("return SiteWeb.call(context, verb, asked);"));
