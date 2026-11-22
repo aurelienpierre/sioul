@@ -9,7 +9,7 @@ The interface's version is **1**. A change that an extension built for version 1
 ## The file
 
 - A WebAssembly **core module** (not a component), built for `wasm32-unknown-unknown`, 8 MiB at most.
-- It imports nothing but the functions of the module `sioul` below; no WASI. A module that imports anything else, or a function its manifest does not grant, is not started: "This extension asks for more than its list says."
+- It imports nothing but the functions of the module `sioul` below; no WASI. A module that imports anything outside that interface — another module, an unknown name, something that is not a function — is not started: "This extension asks for more than its list says." Every extension imports all of Sioul's functions whatever it calls; what it may actually *do* with each is its grants, enforced at call time (below), never by refusing the load.
 - Sioul runs it with the pure-Rust interpreter **wasmi** 2.0 (MIT or Apache-2.0, with `std` and `validate` only): no code is generated at run time, so it runs the same on Linux, inside the Flatpak, on Windows, on macOS and on Android (built for `aarch64-linux-android` on 18 November 2026). A program that embeds it grows by about 1.6 MB (a minimal embedding, x86_64, release, stripped: 2.0 MB against 0.36 MB without it).
 
 ## What it exports
@@ -40,7 +40,7 @@ An ask that Sioul refuses is answered, never trapped: `{"refused": "<why>"}`, wh
 
 ## What it imports
 
-From the module `sioul`. The first six are given to every extension; `web` only to one whose manifest names hosts; `secret` to one whose manifest signs in, by a redirect (`sign_in`) or by credentials (`credentials`); `sign_in` only to one that signs in by a redirect.
+From the module `sioul`. A module imports all of them whatever it calls (its shared code reaches each one through a vtable that pins every function, so none can be stripped); what each one is allowed to *do* is the module's grants, enforced when it asks, not at load. The first six do their work for every extension. `web` reaches only a host the manifest names (any other host is refused); `secret` keeps one only for a manifest that signs in, by a redirect (`sign_in`) or by credentials (`credentials`) — refused `not-now` otherwise; `sign_in` shows a page only for a redirect sign-in — refused `not-now` otherwise. An ask a grant does not allow is refused, never the load.
 
 | Import | Ask | Answer |
 |---|---|---|

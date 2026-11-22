@@ -6,10 +6,15 @@
 //! WebAssembly core module: no code is made at run time, so it runs the same
 //! on Linux, in the Flatpak, on Windows, on macOS and on Android.
 //!
-//! - **Only what its manifest grants**: the module may import the time, its
-//!   log, `hide` and `random` always; `web` when its manifest names hosts;
-//!   `secret` and `sign_in` when it signs in. A module that imports anything else is
-//!   not started (`Stop::AsksMore`).
+//! - **Only Sioul's interface**: the module may import the nine functions of
+//!   the `sioul` module and nothing else (no WASI, no undefined host call). A
+//!   module that imports anything outside that fixed interface is not started
+//!   (`Stop::AsksMore`). What it may *do* with each function is its grants,
+//!   enforced at call time, not at load: every extension wasm imports all nine
+//!   whatever it calls (the shared crate's `&mut dyn Host` vtable pins every
+//!   method), so an import it will not be allowed to use is defined inertly and
+//!   the ask itself is refused (`web` to an ungranted host, `secret` or
+//!   `sign_in` without the grant for it).
 //! - **Limits**: one memory of 64 MiB at most, one table; computation given
 //!   in slices of fuel, 4 billion steps in all; 5 minutes for a call, the
 //!   person's time on a sign-in page aside; 100 web requests a call.
@@ -168,7 +173,7 @@ impl Stop {
     pub fn detail(&self) -> String {
         match self {
             Self::NotRead(why) => format!("the file does not read: {why}"),
-            Self::AsksMore(what) => format!("it imports {what}, which its manifest does not grant"),
+            Self::AsksMore(what) => format!("it imports {what}, which is not a function of Sioul's interface"),
             Self::Interface(n) => format!("it speaks interface {n}"),
             Self::TooLong => "it took too long".into(),
             Self::Memory => "it asked for too much memory".into(),
@@ -243,21 +248,16 @@ enum Kind {
     SignIn,
 }
 
-/// The imports an extension may be given by its grants.
-fn granted(grants: &Grants) -> Vec<&'static str> {
-    let mut names = vec!["answer", "reply", "now", "log", "hide", "random"];
-    if !grants.hosts.is_empty() {
-        names.push("web");
-    }
-    // A redirect sign-in may watch for a page and keep its secret; a
-    // credentials sign-in keeps its secret (its refresh token) but shows no page.
-    if grants.sign_in.is_some() {
-        names.extend(["secret", "sign_in"]);
-    } else if !grants.credentials.is_empty() {
-        names.push("secret");
-    }
-    names
-}
+/// The functions of Sioul's interface (docs/extensions.md): the only imports a
+/// module may have. Every extension wasm imports all nine whatever it calls —
+/// the shared crate runs each call through `&mut dyn Host`, whose vtable pins
+/// every trait method, so LLD cannot strip an unused import. What a module may
+/// actually *do* with each is its grants, enforced at call time (`web_answer`,
+/// `secret_answer`, `sign_in_answer`), never by gating the load or the linker:
+/// a capability boundary that leaned on the optimizer stripping an unused
+/// vtable import would not be sound. A module importing anything outside this
+/// set (another module, an unknown name, a non-function) is not started.
+const INTERFACE_FUNCS: [&str; 9] = ["answer", "reply", "now", "log", "hide", "random", "web", "secret", "sign_in"];
 
 /// The credential values a `sign-in` call carries (`Call::SignIn`), to hide
 /// from every log line of the call; empty for any other call or shape. Sioul
@@ -553,6 +553,13 @@ fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
 }
 
 fn secret_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
+    // The capability gate, at call time. Every module imports `secret`, but
+    // only a sign-in — a redirect (`sign_in`) or credentials — may keep one.
+    // This replicates, at call time, the linker gate the load check used to
+    // stand in for, and no longer leans on the optimizer stripping the import.
+    if visit.grants.sign_in.is_none() && visit.grants.credentials.is_empty() {
+        return refused("not-now");
+    }
     if ask["get"] == true {
         return match visit.services.secret() {
             Ok(Some(secret)) => {
@@ -701,7 +708,11 @@ fn ask<S: Services>(mut caller: Caller<'_, Visit<S>>, kind: Kind, ptr: i32, len:
     Ok(len)
 }
 
-fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>, grants: &Grants) -> Result<(), wasmi::Error> {
+/// Every function of the interface, defined unconditionally: a module imports
+/// all nine whatever its grants, so all nine are wired. An ask the grants do
+/// not allow is refused at call time (`web_answer`, `secret_answer`,
+/// `sign_in_answer`), so an imported-but-ungranted function is inert.
+fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>) -> Result<(), wasmi::Error> {
     linker.func_wrap("sioul", "answer", |mut caller: Caller<'_, Visit<S>>, ptr: i32| -> Result<(), wasmi::Error> {
         let kept = std::mem::take(&mut caller.data_mut().kept);
         let written = usize::try_from(ptr).ok().zip(memory_of(&caller)).is_some_and(|(at, memory)| memory.write(&mut caller, at, &kept).is_ok());
@@ -727,15 +738,9 @@ fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>, grants: &Grants) -
     linker.func_wrap("sioul", "log", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Log, ptr, len))?;
     linker.func_wrap("sioul", "hide", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Hide, ptr, len))?;
     linker.func_wrap("sioul", "random", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Random, ptr, len))?;
-    if !grants.hosts.is_empty() {
-        linker.func_wrap("sioul", "web", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Web, ptr, len))?;
-    }
-    if grants.sign_in.is_some() || !grants.credentials.is_empty() {
-        linker.func_wrap("sioul", "secret", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Secret, ptr, len))?;
-    }
-    if grants.sign_in.is_some() {
-        linker.func_wrap("sioul", "sign_in", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::SignIn, ptr, len))?;
-    }
+    linker.func_wrap("sioul", "web", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Web, ptr, len))?;
+    linker.func_wrap("sioul", "secret", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Secret, ptr, len))?;
+    linker.func_wrap("sioul", "sign_in", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::SignIn, ptr, len))?;
     Ok(())
 }
 
@@ -860,7 +865,7 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
     for value in credential_values(call) {
         store.data_mut().hide(&value);
     }
-    let reply = called(&engine, &mut store, file, grants, call, limits);
+    let reply = called(&engine, &mut store, file, call, limits);
     let mut visit = store.into_data();
     // The hosts its manifest does not name: one line a call, each cut short, with its count.
     if !visit.refused_hosts.is_empty() {
@@ -879,7 +884,7 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
     (Outcome { reply, log, held: visit.held, answered: visit.answered }, visit.services)
 }
 
-fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], grants: &Grants, call: &str, limits: &Limits) -> Result<String, Stop> {
+fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], call: &str, limits: &Limits) -> Result<String, Stop> {
     if file.len() > limits.file {
         return Err(Stop::NotRead("larger than 8 MiB".into()));
     }
@@ -887,15 +892,17 @@ fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, f
         return Err(Stop::Nonsense("a call larger than Sioul sends".into()));
     }
     let module = Module::new(engine, file).map_err(|e| Stop::NotRead(e.to_string()))?;
-    // Only what the manifest grants: anything else imported, and it is not started.
-    let given = granted(grants);
+    // Only Sioul's interface: an import outside the fixed nine functions (another
+    // module, an unknown name, a non-function), and it is not started. A module
+    // that imports a function it will not be allowed to use still loads; the ask
+    // is refused at call time. The grants gate the asks, never the load.
     for import in module.imports() {
-        if import.module() != "sioul" || !given.contains(&import.name()) || !matches!(import.ty(), ExternType::Func(_)) {
+        if import.module() != "sioul" || !INTERFACE_FUNCS.contains(&import.name()) || !matches!(import.ty(), ExternType::Func(_)) {
             return Err(Stop::AsksMore(format!("{}.{}", import.module(), import.name())));
         }
     }
     let mut linker = Linker::new(engine);
-    link(&mut linker, grants).map_err(|e| Stop::Trapped(e.to_string()))?;
+    link(&mut linker).map_err(|e| Stop::Trapped(e.to_string()))?;
     store.set_fuel(limits.slice).map_err(|e| Stop::Trapped(e.to_string()))?;
     let instance = linker.instantiate_and_start(&mut *store, &module).map_err(|e| match e.as_trap_code() {
         Some(_) => stop_of(store, &e),

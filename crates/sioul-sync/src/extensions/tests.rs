@@ -140,18 +140,56 @@ fn an_extension_is_given_randomness() {
 }
 
 #[test]
-fn it_is_given_only_what_its_manifest_grants() {
-    // A web request where no host is named: the import is not given, the module not started.
+fn only_sioul_s_interface_loads_and_the_grants_gate_the_calls() {
+    // Every module imports the interface's functions whatever it calls; what it
+    // may DO with each is its grants, refused at call time, not gated at load.
+    // A web request with no host granted: the module loads, the ask is refused.
     let file = module(&["web", "answer", "reply"], &[r#"{"method":"GET","url":"https://api.example.org/"}"#], &echo("web"));
     let (outcome, stand) = run_it(&file, &grants(&[], None), Stand::default(), false);
-    assert_eq!(outcome.reply, Err(Stop::AsksMore("sioul.web".into())));
+    assert_eq!(outcome.reply.unwrap(), r#"{"refused":"host"}"#);
     assert!(stand.asked.is_empty());
-    // Anything not of Sioul's.
+    // `secret` without a sign-in or credentials in the manifest: loads, refused not-now.
+    let file = module(&["secret", "answer", "reply"], &[r#"{"get":true}"#], &echo("secret"));
+    let (outcome, stand) = run_it(&file, &grants(&["api.example.org"], None), Stand::default(), false);
+    assert_eq!(outcome.reply.unwrap(), r#"{"refused":"not-now"}"#);
+    assert_eq!(stand.secret, None);
+    // But an import outside Sioul's interface is still refused at load.
+    // Another module (no WASI, no undefined host call).
     let file = module(&["env.clock", "answer", "reply"], &[], "i32.const 0");
     assert_eq!(run_it(&file, &grants(&["api.example.org"], None), Stand::default(), false).0.reply, Err(Stop::AsksMore("env.clock".into())));
-    // The secret, without a sign-in in the manifest.
-    let file = module(&["secret", "answer", "reply"], &[r#"{"get":true}"#], &echo("secret"));
-    assert_eq!(run_it(&file, &grants(&["api.example.org"], None), Stand::default(), false).0.reply, Err(Stop::AsksMore("sioul.secret".into())));
+    // A `sioul` name that is not one of the nine.
+    let file = module(&["sioul.clock", "answer", "reply"], &[], "i32.const 0");
+    assert_eq!(run_it(&file, &grants(&["api.example.org"], None), Stand::default(), false).0.reply, Err(Stop::AsksMore("sioul.clock".into())));
+    // A `sioul` import that is not a function (a global of an interface name).
+    let non_func = wat::parse_str("(module (import \"sioul\" \"now\" (global i32)) (memory (export \"memory\") 1) (func (export \"sioul_interface\") (result i32) i32.const 1) (func (export \"sioul_alloc\") (param i32) (result i32) i32.const 64) (func (export \"sioul_call\") (param i32 i32) (result i32) i32.const 0))").unwrap();
+    assert_eq!(run_it(&non_func, &grants(&["api.example.org"], None), Stand::default(), false).0.reply, Err(Stop::AsksMore("sioul.now".into())));
+}
+
+/// The regression the stand-in host never caught: every extension wasm imports
+/// all nine interface functions whatever it calls (the shared crate's
+/// `&mut dyn Host` vtable pins every method, so LLD cannot strip an unused
+/// import). The load must therefore not gate on the grants — a module importing
+/// all nine loads and runs under grants that allow only some. The grants gate
+/// the calls, at call time.
+#[test]
+fn a_module_importing_all_nine_loads_whatever_its_grants() {
+    const ALL: [&str; 9] = ["now", "log", "hide", "random", "web", "secret", "sign_in", "answer", "reply"];
+    let file = module(&ALL, &["{}"], &echo("now"));
+    // Credentials grants (no redirect `sign_in`): the real Planity shape. It loads
+    // and runs, replying the `now` answer, though it also imports `sign_in` and `web`.
+    let credentials = Grants { hosts: ["api.example.org"].iter().map(|h| h.to_string()).collect(), sign_in: None, credentials: vec![CredField::Email, CredField::Password] };
+    let (outcome, _) = run_it(&file, &credentials, Stand::default(), false);
+    let reply: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
+    assert_eq!(reply["unix"], 1_794_996_000, "loads and runs under credentials grants: {reply}");
+    // Hosts-only grants (no secret, no sign-in): the same module loads and runs.
+    let (outcome, _) = run_it(&file, &grants(&["api.example.org"], None), Stand::default(), false);
+    assert!(outcome.reply.unwrap().contains("\"unix\""), "loads and runs under hosts-only grants");
+    // Under hosts-only grants, `secret` and `sign_in` are refused at call time.
+    let secret = module(&ALL, &[r#"{"get":true}"#], &echo("secret"));
+    assert_eq!(run_it(&secret, &grants(&["api.example.org"], None), Stand::default(), false).0.reply.unwrap(), r#"{"refused":"not-now"}"#);
+    let signs = module(&ALL, &[r#"{"open":"https://api.example.org/","watch":"x://y"}"#], &echo("sign_in"));
+    let out = engine::call(&signs, &grants(&["api.example.org"], None), &call_text(Call::SignIn { choice: None, credentials: &[] }, false), Stand::default(), &small(), true).0;
+    assert_eq!(out.reply.unwrap(), r#"{"refused":"not-now"}"#, "sign_in without a redirect grant: not-now");
 }
 
 #[test]
@@ -260,8 +298,12 @@ fn a_credentials_sign_in_carries_the_values_and_hides_them() {
     // The password is hidden from every log line, whatever the extension wrote.
     let log = outcome.log.join("\n");
     assert!(log.contains("typed [hidden] just now") && !log.contains("hunter2-secret"), "{log}");
-    // Without `credentials`, a credentials offer is granted `secret` but not `sign_in`.
-    assert!(engine::call(&module(&["sign_in", "answer", "reply"], &[r#"{"open":"https://api.example.org/","watch":"x://y"}"#], &echo("sign_in")), &given, &call, Stand::default(), &small(), true).0.reply.is_err(), "no sign_in import for a credentials offer");
+    // A credentials offer keeps its `secret` (above) but cannot sign in by a
+    // redirect: the `sign_in` import loads (every module imports it), the call
+    // is refused `not-now` at call time.
+    let signs = module(&["sign_in", "answer", "reply"], &[r#"{"open":"https://api.example.org/","watch":"x://y"}"#], &echo("sign_in"));
+    let out = engine::call(&signs, &given, &call, Stand::default(), &small(), true).0;
+    assert_eq!(out.reply.unwrap(), r#"{"refused":"not-now"}"#, "a credentials offer may not sign in by redirect");
 }
 
 #[test]
