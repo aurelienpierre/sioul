@@ -4061,6 +4061,7 @@ extension-sites = { $count ->
        *[other] Elle parle à { $count } sites : { $sites }.
     }
 extension-keeps-sign-in = Elle garde une connexion sur cet appareil, dans son trousseau ; vous vous connectez sur la page du site lui-même.
+extension-keeps-credentials = Elle garde une connexion sur cet appareil, dans son trousseau ; vous vous connectez par un formulaire présenté par Sioul, encadré par Sioul, où vous saisissez vos informations.
 extension-keeps-no-sign-in = Elle ne garde aucune connexion.
 extension-needs-newer-sioul = Elle demande un Sioul plus récent.
 extension-never-ran = Activée ; elle n’a pas encore tourné.
@@ -4086,6 +4087,13 @@ extension-update-asks = La version { $version } demande plus que celle en servic
 extension-enable = Activer
 extension-sign-in = Se connecter…
 extension-sign-in-again = Se reconnecter…
+extension-sign-in-now = Se connecter
+extension-sign-in-title = Se connecter à { $name }
+extension-cred-email = Adresse e-mail
+extension-cred-username = Nom d’utilisateur
+extension-cred-password = Mot de passe
+extension-cred-server = Serveur
+extension-cred-one-time-code = Code à usage unique
 extension-accept = Prendre la mise à jour
 extension-disable = Désactiver
 extension-remove = Retirer…

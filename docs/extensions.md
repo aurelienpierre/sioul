@@ -40,7 +40,7 @@ An ask that Sioul refuses is answered, never trapped: `{"refused": "<why>"}`, wh
 
 ## What it imports
 
-From the module `sioul`. The first six are given to every extension; `web` only to one whose manifest names hosts; `secret` and `sign_in` only to one whose manifest says it signs in.
+From the module `sioul`. The first six are given to every extension; `web` only to one whose manifest names hosts; `secret` to one whose manifest signs in, by a redirect (`sign_in`) or by credentials (`credentials`); `sign_in` only to one that signs in by a redirect.
 
 | Import | Ask | Answer |
 |---|---|---|
@@ -88,19 +88,29 @@ Asked only during a `sign-in` call, once per call.
 - The page never shares a store with the Sites page, so that a sign-in never signs a site out and neither sees the other's cookies. On a computer it is a window of Sioul's with Qt WebEngine and a profile of its own, off the record (no storage name: `SignInWindow.qml`), kept in memory and gone when the window closes, never the sites' persistent `sioul-sites` (`SitesWeb.qml`). On Android it is a screen of Sioul's own (`SignIn.java`) with the system's web view, in a process of its own whose web view keeps its own folders, its cookies, storage and caches emptied before and after each sign-in, never the sites' ([android.md](android.md#an-extensions-sign-in)): JavaScript on, since sign-in pages need it; files, content and other schemes off. It is part of Sioul's task, seen in Recents, so that the person can leave it to read a code and come back to it; if its process or Sioul's ends meanwhile, or the page's renderer does, the sign-in ends and can be started again at once. No scheme is registered with the system.
 - The person has 15 minutes; that time is not counted in the call's limits.
 
+### A credentials sign-in
+
+Some services sign in with an email and a password, with no redirect. An extension that needs this declares `credentials` in its manifest (not `sign_in`) and reaches no `sign_in` import: it keeps a `secret` all the same, for the refresh token its own sign-in returns, never the password.
+
+- When the person presses **Sign in…**, Sioul shows a small form of its own, framed entirely by Sioul, before the `sign-in` call. The only text from the extension is its name ("Sign in to Planity"); every field's label is Sioul's own fixed word for that kind (Email, Username, Password, Server, One-time code), in the language Sioul speaks now, never text the extension supplies. The password field is masked. The form is a plain dialog in Sioul's own process on every device (a computer, a tablet, a phone: `ExtensionSignIn.qml`), never a web view, never the redirect page.
+- The values go to the extension once, in the `sign-in` call's JSON (below), and Sioul keeps nothing of them after the call: no file, no state, no clipboard, no notification. Every value is added to the call's hidden set, so no line of its log can carry them, whatever the extension writes. The extension signs in itself and keeps only a token with `secret`.
+- One sign-in at a time, as a redirect page is; the form shows only on a deliberate **Sign in…**, and Cancel runs no call. Removing the extension closes its form as it closes a redirect page.
+- A manifest that newly asks for `credentials`, or asks for a field not accepted before, waits for the person's yes on Settings ▸ Extensions, as a new host or a new sign-in does.
+- A second step (a code the service sends after the password) is not in this version: a service that needs one cannot be signed into yet.
+
 ## The calls
 
 Every call is `{"interface": 1, "call": "<name>", "lang": "en"}`, with `lang` the language Sioul speaks now (`en` or `fr`) for the names the extension gives.
 
 ### `sign-in`
 
-The person pressed **Sign in…**. Also carries `"choice"`: `null`, or the id the person chose.
+The person pressed **Sign in…**. Also carries `"choice"`: `null`, or the id the person chose. A credentials extension's call also carries `"credentials"`, an object keyed by each field's kind with the values the person typed in Sioul's form (`{"interface": 1, "call": "sign-in", "lang": "en", "choice": null, "credentials": {"email": "…", "password": "…"}}`); a redirect extension's call has no such key.
 
 | Reply | Meaning |
 |---|---|
 | `{"signed_in": true}` | the sign-in is kept; Sioul runs `refresh` next |
 | `{"choose": [{"id": "…", "name": "…"}]}` | the extension needs the person to choose first (a platform, a school): Sioul shows the names (200 at most) and calls `sign-in` again with `choice` |
-| `{"cancelled": true}` | the person closed the page |
+| `{"cancelled": true}` | the person closed the page or the form |
 | `{"problem": {…}}` | below |
 
 ### `refresh`
@@ -209,10 +219,11 @@ sha256 = "<64 hexadecimal digits>"
 ```
 
 - `id`: lower-case letters, digits and `-`, 32 characters at most. `name` and `about` in English and French. `brings`: `agenda` in version 1. `hosts`: exact names. `file`: an `https` address, or a name relative to the manifest's own address.
+- A sign-in is a redirect (`sign_in`) **or** credentials (`credentials`), never both. `credentials` is an array of fixed field kinds, one of `email`, `username`, `password`, `server`, `one-time-code`: at least one `password`, no kind twice, four at most, and an unknown kind refuses the whole manifest. It declares which fields Sioul's own form asks for; Sioul chooses every label (see "A credentials sign-in"). Example: `credentials = ["email", "password"]`.
 - Sioul downloads the file (`https` only, public addresses, 8 MiB), and **runs it only after its SHA-256 matched the signed manifest**. It keeps it in its private data (`$XDG_DATA_HOME/sioul/extensions/`), and checks the hash again before each run, against the offer it accepted from the signed manifest and kept in this device's record (`extensions.toml`). That record is not signed: each offer in it is checked as a manifest's are whenever it is read, one that fails left out; whatever can write it already acts as the person on this device.
 - An update is taken only when its version is not older than the one in use (versions compared part by part, numbers as numbers); an update waiting for the person's yes is dropped when a newer manifest no longer offers it; nothing is downloaded for an extension disabled on this device, which takes its update once enabled again.
-- **An update that asks for more** than the version in use (another host, a sign-in where there was none) is not taken until the person says yes on Settings ▸ Extensions; the version in use goes on meanwhile.
-- **Less applies at once.** What an extension is given never exceeds what the manifest read last lists: a host taken out of its list, or its sign-in, is taken from the version in use at once, its file unchanged, without asking. **An extension the manifest no longer lists stops** on each device that reads that manifest: it is disabled, its line says it is no longer in the list, an update waiting for it is dropped, and it cannot be enabled again until a manifest lists it again; Remove forgets its sign-in.
+- **An update that asks for more** than the version in use (another host, a sign-in where there was none, a credential field not accepted before) is not taken until the person says yes on Settings ▸ Extensions; the version in use goes on meanwhile.
+- **Less applies at once.** What an extension is given never exceeds what the manifest read last lists: a host taken out of its list, its sign-in, or a credential field the list dropped, is taken from the version in use at once, its file unchanged, without asking. **An extension the manifest no longer lists stops** on each device that reads that manifest: it is disabled, its line says it is no longer in the list, an update waiting for it is dropped, and it cannot be enabled again until a manifest lists it again; Remove forgets its sign-in.
 - Where the manifest is read from: `[extensions] manifest` in the configuration, by default the repository's address on GitHub. An address on this device (a folder or a `file://` address) is accepted too, for trials before the repository is public: the signature is checked all the same. This setting is each device's own and **never travels through the sharing** (`CONFIG_LOCAL` in `sioul-sync`'s `share.rs`): a path on one computer means nothing on a phone, and no device can change where the others read their list.
 - When: when Settings ▸ Extensions is opened, and once a day while an extension is enabled. Never otherwise.
 

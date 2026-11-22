@@ -4028,6 +4028,7 @@ extension-sites = { $count ->
        *[other] It talks to { $count } sites: { $sites }.
     }
 extension-keeps-sign-in = It keeps a sign-in on this device, in its keyring; you sign in on the site's own page.
+extension-keeps-credentials = It keeps a sign-in on this device, in its keyring; you sign in through a form Sioul shows, framed by Sioul, where you type your details.
 extension-keeps-no-sign-in = It keeps no sign-in.
 extension-needs-newer-sioul = It needs a newer Sioul.
 extension-never-ran = Enabled; it has not run yet.
@@ -4053,6 +4054,13 @@ extension-update-asks = Version { $version } asks for more than the one in use{ 
 extension-enable = Enable
 extension-sign-in = Sign in…
 extension-sign-in-again = Sign in again…
+extension-sign-in-now = Sign in
+extension-sign-in-title = Sign in to { $name }
+extension-cred-email = Email
+extension-cred-username = Username
+extension-cred-password = Password
+extension-cred-server = Server
+extension-cred-one-time-code = One-time code
 extension-accept = Take the update
 extension-disable = Disable
 extension-remove = Remove…
