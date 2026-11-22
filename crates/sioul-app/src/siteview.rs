@@ -265,6 +265,11 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
         ("leave_ask", "site-screen-leave-ask"),
         ("leave", "site-screen-leave"),
         ("stay", "site-screen-stay"),
+        // The vault's two lines in the menu, and what a fill the screen refuses says (sitefill.rs).
+        ("fill", "site-screen-fill"),
+        ("choose_login", "site-screen-choose-login"),
+        ("fill_changed", "site-screen-fill-changed"),
+        ("fill_https", "site-screen-fill-https"),
     ];
     let mut words: serde_json::Map<String, serde_json::Value> = keys.iter().map(|(key, id)| (key.to_string(), tr.text(id, None).into())).collect();
     // Java puts its own words in place of these marks: what was asked, the file's name.
@@ -299,8 +304,10 @@ pub(crate) fn words(tr: &Translator) -> serde_json::Value {
 
 /// What the screen is given for a site (verb "site-open"): its id, name and
 /// address, the registrable domain its links stay in (`sites::domain_of`),
-/// Sioul's colours (`look`, from the page: JSON) and the words.
-pub(crate) fn asked(id: &str, name: &str, url: &str, look: &str, tr: &Translator) -> serde_json::Value {
+/// Sioul's colours (`look`, from the page: JSON), the words, and whether a
+/// Bitwarden account is set on this device (`vault`: the menu's two lines
+/// of the vault show only then, sitefill.rs).
+pub(crate) fn asked(id: &str, name: &str, url: &str, look: &str, vault: bool, tr: &Translator) -> serde_json::Value {
     let look: serde_json::Value = serde_json::from_str(look).unwrap_or_else(|_| serde_json::json!({}));
     serde_json::json!({
         "id": id,
@@ -310,6 +317,7 @@ pub(crate) fn asked(id: &str, name: &str, url: &str, look: &str, tr: &Translator
         "look": look,
         "words": words(tr),
         "places": PLACES,
+        "vault": vault,
     })
 }
 
@@ -330,7 +338,7 @@ pub(crate) fn open(id: &str, look: &str) -> String {
     if opens(view.as_ref(), &site.url) != Opens::Here {
         return serde_json::json!({ "browser": site.url }).to_string();
     }
-    if crate::steps::java("site-open", &asked(&site.id, &site.name, &site.url, look, tr()).to_string()) == true {
+    if crate::steps::java("site-open", &asked(&site.id, &site.name, &site.url, look, crate::sites::account_set(), tr()).to_string()) == true {
         serde_json::json!({ "here": true }).to_string()
     } else {
         serde_json::json!({ "browser": site.url, "problem": say("site-screen-refused", &[]) }).to_string()
@@ -518,8 +526,10 @@ mod tests {
     #[test]
     fn the_screen_is_given_the_site_and_its_words() {
         let tr = Translator::new("fr");
-        let given = |look: &str| asked("bank", "My bank", "https://secure.bank.example.co.uk/login", look, &tr);
+        let given = |look: &str| asked("bank", "My bank", "https://secure.bank.example.co.uk/login", look, true, &tr);
         let asked = given(r##"{"dark":true,"background":"#1e1f1c"}"##);
+        assert_eq!(asked["vault"], true, "a Bitwarden account set: the vault's lines show");
+        assert_eq!(super::asked("bank", "My bank", "https://secure.bank.example.co.uk/login", "{}", false, &tr)["vault"], false);
         assert_eq!((asked["id"].as_str(), asked["name"].as_str(), asked["url"].as_str()), (Some("bank"), Some("My bank"), Some("https://secure.bank.example.co.uk/login")));
         assert_eq!(asked["domain"], "example.co.uk");
         assert_eq!(asked["look"]["dark"], true);
@@ -539,6 +549,8 @@ mod tests {
         assert_eq!(asked["places"], serde_json::json!(["downloads", "choose"]));
         assert!(words["from"].as_str().unwrap().contains("{name}") && words["from"].as_str().unwrap().starts_with("depuis"));
         assert_eq!(words["browser"], "Ouvrir dans le navigateur");
+        assert_eq!((words["fill"].as_str(), words["choose_login"].as_str()), (Some("Remplir depuis Bitwarden"), Some("Choisir un identifiant\u{2026}")));
+        assert!(words["fill_changed"].as_str().unwrap().contains("rien n\u{2019}a \u{e9}t\u{e9} rempli") && words["fill_https"].as_str().unwrap().contains("https"));
         assert_eq!(given("not json")["look"], serde_json::json!({}));
     }
 }

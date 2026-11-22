@@ -488,6 +488,49 @@ pub(crate) fn announced_by(sender: &str) -> String {
 
 // Bitwarden, read here: no external program (sioul_sync::bitwarden).
 
+/// The script that writes a login into a page's form, called with the user
+/// name, the password and the one-time code: the password field and the
+/// name field before it set as typing would, and a page asking for the
+/// one-time code given the code the vault computes now. One source for every
+/// device: a computer's Sites page takes it (`sioul.fillScript()`, the values
+/// quoted by its own JSON), a phone's site screen runs the whole call Rust
+/// builds with it (`fill_call`, sitefill.rs). Word for word the script the
+/// computer's page held until 21 November 2026.
+pub(crate) const FILL_SCRIPT: &str = r#"function (user, password, code) {
+        const set = (field, value) => {
+            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value').set;
+            setter.call(field, value);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+        const secret = document.querySelector('input[type=password]');
+        const names = Array.from(document.querySelectorAll('input[type=email], input[type=text], input:not([type])'));
+        const before = secret ? names.filter(f => f.compareDocumentPosition(secret) & Node.DOCUMENT_POSITION_FOLLOWING) : names;
+        const name = before.length ? before[before.length - 1] : null;
+        if (name && user) set(name, user);
+        if (secret && password) set(secret, password);
+        // A page asking for the one-time code: the code the vault computes now.
+        const otp = document.querySelector('input[autocomplete="one-time-code"]') || Array.from(document.querySelectorAll('input:not([type=password]):not([type=hidden])')).find(f => /otp|totp|2fa|mfa|code|token/i.test((f.name || '') + ' ' + (f.id || '') + ' ' + (f.getAttribute('aria-label') || '')));
+        if (otp && code && !secret) set(otp, code);
+        return !!(name || secret);
+    }"#;
+
+/// A text as a JavaScript string: JSON's quoting (quotes, backslashes,
+/// control characters, line breaks escaped), then the two line separators
+/// (U+2028, U+2029), which older engines end a line at, and `<`, so that
+/// nothing in it can close a script it would be written into (`</script>`,
+/// `<!--`). Inside the quotes each escape reads back as the character itself.
+fn js_text(text: &str) -> String {
+    serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into()).replace('\u{2028}', "\\u2028").replace('\u{2029}', "\\u2029").replace('<', "\\u003c")
+}
+
+/// The whole call a page runs to fill a login (`FILL_SCRIPT`), built here:
+/// the three values quoted by Rust (`js_text`), so that nothing in a
+/// password, a user name or a code can change the script.
+pub(crate) fn fill_call(user: &str, password: &str, code: &str) -> String {
+    format!("({FILL_SCRIPT})({}, {}, {})", js_text(user), js_text(password), js_text(code))
+}
+
 /// The vault, open for the session: its logins, in memory only (wiped when
 /// dropped), with what each is searched by (`bitwarden::Logins`).
 pub(crate) struct Vault {
@@ -498,7 +541,7 @@ pub(crate) struct Vault {
 }
 
 impl Vault {
-    fn of(items: Vec<bitwarden::Item>) -> Vault {
+    pub(crate) fn of(items: Vec<bitwarden::Item>) -> Vault {
         Vault { logins: bitwarden::Logins::new(items), used: std::sync::atomic::AtomicI64::new(jiff::Timestamp::now().as_second()) }
     }
 
@@ -534,6 +577,11 @@ fn remembered(email: &str) -> String {
     format!("Bitwarden device token for {}", email.trim().to_lowercase())
 }
 
+/// Whether a Bitwarden account is set on this device (Accounts' password manager card).
+pub(crate) fn account_set() -> bool {
+    load_config().bitwarden.email.as_deref().is_some_and(|e| !e.trim().is_empty())
+}
+
 /// "missing" (no account set: Accounts' password manager card), "locked", "unlocked".
 pub(crate) fn bitwarden_state(shared: &Shared) -> String {
     // A made-up vault for the window's tests, from a JSON list of logins (never in Sioul's builds).
@@ -558,7 +606,7 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
             .collect();
         *vault = Some(Vault::of(items));
     }
-    if load_config().bitwarden.email.as_deref().is_none_or(|e| e.trim().is_empty()) {
+    if !account_set() {
         return "missing".into();
     }
     if shared.bitwarden.lock().is_ok_and(|v| v.is_some()) { "unlocked".into() } else { "locked".into() }
@@ -785,15 +833,55 @@ pub(crate) fn bitwarden_site(shared: &Shared, url: &str) -> String {
     serde_json::json!({ "domain": opening.domain, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
 }
 
-/// One login of the vault, for a site: {"name", "username", "password",
-/// "code"} (the one-time code now, when it keeps its secret), or {"error"};
-/// kept as the site's choice.
-pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
-    let error = |id: &str| serde_json::json!({ "error": tr().text(id, None) }).to_string();
-    let Ok(vault) = shared.bitwarden.lock() else { return error("bitwarden-locked") };
-    let Some(vault) = vault.as_ref() else { return error("bitwarden-locked") };
+/// The login "Fill the login" fills at once for an address, as
+/// `bitwarden_site`'s "only" says: its only one, unless another was chosen
+/// there last. None when there is a choice to make, or the vault is locked.
+pub(crate) fn fill_at_once(shared: &Shared, url: &str) -> Option<String> {
+    let held = shared.bitwarden.lock().ok()?;
+    let vault = held.as_ref()?;
     vault.touch();
-    let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return error("bitwarden-none") };
+    let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
+    vault.logins.opening(url, last.as_deref()).only
+}
+
+/// A login taken out of the vault for one fill; its password and code wiped when it goes.
+pub(crate) struct Login {
+    pub(crate) name: String,
+    pub(crate) username: String,
+    pub(crate) password: String,
+    /// The one-time code now, when the login keeps its secret; else "".
+    pub(crate) code: String,
+}
+
+impl Drop for Login {
+    fn drop(&mut self) {
+        wipe(&mut self.password);
+        wipe(&mut self.code);
+    }
+}
+
+/// A secret's text overwritten before its memory goes back, then emptied.
+/// Best effort: a copy made on the way (a string grown, a JSON text, Java's
+/// own strings) is not reached.
+pub(crate) fn wipe(text: &mut String) {
+    // SAFETY: only zeros are written, which leave the text valid UTF-8.
+    let bytes = unsafe { text.as_mut_vec() };
+    for byte in bytes.iter_mut() {
+        // SAFETY: a valid, aligned byte of the vector, written through its own reference.
+        unsafe { std::ptr::write_volatile(byte, 0) };
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    text.clear();
+}
+
+/// One login of the vault by its id, for the page at `url`, kept as the
+/// site's choice (the login chosen last comes first there next time). Else
+/// the id of the words that say why not: "bitwarden-locked", "bitwarden-none".
+pub(crate) fn login(shared: &Shared, url: &str, id: &str) -> Result<Login, &'static str> {
+    let Ok(held) = shared.bitwarden.lock() else { return Err("bitwarden-locked") };
+    let Some(vault) = held.as_ref() else { return Err("bitwarden-locked") };
+    vault.touch();
+    let Some(item) = vault.logins.items().iter().find(|item| item.id == id) else { return Err("bitwarden-none") };
     let host = sioul_core::sites::host_of(url);
     if !host.is_empty() {
         let mut all = chosen();
@@ -806,7 +894,24 @@ pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
         }
     }
     let code = if item.totp.is_empty() { String::new() } else { bitwarden::totp(&item.totp, jiff::Timestamp::now().as_second()).unwrap_or_default() };
-    serde_json::json!({ "name": item.name, "username": item.username, "password": item.password, "code": code }).to_string()
+    Ok(Login { name: item.name.clone(), username: item.username.clone(), password: item.password.clone(), code })
+}
+
+/// The whole call that fills one login of the vault into the page at `url`
+/// (`fill_call`), or the id of the words that say why not (`login`).
+pub(crate) fn fill_for(shared: &Shared, url: &str, id: &str) -> Result<String, &'static str> {
+    let login = login(shared, url, id)?;
+    Ok(fill_call(&login.username, &login.password, &login.code))
+}
+
+/// One login of the vault, for a site: {"name", "username", "password",
+/// "code"} (the one-time code now, when it keeps its secret), or {"error"};
+/// kept as the site's choice.
+pub(crate) fn bitwarden_login(shared: &Shared, url: &str, id: &str) -> String {
+    match login(shared, url, id) {
+        Ok(login) => serde_json::json!({ "name": login.name, "username": login.username, "password": login.password, "code": login.code }).to_string(),
+        Err(id) => serde_json::json!({ "error": tr().text(id, None) }).to_string(),
+    }
 }
 
 /// Locks the vault again: its logins leave memory.
@@ -842,5 +947,42 @@ mod tests {
         open(now - 10 * 60);
         let _ = bitwarden_site(&shared, "https://bank.example.org/login");
         assert!(!bitwarden_lock_if_idle(&shared, 5, jiff::Timestamp::now().as_second()));
+    }
+
+    /// One fill script for every device (21 November 2026): the computer's
+    /// Sites page takes it from Rust, keeps no copy of its own and calls it
+    /// as before; the window's invokable gives this constant.
+    #[test]
+    fn the_computer_s_page_takes_the_fill_script_from_rust() {
+        let page = include_str!("../qml/SitesPage.qml");
+        assert!(page.contains("readonly property string fillScript: page.sioul.fillScript()"));
+        assert!(!page.contains("querySelector"), "no copy of the script in the page");
+        assert!(page.contains(r#"view.runJavaScript("(" + page.fillScript + ")(" + JSON.stringify(user) + ", " + JSON.stringify(password) + ", " + JSON.stringify(code || "") + ")")"#), "called as before");
+        assert!(include_str!("backend.rs").contains("fn fill_script(&self) -> QString {\n        QString::from(crate::sites::FILL_SCRIPT)\n    }"));
+        assert!(FILL_SCRIPT.starts_with("function (user, password, code) {") && FILL_SCRIPT.ends_with("return !!(name || secret);\n    }"));
+    }
+
+    /// The call a phone's screen runs is Rust's whole: whatever a password
+    /// holds (quotes, a backslash, an apostrophe, `</script>`, the line
+    /// separators, line breaks, a null, a template's marks), the three values
+    /// come back intact when the call's arguments are read as JSON, and none
+    /// of it is left raw to end a string, a line or a script.
+    #[test]
+    fn nothing_in_a_password_can_change_the_call() {
+        let password = "a\"b\\c'd</script><!--e\u{2028}f\u{2029}g\nh\ri\u{0}j${k}`l";
+        let user = "jane\"</script>@example.org";
+        let call = fill_call(user, password, "123456");
+        let prefix = format!("({FILL_SCRIPT})(");
+        assert!(call.starts_with(&prefix) && call.ends_with(')'));
+        let args = &call[prefix.len()..call.len() - 1];
+        let read: Vec<String> = serde_json::from_str(&format!("[{args}]")).expect("the arguments are three JSON strings");
+        assert_eq!(read, [user, password, "123456"]);
+        for raw in ["\n", "\r", "\u{2028}", "\u{2029}", "\u{0}", "<"] {
+            assert!(!args.contains(raw), "{raw:?} left raw in the arguments");
+        }
+        // Each value one literal: its quotes are the only ones not escaped.
+        let unescaped = args.char_indices().filter(|(at, c)| *c == '"' && args[..*at].chars().rev().take_while(|b| *b == '\\').count() % 2 == 0).count();
+        assert_eq!(unescaped, 6);
+        assert_eq!(fill_call("", "", ""), format!("({FILL_SCRIPT})(\"\", \"\", \"\")"));
     }
 }

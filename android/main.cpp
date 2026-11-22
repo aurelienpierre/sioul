@@ -70,6 +70,12 @@ extern "C" void sioul_keyboard(bool attached);
 // A mail attachment saved where you chose, or not (crates/sioul-app/src/attachments.rs): JSON.
 extern "C" void sioul_attachment_saved(const char *json);
 extern "C" void sioul_sign_in_returned(const char *json);
+// A site's screen asks for a login from the window's vault, or takes the one
+// chosen there (crates/sioul-app/src/sitefill.rs): a verb and its JSON; the
+// JSON answer, which may hold a password, given back to sioul_site_fill_free,
+// which wipes it.
+extern "C" char *sioul_site_fill(const char *verb, const char *json);
+extern "C" void sioul_site_fill_free(char *text);
 // At an event's reminder, and the coming ones in the phone's zone
 // (crates/sioul-app/src/eventalarms.rs): JSON, given back to sioul_string_free.
 extern "C" char *sioul_event_decide(const char *key);
@@ -952,6 +958,24 @@ extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_AttachmentSave_n
 extern "C" JNIEXPORT void JNICALL Java_com_aurelienpierre_sioul_SignIn_nativeReturned(JNIEnv *env, jclass, jstring json)
 {
     sioul_sign_in_returned(utf8(env, json).constData());
+}
+
+// SiteScreen.java's side: a site's screen asks for a login from the window's
+// vault ("ask" {url, mode}) or takes the one chosen in the window ("take"
+// {url}), on a thread of Java's, once DoseAlarms loaded Sioul's library
+// (sitefill.rs). The answer may hold the call that fills the page, with its
+// password: never logged here; its UTF-8 copy is wiped as it is given back,
+// and its UTF-16 copy once Java holds its own.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_SiteScreen_nativeFill(JNIEnv *env, jclass, jstring verb, jstring json)
+{
+    char *answer = sioul_site_fill(utf8(env, verb).constData(), utf8(env, json).constData());
+    if (!answer)
+        return nullptr;
+    QString utf16 = QString::fromUtf8(answer);
+    sioul_site_fill_free(answer);
+    const jstring text = env->NewString(reinterpret_cast<const jchar *>(utf16.utf16()), jsize(utf16.size()));
+    utf16.fill(QChar(u'\0'));
+    return text;
 }
 
 // Sioul away (in the back, the screen off): what the window draws with (its

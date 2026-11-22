@@ -33,9 +33,12 @@ import java.util.TreeMap;
  * what Rust may hand the screen ({@link Opening#of}), where each navigation
  * goes ({@link #where}), the host shown above the page ({@link #shownHost}),
  * a downloaded file's name ({@link #fileName}), the line saying what a site
- * asked for and did not get ({@link #askedLine}); and Rust's questions
- * (verbs "site-…", {@link #call}): what this device's web view is, and a
- * site opened. Rust decides where a site opens (crates/sioul-app/src/siteview.rs).
+ * asked for and did not get ({@link #askedLine}), whether a login's fill
+ * still meets the page it was asked for ({@link #sameOrigin}); and Rust's
+ * questions (verbs "site-…", {@link #call}): what this device's web view
+ * is, a site opened, and the site brought back once the window answered a
+ * fill. Rust decides where a site opens (crates/sioul-app/src/siteview.rs)
+ * and what a fill does (crates/sioul-app/src/sitefill.rs).
  */
 final class SiteWeb
 {
@@ -61,9 +64,11 @@ final class SiteWeb
     /**
      * Rust's question ({@link StepService#call}): "site-webview" {features,
      * process}, this device's web view; "site-open" {id, name, url, domain, look,
-     * words, places}, the site's screen shown, answered true or false;
+     * words, places, vault}, the site's screen shown, answered true or false;
      * "site-forget" {url, domain}, a removed site's sign-in forgotten
-     * ({@link #forget}). Any thread.
+     * ({@link #forget}); "site-fill-back", the screen that asked the window
+     * for a login brought back forward ({@link SiteScreen#comeBack}),
+     * answered true or false. Any thread.
      *
      * @param context the application's context
      * @param verb what Rust asks
@@ -80,6 +85,8 @@ final class SiteWeb
             return open(context, asked) ? "true" : "false";
         case "site-forget":
             return forget(asked.optString("url", ""), asked.optString("domain", "")).toString();
+        case "site-fill-back":
+            return SiteScreen.comeBack(context) ? "true" : "false";
         default:
             return null;
         }
@@ -243,14 +250,20 @@ final class SiteWeb
      * The site's screen shown, over Sioul's window, in Sioul's own task
      * (seen in Recents, one entry): a screen already shown, of this site or
      * another, is replaced. What Rust gave is checked as the screen will
-     * check it ({@link Opening#of}).
+     * check it ({@link Opening#of}). A screen that brought the window
+     * forward for a login ({@link SiteScreen#askingWindow}) is below the
+     * window: it is closed, and the new one opens over the window, since
+     * clearing down to it would close the window too.
      */
     private static boolean open(Context context, JSONObject asked)
     {
         if (Opening.of(asked.toString()) == null)
             return false;
+        SiteScreen below = SiteScreen.askingWindow();
+        if (below != null)
+            below.runOnUiThread(below::finish);
         Intent intent = new Intent(context, SiteScreen.class)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .addFlags(below != null ? Intent.FLAG_ACTIVITY_NEW_TASK : Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(SiteScreen.SITE, asked.toString());
         try {
             context.startActivity(intent);
@@ -419,8 +432,10 @@ final class SiteWeb
     /**
      * A site as the screen shows it, from the one extra Rust gives
      * ({@link SiteScreen#SITE}): its id and name, its address (https, with a
-     * host), the registrable domain its links stay in, Sioul's colours and
-     * the words in Sioul's language. Anything else in the intent is never read.
+     * host), the registrable domain its links stay in, Sioul's colours, the
+     * words in Sioul's language, and whether a Bitwarden account is set on
+     * this device (the menu's two lines of the vault). Anything else in the
+     * intent is never read.
      */
     static final class Opening
     {
@@ -436,9 +451,11 @@ final class SiteWeb
         final int line;
         /** Where a file may be saved, in the order the question offers them (SiteDownload.PLACES, as Rust lists them). */
         final java.util.List<String> places;
+        /** A Bitwarden account is set on this device: Fill from Bitwarden and Choose a login… show in the menu. */
+        final boolean vault;
         private final Map<String, String> words;
 
-        private Opening(String id, String name, String url, String domain, boolean dark, int[] colours, Map<String, String> words, java.util.List<String> places)
+        private Opening(String id, String name, String url, String domain, boolean dark, int[] colours, Map<String, String> words, java.util.List<String> places, boolean vault)
         {
             this.id = id;
             this.name = name;
@@ -452,6 +469,7 @@ final class SiteWeb
             this.line = colours[4];
             this.words = words;
             this.places = places;
+            this.vault = vault;
         }
 
         /** The words Rust gave for {@code key}, else English, so that nothing shows a key. */
@@ -471,7 +489,8 @@ final class SiteWeb
          * host or is too long, or the domain is not a host's name. Sioul's
          * colours: a colour that is not {@code #RRGGBB} or
          * {@code #AARRGGBB} takes Sioul's light one. Words: only the keys
-         * the screen shows, each a text of 600 characters at most.
+         * the screen shows, each a text of 600 characters at most. The
+         * vault's lines: only for {@code "vault": true}.
          *
          * @param json the extra's text, or null
          * @return the site, or null
@@ -520,7 +539,7 @@ final class SiteWeb
                         words.put(key, said);
                 }
             }
-            return new Opening(id, name, url, domain, dark, colours, words, places(asked.optJSONArray("places")));
+            return new Opening(id, name, url, domain, dark, colours, words, places(asked.optJSONArray("places")), Boolean.TRUE.equals(asked.opt("vault")));
         }
     }
 
@@ -608,6 +627,10 @@ final class SiteWeb
         ENGLISH.put("leave", "Leave");
         ENGLISH.put("stay", "Stay");
         ENGLISH.put("one_process", "This device's web view draws pages inside Sioul, where a page's crash would end Sioul: the site opens in your browser.");
+        ENGLISH.put("fill", "Fill from Bitwarden");
+        ENGLISH.put("choose_login", "Choose a login\u2026");
+        ENGLISH.put("fill_changed", "The page changed meanwhile: nothing was filled.");
+        ENGLISH.put("fill_https", "Sioul fills a login only into a page loaded over https: nothing was filled.");
     }
 
     /** Whether a text holds a control character (a line break among them). */
@@ -835,6 +858,75 @@ final class SiteWeb
     static boolean isEmptyWindow(String committed)
     {
         return !isHttps(committed);
+    }
+
+    /**
+     * An https address's port: the one it names, 443 when it names none; -1
+     * when it is not https with a host, or its port does not read.
+     *
+     * @param url the address, or null
+     * @return its port, or -1
+     */
+    static int port(String url)
+    {
+        if (!isHttps(url))
+            return -1;
+        String rest = url.substring(8);
+        int end = rest.length();
+        for (char stop : new char[] { '/', '?', '#', '\\' }) {
+            int at = rest.indexOf(stop);
+            if (at >= 0 && at < end)
+                end = at;
+        }
+        String authority = rest.substring(0, end);
+        authority = authority.substring(authority.lastIndexOf('@') + 1);
+        int colon = authority.startsWith("[") ? authority.indexOf(':', Math.max(0, authority.indexOf(']'))) : authority.indexOf(':');
+        if (colon < 0)
+            return 443;
+        String digits = authority.substring(colon + 1);
+        if (!digits.matches("[0-9]{1,5}"))
+            return -1;
+        int port = Integer.parseInt(digits);
+        return port <= 65535 ? port : -1;
+    }
+
+    /**
+     * Whether a login's fill still meets the page it was asked for: both
+     * addresses https, with the same host and the same port (the scheme,
+     * host and port of the web view's committed addresses, as Rust's
+     * {@code sitefill::same_origin} checks the ticket's). The path may
+     * differ: a sign-in's page moves within its site. Anything else, the
+     * fill is not run.
+     *
+     * @param asked the committed address of the page when the fill was asked
+     * @param now the committed address of the page in front now
+     * @return whether the fill may run
+     */
+    static boolean sameOrigin(String asked, String now)
+    {
+        return isHttps(asked) && isHttps(now) && host(asked).equals(host(now)) && port(asked) >= 0 && port(asked) == port(now);
+    }
+
+    /**
+     * What the screen asks Rust for a fill ({@code sitefill::answer}): the
+     * page's committed address, and "fill" or "choose"; for the window's
+     * answer, the address alone (mode null). Nothing else.
+     *
+     * @param url the committed address of the page in front
+     * @param mode "fill", "choose", or null
+     * @return the JSON text
+     */
+    static String fillAsked(String url, String mode)
+    {
+        JSONObject asked = new JSONObject();
+        try {
+            asked.put("url", url == null ? "" : url);
+            if (mode != null)
+                asked.put("mode", mode);
+        } catch (JSONException e) {
+            return "{}";
+        }
+        return asked.toString();
     }
 
     /**

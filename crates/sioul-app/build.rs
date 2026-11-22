@@ -202,6 +202,8 @@ fn main() {
         "qml/SiteAddDialog.qml",
         "qml/LoginChooser.qml",
         "qml/VaultUnlock.qml",
+        // A phone's site screen asking the window for a login (sitefill.rs).
+        "qml/SiteFill.qml",
         // Bitwarden in Accounts: the password manager's card, its form, "From Bitwarden…".
         "qml/VaultCard.qml",
         "qml/VaultForm.qml",

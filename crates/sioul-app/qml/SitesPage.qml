@@ -491,25 +491,9 @@ Item {
         view.runJavaScript("(" + page.fillScript + ")(" + JSON.stringify(user) + ", " + JSON.stringify(password) + ", " + JSON.stringify(code || "") + ")")
     }
 
-    // Sets the password field and the name field before it, as typing would.
-    readonly property string fillScript: `function (user, password, code) {
-        const set = (field, value) => {
-            const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value').set;
-            setter.call(field, value);
-            field.dispatchEvent(new Event('input', { bubbles: true }));
-            field.dispatchEvent(new Event('change', { bubbles: true }));
-        };
-        const secret = document.querySelector('input[type=password]');
-        const names = Array.from(document.querySelectorAll('input[type=email], input[type=text], input:not([type])'));
-        const before = secret ? names.filter(f => f.compareDocumentPosition(secret) & Node.DOCUMENT_POSITION_FOLLOWING) : names;
-        const name = before.length ? before[before.length - 1] : null;
-        if (name && user) set(name, user);
-        if (secret && password) set(secret, password);
-        // A page asking for the one-time code: the code the vault computes now.
-        const otp = document.querySelector('input[autocomplete="one-time-code"]') || Array.from(document.querySelectorAll('input:not([type=password]):not([type=hidden])')).find(f => /otp|totp|2fa|mfa|code|token/i.test((f.name || '') + ' ' + (f.id || '') + ' ' + (f.getAttribute('aria-label') || '')));
-        if (otp && code && !secret) set(otp, code);
-        return !!(name || secret);
-    }`
+    // Sets the password field and the name field before it, as typing would:
+    // Rust's one script, which a phone's site screen runs too (sites.rs, `FILL_SCRIPT`).
+    readonly property string fillScript: page.sioul.fillScript()
 
     onVisibleChanged: if (page.visible) page.reload()
 
