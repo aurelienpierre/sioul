@@ -156,7 +156,11 @@ Item {
             const n = mock.vault.find(v => v.path === path)
             if (!n)
                 return ""
-            return JSON.stringify({ path: n.path, title: n.title, kind: n.kind, text: n.text || "", html: "<p>" + (n.text || "") + "</p>", tags: n.tags || [], checkboxes: [], outline: [], related: [], base: "", stamp: "1", url: "" })
+            return JSON.stringify({ path: n.path, title: n.title, kind: n.kind, text: n.text || "", blocks: [{ html: "<p>" + (n.text || "") + "</p>\n", kind: "p" }], tags: n.tags || [], checkboxes: [], outline: [], related: [], base: "", stamp: "1", url: "" })
+        }
+        // The note's file as it is now: the page reads a note again only when this changed.
+        function noteStamp(path) {
+            return mock.vault.some(v => v.path === path) ? "1" : ""
         }
         function related(uri) {
             return "[]"
