@@ -15,6 +15,41 @@ pub const FORMAT: u32 = 1;
 /// The most hosts an extension may name.
 const MOST_HOSTS: usize = 64;
 
+/// A fixed kind of credential field an extension may ask for through Sioul's
+/// own form (never free text): its label and framing are Sioul's, the kind
+/// alone comes from the signed manifest. The set is closed: an unknown kind
+/// in a manifest is a fault, so the manifest is refused (`parse`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CredField {
+    Email,
+    Username,
+    Password,
+    Server,
+    OneTimeCode,
+}
+
+impl CredField {
+    /// The kebab word the call's JSON keys the value by (`email`, `password`…).
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Email => "email",
+            Self::Username => "username",
+            Self::Password => "password",
+            Self::Server => "server",
+            Self::OneTimeCode => "one-time-code",
+        }
+    }
+
+    /// Whether Sioul masks this field as it is typed: the password alone.
+    pub fn masked(self) -> bool {
+        matches!(self, Self::Password)
+    }
+}
+
+/// The most credential fields a sign-in may ask for.
+const MOST_CREDS: usize = 4;
+
 /// Words in both of Sioul's languages.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct Words {
@@ -44,6 +79,11 @@ pub struct Offer {
     /// The beginning of the address a sign-in returns to; none: it keeps no sign-in.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sign_in: Option<String>,
+    /// The fixed credential fields a sign-in asks for through Sioul's own
+    /// form, in the order the form shows them; empty: no credentials sign-in.
+    /// An extension has a redirect `sign_in` or `credentials`, never both.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub credentials: Vec<CredField>,
     /// An `https` address, or a name beside the manifest.
     pub file: String,
     pub sha256: String,
@@ -55,11 +95,14 @@ pub struct Offer {
 pub struct Grants {
     pub hosts: BTreeSet<String>,
     pub sign_in: Option<String>,
+    /// The credential fields its form may ask for (the manifest's order kept).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub credentials: Vec<CredField>,
 }
 
 impl Offer {
     pub fn grants(&self) -> Grants {
-        Grants { hosts: self.hosts.iter().map(|h| h.to_ascii_lowercase()).collect(), sign_in: self.sign_in.clone() }
+        Grants { hosts: self.hosts.iter().map(|h| h.to_ascii_lowercase()).collect(), sign_in: self.sign_in.clone(), credentials: self.credentials.clone() }
     }
 
     /// Whether this Sioul can run it: an interface it speaks, data it takes.
@@ -69,10 +112,12 @@ impl Offer {
 }
 
 impl Grants {
-    /// Whether `self` asks for more than `accepted`: a host not accepted, or
-    /// a sign-in where there was none or another one.
+    /// Whether `self` asks for more than `accepted`: a host not accepted, a
+    /// sign-in where there was none or another one, or a credential field not
+    /// among those accepted (a new field, or credentials where there were none).
     pub fn asks_more_than(&self, accepted: &Grants) -> bool {
-        !self.hosts.is_subset(&accepted.hosts) || (self.sign_in.is_some() && self.sign_in != accepted.sign_in)
+        let credentials = !self.credentials.iter().all(|c| accepted.credentials.contains(c));
+        !self.hosts.is_subset(&accepted.hosts) || (self.sign_in.is_some() && self.sign_in != accepted.sign_in) || credentials
     }
 }
 
@@ -136,6 +181,25 @@ pub fn check(offer: &Offer) -> Result<(), String> {
         && !watched(prefix)
     {
         return fault("a sign-in's return that cannot be watched for");
+    }
+    if !offer.credentials.is_empty() {
+        // A redirect sign-in or a credentials form, never both.
+        if offer.sign_in.is_some() {
+            return fault("both a redirect sign-in and a credentials sign-in");
+        }
+        if offer.credentials.len() > MOST_CREDS {
+            return fault("more credential fields than a sign-in asks for");
+        }
+        let mut seen = BTreeSet::new();
+        for field in &offer.credentials {
+            if !seen.insert(*field) {
+                return fault("a credential field asked for twice");
+            }
+        }
+        // A password is always among them: Sioul shows no credentials form without one.
+        if !offer.credentials.contains(&CredField::Password) {
+            return fault("a credentials sign-in without a password");
+        }
     }
     if offer.sha256.len() != 64 || !offer.sha256.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {
         return fault("a SHA-256 that is not 64 lower-case hexadecimal digits");
@@ -285,5 +349,49 @@ mod tests {
         let mut other = accepted.clone();
         other.sign_in = Some("example-app://elsewhere".into());
         assert!(other.asks_more_than(&accepted), "another sign-in");
+    }
+
+    /// A credentials sign-in: its manifest has `credentials` and no redirect
+    /// `sign_in`. Built by replacing SAMPLE's sign-in line.
+    fn credentials_sample(credentials: &str) -> String {
+        SAMPLE.replace(r#"sign_in = "example-app://sign-in-callback""#, &format!("credentials = [{credentials}]"))
+    }
+
+    #[test]
+    fn a_credentials_sign_in_is_read_and_checked() {
+        let manifest = parse(&credentials_sample(r#""email", "password""#)).unwrap();
+        let offer = &manifest.offers[0];
+        assert_eq!(offer.credentials, vec![CredField::Email, CredField::Password]);
+        assert!(offer.sign_in.is_none());
+        assert_eq!(offer.grants().credentials, vec![CredField::Email, CredField::Password]);
+        assert_eq!(CredField::OneTimeCode.tag(), "one-time-code");
+        assert!(CredField::Password.masked() && !CredField::Email.masked());
+        // Each kind reads; all five, within the four-field cap.
+        assert!(parse(&credentials_sample(r#""username", "password", "server", "one-time-code""#)).is_ok());
+        // Unknown kind, no password, a field twice, more than four, and both a
+        // redirect sign-in and credentials: each a fault.
+        for credentials in [r#""token", "password""#, r#""email", "username""#, r#""password", "password""#, r#""email", "username", "server", "one-time-code", "password""#] {
+            assert!(parse(&credentials_sample(credentials)).is_err(), "{credentials}");
+        }
+        // SAMPLE keeps its redirect sign_in; adding credentials beside it is a fault.
+        let both = SAMPLE.replace(r#"file = "timetable-0.1.0.wasm""#, "credentials = [\"password\"]\nfile = \"timetable-0.1.0.wasm\"");
+        assert!(parse(&both).is_err(), "a redirect sign-in and credentials together");
+    }
+
+    #[test]
+    fn an_update_asks_more_by_a_credential_field() {
+        let accepted = parse(&credentials_sample(r#""email", "password""#)).unwrap().offers.remove(0).grants();
+        assert!(!accepted.asks_more_than(&accepted));
+        // Fewer fields: never more.
+        let mut fewer = accepted.clone();
+        fewer.credentials = vec![CredField::Password];
+        assert!(!fewer.asks_more_than(&accepted));
+        // A new field: more.
+        let mut more = accepted.clone();
+        more.credentials.push(CredField::OneTimeCode);
+        assert!(more.asks_more_than(&accepted), "a field not accepted before");
+        // Credentials where there were none.
+        let none = Grants::default();
+        assert!(accepted.asks_more_than(&none), "credentials where there were none");
     }
 }
