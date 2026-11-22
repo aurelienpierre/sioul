@@ -250,20 +250,26 @@ final class SiteWeb
      * The site's screen shown, over Sioul's window, in Sioul's own task
      * (seen in Recents, one entry): a screen already shown, of this site or
      * another, is replaced. What Rust gave is checked as the screen will
-     * check it ({@link Opening#of}). A screen that brought the window
-     * forward for a login ({@link SiteScreen#askingWindow}) is below the
-     * window: it is closed, and the new one opens over the window, since
-     * clearing down to it would close the window too.
+     * check it ({@link Opening#of}). Decided from the live screen of this
+     * process ({@link SiteScreen#live}), never from a fill waiting (review
+     * of 22 November 2026, finding 3): one over the window is cleared
+     * ({@code FLAG_ACTIVITY_CLEAR_TOP}); one under the window, which it
+     * brought forward for a login, is closed, and the new one opens over
+     * the window, since clearing down to it would close the window too;
+     * with none known (none made, or Android ended the process since), the
+     * new one opens over the window and nothing is cleared, so that a
+     * record Android kept under the window is never cleared down to.
      */
     private static boolean open(Context context, JSONObject asked)
     {
         if (Opening.of(asked.toString()) == null)
             return false;
-        SiteScreen below = SiteScreen.askingWindow();
-        if (below != null)
-            below.runOnUiThread(below::finish);
+        SiteScreen live = SiteScreen.live();
+        boolean under = live != null && live.isUnderWindow();
+        if (under)
+            live.runOnUiThread(live::finish);
         Intent intent = new Intent(context, SiteScreen.class)
-            .addFlags(below != null ? Intent.FLAG_ACTIVITY_NEW_TASK : Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .addFlags(live != null && !under ? Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP : Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(SiteScreen.SITE, asked.toString());
         try {
             context.startActivity(intent);

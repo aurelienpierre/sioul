@@ -12,7 +12,11 @@
 // `siteFillCancelled`), which brings the site back forward: only the
 // login's id leaves here, never its password. A request is read as this is
 // made (Android may have ended Sioul meanwhile, the site's screen alone made
-// again) and at each `siteFillAsked`. Made on Android only (main.qml).
+// again) and at each `siteFillAsked`. A card closes once its request no
+// longer waits (review of 22 November 2026, finding 8): its screen gone or
+// another site opened (Rust forgot it), or its two minutes over (Rust then
+// brings the site back, saying that no login was chosen in time). Made on
+// Android only (main.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -36,18 +40,30 @@ Item {
 
     // The request waiting, begun unless it is the one under way. An older
     // one still open has its cards closed and needs no answer: Rust keeps
-    // the newer one alone.
+    // the newer one alone. One that no longer waits, none newer coming,
+    // has its cards closed and is handed back as cancelled, once: Rust
+    // takes that only while it still holds the request (its two minutes
+    // over), and then brings the site back.
     function take() {
         const said = fill.sioul.siteFillWaiting()
-        if (!said)
+        const request = said ? JSON.parse(said) : null
+        if (fill.asked !== null && request !== null && fill.asked.serial === request.serial) {
+            fill.expireIn(request)
             return
-        const request = JSON.parse(said)
-        if (fill.asked !== null && fill.asked.serial === request.serial)
+        }
+        if (fill.asked !== null) {
+            if (request === null)
+                fill.cancel()
+            fill.asked = null
+            unlock.close()
+            chooser.close()
+        }
+        if (request === null) {
+            expiry.stop()
             return
-        fill.asked = null
-        unlock.close()
-        chooser.close()
+        }
         fill.asked = request
+        fill.expireIn(request)
         fill.answered = false
         const state = fill.sioul.bitwardenState()
         if (state === "locked")
@@ -71,6 +87,12 @@ Item {
             }
         }
         chooser.now().begin(fill.asked.url)
+    }
+
+    // The request read again once its two minutes are over ("left", in seconds).
+    function expireIn(request) {
+        expiry.interval = Math.max(1, request.left || 0) * 1000 + 250
+        expiry.restart()
     }
 
     // A login chosen, by its id: handed back once.
@@ -101,6 +123,13 @@ Item {
     }
 
     Component.onCompleted: fill.take()
+
+    // A request's two minutes: then it is read again, and closed when it no longer waits.
+    Timer {
+        id: expiry
+
+        onTriggered: fill.take()
+    }
 
     Connections {
         target: fill.sioul

@@ -6,7 +6,10 @@
 // locked, then fills the site's only login or opens the chooser; Choose a
 // login… opens the chooser; the login chosen and the cancel are each handed
 // back once, never both, with the request's number; a request told twice is
-// begun once; a request waiting as the window starts is begun then. The
+// begun once; a request waiting as the window starts is begun then; the
+// vault and the chooser are asked for the request's own address; the vault
+// locked while the chooser asks hands back a cancel; a card closes once its
+// request no longer waits (forgotten by Rust, or its two minutes over). The
 // vault's own rules are Rust's (sitefill.rs, sites.rs); here no password
 // ever reaches the stand-in. Run by tools/qml-test.sh.
 
@@ -32,6 +35,11 @@ Item {
         property string state: "locked"
         // The request Rust keeps for the window, as JSON; "" when none.
         property string waiting: ""
+        // When Rust no longer counts it as waiting (Date.now()), 0 for never.
+        property real until: 0
+        // The addresses the vault and the chooser were asked for.
+        property var sitesAsked: []
+        property var searchesAsked: []
         // The site's only login, filled at once; "" when there is a choice to make.
         property string only: ""
         property int tickets: 0
@@ -59,7 +67,7 @@ Item {
             return false
         }
         function siteFillWaiting() {
-            return mock.waiting
+            return mock.until > 0 && Date.now() >= mock.until ? "" : mock.waiting
         }
         function siteFillChosen(serial, id) {
             mock.handed = mock.handed.concat([["chosen", serial, id]])
@@ -71,9 +79,11 @@ Item {
             return mock.state
         }
         function bitwardenSite(url) {
-            return JSON.stringify({ domain: "example.net", chosen: "", only: mock.only })
+            mock.sitesAsked = mock.sitesAsked.concat([url])
+            return JSON.stringify({ domain: "example.net", host: "forum.example.net", chosen: "", only: mock.only })
         }
         function bitwardenSearch(url, site, user) {
+            mock.searchesAsked = mock.searchesAsked.concat([url])
             return JSON.stringify({ found: mock.logins, more: 0 })
         }
         function bitwardenUnlock(password, provider, code) {
@@ -117,10 +127,10 @@ Item {
 
         property int serial: 0
 
-        // A fill asked from a site's screen, as Rust tells it.
-        function ask(mode) {
+        // A fill asked from a site's screen, as Rust tells it, with the seconds it still waits.
+        function ask(mode, left) {
             serial += 1
-            mock.waiting = JSON.stringify({ serial: serial, url: "https://forum.example.net/sign-in", mode: mode })
+            mock.waiting = JSON.stringify({ serial: serial, url: "https://forum.example.net/sign-in", mode: mode, left: left === undefined ? 120 : left })
             mock.siteFillAsked()
         }
         // The vault opened in the unlock card, as Bitwarden's server would answer.
@@ -140,6 +150,9 @@ Item {
             mock.state = "locked"
             mock.only = ""
             mock.unlocks = 0
+            mock.until = 0
+            mock.sitesAsked = []
+            mock.searchesAsked = []
         }
         function cleanup() {
             fill.unlock.close()
@@ -215,6 +228,54 @@ Item {
             made.unlock.close()
             compare(settled(), [["cancelled", serial]])
             made.destroy()
+        }
+
+        // The vault and the chooser are asked for the address the screen asked for, never another.
+        function test_the_vault_is_asked_for_the_request_s_own_address() {
+            mock.state = "unlocked"
+            ask("fill")
+            tryVerify(() => fill.chooser.item !== null && fill.chooser.item.opened, 2000)
+            const asked = "https://forum.example.net/sign-in"
+            verify(mock.sitesAsked.length > 0 && mock.sitesAsked.every(url => url === asked), JSON.stringify(mock.sitesAsked))
+            verify(mock.searchesAsked.length > 0 && mock.searchesAsked.every(url => url === asked), JSON.stringify(mock.searchesAsked))
+            compare(fill.chooser.item.url, asked)
+            compare(fill.chooser.item.fillsIn, "forum.example.net", "the chooser names the page it fills")
+        }
+
+        // Bitwarden locked while the chooser asks (Lock, its time without use): the chooser
+        // closes, and the site comes back with nothing filled, once.
+        function test_the_vault_locked_while_the_chooser_asks_hands_back_a_cancel() {
+            mock.state = "unlocked"
+            ask("choose")
+            tryVerify(() => fill.chooser.item !== null && fill.chooser.item.opened, 2000)
+            mock.bitwardenLocked()
+            tryVerify(() => !fill.chooser.item.visible, 2000)
+            compare(settled(), [["cancelled", serial]])
+            fill.chooser.item.take(0)
+            compare(settled(), [["cancelled", serial]], "nothing chosen afterwards")
+        }
+
+        // Its screen gone, or another site opened: Rust forgets the request and tells the
+        // window; its card closes. The cancel handed back is one Rust no longer takes.
+        function test_a_request_forgotten_closes_its_card() {
+            ask("fill")
+            tryCompare(fill.unlock, "opened", true)
+            mock.waiting = ""
+            mock.siteFillAsked()
+            tryCompare(fill.unlock, "visible", false, 2000)
+            compare(settled(), [["cancelled", serial]], "once")
+            verify(fill.asked === null)
+        }
+
+        // Its two minutes over, the request no longer waits: the card closes by itself, and
+        // the cancel goes to Rust, which still holds it and brings the site back.
+        function test_a_request_s_two_minutes_over_close_its_card() {
+            mock.until = Date.now() + 700
+            ask("fill", 1)
+            tryCompare(fill.unlock, "opened", true)
+            compare(settled(), [], "still waiting")
+            tryCompare(fill.unlock, "visible", false, 4000)
+            compare(settled(), [["cancelled", serial]])
         }
 
         function test_no_account_any_more_hands_back_nothing_filled() {

@@ -3287,6 +3287,7 @@ site-screen-fill-changed = La page a changé entre-temps : rien n’a été re
 site-screen-fill-https = Sioul ne remplit un identifiant que dans une page chargée en https : rien n’a été rempli.
 site-screen-fill-locked = Bitwarden a été verrouillé entre-temps : rien n’a été rempli. Demandez à nouveau depuis le menu.
 site-screen-fill-late = L’identifiant choisi a attendu plus de deux minutes : rien n’a été rempli. Demandez à nouveau depuis le menu.
+site-screen-fill-unanswered = Aucun identifiant n’a été choisi en deux minutes : rien n’a été rempli. Demandez à nouveau depuis le menu.
 webview-line-here = Vue web : { $name } { $version }. Les sites s’ouvrent dans Sioul.
 webview-line-lacks = Vue web : { $name } { $version }. Les sites s’ouvrent dans Sioul ; elle ne peut pas porter { $lacks }.
 webview-line-old = Vue web : { $name } { $version }, trop ancienne pour porter les sites : ils s’ouvrent dans votre navigateur.

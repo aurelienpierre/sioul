@@ -579,6 +579,8 @@ public final class SiteScreenCheck
         expect("the window takes what was tapped as it becomes active", Pattern.compile("(?s)Qt\\.application\\.state === Qt\\.ApplicationActive\\)\\s*\\{\\s*sioul\\.backHere\\(\\)").matcher(windowQml).find());
         String backend = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "backend.rs"));
         expect("back here, Rust takes the taps, a dose's first", body(backend, "    fn back_here(mut self: Pin<&mut Self>) {", "    ").contains("self.as_mut().take_taps();") && body(backend, "    fn take_taps(mut self: Pin<&mut Self>) {", "    ").contains("crate::alarms::opened()"));
+        // The screen never sends Sioul's task back; it reorders it for a fill alone (toWindow, comeBack),
+        // and what that does to the task is held below (reordering, the live screen, the root).
         expect("the site's screen keeps nothing from the window coming up", !screen.contains("moveTaskToBack"));
 
         // ------------------------------------------------ A login from Bitwarden, read from the sources
@@ -640,13 +642,37 @@ public final class SiteScreenCheck
             && body(screen, "private void answered(", "    ").contains("String call = said.optString(\"call\", \"\");"));
         String forward = body(screen, "private void toWindow(", "    ");
         expect("the window brought forward in Sioul's task, the launcher's own activity reordered, never made twice", forward.contains("getLaunchIntentForPackage(getPackageName())") && forward.contains("new Intent().setComponent(window).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)") && !forward.contains("NEW_TASK") && !forward.contains("CLEAR_TOP"));
+        // Review of 22 November 2026, finding 4: until Android 10 the flag moves an activity only for a start
+        // from an activity of its task; the screen comes back from the window's own activity, as it went.
         String back = body(screen, "static boolean comeBack(Context context)", "    ");
-        expect("the screen that asked brought back by reordering, never a new one, nothing when it is gone", back.contains("if (askingWindow() == null)") && back.contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT") && !back.contains("putExtra") && !back.contains("CLEAR_TOP"));
-        expect("reordering in those two places alone", screen.split("FLAG_ACTIVITY_REORDER_TO_FRONT", -1).length - 1 == 2 && !web.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
+        String fromWindow = "window.startActivity(new Intent(window, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));";
+        String fromContext = "context.startActivity(new Intent(context, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));";
+        expect("the screen that asked brought back by reordering, never a new one, nothing when it is gone", back.contains("if (askingWindow() == null)") && !back.contains("putExtra") && !back.contains("CLEAR_TOP"));
+        expect("from the window's own activity, on its main thread, the flag alone", back.indexOf("Activity window = theWindow();") >= 0 && back.indexOf("window.runOnUiThread(() -> {") > back.indexOf("Activity window = theWindow();") && back.indexOf(fromWindow) > back.indexOf("window.runOnUiThread(() -> {"));
+        expect("from the application's context only where the window's activity is not known", back.indexOf(fromContext) > back.indexOf(fromWindow) && back.indexOf("if (window != null) {") < back.indexOf(fromWindow));
+        expect("reordering in those three places alone", screen.split("FLAG_ACTIVITY_REORDER_TO_FRONT", -1).length - 1 == 3 && !web.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
+        String watch = body(screen, "private static final class WindowWatch implements android.app.Application.ActivityLifecycleCallbacks", "    ");
+        expect("the window's activity kept as Android resumes it, by the launcher's component alone, let go as it is destroyed", body(watch, "public void onActivityResumed(Activity activity)", "        ").contains("if (window.equals(activity.getComponentName())) {")
+            && body(watch, "public void onActivityResumed(Activity activity)", "        ").contains("windowShown = new java.lang.ref.WeakReference<>(activity);")
+            && body(watch, "public void onActivityDestroyed(Activity activity)", "        ").contains("if (windowShown.get() == activity)"));
+        expect("watched once a process, from the window brought forward", body(screen, "private static synchronized void watchWindow(", "    ").contains("if (watching || application == null)") && body(screen, "private static synchronized void watchWindow(", "    ").contains("watching = true;")
+            && forward.indexOf("watchWindow(getApplication(), window);") >= 0 && forward.indexOf("watchWindow(getApplication(), window);") < forward.indexOf("startActivity(") && screen.split("registerActivityLifecycleCallbacks\\(", -1).length - 1 == 1);
         expect("the window's answer taken as the screen resumes", body(screen, "protected void onResume()", "    ").contains("if (fillPage != null)\n            takeFill();"));
         expect("a fill forgotten with its screen", body(screen, "protected void onDestroy()", "    ").contains("forgetFill();"));
+        // Review of 22 November 2026, finding 8: a screen that goes, or finds no window, has Rust drop its request.
+        String destroyed = body(screen, "protected void onDestroy()", "    ");
+        expect("a screen that goes while its fill waits tells Rust, which closes the window's card", destroyed.contains("if (fillPage != null)\n            forgetAsked(getApplicationContext());") && destroyed.indexOf("forgetAsked(") < destroyed.indexOf("forgetFill();"));
+        expect("so does one that closed while Rust answered, when Rust kept a request", body(screen, "private void answered(", "    ").contains("if (isFinishing() || isDestroyed()) {\n            if (said.optBoolean(\"window\", false))\n                forgetAsked(getApplicationContext());\n            return;\n        }"));
+        expect("and one that finds no window's activity", forward.indexOf("forgetAsked(getApplicationContext());") >= 0 && forward.indexOf("forgetAsked(getApplicationContext());") < forward.indexOf("fillPage = page;"));
+        expect("told off the main thread, through the one way to Rust", body(screen, "private static void forgetAsked(Context context)", "    ").contains("new Thread(() -> rust(context, \"forget\", \"{}\"), \"sioul-site-fill\").start();"));
+        // Review of 22 November 2026, finding 3: a site opened is decided from the live screen, never from a fill waiting.
         String opening = body(web, "private static boolean open(", "    ");
-        expect("a site opened while a screen waits below the window closes that screen, never clearing the window above it", opening.contains("SiteScreen below = SiteScreen.askingWindow();") && opening.contains("below.runOnUiThread(below::finish);") && opening.contains("below != null ? Intent.FLAG_ACTIVITY_NEW_TASK : Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
+        expect("a site opened asks for the live screen and whether it is under the window, not for a fill", opening.contains("SiteScreen live = SiteScreen.live();") && opening.contains("boolean under = live != null && live.isUnderWindow();") && !opening.contains("askingWindow"));
+        expect("one under the window closed, the new one over the window", opening.contains("if (under)\n            live.runOnUiThread(live::finish);"));
+        expect("the task cleared down to a live screen over the window alone, never when none is known", opening.contains(".addFlags(live != null && !under ? Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP : Intent.FLAG_ACTIVITY_NEW_TASK)") && opening.split("FLAG_ACTIVITY_CLEAR_TOP", -1).length - 1 == 1);
+        expect("the live screen known from its making to its end", create.contains("alive = new java.lang.ref.WeakReference<>(this);") && destroyed.contains("if (alive.get() == this)") && screen.split("alive = ", -1).length - 1 == 3);
+        expect("under the window from the moment it brings it forward until it resumes", forward.indexOf("underWindow = true;") >= 0 && forward.indexOf("underWindow = true;") < forward.indexOf("startActivity(new Intent().setComponent(window)") && body(screen, "protected void onResume()", "    ").contains("underWindow = false;"));
+        expect("a screen made again as its task's root closes itself, before anything else", create.contains("if (saved != null && isTaskRoot()) {\n            finish();\n            return;\n        }") && create.indexOf("isTaskRoot()") < create.indexOf("alive = ") && create.indexOf("isTaskRoot()") < create.indexOf("setContentView"));
         expect("StepService's door brings the site back", web.contains("case \"site-fill-back\":\n            return SiteScreen.comeBack(context) ? \"true\" : \"false\";"));
         String bridge = read(Paths.get(System.getProperty("sioul.root"), "android", "main.cpp"));
         String nativeFill = body(bridge, "extern \"C\" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_SiteScreen_nativeFill(", "");

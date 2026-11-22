@@ -93,7 +93,10 @@ import org.json.JSONObject;
  * are refused in this phase, the menu saying the site asked. A page whose
  * drawing process ends closes the screen, or comes back at its return
  * when it ended behind; Sioul goes on. Whatever brings Sioul up as its
- * icon does closes the screen (the manifest's finishOnTaskLaunch).
+ * icon does closes the screen (the manifest's finishOnTaskLaunch), but
+ * while the window asks for a fill: the screen is under the window then,
+ * its task's root, which Android spares; it comes back once the window has
+ * its answer.
  *
  * <p>A login from Bitwarden (docs/sites.md, "Bitwarden"): where a Bitwarden
  * account is set on this device, the menu has Fill from Bitwarden and
@@ -106,9 +109,12 @@ import org.json.JSONObject;
  * ({@link #toWindow}) with its own unlock card or chooser, and brings the
  * screen back once answered ({@link #comeBack}), where it takes the login
  * chosen from Rust. The call runs only while the page in front is still at
- * the scheme, host and port asked ({@link SiteWeb#sameOrigin}), in its main
- * frame, by the one {@code evaluateJavascript} of Sioul's Java; it is never
- * kept, logged, put in an intent or in a saved state.
+ * the scheme, host and port asked ({@link SiteWeb#sameOrigin}), as recorded
+ * and as its web view says it, in its main frame, by the one
+ * {@code evaluateJavascript} of Sioul's Java, and the call itself fills
+ * nothing in a document of another origin; it is never kept, logged, put
+ * in an intent or in a saved state. A screen that goes while its fill waits
+ * tells Rust, which drops the request and closes the window's card.
  *
  * <p>Safety: https pages only, mixed content never; no file or content
  * access from a page or a service worker; third-party cookies refused; no
@@ -192,6 +198,14 @@ public final class SiteScreen extends Activity
     private boolean fillAsking;
     /** The screen whose fill the window answers ({@link #askingWindow}), in the window's process. */
     private static java.lang.ref.WeakReference<SiteScreen> waiting = new java.lang.ref.WeakReference<>(null);
+    /** The site's screen of this process while it lives, whatever it waits for ({@link #live}). */
+    private static java.lang.ref.WeakReference<SiteScreen> alive = new java.lang.ref.WeakReference<>(null);
+    /** The window's activity, as Android last resumed it in this process ({@link WindowWatch}): what brings the screen back. */
+    private static java.lang.ref.WeakReference<Activity> windowShown = new java.lang.ref.WeakReference<>(null);
+    /** Whether the window's activity is watched in this process: once. */
+    private static boolean watching;
+    /** This screen brought the window forward over itself ({@link #toWindow}) and was not resumed since. */
+    private volatile boolean underWindow;
 
     /**
      * Rust's answer about a fill (crates/sioul-app/src/sitefill.rs,
@@ -216,6 +230,17 @@ public final class SiteScreen extends Activity
             Log.w(DoseAlarms.TAG, "Sites: a screen asked without a site it can show; closed.");
             finish();
             return;
+        }
+        // Made again as its task's root: Android ended Sioul while this screen was under the
+        // window for a fill, and the window has gone since; nothing is above it to come back
+        // over, and the site is opened again from the window. It closes (review of 22 November
+        // 2026, finding 3). A screen made again over the window, as usual, is not the root.
+        if (saved != null && isTaskRoot()) {
+            finish();
+            return;
+        }
+        synchronized (SiteScreen.class) {
+            alive = new java.lang.ref.WeakReference<>(this);
         }
         LinearLayout root = layout();
         setContentView(root);
@@ -663,13 +688,18 @@ public final class SiteScreen extends Activity
      */
     private void answered(String json, WebView page, String address)
     {
-        if (isFinishing() || isDestroyed())
-            return;
         JSONObject said;
         try {
             said = new JSONObject(json == null ? "{}" : json);
         } catch (JSONException e) {
             said = new JSONObject();
+        }
+        // Closed while Rust answered: a request it keeps for the window is dropped, so that no
+        // card stays open on the window for no site (review of 22 November 2026, finding 8).
+        if (isFinishing() || isDestroyed()) {
+            if (said.optBoolean("window", false))
+                forgetAsked(getApplicationContext());
+            return;
         }
         if (said.optBoolean("waiting", false))
             return;
@@ -714,23 +744,32 @@ public final class SiteScreen extends Activity
      * window's own activity (the launcher's, singleTop) moved to the front
      * ({@code FLAG_ACTIVITY_REORDER_TO_FRONT}), never made twice, and made
      * again where Android ended it. It asks there (its unlock card, its
-     * chooser), then brings this screen back ({@link #comeBack}).
+     * chooser), then brings this screen back ({@link #comeBack}). The
+     * screen is under the window until it resumes. Without the window's
+     * activity, the request Rust keeps is dropped, as when the screen goes.
      */
     private void toWindow(WebView page, String address)
     {
         Intent launcher = getPackageManager().getLaunchIntentForPackage(getPackageName());
         ComponentName window = launcher == null ? null : launcher.getComponent();
-        if (window == null)
+        if (window == null) {
+            Log.w(DoseAlarms.TAG, "Sites: the window's activity was not found for a fill.");
+            forgetAsked(getApplicationContext());
             return;
+        }
+        watchWindow(getApplication(), window);
         fillPage = page;
         fillAddress = address;
         synchronized (SiteScreen.class) {
             waiting = new java.lang.ref.WeakReference<>(this);
         }
+        underWindow = true;
         try {
             startActivity(new Intent().setComponent(window).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
         } catch (ActivityNotFoundException e) {
+            underWindow = false;
             forgetFill();
+            forgetAsked(getApplicationContext());
         }
     }
 
@@ -746,11 +785,27 @@ public final class SiteScreen extends Activity
     }
 
     /**
+     * Rust told that the fill asked no longer waits (the screen closing, the
+     * window not found; sitefill.rs, verb "forget"): its request and any login
+     * chosen for it dropped, and the window's card closed. On a thread of its
+     * own, as every question to Rust.
+     */
+    private static void forgetAsked(Context context)
+    {
+        new Thread(() -> rust(context, "forget", "{}"), "sioul-site-fill").start();
+    }
+
+    /**
      * The window answered a fill (a login chosen, or cancel: Rust's verb
      * "site-fill-back"): the screen that asked brought back forward, in
      * Sioul's task ({@code FLAG_ACTIVITY_REORDER_TO_FRONT}: that same
      * screen, never a new one), where it takes the answer as it resumes.
-     * Nothing when that screen is gone. Any thread.
+     * Started from the window's own activity, on its main thread, the way
+     * {@link #toWindow} starts the window: until Android 10, the flag moves
+     * an activity only for a start from an activity of its task (review of
+     * 22 November 2026, finding 4). From the application's context, with
+     * {@code FLAG_ACTIVITY_NEW_TASK}, where the window's activity is not
+     * known. Nothing when that screen is gone. Any thread.
      *
      * @param context the application's context
      * @return whether the screen was asked to come back
@@ -759,6 +814,17 @@ public final class SiteScreen extends Activity
     {
         if (askingWindow() == null)
             return false;
+        Activity window = theWindow();
+        if (window != null) {
+            window.runOnUiThread(() -> {
+                try {
+                    window.startActivity(new Intent(window, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+                } catch (RuntimeException e) {
+                    Log.w(DoseAlarms.TAG, "Sites: the site's screen could not come back: " + e.getClass().getSimpleName());
+                }
+            });
+            return true;
+        }
         try {
             context.startActivity(new Intent(context, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
             return true;
@@ -766,6 +832,80 @@ public final class SiteScreen extends Activity
             Log.w(DoseAlarms.TAG, "Sites: the site's screen could not come back: " + e.getClass().getSimpleName());
             return false;
         }
+    }
+
+    /**
+     * The window's activity while it lives in this process, as Android last
+     * resumed it; null when none is known.
+     *
+     * @return the window's activity, or null
+     */
+    static Activity theWindow()
+    {
+        Activity window;
+        synchronized (SiteScreen.class) {
+            window = windowShown.get();
+        }
+        return window == null || window.isFinishing() || window.isDestroyed() ? null : window;
+    }
+
+    /** The window's activity watched in this process from now on, once: {@link WindowWatch}. */
+    private static synchronized void watchWindow(android.app.Application application, ComponentName window)
+    {
+        if (watching || application == null)
+            return;
+        watching = true;
+        application.registerActivityLifecycleCallbacks(new WindowWatch(window));
+    }
+
+    /**
+     * Keeps the window's activity (the launcher's component) as Android
+     * resumes it, and lets it go as it is destroyed: {@link #comeBack}
+     * starts the screen from it. Qt's own reference to it is not Sioul's to
+     * read.
+     */
+    private static final class WindowWatch implements android.app.Application.ActivityLifecycleCallbacks
+    {
+        private final ComponentName window;
+
+        WindowWatch(ComponentName window)
+        {
+            this.window = window;
+        }
+
+        @Override
+        public void onActivityResumed(Activity activity)
+        {
+            if (window.equals(activity.getComponentName())) {
+                synchronized (SiteScreen.class) {
+                    windowShown = new java.lang.ref.WeakReference<>(activity);
+                }
+            }
+        }
+
+        @Override
+        public void onActivityDestroyed(Activity activity)
+        {
+            synchronized (SiteScreen.class) {
+                if (windowShown.get() == activity)
+                    windowShown = new java.lang.ref.WeakReference<>(null);
+            }
+        }
+
+        @Override
+        public void onActivityCreated(Activity activity, Bundle saved) {}
+
+        @Override
+        public void onActivityStarted(Activity activity) {}
+
+        @Override
+        public void onActivityPaused(Activity activity) {}
+
+        @Override
+        public void onActivityStopped(Activity activity) {}
+
+        @Override
+        public void onActivitySaveInstanceState(Activity activity, Bundle out) {}
     }
 
     /**
@@ -781,6 +921,33 @@ public final class SiteScreen extends Activity
             screen = waiting.get();
         }
         return screen == null || screen.isFinishing() || screen.isDestroyed() ? null : screen;
+    }
+
+    /**
+     * The site's screen of this process while it lives, whatever it waits
+     * for; null when none is known here (none made, or Android ended the
+     * process since: a record it left under the window has no screen yet).
+     *
+     * @return the screen, or null
+     */
+    static SiteScreen live()
+    {
+        SiteScreen screen;
+        synchronized (SiteScreen.class) {
+            screen = alive.get();
+        }
+        return screen == null || screen.isFinishing() || screen.isDestroyed() ? null : screen;
+    }
+
+    /**
+     * Whether this screen brought the window forward over itself for a fill
+     * and was not resumed since: it is under the window.
+     *
+     * @return whether it is under the window
+     */
+    boolean isUnderWindow()
+    {
+        return underWindow;
     }
 
     // ---------------------------------------------------------------- The pages
@@ -1526,6 +1693,7 @@ public final class SiteScreen extends Activity
     {
         super.onResume();
         inFront = true;
+        underWindow = false;
         // Back from the window that answered a fill: its answer taken now.
         if (fillPage != null)
             takeFill();
@@ -1572,7 +1740,14 @@ public final class SiteScreen extends Activity
         }
         popup = null;
         view = null;
+        // A fill under way goes with its screen: Rust drops its request, the window its card (finding 8).
+        if (fillPage != null)
+            forgetAsked(getApplicationContext());
         forgetFill();
+        synchronized (SiteScreen.class) {
+            if (alive.get() == this)
+                alive = new java.lang.ref.WeakReference<>(null);
+        }
         flushCookies();
         super.onDestroy();
     }
