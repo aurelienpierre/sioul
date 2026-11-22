@@ -598,6 +598,20 @@ public final class SiteScreenCheck
         String running = body(screen, "private void run(WebView page, String address, String call)", "    ");
         expect("it is the fill's, run in the page asked, after its address is checked again", running.contains("page.evaluateJavascript(call, null);") && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") >= 0
             && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") < running.indexOf("page.evaluateJavascript(") && running.contains("front != page") && running.contains("say(site.word(\"fill_changed\"));"));
+        // Review of 22 November 2026, finding 1: the record is a copy; the web view's own address is asked too.
+        expect("and against the web view's own address, right before the call", running.indexOf("!SiteWeb.sameOrigin(address, page.getUrl())") >= 0 && running.indexOf("!SiteWeb.sameOrigin(address, page.getUrl())") < running.indexOf("page.evaluateJavascript("));
+        // The committed address is written by doUpdateVisitedHistory alone; onPageCommitVisible comes later and
+        // may name an older navigation, so it only draws the bar again. Elsewhere a page's address is only emptied.
+        expect("the committed address written from doUpdateVisitedHistory alone", screen.split("committed\\(page, url\\);", -1).length - 1 == 1
+            && body(screen, "public void doUpdateVisitedHistory(", "        ").contains("committed(page, url);")
+            && !body(screen, "public void onPageCommitVisible(", "        ").contains("committed") && body(screen, "public void onPageCommitVisible(", "        ").contains("shownHost();"));
+        Matcher writes = Pattern.compile("\\b(popupCommitted|committed) = ([^;]*);").matcher(screen);
+        List<String> written = new ArrayList<>();
+        while (writes.find()) {
+            if (!writes.group(2).equals("\"\"") && !writes.group(2).equals("url == null ? \"\" : url"))
+                written.add(writes.group());
+        }
+        expect("nothing else writes a page's address, only empties it: " + written, written.isEmpty() && body(screen, "private void committed(WebView page, String url)", "    ").split(" = url == null \\? \"\" : url;", -1).length - 1 == 2);
         expect("no JavaScript interface, no message channel from a page, anywhere: " + bridges, bridges.isEmpty());
         String menuBody = body(screen, "private void menu()", "    ");
         Matcher vaultLines = Pattern.compile("(?s)if \\(site\\.vault\\) \\{\\s*items\\.add\\(Menu\\.NONE, 6, 0, site\\.word\\(\"fill\"\\)\\);\\s*items\\.add\\(Menu\\.NONE, 7, 0, site\\.word\\(\"choose_login\"\\)\\);\\s*\\}").matcher(menuBody);

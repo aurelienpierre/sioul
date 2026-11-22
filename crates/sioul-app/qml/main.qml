@@ -2901,7 +2901,9 @@ SioulWindow {
                 () => {},
                 () => window.close()
             ])
-            // Sites, on a local test page: opened, its notification kept, the Porch telling it.
+            // Sites, on a local test page: opened, its notification kept, the Porch telling it;
+            // then a made-up login filled by the page's own path, Rust's guarded call (with
+            // SIOUL_TEST_VAULT in a test build: a login of id "test"; else the vault is locked).
             readonly property var sites: [
                 () => window.page = 0,
                 () => {},
@@ -2913,7 +2915,8 @@ SioulWindow {
                 () => {},
                 () => sitesPage.fillLogin(),
                 () => grabber.save("sites"),
-                () => sitesPage.fillWith(sitesPage.viewOf("test-chat"), "jane@example.org", "not-a-real-password"),
+                () => sioul.bitwardenState(),
+                () => sitesPage.fillChosen("test"),
                 () => sitesPage.viewOf("test-chat").runJavaScript("document.title = document.querySelector('input[type=email]').value + ' / ' + document.querySelector('input[type=password]').value.length"),
                 () => console.warn("filled: " + sitesPage.viewOf("test-chat").title),
                 () => window.close()

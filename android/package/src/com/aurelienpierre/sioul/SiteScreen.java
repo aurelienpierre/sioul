@@ -692,13 +692,17 @@ public final class SiteScreen extends Activity
      * The one call that fills a login, Rust's whole (its values quoted
      * there), run in the main frame of the page it was asked for, only while
      * that page is in front at the same scheme, host and port
-     * ({@link SiteWeb#sameOrigin}); else nothing is written and the screen
-     * says the page changed.
+     * ({@link SiteWeb#sameOrigin}), as the screen recorded it and as the web
+     * view says it now ({@code getUrl}); else nothing is written and the
+     * screen says the page changed. The call holds its own guard too: the
+     * page's document compares its own origin with the one asked before
+     * anything else (sites.rs, {@code fill_call}), since both addresses
+     * here are copies the web view hands after the fact.
      */
     private void run(WebView page, String address, String call)
     {
         WebView front = front();
-        if (front == null || front != page || !SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)) {
+        if (front == null || front != page || !SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed) || !SiteWeb.sameOrigin(address, page.getUrl())) {
             say(site.word("fill_changed"));
             return;
         }
@@ -896,17 +900,20 @@ public final class SiteScreen extends Activity
             }
         }
 
-        // The page committed, its own or a same-document change: its address is the one shown.
+        // The page committed, its own or a same-document change: its address is the one shown,
+        // and the one a fill is asked for. Written here alone (review of 22 November 2026,
+        // finding 1): onPageCommitVisible comes later and may name an older navigation.
         @Override
         public void doUpdateVisitedHistory(WebView page, String url, boolean reload)
         {
             committed(page, url);
         }
 
+        // The page's body now drawn: the bar drawn again, its address left as committed.
         @Override
         public void onPageCommitVisible(WebView page, String url)
         {
-            committed(page, url);
+            shownHost();
         }
 
         @Override

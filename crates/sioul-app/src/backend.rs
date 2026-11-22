@@ -2626,12 +2626,6 @@ pub mod qobject {
         #[qinvokable]
         fn calls_script(self: &Sioul) -> QString;
 
-        /// The script that fills a login into a page, called with the user
-        /// name, the password and the one-time code (sites.rs, `FILL_SCRIPT`):
-        /// one source for a computer's Sites page and a phone's site screen.
-        #[qinvokable]
-        fn fill_script(self: &Sioul) -> QString;
-
         /// "missing", "unauthenticated", "locked" or "unlocked".
         #[qinvokable]
         fn bitwarden_state(self: &Sioul) -> QString;
@@ -2667,9 +2661,16 @@ pub mod qobject {
         #[qinvokable]
         fn bitwarden_search(self: Pin<&mut Sioul>, url: &QString, site: &QString, user: &QString) -> QString;
 
-        /// What the vault holds for an address: {"domain", "chosen", "only"} or {"error"} (sites.rs).
+        /// What the vault holds for an address: {"domain", "host", "chosen", "only"} or {"error"} (sites.rs).
         #[qinvokable]
         fn bitwarden_site(self: &Sioul, url: &QString) -> QString;
+
+        /// A computer's Sites page fills one login of the vault into its
+        /// page: {"call"}, the whole call that fills it, the same as a
+        /// phone's screen runs (sites.rs, `fill_call`: run by the page's
+        /// document only at the origin of `url`), or {"error"}.
+        #[qinvokable]
+        fn bitwarden_fill(self: &Sioul, url: &QString, id: &QString) -> QString;
 
         /// One login of the vault, for an address: {"username", "password", "code"} or {"error"}.
         #[qinvokable]
@@ -8325,10 +8326,6 @@ impl qobject::Sioul {
         QString::from(include_str!("calls.js"))
     }
 
-    fn fill_script(&self) -> QString {
-        QString::from(crate::sites::FILL_SCRIPT)
-    }
-
     fn set_call_device(mut self: Pin<&mut Self>, which: &QString, name: &QString) -> QString {
         let which = which.to_string();
         if !matches!(which.as_str(), "camera" | "microphone" | "speaker") {
@@ -8378,6 +8375,13 @@ impl qobject::Sioul {
 
     fn bitwarden_login(&self, url: &QString, id: &QString) -> QString {
         QString::from(&crate::sites::bitwarden_login(&self.shared(), &url.to_string(), &id.to_string()))
+    }
+
+    fn bitwarden_fill(&self, url: &QString, id: &QString) -> QString {
+        // The page's address with its host in ASCII, as the page's own origin says it: QML
+        // hands it as Qt shows it, a name in other alphabets in its own letters.
+        let encoded = String::from_utf8_lossy(cxx_qt_lib::QUrl::from(url).to_encoded().as_slice()).into_owned();
+        QString::from(&crate::sites::bitwarden_fill(&self.shared(), &url.to_string(), &encoded, &id.to_string()))
     }
 
     fn site_fill_waiting(&self) -> QString {

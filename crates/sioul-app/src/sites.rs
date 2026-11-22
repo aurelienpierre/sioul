@@ -492,11 +492,15 @@ pub(crate) fn announced_by(sender: &str) -> String {
 /// name, the password and the one-time code: the password field and the
 /// name field before it set as typing would, and a page asking for the
 /// one-time code given the code the vault computes now. One source for every
-/// device: a computer's Sites page takes it (`sioul.fillScript()`, the values
-/// quoted by its own JSON), a phone's site screen runs the whole call Rust
-/// builds with it (`fill_call`, sitefill.rs). Word for word the script the
-/// computer's page held until 21 November 2026.
+/// device, run only inside the call Rust builds around it (`fill_call`): a
+/// computer's Sites page and a phone's site screen both take that call.
+/// Word for word the script the computer's page held until 21 November
+/// 2026, but for its first line, `'use strict'` (review of 22 November 2026,
+/// finding 6): a page's own function that the script calls (a
+/// `querySelector` the page replaced) can then read neither its caller nor
+/// its arguments, the password and the one-time code.
 pub(crate) const FILL_SCRIPT: &str = r#"function (user, password, code) {
+        'use strict';
         const set = (field, value) => {
             const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value').set;
             setter.call(field, value);
@@ -524,11 +528,62 @@ fn js_text(text: &str) -> String {
     serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into()).replace('\u{2028}', "\\u2028").replace('\u{2029}', "\\u2029").replace('<', "\\u003c")
 }
 
-/// The whole call a page runs to fill a login (`FILL_SCRIPT`), built here:
-/// the three values quoted by Rust (`js_text`), so that nothing in a
-/// password, a user name or a code can change the script.
-pub(crate) fn fill_call(user: &str, password: &str, code: &str) -> String {
-    format!("({FILL_SCRIPT})({}, {}, {})", js_text(user), js_text(password), js_text(code))
+/// The whole call a page runs to fill a login, built here for every device:
+/// the page's document itself first compares its own origin
+/// (`location.origin`, which no page can redefine) with `origin`, the one
+/// the login was asked for, and returns false without touching anything
+/// when they differ; only then `FILL_SCRIPT` runs (review of 22 November
+/// 2026, finding 1: a phone's screen and a computer's page both know the
+/// page's address from a copy that may be late, never the document that
+/// runs the call). Nothing of the page is called before the comparison.
+/// The four values are quoted by Rust (`js_text`), so that nothing in an
+/// origin, a password, a user name or a code can change the script. The
+/// guard's own arguments are out of a page's reach: the only function that
+/// calls into the page is `FILL_SCRIPT`, which is strict, so a page's
+/// function sees no caller above it.
+pub(crate) fn fill_call(origin: &str, user: &str, password: &str, code: &str) -> String {
+    format!("(function (origin, user, password, code) {{ if (location.origin !== origin) return false; return ({FILL_SCRIPT})(user, password, code); }})({}, {}, {}, {})", js_text(origin), js_text(user), js_text(password), js_text(code))
+}
+
+/// An http or https address's scheme, host and port: the host in lower
+/// case, without a user, an IPv6 address in its brackets; the port written,
+/// else the scheme's own (443, 80). As a browser reads it: the first of
+/// `/ ? # \` ends the host, the last `@` before it ends a user. None for any
+/// other address, a host missing, or a port that does not read.
+pub(crate) fn origin_parts(url: &str) -> Option<(&'static str, String, u16)> {
+    let (scheme, default, rest) = if url.get(..8).is_some_and(|s| s.eq_ignore_ascii_case("https://")) {
+        ("https", 443, &url[8..])
+    } else if url.get(..7).is_some_and(|s| s.eq_ignore_ascii_case("http://")) {
+        ("http", 80, &url[7..])
+    } else {
+        return None;
+    };
+    let authority = &rest[..rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len())];
+    let authority = &authority[authority.rfind('@').map_or(0, |at| at + 1)..];
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(inside) => {
+            let close = inside.find(']')?;
+            (&authority[..close + 2], &inside[close + 1..])
+        }
+        None => authority.split_at(authority.find(':').unwrap_or(authority.len())),
+    };
+    let port = match port.strip_prefix(':') {
+        None if port.is_empty() => default,
+        Some(digits) if (1..=5).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) => digits.parse().ok()?,
+        _ => return None,
+    };
+    (!host.is_empty()).then(|| (scheme, host.to_lowercase(), port))
+}
+
+/// The origin of a page at `url` as its own `location.origin` says it: the
+/// scheme, the host, and the port unless it is the scheme's own
+/// ("https://example.org", "https://example.org:8443", "http://192.168.1.1").
+/// The address as a web view commits it: a name in other alphabets in its
+/// "xn--" form. None for an address that is not http or https.
+pub(crate) fn web_origin(url: &str) -> Option<String> {
+    let (scheme, host, port) = origin_parts(url)?;
+    let own = if scheme == "https" { 443 } else { 80 };
+    Some(if port == own { format!("{scheme}://{host}") } else { format!("{scheme}://{host}:{port}") })
 }
 
 /// The vault, open for the session: its logins, in memory only (wiped when
@@ -898,10 +953,37 @@ pub(crate) fn login(shared: &Shared, url: &str, id: &str) -> Result<Login, &'sta
 }
 
 /// The whole call that fills one login of the vault into the page at `url`
-/// (`fill_call`), or the id of the words that say why not (`login`).
+/// (`fill_call`), for that page's origin alone, or the id of the words that
+/// say why not: "site-screen-fill-https" for an address that is not a web
+/// page's, else `login`'s.
 pub(crate) fn fill_for(shared: &Shared, url: &str, id: &str) -> Result<String, &'static str> {
+    fill_at(shared, url, url, id)
+}
+
+/// `fill_for`, the origin read from `committed`, the page's address with
+/// its host in ASCII (a computer's page hands the address as Qt shows it,
+/// a name in other alphabets in its own letters, which the login's memory
+/// is kept by).
+fn fill_at(shared: &Shared, url: &str, committed: &str, id: &str) -> Result<String, &'static str> {
+    let origin = web_origin(committed).ok_or("site-screen-fill-https")?;
     let login = login(shared, url, id)?;
-    Ok(fill_call(&login.username, &login.password, &login.code))
+    Ok(fill_call(&origin, &login.username, &login.password, &login.code))
+}
+
+/// A computer's Sites page fills one login of the vault into its page
+/// (SitesPage.qml, `fillChosen`), with the same guarded call as a phone's
+/// screen: {"call"}, run as it is by the page's web view, or {"error"}; kept
+/// as the site's choice. `committed`: the page's address with its host in
+/// ASCII (QUrl's encoded form). The call's own text is wiped once quoted.
+pub(crate) fn bitwarden_fill(shared: &Shared, url: &str, committed: &str, id: &str) -> String {
+    match fill_at(shared, url, committed, id) {
+        Ok(mut call) => {
+            let answer = serde_json::json!({ "call": call }).to_string();
+            wipe(&mut call);
+            answer
+        }
+        Err(id) => serde_json::json!({ "error": tr().text(id, None) }).to_string(),
+    }
 }
 
 /// One login of the vault, for a site: {"name", "username", "password",
@@ -949,40 +1031,146 @@ mod tests {
         assert!(!bitwarden_lock_if_idle(&shared, 5, jiff::Timestamp::now().as_second()));
     }
 
-    /// One fill script for every device (21 November 2026): the computer's
-    /// Sites page takes it from Rust, keeps no copy of its own and calls it
-    /// as before; the window's invokable gives this constant.
+    /// One fill call for every device (22 November 2026): the computer's
+    /// Sites page takes Rust's whole guarded call (`bitwardenFill`), keeps
+    /// no script of its own, and runs the call as given.
     #[test]
-    fn the_computer_s_page_takes_the_fill_script_from_rust() {
+    fn the_computer_s_page_takes_the_whole_call_from_rust() {
         let page = include_str!("../qml/SitesPage.qml");
-        assert!(page.contains("readonly property string fillScript: page.sioul.fillScript()"));
-        assert!(!page.contains("querySelector"), "no copy of the script in the page");
-        assert!(page.contains(r#"view.runJavaScript("(" + page.fillScript + ")(" + JSON.stringify(user) + ", " + JSON.stringify(password) + ", " + JSON.stringify(code || "") + ")")"#), "called as before");
-        assert!(include_str!("backend.rs").contains("fn fill_script(&self) -> QString {\n        QString::from(crate::sites::FILL_SCRIPT)\n    }"));
-        assert!(FILL_SCRIPT.starts_with("function (user, password, code) {") && FILL_SCRIPT.ends_with("return !!(name || secret);\n    }"));
+        assert!(!page.contains("querySelector") && !page.contains("fillScript"), "no copy of the script in the page");
+        assert!(page.contains("const fill = JSON.parse(page.sioul.bitwardenFill(view.url.toString(), item))"));
+        assert!(page.contains("view.runJavaScript(fill.call)"), "run as Rust built it");
+        assert_eq!(page.matches("view.runJavaScript(").count(), 1, "the page runs no other script in a site's page");
+        let backend = include_str!("backend.rs");
+        assert!(!backend.contains("fn fill_script("), "the bare script is handed to no page");
+        assert!(backend.contains("crate::sites::bitwarden_fill(&self.shared(), &url.to_string(), &encoded, &id.to_string())"));
     }
 
-    /// The call a phone's screen runs is Rust's whole: whatever a password
-    /// holds (quotes, a backslash, an apostrophe, `</script>`, the line
-    /// separators, line breaks, a null, a template's marks), the three values
-    /// come back intact when the call's arguments are read as JSON, and none
-    /// of it is left raw to end a string, a line or a script.
+    /// The script is strict from its first statement (review of 22 November
+    /// 2026, finding 6), so that a page's function it calls cannot read its
+    /// caller's arguments (the password, the one-time code); otherwise word
+    /// for word the computer's script of 21 November 2026.
+    #[test]
+    fn the_script_is_strict_from_its_first_statement() {
+        assert!(FILL_SCRIPT.starts_with("function (user, password, code) {\n        'use strict';\n        const set = "), "'use strict' first, as the directive of the function");
+        assert!(FILL_SCRIPT.ends_with("return !!(name || secret);\n    }"));
+        assert_eq!(FILL_SCRIPT.matches("'use strict'").count(), 1);
+        assert_eq!(FILL_SCRIPT.len(), 1335 + "\n        'use strict';".len(), "the computer's 1335 bytes and the one line");
+    }
+
+    /// Each page asked for is held to its own origin (review of 22 November
+    /// 2026, finding 1): the call begins with the guard, its first argument
+    /// the origin of the address the login was asked for, as the page's
+    /// `location.origin` says it: the scheme's own port left out, another
+    /// kept, an IPv6 host in its brackets, a user dropped, lower case; http
+    /// too (a computer's page on a router), nothing for another scheme.
+    #[test]
+    fn the_call_runs_only_at_the_origin_asked() {
+        let call = fill_call("https://bank.example.org", "jane", "pass", "");
+        let guard = format!("(function (origin, user, password, code) {{ if (location.origin !== origin) return false; return ({FILL_SCRIPT})(user, password, code); }})(");
+        assert!(call.starts_with(&guard), "the guard first, the script inside it");
+        assert_eq!(&call[guard.len()..], "\"https://bank.example.org\", \"jane\", \"pass\", \"\")");
+        for (url, origin) in [
+            ("https://bank.example.org/login?next=%2F", Some("https://bank.example.org")),
+            ("HTTPS://Bank.Example.org:443/x", Some("https://bank.example.org")),
+            ("https://jane@bank.example.org/", Some("https://bank.example.org")),
+            ("https://bank.example.org:8443/login", Some("https://bank.example.org:8443")),
+            ("https://bank.example.org\\@evil.example/", Some("https://bank.example.org")),
+            ("https://[::1]:8443/a", Some("https://[::1]:8443")),
+            ("https://[::1]/a", Some("https://[::1]")),
+            ("https://xn--bnk-qla.example/", Some("https://xn--bnk-qla.example")),
+            ("http://192.168.1.1/admin", Some("http://192.168.1.1")),
+            ("http://192.168.1.1:80/", Some("http://192.168.1.1")),
+            ("http://192.168.1.1:8080/", Some("http://192.168.1.1:8080")),
+            ("about:blank", None),
+            ("", None),
+            ("file:///home/someone/a.html", None),
+            ("javascript:alert(1)", None),
+            ("https://", None),
+            ("https://bank.example.org:99999/", None),
+            ("https://bank.example.org:/", None),
+        ] {
+            assert_eq!(web_origin(url).as_deref(), origin, "{url}");
+        }
+        // The login read for the address asked, its origin in the call.
+        sioul_core::config::stand_ins_only();
+        let shared = Shared::default();
+        let mut item = bitwarden::Item::default();
+        item.id = "a".into();
+        item.username = "jane".into();
+        item.password = "pass-a".into();
+        item.uris = vec!["https://bank.example.org:8443".into()];
+        *shared.bitwarden.lock().unwrap() = Some(Vault::of(vec![item]));
+        assert_eq!(fill_for(&shared, "https://bank.example.org:8443/login", "a"), Ok(fill_call("https://bank.example.org:8443", "jane", "pass-a", "")));
+        assert_eq!(fill_for(&shared, "about:blank", "a"), Err("site-screen-fill-https"), "no origin: nothing read from the vault");
+        // A computer's page: the memory by the address as Qt shows it, the origin by its ASCII form.
+        let answer: serde_json::Value = serde_json::from_str(&bitwarden_fill(&shared, "https://bänk.example/", "https://xn--bnk-qla.example/", "a")).unwrap();
+        assert_eq!(answer["call"].as_str(), Some(fill_call("https://xn--bnk-qla.example", "jane", "pass-a", "").as_str()));
+        let refused: serde_json::Value = serde_json::from_str(&bitwarden_fill(&shared, "about:blank", "about:blank", "a")).unwrap();
+        assert!(refused["call"].is_null() && refused["error"].as_str().is_some_and(|e| !e.is_empty()));
+    }
+
+    /// The call is Rust's whole: whatever a password holds (quotes, a
+    /// backslash, an apostrophe, `</script>`, the line separators, line
+    /// breaks, a null, a template's marks), the four values come back intact
+    /// when the call's arguments are read as JSON, and none of it is left raw
+    /// to end a string, a line or a script.
     #[test]
     fn nothing_in_a_password_can_change_the_call() {
         let password = "a\"b\\c'd</script><!--e\u{2028}f\u{2029}g\nh\ri\u{0}j${k}`l";
         let user = "jane\"</script>@example.org";
-        let call = fill_call(user, password, "123456");
-        let prefix = format!("({FILL_SCRIPT})(");
+        let call = fill_call("https://bank.example.org", user, password, "123456");
+        let prefix = format!("(function (origin, user, password, code) {{ if (location.origin !== origin) return false; return ({FILL_SCRIPT})(user, password, code); }})(");
         assert!(call.starts_with(&prefix) && call.ends_with(')'));
         let args = &call[prefix.len()..call.len() - 1];
-        let read: Vec<String> = serde_json::from_str(&format!("[{args}]")).expect("the arguments are three JSON strings");
-        assert_eq!(read, [user, password, "123456"]);
+        let read: Vec<String> = serde_json::from_str(&format!("[{args}]")).expect("the arguments are four JSON strings");
+        assert_eq!(read, ["https://bank.example.org", user, password, "123456"]);
         for raw in ["\n", "\r", "\u{2028}", "\u{2029}", "\u{0}", "<"] {
             assert!(!args.contains(raw), "{raw:?} left raw in the arguments");
         }
         // Each value one literal: its quotes are the only ones not escaped.
         let unescaped = args.char_indices().filter(|(at, c)| *c == '"' && args[..*at].chars().rev().take_while(|b| *b == '\\').count() % 2 == 0).count();
-        assert_eq!(unescaped, 6);
-        assert_eq!(fill_call("", "", ""), format!("({FILL_SCRIPT})(\"\", \"\", \"\")"));
+        assert_eq!(unescaped, 8);
+        assert_eq!(fill_call("", "", "", ""), format!("{prefix}\"\", \"\", \"\", \"\")"));
+    }
+
+    /// The calls tests/qml/tst_fillcall.qml runs in Qt's JavaScript engine,
+    /// with stand-ins for a page's `location` and `document`, as Rust builds
+    /// them now: invented logins, each with the address it was asked for.
+    fn calls_for_qml() -> String {
+        let cases = [
+            ("right", "https://jane@Bank.Example.org:443/login?next=%2F", "jane@example.org", "p\"a'ss\\</script>\u{2028}x\ny", "123456"),
+            ("port", "https://bank.example.org:8443/sign-in", "jane", "pass-port", ""),
+            ("ipv6", "https://[::1]:8443/sign-in", "jane", "pass-six", ""),
+            ("code", "https://bank.example.org/second-step", "jane", "pass-code", "654321"),
+        ];
+        let mut text = String::from(
+            "// SPDX-License-Identifier: GPL-3.0-or-later\n// Copyright © 2026 Aurélien Pierre\n\n// Made by crates/sioul-app/src/sites.rs (tests::the_page_s_engine_runs_rust_s_own_calls),\n// which fails while this file is not the calls Rust builds now: invented logins,\n// each with the address it was asked for and its call (sites::fill_call), run\n// by tst_fillcall.qml with stand-ins for a page.\n.pragma library\n\nvar cases = [\n",
+        );
+        for (name, url, user, password, code) in cases {
+            let origin = web_origin(url).unwrap_or_default();
+            let call = fill_call(&origin, user, password, code);
+            text.push_str(&format!(
+                "    {{ name: {}, url: {}, user: {}, password: {}, code: {}, call: {} }},\n",
+                js_text(name),
+                js_text(url),
+                js_text(user),
+                js_text(password),
+                js_text(code),
+                js_text(&call)
+            ));
+        }
+        text.push_str("];\n");
+        text
+    }
+
+    /// The guarded call as a page's engine runs it (tst_fillcall.qml): the
+    /// file it runs is the calls Rust builds now.
+    #[test]
+    fn the_page_s_engine_runs_rust_s_own_calls() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/qml/fillcalls.js");
+        let made = calls_for_qml();
+        let on_disk = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(on_disk == made, "tests/qml/fillcalls.js is not the calls Rust builds now: put the text between the lines in it, then run tools/qml-test.sh tst_fillcall.qml\n-----\n{made}-----");
     }
 }

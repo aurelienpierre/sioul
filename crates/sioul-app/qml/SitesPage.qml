@@ -472,28 +472,25 @@ Item {
         return true
     }
 
-    // One login of the vault, by its id, written into the open site's form.
+    // One login of the vault, by its id, written into the open site's form:
+    // Rust's whole call, the one a phone's site screen runs too (sites.rs,
+    // `fill_call`). It sets the password field and the name field before it
+    // as typing would, and only in a page still at the origin the login was
+    // asked for: the page's document checks its own origin first, so that a
+    // page that changed meanwhile gets nothing. Its values are quoted by
+    // Rust; the page keeps no script of its own.
     function fillChosen(item) {
         const view = page.viewOf(page.openId)
         if (view === null)
             return
-        const login = JSON.parse(page.sioul.bitwardenLogin(view.url.toString(), item))
-        if (login.error) {
-            page.problem = login.error
+        const fill = JSON.parse(page.sioul.bitwardenFill(view.url.toString(), item))
+        if (fill.error) {
+            page.problem = fill.error
             return
         }
         page.problem = ""
-        page.fillWith(view, login.username, login.password, login.code)
+        view.runJavaScript(fill.call)
     }
-
-    // Values through JSON, so nothing in them can change the script.
-    function fillWith(view, user, password, code) {
-        view.runJavaScript("(" + page.fillScript + ")(" + JSON.stringify(user) + ", " + JSON.stringify(password) + ", " + JSON.stringify(code || "") + ")")
-    }
-
-    // Sets the password field and the name field before it, as typing would:
-    // Rust's one script, which a phone's site screen runs too (sites.rs, `FILL_SCRIPT`).
-    readonly property string fillScript: page.sioul.fillScript()
 
     onVisibleChanged: if (page.visible) page.reload()
 

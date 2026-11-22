@@ -221,25 +221,7 @@ fn unfilled(why: &str) -> String {
 
 /// An https address's host (lower case, no user) and port (443 when unsaid); None otherwise.
 fn origin(url: &str) -> Option<(String, u16)> {
-    let rest = url.get(..8).filter(|scheme| scheme.eq_ignore_ascii_case("https://")).map(|_| &url[8..])?;
-    let end = rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len());
-    let authority = &rest[..end];
-    let authority = &authority[authority.rfind('@').map_or(0, |at| at + 1)..];
-    let (host, port) = if let Some(inside) = authority.strip_prefix('[') {
-        let close = inside.find(']')?;
-        (&authority[..close + 2], &inside[close + 1..])
-    } else {
-        match authority.find(':') {
-            Some(colon) => (&authority[..colon], &authority[colon..]),
-            None => (authority, ""),
-        }
-    };
-    let port = match port.strip_prefix(':') {
-        None if port.is_empty() => 443,
-        Some(digits) if !digits.is_empty() && digits.len() <= 5 && digits.bytes().all(|b| b.is_ascii_digit()) => digits.parse().ok()?,
-        _ => return None,
-    };
-    (!host.is_empty()).then(|| (host.to_lowercase(), port))
+    crate::sites::origin_parts(url).filter(|(scheme, ..)| *scheme == "https").map(|(_, host, port)| (host, port))
 }
 
 /// Whether two addresses are the same https origin: scheme, host and port
@@ -412,7 +394,7 @@ mod tests {
         let now = 1_000_000;
         let mut fills = Fills::new();
         let filled = fills.ask(Some(&shared), true, "https://bank.example.org/login", Mode::Fill, now);
-        assert_eq!(call(&filled), fill_call("jane@example.org", "pass-one", ""));
+        assert_eq!(call(&filled), fill_call("https://bank.example.org", "jane@example.org", "pass-one", ""), "held to the origin asked");
         assert!(fills.waiting(now).is_none(), "filled at once: nothing asked of the window");
 
         let through = |vault: Option<&Shared>, url: &str, mode: Mode| {
@@ -470,7 +452,7 @@ mod tests {
         assert!(!fills.chosen(serial, "b", now) && !fills.cancelled(serial), "answered once");
         assert!(fills.waiting(now).is_none());
         let taken = fills.take(Some(&shared), "https://FORUM.example.net:443/inbox#top", now + 30);
-        assert_eq!(call(&taken), fill_call("jane", "p\"a'ss</script>\u{2028}", ""));
+        assert_eq!(call(&taken), fill_call("https://forum.example.net", "jane", "p\"a'ss</script>\u{2028}", ""), "held to the origin asked, not the page's now");
         assert_eq!(fills.take(Some(&shared), asked, now + 31), Answer::Nothing, "one use");
 
         let late = choose(&mut fills, now);
@@ -518,7 +500,7 @@ mod tests {
     /// same; the window, waiting, words, nothing. Printed, a call never shows.
     #[test]
     fn the_answer_reads_as_json_and_never_prints_its_call() {
-        let call = fill_call("jane", "s3cret\"\\</script>", "");
+        let call = fill_call("https://bank.example.org", "jane", "s3cret\"\\</script>", "");
         let read: serde_json::Value = serde_json::from_str(&Answer::Call(call.clone()).json()).unwrap();
         assert_eq!(read["call"].as_str(), Some(call.as_str()));
         assert_eq!(serde_json::from_str::<serde_json::Value>(&Answer::Window.json()).unwrap(), serde_json::json!({ "window": true }));
