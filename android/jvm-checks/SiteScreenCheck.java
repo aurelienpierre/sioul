@@ -690,7 +690,8 @@ public final class SiteScreenCheck
         String fromContext = "context.startActivity(new Intent(context, SiteScreen.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));";
         expect("the screen that asked brought back by reordering, never a new one, nothing when it is gone", back.contains("if (askingWindow() == null)") && !back.contains("putExtra") && !back.contains("CLEAR_TOP"));
         expect("from the window's own activity, on its main thread, the flag alone", back.indexOf("Activity window = theWindow();") >= 0 && back.indexOf("window.runOnUiThread(() -> {") > back.indexOf("Activity window = theWindow();") && back.indexOf(fromWindow) > back.indexOf("window.runOnUiThread(() -> {"));
-        expect("from the application's context only where the window's activity is not known", back.indexOf(fromContext) > back.indexOf(fromWindow) && back.indexOf("if (window != null) {") < back.indexOf(fromWindow));
+        expect("from the application's context only where the window's activity is not known", back.indexOf(fromContext) > back.indexOf(fromWindow) && back.indexOf("if (window != null) {") >= 0 && back.indexOf("if (window != null) {") < back.indexOf(fromWindow)
+            && back.indexOf("return true;") > back.indexOf(fromWindow) && back.indexOf("return true;") < back.indexOf(fromContext));
         expect("reordering in those three places alone", screen.split("FLAG_ACTIVITY_REORDER_TO_FRONT", -1).length - 1 == 3 && !web.contains("FLAG_ACTIVITY_REORDER_TO_FRONT"));
         String watch = body(screen, "private static final class WindowWatch implements android.app.Application.ActivityLifecycleCallbacks", "    ");
         expect("the window's activity kept as Android resumes it, by the launcher's component alone, let go as it is destroyed", body(watch, "public void onActivityResumed(Activity activity)", "        ").contains("if (window.equals(activity.getComponentName())) {")
