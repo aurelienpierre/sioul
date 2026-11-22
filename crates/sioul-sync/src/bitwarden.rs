@@ -751,6 +751,44 @@ pub fn domain_of_address(address: &str) -> String {
     domain(&sioul_core::sites::host_of(address.trim()))
 }
 
+/// A web address's host and port, as a login's site is held against a page
+/// for a fill made at once: the host in lower case, never folded
+/// ("société.example" is not "societe.example"), an IPv6 address in its
+/// brackets, a user before it dropped; the port written, else the scheme's
+/// own (443, 80 for "http://"); an address without a scheme is https's.
+/// As a browser reads it, the first of `/ ? # \` ends the host. None for an
+/// app's address, a pattern, no host, or a port that does not read.
+fn place(uri: &str) -> Option<(String, u16)> {
+    let uri = uri.trim();
+    let (default, rest) = match uri.split_once("://") {
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("https") => (443, rest),
+        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("http") => (80, rest),
+        Some(_) => return None,
+        None => (443, uri),
+    };
+    let authority = &rest[..rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len())];
+    let authority = &authority[authority.rfind('@').map_or(0, |at| at + 1)..];
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(inside) => {
+            let close = inside.find(']')?;
+            (&authority[..close + 2], &inside[close + 1..])
+        }
+        None => authority.split_at(authority.find(':').unwrap_or(authority.len())),
+    };
+    let port = match port.strip_prefix(':') {
+        None if port.is_empty() => default,
+        Some(digits) if (1..=5).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) => digits.parse().ok()?,
+        _ => return None,
+    };
+    (!host.is_empty()).then(|| (host.to_lowercase(), port))
+}
+
+/// Whether two hosts are one site's own: the same, or the same once one
+/// leading "www." is taken off either.
+fn same_host(a: &str, b: &str) -> bool {
+    a == b || a.strip_prefix("www.") == Some(b) || b.strip_prefix("www.") == Some(a)
+}
+
 /// Case and accents aside, as everywhere in Sioul (`text::fold_char`).
 fn folded(text: &str) -> String {
     text.chars().map(sioul_core::text::fold_char).collect()
@@ -783,13 +821,25 @@ struct Searched {
     domains: Vec<String>,
     /// Its sites as shown: `hosts` before folding.
     shown: Vec<String>,
+    /// Its sites as hosts and ports, unfolded (`place`): what a fill made at
+    /// once and the chooser's "for <host>" hold against the page.
+    places: Vec<(String, u16)>,
 }
 
 impl Searched {
     fn of(item: &Item) -> Searched {
         let shown = hosts_of(item);
         let hosts: Vec<String> = shown.iter().map(|h| folded(h)).collect();
-        Searched { name: folded(&item.name), user: folded(&item.username), domains: hosts.iter().map(|h| domain(h)).collect(), hosts, shown }
+        let places = item.uris.iter().filter_map(|uri| place(uri)).collect();
+        Searched { name: folded(&item.name), user: folded(&item.username), domains: hosts.iter().map(|h| domain(h)).collect(), hosts, shown, places }
+    }
+
+    /// Whether it is made for the page's own host at the page's port, not
+    /// only for its rough domain (`same_host`): "club-a.asso.fr" is not for
+    /// "club-b.asso.fr", nor "mine.github.io" for "other.github.io", nor
+    /// port 443 for 8443.
+    fn serves(&self, page: &Page) -> bool {
+        page.place.as_ref().is_some_and(|(host, port)| self.places.iter().any(|(h, p)| p == port && same_host(h, host)))
     }
 
     /// How near the page its sites are: 0 its host, 1 its domain, 2 neither;
@@ -812,12 +862,15 @@ impl Searched {
 struct Page {
     host: String,
     domain: String,
+    /// Its host and port, unfolded (`place`); None without an http or https address.
+    place: Option<(String, u16)>,
 }
 
 impl Page {
     fn of(url: &str) -> Page {
         let host = folded(&sioul_core::sites::host_of(url.trim()));
-        Page { domain: domain(&host), host }
+        let at = if url.trim().contains("://") { place(url) } else { None };
+        Page { domain: domain(&host), host, place: at }
     }
 }
 
@@ -901,6 +954,8 @@ struct Hit {
     login: usize,
     by: Option<By>,
     site: usize,
+    /// Made for the page's own host (`Searched::serves`).
+    own: bool,
 }
 
 /// A login found by a search.
@@ -910,7 +965,9 @@ pub struct Found<'a> {
     pub by: Option<By>,
     /// Its site to show: the one that matched, else the page's, else its first ("" without one).
     pub site: String,
-    /// Made for the page's own domain (`find`'s `page`).
+    /// Made for the page's own host at its port (`find`'s `page`): one
+    /// leading "www." aside, never only its rough domain. Else the chooser
+    /// says which host it is for, so that a look-alike or a sister host shows.
     pub own: bool,
 }
 
@@ -923,8 +980,9 @@ pub struct Opening {
     /// field's first text instead, the page's own domain when that login is
     /// made for it.
     pub chosen: String,
-    /// The login filled at once: the page's only one, unless another was
-    /// chosen there last.
+    /// The login filled at once: the page's only one, made for the page's
+    /// own host at its port (`Searched::serves`), or chosen last on this
+    /// very host; never when another was chosen there last.
     pub only: Option<String>,
 }
 
@@ -945,15 +1003,23 @@ impl Logins {
     }
 
     /// What the chooser opens with for a page, and what "Fill the login" fills
-    /// at once; `last` is the login chosen there last.
+    /// at once; `last` is the login chosen there last, remembered by host.
+    /// The page's rough domain alone never fills at once (decided 22 November
+    /// 2026): "club-a.asso.fr" and "club-b.asso.fr" are two associations,
+    /// "mine.github.io" and "other.github.io" two people. A login made for
+    /// another host of the domain opens the chooser once, which says which
+    /// host it is for; chosen there, it is remembered for this host and
+    /// fills at once from then on.
     pub fn opening(&self, page: &str, last: Option<&str>) -> Opening {
-        let own = self.for_site(page);
+        let at = Page::of(page);
+        let own: Vec<usize> = self.at_site(&at).into_iter().map(|(_, n)| n).collect();
         let last = last.and_then(|id| self.items.iter().find(|item| item.id == id));
         let only = match (own.as_slice(), last) {
-            ([one], None) => Some(one.id.clone()),
-            ([one], Some(last)) if last.id == one.id => Some(one.id.clone()),
+            ([one], None) if self.searched[*one].serves(&at) => Some(self.items[*one].id.clone()),
+            ([one], Some(last)) if last.id == self.items[*one].id => Some(last.id.clone()),
             _ => None,
         };
+        let own: Vec<&Item> = own.into_iter().map(|n| &self.items[n]).collect();
         let domain = domain_of_address(page);
         let chosen = match last {
             Some(last) if own.iter().any(|item| item.id == last.id) => domain.clone(),
@@ -965,10 +1031,15 @@ impl Logins {
 
     /// The logins for a page: those made for its domain, its own host first.
     pub fn for_site(&self, page: &str) -> Vec<&Item> {
-        let page = Page::of(page);
-        let mut found: Vec<(u8, &Item)> = self.items.iter().zip(&self.searched).map(|(item, s)| (s.nearness(&page).0, item)).filter(|(near, _)| *near < 2).collect();
+        self.at_site(&Page::of(page)).into_iter().map(|(_, n)| &self.items[n]).collect()
+    }
+
+    /// The logins made for a page's rough domain, by their place in the
+    /// vault, its own host first: (nearness, place).
+    fn at_site(&self, page: &Page) -> Vec<(u8, usize)> {
+        let mut found: Vec<(u8, usize)> = self.searched.iter().enumerate().map(|(n, s)| (s.nearness(page).0, n)).filter(|(near, _)| *near < 2).collect();
         found.sort_by_key(|(near, _)| *near);
-        found.into_iter().map(|(_, item)| item).collect()
+        found
     }
 
     /// The logins by site and by user name, each optional, both matching when
@@ -1020,7 +1091,7 @@ impl Logins {
             let (near, at_page) = login.nearness(&page);
             let by = matched.map(|(by, _)| by);
             let site = matched.and_then(|(_, site)| site).or(by_provider).or(at_page).unwrap_or(0);
-            hits.push(Hit { key: (first != Some(item.id.as_str()), by, near, words.is_empty() || login.user != whole), login: at, by, site });
+            hits.push(Hit { key: (first != Some(item.id.as_str()), by, near, words.is_empty() || login.user != whole), login: at, by, site, own: login.serves(&page) });
         }
         let total = hits.len();
         let order = |a: &Hit, b: &Hit| {
@@ -1036,7 +1107,7 @@ impl Logins {
         hits.sort_unstable_by(order);
         let found = hits
             .into_iter()
-            .map(|hit| Found { item: &self.items[hit.login], by: hit.by, site: self.searched[hit.login].shown.get(hit.site).cloned().unwrap_or_default(), own: hit.key.2 < 2 })
+            .map(|hit| Found { item: &self.items[hit.login], by: hit.by, site: self.searched[hit.login].shown.get(hit.site).cloned().unwrap_or_default(), own: hit.own })
             .collect();
         (found, total)
     }
@@ -1401,6 +1472,74 @@ mod tests {
         assert_eq!(opening("https://imap.gmail.com", Some("google")), ("gmail.com".into(), "google.com".into(), None));
         // A login without a site chosen last: no domain to begin with.
         assert_eq!(opening("https://www.impots.gouv.fr", Some("impots")), ("impots.gouv.fr".into(), "".into(), None));
+    }
+
+    /// A login fills at once only on its own host at its port (review of
+    /// 22 November 2026, finding 2): the page's rough domain is not enough
+    /// where people register under a longer suffix (asso.fr) or a host
+    /// gives each customer a name (github.io). One leading "www." aside;
+    /// the port written, else the scheme's own; a name in other alphabets
+    /// is not its folded look-alike. The login chosen last on this very
+    /// host fills at once. The chooser says "for <host>" for every login
+    /// not made for the page's own host.
+    #[test]
+    fn a_login_fills_at_once_on_its_own_host_alone() {
+        let login = |id: &str, uris: &[&str]| {
+            let mut item = Item::default();
+            item.id = id.into();
+            item.name = id.into();
+            item.username = "jane".into();
+            item.uris = uris.iter().map(|u| u.to_string()).collect();
+            item
+        };
+        let only = |uris: &[&str], page: &str, last: Option<&str>| Logins::new(vec![login("one", uris)]).opening(page, last).only;
+        let one = Some("one".to_string());
+        // Another association, another person's pages: the chooser, once.
+        assert_eq!(only(&["https://club-a.asso.fr/login"], "https://club-b.asso.fr/login", None), None);
+        assert_eq!(only(&["mine.github.io"], "https://other.github.io/", None), None);
+        // Chosen there: remembered for that host, at once from then on.
+        assert_eq!(only(&["https://club-a.asso.fr/login"], "https://club-b.asso.fr/login", Some("one")), one);
+        // Its own host, at once.
+        assert_eq!(only(&["https://club-a.asso.fr/login"], "https://club-a.asso.fr/members", None), one);
+        assert_eq!(only(&["mine.github.io"], "https://mine.github.io/blog", None), one);
+        assert_eq!(only(&["https://Club-A.Asso.fr"], "https://club-a.asso.fr/", None), one, "case aside");
+        // One leading "www." aside, either way; a sister host is not.
+        assert_eq!(only(&["example.org"], "https://www.example.org/", None), one);
+        assert_eq!(only(&["https://www.example.org/sign-in"], "https://example.org/", None), one);
+        assert_eq!(only(&["https://login.example.org"], "https://www.example.org/", None), None);
+        assert_eq!(only(&["https://www.example.org"], "https://login.example.org/", None), None);
+        // The port: written, else the scheme's own.
+        assert_eq!(only(&["https://example.org:8443"], "https://example.org/", None), None);
+        assert_eq!(only(&["https://example.org:8443/app"], "https://example.org:8443/app/login", None), one);
+        assert_eq!(only(&["example.org:443"], "https://example.org/", None), one);
+        assert_eq!(only(&["http://example.org"], "https://example.org/", None), None, "http's port is 80");
+        assert_eq!(only(&["http://192.168.1.1"], "http://192.168.1.1/admin", None), one);
+        assert_eq!(only(&["https://[::1]:8443/"], "https://[::1]:8443/a", None), one);
+        assert_eq!(only(&["https://[::1]:8443/"], "https://[::1]/a", None), None);
+        // A user before the host, a backslash after it: as a browser reads them.
+        assert_eq!(only(&["https://example.org"], "https://jane@example.org/", None), one);
+        assert_eq!(only(&["https://example.org"], "https://example.org\\@evil.example/", None), one);
+        assert_eq!(only(&["https://example.org"], "https://example.org.evil.example/", None), None);
+        // Accents count: a folded look-alike is not the host.
+        assert_eq!(only(&["https://société.example"], "https://societe.example/", None), None);
+        assert_eq!(only(&["https://xn--socit-esa.example"], "https://xn--socit-esa.example/", None), one);
+        // An app's address or a pattern is no host.
+        assert_eq!(only(&["androidapp://org.example.app", "^https://example\\.org/.*"], "https://example.org/", None), None);
+        // Two logins for the domain: still the chooser, even when one is the host's.
+        let two = Logins::new(vec![login("a", &["https://club-a.asso.fr"]), login("b", &["https://club-b.asso.fr"])]);
+        assert_eq!(two.opening("https://club-b.asso.fr/", None).only, None);
+        // The chooser: "for <host>" for any login not made for the page's own host.
+        let vault = Logins::new(vec![login("a", &["https://club-a.asso.fr"]), login("w", &["example.org"]), login("p", &["https://example.org:8443"])]);
+        let own = |site: &str, page: &str| search(&vault, site, "", page, None).into_iter().map(|f| (f.item.id.clone(), f.own)).collect::<Vec<_>>();
+        assert_eq!(own("asso.fr", "https://club-b.asso.fr/"), [("a".to_string(), false)]);
+        assert_eq!(own("asso.fr", "https://club-a.asso.fr/"), [("a".to_string(), true)]);
+        assert_eq!(own("example.org", "https://www.example.org/"), [("p".to_string(), false), ("w".to_string(), true)]);
+        assert!(own("example.org", "").iter().all(|(_, own)| !own), "no page: no host to be made for");
+        assert_eq!(place("https://jane@Example.org:8443/x?y#z"), Some(("example.org".into(), 8443)));
+        assert_eq!(place("example.org"), Some(("example.org".into(), 443)));
+        for none in ["", "https://", "https://example.org:", "https://example.org:99999", "https://example.org:x/", "ftp://example.org", "https://[::1/"] {
+            assert_eq!(place(none), None, "{none:?}");
+        }
     }
 
     #[test]

@@ -5747,6 +5747,7 @@ bitwarden-choose-more = { $count ->
    *[other] Encore { $count } identifiants : précisez la recherche.
 }
 bitwarden-choose-other-site = pour { $site }
+bitwarden-choose-fills-in = Remplit la page de { $host }
 bitwarden-choose-fill = Remplir
 task-office-open = Ouvert du
 task-office-to = au

@@ -63,10 +63,16 @@ pub struct Site {
     pub personal: bool,
 }
 
-/// The host of an address: `https://mail.proton.me/u/0` → `mail.proton.me`.
+/// The host of an address: `https://mail.proton.me/u/0` → `mail.proton.me`;
+/// an IPv6 address in its brackets (`https://[::1]:8443/` → `[::1]`). As a
+/// browser reads it, a backslash ends the host as a slash does.
 pub fn host_of(url: &str) -> String {
     let rest = url.split("://").nth(1).unwrap_or(url);
-    rest.split(['/', '?', '#']).next().unwrap_or("").split('@').next_back().unwrap_or("").split(':').next().unwrap_or("").to_lowercase()
+    let authority = rest.split(['/', '?', '#', '\\']).next().unwrap_or("").split('@').next_back().unwrap_or("");
+    match authority.strip_prefix('[').and_then(|inside| inside.find(']')) {
+        Some(close) => authority[..close + 2].to_lowercase(),
+        None => authority.split(':').next().unwrap_or("").to_lowercase(),
+    }
 }
 
 /// A site's address as compared with another's: its host, path and query,
@@ -302,6 +308,11 @@ mod tests {
         assert!(announcing(&all, "jane@example.org").is_none());
         assert_eq!(domain_of("secure.bank.example.co.uk"), "example.co.uk");
         assert_eq!(host_of("https://user@app.element.io:443/#/room"), "app.element.io");
+        // An IPv6 address is its own host, not "[" (review of 22 November 2026); a backslash ends the host.
+        assert_eq!(host_of("https://[::1]:8443/a"), "[::1]");
+        assert_eq!(host_of("https://[FE80::1]/"), "[fe80::1]");
+        assert_eq!(host_of("https://bank.example.org\\@evil.example/"), "bank.example.org");
+        assert_eq!(host_of("ameli.fr/compte"), "ameli.fr");
         let mut notices = Notices::default();
         notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 1, told: false });
         notices.add(Notice { site: "element".into(), title: "Jane".into(), text: "Lunch?".into(), at: 2, told: false });

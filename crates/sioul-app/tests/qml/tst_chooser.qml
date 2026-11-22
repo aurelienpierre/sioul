@@ -5,7 +5,8 @@
 // The search's own rules are tested in sioul-sync (bitwarden.rs, the fixture
 // vault); here the window's side: what the two fields hold when it opens, the
 // pause before searching, Tab, Enter, Escape, the arrows, the buttons that
-// empty a field, the status line, the warning for another domain, the layout
+// empty a field, the status line, the warning for another host, the line
+// that names the page a site's fill goes to (not for an account), the layout
 // at 1000 and 412 px, in English and French. Run by tools/qml-test.sh. To see
 // the dialog, set `pictures` below to a folder (a change of your own, not to
 // commit): each step saves its picture there.
@@ -56,6 +57,7 @@ Item {
                 "bitwarden-choose-nothing-both": "No login has both: empty one of the fields to see more.",
                 "bitwarden-choose-more": "{count} more logins: narrow the search.",
                 "bitwarden-choose-other-site": "for {site}",
+                "bitwarden-choose-fills-in": "Fills the page on {host}",
                 "bitwarden-choose-fill": "Fill",
                 "ui-cancel": "Cancel"
             },
@@ -71,6 +73,7 @@ Item {
                 "bitwarden-choose-nothing-both": "Aucun identifiant n’a les deux : videz l’un des champs pour en voir plus.",
                 "bitwarden-choose-more": "Encore {count} identifiants : précisez la recherche.",
                 "bitwarden-choose-other-site": "pour {site}",
+                "bitwarden-choose-fills-in": "Remplit la page de {host}",
                 "bitwarden-choose-fill": "Remplir",
                 "ui-cancel": "Annuler"
             }
@@ -83,7 +86,7 @@ Item {
             return mock.text(key).replace("{" + name + "}", value)
         }
         function bitwardenSite(url) {
-            return JSON.stringify({ domain: "ameli.fr", chosen: mock.chosenDomain, only: "" })
+            return JSON.stringify({ domain: "ameli.fr", host: url.split("/")[2] || "", chosen: mock.chosenDomain, only: "" })
         }
         // A large vault: answered later, by `bitwardenFound`, the newest first
         // (answers may come back out of order).
@@ -177,7 +180,11 @@ Item {
             return walk(field, i => i !== field && i.icon !== undefined && i.icon.name === "edit-clear", [])[0] || null
         }
         function statusLine() {
-            return walk(popupItem(), i => i.wrapMode !== undefined && i.wrapMode === Text.Wrap && i.text !== undefined, [])[0] || null
+            return walk(popupItem(), i => i.wrapMode !== undefined && i.wrapMode === Text.Wrap && i.text !== undefined && i.objectName !== "fillsIn", [])[0] || null
+        }
+        // The first line, naming the page a site's fill goes to.
+        function fillsInLine() {
+            return walk(popupItem(), i => i.objectName === "fillsIn", [])[0] || null
         }
         function labelsWith(text) {
             return walk(popupItem(), i => i.text !== undefined && typeof i.text === "string" && i.text.indexOf(text) >= 0 && i.font !== undefined && i.placeholderText === undefined, [])
@@ -362,6 +369,27 @@ Item {
             compare(statusLine().text, "3 more logins: narrow the search.")
         }
 
+        // Opened for a site's fill, its first line names the page's host, which
+        // a phone's window covers; opened for an account, no such line.
+        function test_a_site_s_fill_names_the_host_it_goes_to() {
+            chooser.begin("https://assure.ameli.fr/PortailAS/x")
+            tryCompare(chooser, "opened", true)
+            verify(fillsInLine().visible)
+            compare(fillsInLine().text, "Fills the page on assure.ameli.fr")
+            compare(fillsInLine().textFormat, Text.PlainText, "a host is never read as markup")
+            verify(fillsInLine().mapToItem(popupItem(), 0, 0).y < siteField().mapToItem(popupItem(), 0, 0).y, "above the fields")
+            chooser.close()
+            tryCompare(chooser, "visible", false)
+            mock.language = "fr"
+            chooser.begin("https://club-b.asso.fr/")
+            compare(fillsInLine().text, "Remplit la page de club-b.asso.fr")
+            chooser.close()
+            tryCompare(chooser, "visible", false)
+            chooser.beginForAccount("https://imap.gmail.com", "aurore@example.com")
+            tryCompare(chooser, "opened", true)
+            verify(!fillsInLine().visible, "an account's password fills no page")
+        }
+
         function test_another_domain_is_said() {
             chooser.begin("https://ameli.fr")
             chooser.site = ""
@@ -371,7 +399,7 @@ Item {
             const warned = labelsWith("for accounts.google.com")
             compare(warned.length, 1)
             compare(String(warned[0].color), String(testTheme.warm))
-            const own = labelsWith("ameli.fr")
+            const own = labelsWith("ameli.fr").filter(label => label.objectName !== "fillsIn")
             compare(own.length, 0, "the list holds Gmail's two, no ameli.fr")
             save("user-desktop-en")
             chooser.warnElsewhere = false

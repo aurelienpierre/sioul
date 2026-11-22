@@ -5711,6 +5711,7 @@ bitwarden-choose-more = { $count ->
    *[other] { $count } more logins: narrow the search.
 }
 bitwarden-choose-other-site = for { $site }
+bitwarden-choose-fills-in = Fills the page on { $host }
 bitwarden-choose-fill = Fill
 task-office-open = Open from
 task-office-to = to

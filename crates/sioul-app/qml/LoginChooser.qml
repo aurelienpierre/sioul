@@ -7,8 +7,10 @@
 // Opened for a site, Site holds its domain, or that of the login chosen
 // there last; for a mail account, User name holds the name it logs in with
 // (its address, unless it names another). Names, user names and sites only
-// here: a password leaves the vault for the one login chosen. A login made
-// for another domain than the page's says which.
+// here: a password leaves the vault for the one login chosen. A login not
+// made for the page's own host says which host it is for; opened for a
+// site's fill, its first line names the host that will be filled, which a
+// phone's window covers (review of 22 November 2026, finding 7).
 
 pragma ComponentBehavior: Bound
 
@@ -25,10 +27,12 @@ SafeDialog {
     required property var theme
     // The address the logins are for: a site's page, or a mail account's server.
     property string url: ""
-    // A login made for another domain than the page's said in the warm colour,
-    // so a look-alike site shows; not for a mail account, whose server is
-    // seldom where its provider's login is kept (imap.gmail.com, accounts.google.com).
+    // A login not made for the page's own host said in the warm colour, so a
+    // look-alike or a sister site shows; not for a mail account, whose server
+    // is seldom where its provider's login is kept (imap.gmail.com, accounts.google.com).
     property bool warnElsewhere: true
+    // The host the login chosen will be filled in, opened for a site's page; "" otherwise.
+    property string fillsIn: ""
     // What the last search found, and what it asked.
     property var shown: ({ found: [], more: 0, error: "", asked: false, both: false })
     // A large vault is searched off the window's thread: the search waited
@@ -50,9 +54,11 @@ SafeDialog {
     signal chosen(string item)
 
     // Opened for a site's page: Site holds its domain, or the domain of the
-    // login chosen there last (one made for another site: a sign-in with Google).
+    // login chosen there last (one made for another site: a sign-in with
+    // Google); the first line names the page's host.
     function begin(url) {
         const first = chooser.first(url)
+        chooser.fillsIn = first.host || ""
         chooser.start(url, first.chosen || first.domain || "", "")
     }
 
@@ -64,6 +70,7 @@ SafeDialog {
     // murena.io), and with both fields matching it would hide the very login
     // looked for. The server's own logins still come first.
     function beginForAccount(server, login) {
+        chooser.fillsIn = ""
         chooser.start(server, chooser.first(server).chosen || "", login || "")
     }
 
@@ -71,7 +78,7 @@ SafeDialog {
     // last.
     function first(url) {
         const first = JSON.parse(chooser.sioul.bitwardenSite(url))
-        return first.error ? { domain: "", chosen: "" } : first
+        return first.error ? { domain: "", host: "", chosen: "" } : first
     }
 
     // Opened for `url`, the fields holding `site` and `user`, searched at once.
@@ -222,6 +229,17 @@ SafeDialog {
     contentItem: ColumnLayout {
         spacing: 8
 
+        // The page the login will be filled in, by its host: on a phone the
+        // window covers the site and its bar while the chooser asks.
+        Label {
+            objectName: "fillsIn"
+            visible: chooser.fillsIn !== ""
+            Layout.fillWidth: true
+            text: chooser.sioul.textWith("bitwarden-choose-fills-in", "host", chooser.fillsIn)
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: chooser.theme.text
+        }
         // Side by side, one Tab apart; one above the other on a phone.
         GridLayout {
             Layout.fillWidth: true
@@ -335,7 +353,7 @@ SafeDialog {
                             elide: Text.ElideRight
                             color: chooser.theme.muted
                         }
-                        // Its site; made for another domain than the page's, said so, in the warm colour.
+                        // Its site; not made for the page's own host, said so, in the warm colour.
                         Label {
                             id: siteLine
 

@@ -876,21 +876,24 @@ pub(crate) fn bitwarden_search(qt: &QtThread, shared: &Arc<Shared>, url: &str, s
 
 /// What the vault holds for an address, as the chooser opens on it and as
 /// "Fill the login" begins: {"domain": the address's registrable domain;
-/// "chosen": the domain of the login chosen last for it, "" when none; "only":
-/// its only login, filled at once unless another was chosen last for it, ""
-/// when there is a choice to make} or {"error"}.
+/// "host": its host, as the chooser names the page it fills; "chosen": the
+/// domain of the login chosen last for it, "" when none; "only": the login
+/// filled at once (`bitwarden::Logins::opening`: its only one, made for this
+/// very host or chosen last on it), "" when there is a choice to make} or
+/// {"error"}.
 pub(crate) fn bitwarden_site(shared: &Shared, url: &str) -> String {
     let Ok(vault) = shared.bitwarden.lock() else { return locked() };
     let Some(vault) = vault.as_ref() else { return locked() };
     vault.touch();
-    let last = chosen().get(&sioul_core::sites::host_of(url)).cloned();
+    let host = sioul_core::sites::host_of(url);
+    let last = chosen().get(&host).cloned();
     let opening = vault.logins.opening(url, last.as_deref());
-    serde_json::json!({ "domain": opening.domain, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
+    serde_json::json!({ "domain": opening.domain, "host": host, "chosen": opening.chosen, "only": opening.only.unwrap_or_default() }).to_string()
 }
 
 /// The login "Fill the login" fills at once for an address, as
-/// `bitwarden_site`'s "only" says: its only one, unless another was chosen
-/// there last. None when there is a choice to make, or the vault is locked.
+/// `bitwarden_site`'s "only" says. None when there is a choice to make, or
+/// the vault is locked.
 pub(crate) fn fill_at_once(shared: &Shared, url: &str) -> Option<String> {
     let held = shared.bitwarden.lock().ok()?;
     let vault = held.as_ref()?;
