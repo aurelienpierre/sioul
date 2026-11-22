@@ -30,6 +30,7 @@ Item {
         id: mock
 
         property string extensions: ""
+        property string extensionSignInForm: ""
         property int pages: 0
         property var asked: []
 
@@ -40,6 +41,12 @@ Item {
         }
         function textWith(key, name, value) {
             return key + ":" + value
+        }
+        function viewFlag(key) {
+            return false
+        }
+        function extensionCredentials(id, values) {
+            mock.asked = mock.asked.concat(["creds " + id + " " + values])
         }
         function extensionsPage() {
             mock.pages += 1
@@ -122,6 +129,7 @@ Item {
 
         function make(offers) {
             mock.extensions = view(offers)
+            mock.extensionSignInForm = ""
             mock.asked = []
             const tab = createTemporaryObject(tabComponent, root)
             verify(tab !== null)
@@ -213,6 +221,41 @@ Item {
             verify(choice !== null)
             choice.clicked()
             compare(mock.asked, ["sign-in timetable north"])
+            tryCompare(dialog, "opened", false)
+        }
+
+        function test_a_credentials_form_shows_sioul_s_labels_masks_the_password_and_hands_the_values_back() {
+            const tab = make([offer({ installed: true, enabled: true })])
+            // The backend asks for a form: the extension's name, Sioul's own labels per kind.
+            mock.extensionSignInForm = JSON.stringify({ id: "planity", name: "Planity", french: false, fields: [
+                { kind: "email", label: "Email", masked: false },
+                { kind: "password", label: "Password", masked: true }] })
+            const dialog = tab.signInFormDialog
+            tryCompare(dialog, "opened", true)
+            verify(dialog.title.indexOf("Planity") >= 0, "the extension's name in the title: " + dialog.title)
+            const shown = texts(dialog.contentItem, []).join("\n")
+            verify(shown.indexOf("Email") >= 0 && shown.indexOf("Password") >= 0, "Sioul's labels: " + shown)
+            // The password is masked; the email is not.
+            const email = find(dialog.contentItem, "extensionCred:email").item
+            const password = find(dialog.contentItem, "extensionCred:password").item
+            compare(password.echoMode, TextInput.Password, "the password masked")
+            compare(email.echoMode, TextInput.Normal, "the email plain")
+            email.text = "alex@example.org"
+            password.text = "hunter2"
+            // Sign in hands the values back once, keyed by kind.
+            find(dialog.footer, "extensionSignInDo").clicked()
+            compare(mock.asked, ['creds planity {"email":"alex@example.org","password":"hunter2"}'])
+            tryCompare(dialog, "opened", false)
+        }
+
+        function test_cancelling_the_credentials_form_runs_nothing() {
+            const tab = make([offer({ installed: true, enabled: true })])
+            mock.extensionSignInForm = JSON.stringify({ id: "planity", name: "Planity", french: false, fields: [
+                { kind: "password", label: "Password", masked: true }] })
+            const dialog = tab.signInFormDialog
+            tryCompare(dialog, "opened", true)
+            find(dialog.footer, "extensionSignInCancel").clicked()
+            compare(mock.asked, ["creds planity "])
             tryCompare(dialog, "opened", false)
         }
     }

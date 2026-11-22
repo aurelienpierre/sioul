@@ -125,6 +125,8 @@ pub mod qobject {
         #[qproperty(QString, extensions)]
         // A sign-in page an extension asked for, on a computer (SignInWindow.qml): {open, watch, host}; "" for none.
         #[qproperty(QString, sign_in_page)]
+        // A credentials sign-in form an extension asked for (ExtensionSignIn.qml), on every device: {id, name, fields, french}; "" for none.
+        #[qproperty(QString, extension_sign_in_form)]
         type Sioul = super::SioulRust;
 
         /// A sentence of the interface, in your language.
@@ -2975,6 +2977,10 @@ pub mod qobject {
         #[qinvokable]
         fn sign_in_returned(self: Pin<&mut Sioul>, address: &QString);
 
+        /// The credentials form's word (ExtensionSignIn.qml): the values typed, as a JSON object keyed by each field's kind, "" when cancelled.
+        #[qinvokable]
+        fn extension_credentials(self: Pin<&mut Sioul>, id: &QString, values: &QString);
+
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
         fn note_time(self: Pin<&mut Sioul>, edit: &QString) -> QString;
@@ -3604,6 +3610,7 @@ pub struct SioulRust {
     time_view: QString,
     extensions: QString,
     sign_in_page: QString,
+    extension_sign_in_form: QString,
     shared: WindowShared,
 }
 
@@ -8933,6 +8940,10 @@ impl qobject::Sioul {
 
     fn sign_in_returned(self: Pin<&mut Self>, address: &QString) {
         crate::extensions::returned(&address.to_string());
+    }
+
+    fn extension_credentials(self: Pin<&mut Self>, id: &QString, values: &QString) {
+        crate::extensions::credentials_entered(&id.to_string(), &values.to_string());
     }
 
     fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {

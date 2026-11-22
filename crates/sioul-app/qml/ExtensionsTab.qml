@@ -29,9 +29,10 @@ Item {
         return text ? JSON.parse(text) : { offers: [], calendars: [], where: "", problem: "", reading: true }
     }
 
-    // The two questions, over the window (their tests reach them so).
+    // The questions and the credentials form, over the window (their tests reach them so).
     readonly property alias removeDialog: removing
     readonly property alias chooseDialog: choosing
+    readonly property alias signInFormDialog: signingIn
 
     implicitHeight: column.implicitHeight
     Component.onCompleted: tab.sioul.extensionsPage()
@@ -363,6 +364,27 @@ Item {
                 text: tab.sioul.text("ui-cancel")
                 DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
             }
+        }
+    }
+
+    // A credentials sign-in form an extension asked for, framed by Sioul and
+    // shown on every device (ExtensionSignIn.qml): opened when the backend
+    // asks for one (`extensionSignInForm`), cleared when it is answered, given
+    // up, or the extension removed.
+    ExtensionSignIn {
+        id: signingIn
+
+        sioul: tab.sioul
+        theme: tab.theme
+    }
+    Connections {
+        target: tab.sioul
+
+        function onExtensionSignInFormChanged() {
+            if (tab.sioul.extensionSignInForm === "")
+                signingIn.hide()
+            else
+                signingIn.show(JSON.parse(tab.sioul.extensionSignInForm))
         }
     }
 }

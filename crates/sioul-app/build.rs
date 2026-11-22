@@ -112,8 +112,9 @@ fn main() {
         "qml/CallsLine.qml",
         "qml/AllowList.qml",
         "qml/RestrictedCard.qml",
-        // Settings ▸ Extensions (docs/extensions.md); an extension's sign-in page on a computer.
+        // Settings ▸ Extensions (docs/extensions.md); a credentials sign-in form on every device, a sign-in web page on a computer.
         "qml/ExtensionsTab.qml",
+        "qml/ExtensionSignIn.qml",
         "qml/SignInWindow.qml",
         "qml/SignInSite.qml",
         "qml/MoveDialog.qml",

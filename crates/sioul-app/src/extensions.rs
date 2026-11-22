@@ -34,7 +34,7 @@
 use crate::backend::{QtThread, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde_json::{Value, json};
-use sioul_core::extensions::manifest::{Manifest, Offer};
+use sioul_core::extensions::manifest::{CredField, Manifest, Offer};
 use sioul_core::extensions::door;
 use sioul_core::extensions::reply::{self, AgendaReply, ProblemKind, RefreshReply, SignInReply};
 use sioul_core::extensions::state::{self, Brought, Installed, State};
@@ -257,9 +257,14 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool, calen
     }
     let waiting = installed.and_then(|i| i.waiting.as_ref()).map(|w| {
         let added: Vec<&str> = w.hosts.iter().filter(|h| !installed.is_some_and(|i| i.offer.hosts.contains(h))).map(String::as_str).collect();
-        let sign_in = w.sign_in.is_some() && installed.is_some_and(|i| i.offer.sign_in != w.sign_in);
+        // A redirect sign-in newly asked for, or a credential field not accepted before.
+        let had = installed.map(|i| &i.offer);
+        let new_sign_in = w.sign_in.is_some() && had.is_some_and(|o| o.sign_in != w.sign_in);
+        let new_credentials = !w.credentials.iter().all(|c| had.is_some_and(|o| o.credentials.contains(c)));
+        let sign_in = new_sign_in || new_credentials;
         say("extension-update-asks", &[("version", w.version.clone()), ("sites", if added.is_empty() { "none".to_string() } else { added.join(", ") }), ("signin", if sign_in { "yes" } else { "no" }.to_string())])
     });
+    let needs_sign_in = offer.sign_in.is_some() || !offer.credentials.is_empty();
     json!({
         "id": offer.id,
         "name": name,
@@ -267,8 +272,8 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool, calen
         "version": installed.map_or(offer.version.clone(), |i| i.offer.version.clone()),
         "brings": say("extension-brings-agenda", &[]),
         "sites": say("extension-sites", &[("count", hosts.len().to_string()), ("sites", hosts.join(", "))]),
-        "signIn": if offer.sign_in.is_some() { say("extension-keeps-sign-in", &[]) } else { say("extension-keeps-no-sign-in", &[]) },
-        "needsSignIn": offer.sign_in.is_some(),
+        "signIn": if !offer.credentials.is_empty() { say("extension-keeps-credentials", &[]) } else if offer.sign_in.is_some() { say("extension-keeps-sign-in", &[]) } else { say("extension-keeps-no-sign-in", &[]) },
+        "needsSignIn": needs_sign_in,
         "usable": offer.usable(),
         "unusable": if offer.usable() { String::new() } else { say("extension-needs-newer-sioul", &[]) },
         "installed": installed.is_some(),
@@ -464,7 +469,9 @@ fn version_order(a: &str, b: &str) -> std::cmp::Ordering {
 fn narrowed(accepted: &Offer, listed: &Offer) -> Offer {
     let hosts: Vec<String> = accepted.hosts.iter().filter(|h| listed.hosts.iter().any(|l| l.eq_ignore_ascii_case(h))).cloned().collect();
     let sign_in = if listed.sign_in.is_some() { accepted.sign_in.clone() } else { None };
-    Offer { hosts, sign_in, ..accepted.clone() }
+    // Only the credential fields the list still names: no field is asked for that the list dropped.
+    let credentials: Vec<CredField> = accepted.credentials.iter().filter(|c| listed.credentials.contains(c)).copied().collect();
+    Offer { hosts, sign_in, credentials, ..accepted.clone() }
 }
 
 /// The changes `manifest` brings to `state` (M1): an installed extension it
@@ -678,6 +685,7 @@ pub(crate) fn remove(qt: &QtThread, id: &str, keep: bool) {
             }
         });
         cancel_page(&id);
+        cancel_form(&id);
         // The call under way, here or in another process, ends: its lock is ours once it has.
         let started = std::time::Instant::now();
         let held = loop {
@@ -1009,18 +1017,40 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
     let (qt, id) = (qt.clone(), id.to_string());
     std::thread::spawn(move || {
         let Some(installed) = state::load(&state::path()).get(&id).cloned().filter(|i| i.enabled) else { return };
-        // One sign-in page at a time: another extension's is open.
-        if page_shown() {
+        let wants_credentials = installed.offer.credentials.clone();
+        // One sign-in at a time: another extension's page or form is open.
+        if page_shown() || form_shown() {
             crate::backend::set_status(&qt, say("extension-sign-in-busy", &[]));
             return;
         }
+        // A credentials sign-in collects the fields through Sioul's own form
+        // before the call; Cancel runs nothing.
+        let collected: Vec<(CredField, String)> = if wants_credentials.is_empty() {
+            Vec::new()
+        } else {
+            let name = name_of(&id);
+            match show_cred_form(&qt, &id, &name, &wants_credentials) {
+                Some(values) => values,
+                None => {
+                    crate::backend::set_status(&qt, say("extension-sign-in-closed", &[("name", name)]));
+                    return;
+                }
+            }
+        };
         let Some(running) = start(&id) else { return };
         // A refresh of the background service holds it: the sign-in waits for none.
         let Some(held) = run_lock(&id) else { return };
-        show(&qt);
-        let (shower_qt, shower_id) = (qt.clone(), id.clone());
-        let shower: store::SignInShower = Box::new(move |page| show_page(&shower_qt, &shower_id, page));
-        let (outcome, _) = store::run(&installed.offer, Call::SignIn(choice.as_deref()), french(), Real::new(&id, Some(shower)).removable());
+        // A redirect sign-in shows a web page during the call; a credentials
+        // sign-in shows none (its form was shown already).
+        let shower: Option<store::SignInShower> = if wants_credentials.is_empty() {
+            show(&qt);
+            let (shower_qt, shower_id) = (qt.clone(), id.clone());
+            Some(Box::new(move |page| show_page(&shower_qt, &shower_id, page)))
+        } else {
+            None
+        };
+        let call = Call::SignIn { choice: choice.as_deref(), credentials: &collected };
+        let (outcome, _) = store::run(&installed.offer, call, french(), Real::new(&id, shower).removable());
         keep_log(&id, "sign-in", &outcome);
         drop(held);
         drop(running);
@@ -1210,6 +1240,93 @@ fn cancel_page(id: &str) {
     if let Some(page) = waiting {
         let _ = page.said.send(None);
     }
+}
+
+// ---------------------------------------------------------------- the credentials form
+
+/// A credentials form waited for: the extension that asked it, the fields it
+/// asked (so Sioul reads back only those, in that order), and where the
+/// values go. One at a time, as the web page is (`page_shown`/`form_shown`).
+struct CredForm {
+    id: String,
+    fields: Vec<CredField>,
+    said: std::sync::mpsc::Sender<Option<Vec<(CredField, String)>>>,
+}
+
+static CRED_FORM: Mutex<Option<CredForm>> = Mutex::new(None);
+
+/// The most time the person has at a credentials form (the web page's own).
+const FORM_WAIT: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+/// Whether a credentials form is shown now.
+fn form_shown() -> bool {
+    CRED_FORM.lock().map(|f| f.is_some()).unwrap_or(false)
+}
+
+/// The fixed label Sioul shows for a credential field (its own words, never
+/// the extension's): one fluent sentence a kind.
+fn cred_label(field: CredField) -> &'static str {
+    match field {
+        CredField::Email => "extension-cred-email",
+        CredField::Username => "extension-cred-username",
+        CredField::Password => "extension-cred-password",
+        CredField::Server => "extension-cred-server",
+        CredField::OneTimeCode => "extension-cred-one-time-code",
+    }
+}
+
+/// Sioul's own credentials form shown (ExtensionSignIn.qml, a plain dialog in
+/// Sioul's process on every device — no web view), its values waited for
+/// here, `FORM_WAIT` at most. Framed entirely by Sioul: the only text from
+/// the extension is its name; every field's label is Sioul's fixed word for
+/// that kind. The values are returned to the caller and kept nowhere else.
+/// None when the person cancelled or the form could not be shown.
+fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> Option<Vec<(CredField, String)>> {
+    let (said, answer) = std::sync::mpsc::channel();
+    {
+        let Ok(mut waiting) = CRED_FORM.lock() else { return None };
+        if waiting.is_some() {
+            return None;
+        }
+        *waiting = Some(CredForm { id: id.to_string(), fields: fields.to_vec(), said });
+    }
+    let clear = || {
+        if let Ok(mut waiting) = CRED_FORM.lock()
+            && waiting.as_ref().is_some_and(|f| f.id == id)
+        {
+            *waiting = None;
+        }
+    };
+    let shown: Vec<Value> = fields.iter().map(|f| json!({ "kind": f.tag(), "label": say(cred_label(*f), &[]), "masked": f.masked() })).collect();
+    let asked = json!({ "id": id, "name": name, "fields": shown, "french": french() }).to_string();
+    let _ = qt.queue(move |mut sioul| sioul.as_mut().set_extension_sign_in_form(QString::from(&asked)));
+    let values = answer.recv_timeout(FORM_WAIT).unwrap_or(None);
+    clear();
+    let _ = qt.queue(|mut sioul| sioul.as_mut().set_extension_sign_in_form(QString::default()));
+    values
+}
+
+/// The credentials form of `id` closed, when it is the one shown (Remove):
+/// its sign-in is told the person cancelled.
+fn cancel_form(id: &str) {
+    let waiting = CRED_FORM.lock().ok().and_then(|mut f| if f.as_ref().is_some_and(|c| c.id == id) { f.take() } else { None });
+    if let Some(form) = waiting {
+        let _ = form.said.send(None);
+    }
+}
+
+/// ExtensionSignIn.qml's word: the values typed, as a JSON object keyed by
+/// the fields' kinds ({"email":…,"password":…}), or "" when cancelled. Sioul
+/// reads back only the fields it asked, in the order it asked them, so the
+/// form cannot add a field; the values reach the one sign-in that waits.
+pub(crate) fn credentials_entered(id: &str, values: &str) {
+    let waiting = CRED_FORM.lock().ok().and_then(|mut f| if f.as_ref().is_some_and(|c| c.id == id) { f.take() } else { None });
+    let Some(form) = waiting else { return };
+    let collected = match serde_json::from_str::<Value>(values) {
+        Ok(Value::Object(map)) => Some(form.fields.iter().map(|field| (*field, map.get(field.tag()).and_then(Value::as_str).unwrap_or("").to_string())).collect()),
+        _ => None,
+    };
+    let _ = form.said.send(collected);
 }
 
 /// The page's word: the address it returned to, or "" when the person
