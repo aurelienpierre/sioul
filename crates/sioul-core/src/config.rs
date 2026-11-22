@@ -1020,12 +1020,29 @@ pub struct ExtensionSettings {
     /// passed over, never the configuration refused.
     #[serde(default, deserialize_with = "extension_calendars")]
     pub calendars: std::collections::BTreeMap<String, String>,
+    /// Whether each agenda an extension brings counts as the person's own busy
+    /// time (`[extensions.busy]`, `"<extension>/<agenda>" = true/false`): the
+    /// door writes `TRANSP:OPAQUE` when it does, `TRANSPARENT` otherwise. The
+    /// person's per-agenda choice, chosen in Settings ▸ Extensions beside the
+    /// calendar; an ordinary shared setting, like the calendar choice, so that
+    /// every device writes the same transparency. An agenda not named here
+    /// falls back to the extension's suggestion (`AgendaReply::busy`): Planity
+    /// on, a pupil's Skolengo off. Read leniently: an entry that is no boolean
+    /// is passed over, never the configuration refused.
+    #[serde(default, deserialize_with = "extension_busy")]
+    pub busy: std::collections::BTreeMap<String, bool>,
 }
 
 /// `[extensions.calendars]`, its texts alone.
 fn extension_calendars<'de, D: serde::Deserializer<'de>>(d: D) -> Result<std::collections::BTreeMap<String, String>, D::Error> {
     let found: toml::Value = serde::Deserialize::deserialize(d)?;
     Ok(found.as_table().map(|t| t.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.trim().to_string()))).filter(|(_, v)| !v.is_empty()).collect()).unwrap_or_default())
+}
+
+/// `[extensions.busy]`, its booleans alone.
+fn extension_busy<'de, D: serde::Deserializer<'de>>(d: D) -> Result<std::collections::BTreeMap<String, bool>, D::Error> {
+    let found: toml::Value = serde::Deserialize::deserialize(d)?;
+    Ok(found.as_table().map(|t| t.iter().filter_map(|(k, v)| Some((k.clone(), v.as_bool()?))).collect()).unwrap_or_default())
 }
 
 /// The key of an agenda's calendar in `[extensions.calendars]`.
@@ -1036,7 +1053,7 @@ pub fn extension_calendar_key(extension: &str, agenda: &str) -> String {
 /// The calendar an extension's agenda goes into (`place`, "account/id"),
 /// written in the shared settings; "" takes it out. Under the file's lock.
 pub fn set_extension_calendar(path: &Path, extension: &str, agenda: &str, place: &str) -> Result<(), String> {
-    edit_extension_calendars(path, |calendars| {
+    edit_extension_map(path, "calendars", |calendars| {
         let key = extension_calendar_key(extension, agenda);
         if place.trim().is_empty() {
             calendars.remove(&key);
@@ -1046,21 +1063,37 @@ pub fn set_extension_calendar(path: &Path, extension: &str, agenda: &str, place:
     })
 }
 
-/// Every calendar chosen for an extension's agendas taken out of the shared
-/// settings (Remove, its lessons taken out): another device that still runs
-/// it then writes nothing until a calendar is chosen again.
-pub fn forget_extension_calendars(path: &Path, extension: &str) -> Result<(), String> {
-    edit_extension_calendars(path, |calendars| {
-        let prefix = format!("{extension}/");
-        let gone: Vec<String> = calendars.iter().map(|(k, _)| k.to_string()).filter(|k| k.starts_with(&prefix)).collect();
-        for key in gone {
-            calendars.remove(&key);
-        }
+/// Whether an extension's agenda counts as the person's own busy time, written
+/// in the shared settings (`[extensions.busy]`, same key as its calendar):
+/// always an explicit boolean, so every device writes the same transparency;
+/// an agenda never set falls back to the extension's suggestion. Under the
+/// file's lock.
+pub fn set_extension_busy(path: &Path, extension: &str, agenda: &str, counts: bool) -> Result<(), String> {
+    edit_extension_map(path, "busy", |busy| {
+        busy.insert(&extension_calendar_key(extension, agenda), value(counts));
     })
 }
 
-/// `[extensions.calendars]` changed in place, under the file's lock; an empty one taken out.
-fn edit_extension_calendars(path: &Path, change: impl FnOnce(&mut Table)) -> Result<(), String> {
+/// Everything chosen for an extension's agendas taken out of the shared
+/// settings (Remove, its lessons taken out): both the calendars and the busy
+/// choices. Another device that still runs it then writes nothing until a
+/// calendar is chosen again.
+pub fn forget_extension(path: &Path, extension: &str) -> Result<(), String> {
+    let prefix = format!("{extension}/");
+    for which in ["calendars", "busy"] {
+        edit_extension_map(path, which, |map| {
+            let gone: Vec<String> = map.iter().map(|(k, _)| k.to_string()).filter(|k| k.starts_with(&prefix)).collect();
+            for key in gone {
+                map.remove(&key);
+            }
+        })?;
+    }
+    Ok(())
+}
+
+/// One sub-table of `[extensions]` (`calendars` or `busy`) changed in place,
+/// under the file's lock; an empty one taken out.
+fn edit_extension_map(path: &Path, which: &str, change: impl FnOnce(&mut Table)) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let mut doc = read_document(path)?;
         if !doc.contains_key("extensions") {
@@ -1069,13 +1102,13 @@ fn edit_extension_calendars(path: &Path, change: impl FnOnce(&mut Table)) -> Res
             doc["extensions"] = Item::Table(table);
         }
         let extensions = doc["extensions"].as_table_mut().ok_or_else(|| format!("{}: extensions is not a table", path.display()))?;
-        if !extensions.contains_key("calendars") {
-            extensions.insert("calendars", Item::Table(Table::new()));
+        if !extensions.contains_key(which) {
+            extensions.insert(which, Item::Table(Table::new()));
         }
-        let calendars = extensions.get_mut("calendars").and_then(Item::as_table_mut).ok_or_else(|| format!("{}: extensions.calendars is not a table", path.display()))?;
-        change(calendars);
-        if calendars.is_empty() {
-            extensions.remove("calendars");
+        let map = extensions.get_mut(which).and_then(Item::as_table_mut).ok_or_else(|| format!("{}: extensions.{which} is not a table", path.display()))?;
+        change(map);
+        if map.is_empty() {
+            extensions.remove(which);
         }
         write_document(path, &doc)
     })
@@ -1088,6 +1121,13 @@ impl ExtensionSettings {
     /// The manifest's address: the one set, else the repository's.
     pub fn manifest_address(&self) -> &str {
         self.manifest.as_deref().map(str::trim).filter(|m| !m.is_empty()).unwrap_or(EXTENSIONS_MANIFEST)
+    }
+
+    /// Whether an agenda counts as the person's own busy time: the person's
+    /// choice (`[extensions.busy]`) when they made one, else the extension's
+    /// `suggestion` (`AgendaReply::busy`).
+    pub fn busy_for(&self, extension: &str, agenda: &str, suggestion: bool) -> bool {
+        self.busy.get(&extension_calendar_key(extension, agenda)).copied().unwrap_or(suggestion)
     }
 }
 
@@ -3228,6 +3268,35 @@ mod tests {
         assert_eq!(serde_json::to_string(&NotesFolder::Unreadable(gone.clone())).unwrap(), format!("{{\"state\":\"unreadable\",\"path\":\"{gone}\"}}"));
         assert_eq!(serde_json::to_string(&NotesFolder::Unset).unwrap(), "{\"state\":\"unset\"}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An agenda's busy choice (`[extensions.busy]`) round-trips; an agenda
+    /// never set falls back to the extension's suggestion; forgetting an
+    /// extension clears both its calendars and its busy choices.
+    #[test]
+    fn an_extension_s_busy_choice_round_trips_and_falls_back() {
+        let path = std::env::temp_dir().join(format!("sioul-extension-busy-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let read = || toml::from_str::<Config>(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap().extensions;
+        // Chosen false for Planity, true for a child's agenda.
+        set_extension_busy(&path, "planity", "me", false).unwrap();
+        set_extension_busy(&path, "skolengo", "alex", true).unwrap();
+        set_extension_calendar(&path, "skolengo", "alex", "local/kids").unwrap();
+        let settings = read();
+        assert_eq!(settings.busy.get(&extension_calendar_key("planity", "me")), Some(&false), "false round-trips (not dropped)");
+        assert_eq!(settings.busy.get(&extension_calendar_key("skolengo", "alex")), Some(&true));
+        // The choice wins where set; the suggestion where it is not.
+        assert!(!settings.busy_for("planity", "me", true), "the person's false overrides the suggestion");
+        assert!(settings.busy_for("skolengo", "alex", false), "the person's true overrides the suggestion");
+        assert!(settings.busy_for("planity", "other", true), "never set: the extension's suggestion stands");
+        assert!(!settings.busy_for("planity", "other", false));
+        // Forgetting one extension clears both of its maps, the other's left.
+        forget_extension(&path, "skolengo").unwrap();
+        let settings = read();
+        assert!(settings.busy.get(&extension_calendar_key("skolengo", "alex")).is_none(), "its busy choice gone");
+        assert!(settings.calendars.get(&extension_calendar_key("skolengo", "alex")).is_none(), "its calendar gone");
+        assert_eq!(settings.busy.get(&extension_calendar_key("planity", "me")), Some(&false), "the other extension's choice stays");
+        let _ = std::fs::remove_file(&path);
     }
 
     /// A day as people type it (the review of phase 3, F19): ISO, a day

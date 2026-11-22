@@ -29,7 +29,13 @@
 //!   `STATUS:CANCELLED`; a marked event of that period no longer in the
 //!   answer is removed. A period not read, or an answer without any event,
 //!   removes nothing (absence proves nothing). Nothing is written when nothing differs.
-//! - **Free time**: every lesson is written `TRANSP:TRANSPARENT`.
+//! - **Busy or free**: a lesson is written `TRANSP:OPAQUE` when the person
+//!   counts this agenda as their own busy time, `TRANSP:TRANSPARENT`
+//!   otherwise. The extension only suggests a default (`AgendaReply::busy`:
+//!   Planity true, a pupil's Skolengo false); the person's per-agenda choice
+//!   (`[extensions.busy]`, resolved before the door is called) decides. An
+//!   own event written OPAQUE reaches Sioul's real busy (`busy::holds_you`);
+//!   nothing in `busy.rs` changes.
 
 use super::reply::AgendaReply;
 use crate::{agenda, lines, vdir};
@@ -97,7 +103,9 @@ pub struct Lesson {
 /// and of a calendar file opened, its whole weighed against what came:
 /// `agenda::kept_most`), marked, each file at most `MOST_FILE_BYTES`. All
 /// counted and weighed before anything is written: past a bound, none.
-pub fn lessons(extension: &str, agenda: &AgendaReply, words: &Words) -> Result<Vec<Lesson>, Problem> {
+/// `busy`: whether the person counts this agenda as their own busy time (the
+/// transparency each lesson is written with), resolved before the call.
+pub fn lessons(extension: &str, agenda: &AgendaReply, words: &Words, busy: bool) -> Result<Vec<Lesson>, Problem> {
     // Every event has its UID already (`reply::clean` refuses one without).
     let objects = match agenda::calendar_objects(&agenda.calendar, &|_: &[String]| String::new(), agenda::kept_most(agenda.calendar.len())) {
         Ok(objects) => objects,
@@ -113,7 +121,7 @@ pub fn lessons(extension: &str, agenda: &AgendaReply, words: &Words) -> Result<V
         }
         let hash = lesson_hash(&object);
         let uid = super::event_uid(extension, &agenda.id, &own);
-        let text = marked(&object, &uid, &category, &hash, words);
+        let text = marked(&object, &uid, &category, &hash, words, busy);
         if text.len() > MOST_FILE_BYTES {
             return Err(Problem::TooLarge);
         }
@@ -137,9 +145,10 @@ fn lesson_hash(object: &str) -> String {
 }
 
 /// An event's object marked as the extension's: its UID Sioul's, its
-/// categories the extension's name alone, free time, its description ending
-/// with where it comes from, a cancelled one said so in its title, and its hash.
-fn marked(object: &str, uid: &str, category: &str, hash: &str, words: &Words) -> String {
+/// categories the extension's name alone, busy or free as the person counts
+/// this agenda (`busy`), its description ending with where it comes from, a
+/// cancelled one said so in its title, and its hash.
+fn marked(object: &str, uid: &str, category: &str, hash: &str, words: &Words, busy: bool) -> String {
     let source = lines::unfold(object);
     let cancelled = source.iter().any(|l| lines::name(l) == "STATUS" && lines::value(l).trim().eq_ignore_ascii_case("CANCELLED"));
     let mut out: Vec<String> = Vec::with_capacity(source.len() + 4);
@@ -160,7 +169,7 @@ fn marked(object: &str, uid: &str, category: &str, hash: &str, words: &Words) ->
                     out.push(format!("DESCRIPTION:{}", lines::escape(&words.from)));
                 }
                 out.push(format!("CATEGORIES:{}", lines::escape(category)));
-                out.push("TRANSP:TRANSPARENT".into());
+                out.push(if busy { "TRANSP:OPAQUE" } else { "TRANSP:TRANSPARENT" }.into());
                 out.push(format!("{HASH_LINE}:{hash}"));
                 out.push(line);
                 inside = false;
@@ -332,11 +341,13 @@ pub fn calendar_at(place: &str) -> Option<vdir::Collection> {
 /// An agenda written into `calendar` (the module's rules). Bounds and the
 /// calendar are checked before anything is written; past one, nothing is.
 /// Nothing at all is written, this device's notes included, when nothing differs.
-pub fn take(extension: &str, agenda: &AgendaReply, calendar: &vdir::Collection, words: &Words) -> Result<Done, Problem> {
+/// `busy`: whether the person counts this agenda as their own busy time
+/// (OPAQUE), else free (TRANSPARENT), resolved before the call.
+pub fn take(extension: &str, agenda: &AgendaReply, calendar: &vdir::Collection, words: &Words, busy: bool) -> Result<Done, Problem> {
     if !writable(calendar) {
         return Err(Problem::CalendarGone);
     }
-    let lessons = lessons(extension, agenda, words)?;
+    let lessons = lessons(extension, agenda, words, busy)?;
     let held = held(&calendar.dir, extension, &agenda.id);
     let mut noted = load_noted(extension);
     let plan = plan(&calendar.dir, &lessons, &held, &noted.events, agenda.read, &agenda.unread);
@@ -505,7 +516,7 @@ mod tests {
         let history = lesson("L2@skolengo", "20261118T080000Z", "20261118T090000Z", "History", "STATUS:CANCELLED\r\n").replace("STATUS:CONFIRMED\r\n", "");
         let music = lesson("L3@skolengo", "20261119T080000Z", "20261119T090000Z", "Music", "DESCRIPTION:Bring a recorder\r\n");
         let first = answer("pupil-1", &[maths.clone(), history.clone(), music.clone()], true, &[]);
-        let done = take(EXT, &first, &calendar, &words()).unwrap();
+        let done = take(EXT, &first, &calendar, &words(), false).unwrap();
         assert_eq!((done.written, done.removed, done.lessons), (3, 0, 3));
         let (l1, l2, l3) = (crate::extensions::event_uid(EXT, "pupil-1", "L1@skolengo"), crate::extensions::event_uid(EXT, "pupil-1", "L2@skolengo"), crate::extensions::event_uid(EXT, "pupil-1", "L3@skolengo"));
         let text = text_of(&calendar, &l1);
@@ -520,7 +531,7 @@ mod tests {
         // The same answer again: nothing written, not even this device's notes.
         let before = files(&calendar.dir);
         let noted = std::fs::read(noted_path(EXT)).unwrap();
-        let again = take(EXT, &first, &calendar, &words()).unwrap();
+        let again = take(EXT, &first, &calendar, &words(), false).unwrap();
         assert_eq!((again.written, again.removed, again.unchanged), (0, 0, 3));
         assert_eq!(files(&calendar.dir), before);
         assert_eq!(std::fs::read(noted_path(EXT)).unwrap(), noted);
@@ -528,38 +539,76 @@ mod tests {
         // Someone else's note on a lesson, the school unchanged: kept.
         let edited = text_of(&calendar, &l1).replace("SUMMARY:Maths", "SUMMARY:Maths (bring the compass)");
         std::fs::write(calendar.dir.join(crate::extensions::event_file(&l1)), &edited).unwrap();
-        assert_eq!(take(EXT, &first, &calendar, &words()).unwrap().written, 0);
+        assert_eq!(take(EXT, &first, &calendar, &words(), false).unwrap().written, 0);
         assert_eq!(text_of(&calendar, &l1), edited, "an edit made by someone else stays while the school does not change the lesson");
 
         // The school moves the music lesson to another room: written again.
         let moved = answer("pupil-1", &[maths.clone(), history.clone(), music.replace("SUMMARY:Music", "SUMMARY:Music\r\nLOCATION:Hall")], true, &[]);
-        assert_eq!(take(EXT, &moved, &calendar, &words()).unwrap().written, 1);
+        assert_eq!(take(EXT, &moved, &calendar, &words(), false).unwrap().written, 1);
         assert!(text_of(&calendar, &l3).contains("LOCATION:Hall"));
 
         // Deleted by hand: back at the next refresh.
         std::fs::remove_file(calendar.dir.join(crate::extensions::event_file(&l2))).unwrap();
-        assert_eq!(take(EXT, &moved, &calendar, &words()).unwrap().written, 1);
+        assert_eq!(take(EXT, &moved, &calendar, &words(), false).unwrap().written, 1);
         assert!(text_of(&calendar, &l2).contains("STATUS:CANCELLED"));
 
         // History's day not read, music gone from the answer, its day read: music removed, history kept.
         let partial = answer("pupil-1", &[maths.clone()], true, &[("2026-11-18T00:00:00Z", "2026-11-19T00:00:00Z")]);
-        let done = take(EXT, &partial, &calendar, &words()).unwrap();
+        let done = take(EXT, &partial, &calendar, &words(), false).unwrap();
         assert_eq!((done.written, done.removed), (0, 1));
         assert!(text_of(&calendar, &l3).is_empty() && !text_of(&calendar, &l2).is_empty());
 
         // No period said, or no event at all: absence proves nothing.
         let no_period = answer("pupil-1", &[maths.clone()], false, &[]);
-        assert_eq!(take(EXT, &no_period, &calendar, &words()).unwrap().removed, 0);
+        assert_eq!(take(EXT, &no_period, &calendar, &words(), false).unwrap().removed, 0);
         let nothing = answer("pupil-1", &[], true, &[]);
-        assert_eq!(take(EXT, &nothing, &calendar, &words()).unwrap().removed, 0);
+        assert_eq!(take(EXT, &nothing, &calendar, &words(), false).unwrap().removed, 0);
         assert!(!text_of(&calendar, &l2).is_empty() && !text_of(&calendar, &l1).is_empty());
 
         // A lesson outside the period read, gone from the answer: left.
         let later = answer("pupil-1", &[lesson("L9@skolengo", "20261201T080000Z", "20261201T090000Z", "Art", "")], false, &[]);
-        take(EXT, &later, &calendar, &words()).unwrap();
+        take(EXT, &later, &calendar, &words(), false).unwrap();
         let l9 = crate::extensions::event_uid(EXT, "pupil-1", "L9@skolengo");
-        assert_eq!(take(EXT, &answer("pupil-1", &[maths], true, &[]), &calendar, &words()).unwrap().removed, 1, "history's day read now: it goes, Art's day is not in the period");
+        assert_eq!(take(EXT, &answer("pupil-1", &[maths], true, &[]), &calendar, &words(), false).unwrap().removed, 1, "history's day read now: it goes, Art's day is not in the period");
         assert!(!text_of(&calendar, &l9).is_empty());
+    }
+
+    /// The person's own busy time: an agenda the person counts as busy is
+    /// written `TRANSP:OPAQUE`, one they do not `TRANSP:TRANSPARENT`; and an
+    /// OPAQUE lesson, the person's own and needing no answer, reaches Sioul's
+    /// real busy (`busy::holds_you`), so two can clash, while a free one does
+    /// not. Each a first write into its own calendar: the busy mark is Sioul's,
+    /// not part of the lesson's hash, so re-taking the same lesson would not
+    /// rewrite it (a flip propagates through `take_out_of` and a refresh, the
+    /// way a calendar change does).
+    #[test]
+    fn a_busy_agenda_is_written_opaque_and_holds_you() {
+        const EXT: &str = "busy-test";
+        let free_cal = calendar("Door free");
+        let busy_cal = calendar("Door busy");
+        let maths = lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "");
+        let reply = answer("pupil-1", &[maths], true, &[]);
+        let uid = crate::extensions::event_uid(EXT, "pupil-1", "L1@skolengo");
+        // Not counted as busy: free time, as a pupil's lesson is by default.
+        take(EXT, &reply, &free_cal, &words(), false).unwrap();
+        assert!(text_of(&free_cal, &uid).contains("TRANSP:TRANSPARENT"), "free by default");
+        // Counted as busy: opaque, nothing else of the mark changed.
+        assert_eq!(take(EXT, &reply, &busy_cal, &words(), true).unwrap().written, 1);
+        let text = text_of(&busy_cal, &uid);
+        assert!(text.contains("TRANSP:OPAQUE") && !text.contains("TRANSP:TRANSPARENT"), "{text}");
+        assert!(text.contains(&format!("UID:{uid}")) && text.contains("SUMMARY:Maths"), "nothing else of the mark changes:\n{text}");
+        // The opaque lesson reaches Sioul's real busy; the free one does not.
+        let read = |cal: &vdir::Collection| agenda::file_occurrences(&cal.dir.join(crate::extensions::event_file(&uid)), cal, 1_794_000_000, 1_796_000_000, &TimeZone::UTC);
+        let busy_read = read(&busy_cal);
+        let event = busy_read.iter().find(|o| o.summary == "Maths").expect("the busy lesson read back");
+        assert!(crate::busy::own_event(event), "the door writes into a calendar of the person's own");
+        assert!(crate::busy::event_marked(event), "an OPAQUE timed event is busy");
+        assert!(event.needs_you(), "no ORGANIZER/ATTENDEE: the person's own, not an invitation");
+        assert!(crate::busy::holds_you(event), "an OPAQUE own lesson holds you busy");
+        let free_read = read(&free_cal);
+        let free = free_read.iter().find(|o| o.summary == "Maths").expect("the free lesson read back");
+        assert!(crate::busy::own_event(free) && !crate::busy::event_marked(free), "a TRANSPARENT lesson is own but not busy");
+        assert!(!crate::busy::holds_you(free), "a free lesson does not hold you busy");
     }
 
     /// Only events whose UID has the extension's form are touched: the
@@ -582,14 +631,14 @@ mod tests {
         let before = mine(&calendar);
         assert_eq!(before.len(), 3);
         let first = answer("pupil-1", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", ""), lesson("L4@skolengo", "20261119T080000Z", "20261119T090000Z", "Piano", "")], true, &[]);
-        let done = take(EXT, &first, &calendar, &words()).unwrap();
+        let done = take(EXT, &first, &calendar, &words(), false).unwrap();
         assert_eq!((done.written, done.clash), (1, 1), "the lesson whose file name is taken by an event not its own is left out");
         // A refresh where nothing is held: every marked lesson of the week goes, nothing else.
         let empty_week = answer("pupil-1", &[lesson("L5@skolengo", "20261124T080000Z", "20261124T090000Z", "Maths", "")], true, &[]);
-        assert_eq!(take(EXT, &empty_week, &calendar, &words()).unwrap().removed, 1);
+        assert_eq!(take(EXT, &empty_week, &calendar, &words(), false).unwrap().removed, 1);
         assert_eq!(mine(&calendar), before, "the person's own events are never read as the school's");
         // Remove, its lessons taken out: the person's own events stay.
-        take(EXT, &first, &calendar, &words()).unwrap();
+        take(EXT, &first, &calendar, &words(), false).unwrap();
         let (removed, refused) = take_out(EXT);
         assert!(removed >= 2 && refused == 0, "{removed} {refused}");
         assert_eq!(mine(&calendar), before);
@@ -608,14 +657,14 @@ mod tests {
             reply.id = agenda.to_string();
             reply.calendar = reply.calendar.replace("L1@skolengo", uid);
             // Every write the door plans is a file of the calendar's own folder, of a safe name.
-            let lessons = lessons(EXT, &reply, &words()).unwrap();
+            let lessons = lessons(EXT, &reply, &words(), false).unwrap();
             let planned = plan(&calendar.dir, &lessons, &BTreeMap::new(), &BTreeMap::new(), reply.read, &[]);
             for (path, ..) in &planned.write {
                 assert_eq!(path.parent(), Some(calendar.dir.as_path()), "{agenda} {uid}");
                 let name = path.file_name().unwrap().to_string_lossy();
                 assert!(name.starts_with("ids-test-") && name.trim_end_matches(".ics").bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'), "{name}");
             }
-            assert_eq!(take(EXT, &reply, &calendar, &words()).unwrap().written, 1, "{agenda} {uid}");
+            assert_eq!(take(EXT, &reply, &calendar, &words(), false).unwrap().written, 1, "{agenda} {uid}");
         }
         // Nothing of this extension anywhere else in the data folder, nor where the ids point.
         let mut stack = vec![crate::config::data_dir()];
@@ -641,7 +690,7 @@ mod tests {
         let calendar = calendar("Door bounds");
         let big = lesson("L2@skolengo", "20261118T080000Z", "20261118T090000Z", "History", &format!("DESCRIPTION:{}\r\n", "d".repeat(MOST_FILE_BYTES)));
         let reply = answer("pupil-1", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", ""), big], true, &[]);
-        assert_eq!(take(EXT, &reply, &calendar, &words()), Err(Problem::TooLarge));
+        assert_eq!(take(EXT, &reply, &calendar, &words(), false), Err(Problem::TooLarge));
         assert!(files(&calendar.dir).keys().all(|n| !n.ends_with(".ics")), "nothing written, the small lesson neither");
     }
 
@@ -656,12 +705,12 @@ mod tests {
         let state = vdir::State { read_only: true, components: vec!["VEVENT".into()], ..vdir::State::default() };
         state.save(&read_only.state_path()).unwrap();
         let read_only = calendar_at(&crate::agendas::place(&read_only)).unwrap();
-        assert_eq!(take(EXT, &reply, &read_only, &words()), Err(Problem::CalendarGone));
+        assert_eq!(take(EXT, &reply, &read_only, &words(), false), Err(Problem::CalendarGone));
         let tasks = vdir::create(Kind::Calendars, LOCAL, "Door tasks", None, &["VTODO"]).unwrap();
-        assert_eq!(take(EXT, &reply, &tasks, &words()), Err(Problem::CalendarGone));
+        assert_eq!(take(EXT, &reply, &tasks, &words(), false), Err(Problem::CalendarGone));
         let gone = calendar("Door gone");
         std::fs::remove_dir_all(&gone.dir).unwrap();
-        assert_eq!(take(EXT, &reply, &gone, &words()), Err(Problem::CalendarGone));
+        assert_eq!(take(EXT, &reply, &gone, &words(), false), Err(Problem::CalendarGone));
         assert!(files(&read_only.dir).keys().all(|n| !n.ends_with(".ics")) && files(&tasks.dir).keys().all(|n| !n.ends_with(".ics")));
     }
 
@@ -673,20 +722,20 @@ mod tests {
         const EXT: &str = "dropped-test";
         let calendar = calendar("Door dropped");
         let reply = answer("pupil-2", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]);
-        take(EXT, &reply, &calendar, &words()).unwrap();
+        take(EXT, &reply, &calendar, &words(), false).unwrap();
         let uid = crate::extensions::event_uid(EXT, "pupil-2", "L1@skolengo");
         let path = calendar.dir.join(crate::extensions::event_file(&uid));
         let stripped: String = lines::fold(&lines::unfold(&std::fs::read_to_string(&path).unwrap()).into_iter().filter(|l| !l.starts_with("X-SIOUL")).collect::<Vec<_>>());
         std::fs::write(&path, &stripped).unwrap();
-        assert_eq!(take(EXT, &reply, &calendar, &words()).unwrap().written, 0, "the note stands for the line");
+        assert_eq!(take(EXT, &reply, &calendar, &words(), false).unwrap().written, 0, "the note stands for the line");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), stripped);
         // Another device: no note of its own, the line on the event as the first wrote it.
-        let written = take(EXT, &answer("pupil-3", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &calendar, &words()).unwrap();
+        let written = take(EXT, &answer("pupil-3", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &calendar, &words(), false).unwrap();
         assert_eq!(written.written, 1);
         let mut notes = load_noted(EXT);
         notes.events.retain(|uid, _| !uid.contains(&crate::extensions::agenda_key(EXT, "pupil-3")));
         save_noted(EXT, &notes).unwrap();
-        assert_eq!(take(EXT, &answer("pupil-3", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &calendar, &words()).unwrap().written, 0, "the hash on the event agrees");
+        assert_eq!(take(EXT, &answer("pupil-3", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &calendar, &words(), false).unwrap().written, 0, "the hash on the event agrees");
     }
 
     /// Remove's "take its lessons out" takes this extension's events alone,
@@ -696,13 +745,13 @@ mod tests {
         let first = calendar("Door out one");
         let second = calendar("Door out two");
         let reply = answer("pupil-1", &[lesson("L1@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]);
-        take("timetable-out", &reply, &first, &words()).unwrap();
-        take("timetable-out", &answer("pupil-2", &[lesson("L7@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &second, &words()).unwrap();
-        take("other-out", &reply, &second, &words()).unwrap();
+        take("timetable-out", &reply, &first, &words(), false).unwrap();
+        take("timetable-out", &answer("pupil-2", &[lesson("L7@skolengo", "20261117T080000Z", "20261117T090000Z", "Maths", "")], true, &[]), &second, &words(), false).unwrap();
+        take("other-out", &reply, &second, &words(), false).unwrap();
         // One agenda moved to another calendar: its lessons leave the first, the other agenda's stay.
         let third = calendar("Door out three");
-        take("timetable-out", &answer("pupil-3", &[lesson("L8@skolengo", "20261117T080000Z", "20261117T090000Z", "Art", "")], true, &[]), &third, &words()).unwrap();
-        take("timetable-out", &answer("pupil-1", &[lesson("L9@skolengo", "20261118T080000Z", "20261118T090000Z", "Art", "")], true, &[]), &third, &words()).unwrap();
+        take("timetable-out", &answer("pupil-3", &[lesson("L8@skolengo", "20261117T080000Z", "20261117T090000Z", "Art", "")], true, &[]), &third, &words(), false).unwrap();
+        take("timetable-out", &answer("pupil-1", &[lesson("L9@skolengo", "20261118T080000Z", "20261118T090000Z", "Art", "")], true, &[]), &third, &words(), false).unwrap();
         assert_eq!(take_out_of(&third, "timetable-out", "pupil-3"), (1, 0));
         assert_eq!(files(&third.dir).keys().filter(|n| n.ends_with(".ics")).count(), 1);
         assert_eq!(take_out("timetable-out"), (3, 0));

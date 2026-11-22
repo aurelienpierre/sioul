@@ -4152,6 +4152,8 @@ extension-calendar-new-here = Un nouveau calendrier sur cet appareil seulement
 extension-calendar-for = Le calendrier pour { $name }
 extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
+# À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
+extension-busy = Compter comme mon temps occupé
 # La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
 sign-in-window-title = Connexion sur { $host }
 sign-in-site = Vous vous connectez sur : { $host }

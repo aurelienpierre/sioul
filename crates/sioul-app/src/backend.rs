@@ -2973,6 +2973,10 @@ pub mod qobject {
         #[qinvokable]
         fn extension_calendar(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, choice: &QString);
 
+        /// Whether an extension's agenda counts as the person's own busy time (`[extensions.busy]`).
+        #[qinvokable]
+        fn extension_busy(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, counts: bool);
+
         /// The sign-in page's word (SignInWindow.qml): the address it returned to, "" when closed.
         #[qinvokable]
         fn sign_in_returned(self: Pin<&mut Sioul>, address: &QString);
@@ -8936,6 +8940,10 @@ impl qobject::Sioul {
 
     fn extension_calendar(self: Pin<&mut Self>, id: &QString, agenda: &QString, choice: &QString) {
         crate::extensions::choose_calendar(&self.qt_thread(), &self.shared(), &id.to_string(), &agenda.to_string(), &choice.to_string());
+    }
+
+    fn extension_busy(self: Pin<&mut Self>, id: &QString, agenda: &QString, counts: bool) {
+        crate::extensions::choose_busy(&self.qt_thread(), &id.to_string(), &agenda.to_string(), counts);
     }
 
     fn sign_in_returned(self: Pin<&mut Self>, address: &QString) {

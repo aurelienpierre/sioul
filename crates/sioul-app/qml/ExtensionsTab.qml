@@ -182,6 +182,14 @@ Item {
                             Accessible.name: tab.sioul.textWith("extension-calendar-for", "name", agenda.modelData.name)
                             onActivated: index => tab.choose(offer.modelData.id, agenda.modelData, agenda.choices[index].choice)
                         }
+                        // Whether its lessons count as your own busy time: the extension's
+                        // suggestion by default (a pupil's lessons off, your own appointments on).
+                        Switch {
+                            objectName: "extensionBusy:" + agenda.modelData.id
+                            text: tab.sioul.text("extension-busy")
+                            checked: agenda.modelData.busy === true
+                            onToggled: tab.sioul.extensionBusy(offer.modelData.id, agenda.modelData.id, checked)
+                        }
                     }
                 }
 

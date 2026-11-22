@@ -82,6 +82,12 @@ pub struct AgendaReply {
     /// Periods not read this time (seconds since 1970, from and until):
     /// nothing in them is changed.
     pub unread: Vec<(i64, i64)>,
+    /// The extension's suggestion that these are the person's own busy time
+    /// (absent reads false). A suggestion, not a verdict: the person's
+    /// per-agenda choice (`[extensions.busy]`) decides the transparency the
+    /// door writes; this is only the default for that choice (Planity true,
+    /// Skolengo false). Interface stays version 1 (additive).
+    pub busy: bool,
 }
 
 /// The reply to a `refresh` call.
@@ -223,7 +229,9 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if unread.len() > MOST_PERIODS {
             return nonsense("too many unread periods");
         }
-        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, read, unread });
+        // The extension's suggestion, parsed leniently: anything but `true` reads false.
+        let busy = agenda["busy"].as_bool().unwrap_or(false);
+        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, read, unread, busy });
     }
     Ok(RefreshReply { agendas, problem })
 }
@@ -397,6 +405,13 @@ mod tests {
             assert!(refresh_reply(&wrong.to_string()).is_err(), "{field}: {value}");
         }
         assert_eq!(read.agendas[0].read, None, "no period said: nothing is removed");
+        assert!(!read.agendas[0].busy, "no busy said: the suggestion reads false");
+        // The extension's busy suggestion: true when it says so, false otherwise.
+        let mut suggests = good.clone();
+        suggests["agendas"][0]["busy"] = serde_json::json!(true);
+        assert!(refresh_reply(&suggests.to_string()).unwrap().agendas[0].busy, "a busy agenda parses");
+        suggests["agendas"][0]["busy"] = serde_json::json!("yes");
+        assert!(!refresh_reply(&suggests.to_string()).unwrap().agendas[0].busy, "anything but true reads false");
         // The period read, bounded; a name without the marks that turn a line around.
         let mut said = good.clone();
         said["agendas"][0]["period"] = serde_json::json!({ "from": "2026-11-12T00:00:00Z", "until": "2026-12-17T00:00:00Z" });

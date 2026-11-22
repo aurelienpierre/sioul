@@ -51,6 +51,11 @@ pub struct Brought {
     /// (`door::Problem::word`, "choose" when no calendar is chosen); none when they were.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// The extension's last suggestion that these are the person's own busy
+    /// time (`AgendaReply::busy`): the default for the person's per-agenda
+    /// choice, kept so the settings page shows it between refreshes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub busy: bool,
 }
 
 fn is_zero(n: &i64) -> bool {

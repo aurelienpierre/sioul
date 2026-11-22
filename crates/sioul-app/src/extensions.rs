@@ -98,7 +98,9 @@ impl AgendaDoor for Door {
         let Some(calendar) = door::calendar_at(place) else { return Err(door::Problem::CalendarGone) };
         let cancelled = |title: &str| say("extension-event-cancelled", &[("title", title.to_string())]);
         let words = door::Words { cancelled: &cancelled, from: say("extension-event-from-line", &[("name", sioul_core::extensions::category(extension))]) };
-        door::take(extension, agenda, &calendar, &words)
+        // The person's per-agenda choice, or the extension's suggestion when they made none.
+        let busy = crate::backend::config_read().map_or(agenda.busy, |c| c.extensions.busy_for(extension, &agenda.id, agenda.busy));
+        door::take(extension, agenda, &calendar, &words, busy)
     }
 
     fn take_out(&self, extension: &str) -> (usize, usize) {
@@ -140,7 +142,7 @@ fn note_written(id: &str, fetched: i64) {
 pub(crate) fn take_in(door: &dyn AgendaDoor, extension: &str, reply: &RefreshReply, write: bool, chosen: &dyn Fn(&str) -> Option<String>, fetched: i64) -> (Vec<Brought>, Vec<String>) {
     let (mut brought, mut log) = (Vec::new(), Vec::new());
     for agenda in &reply.agendas {
-        let mut now = Brought { id: agenda.id.clone(), name: agenda.name.clone(), events: agenda.events, ..Brought::default() };
+        let mut now = Brought { id: agenda.id.clone(), name: agenda.name.clone(), events: agenda.events, busy: agenda.busy, ..Brought::default() };
         match chosen(&agenda.id) {
             None => {
                 now.problem = Some("choose".into());
@@ -343,6 +345,8 @@ struct Calendars {
     labels: BTreeMap<String, String>,
     /// `[extensions.calendars]`, as the settings read now (none when they do not).
     chosen: Option<BTreeMap<String, String>>,
+    /// `[extensions.busy]`, the per-agenda busy choices (none when the settings do not read).
+    busy: Option<BTreeMap<String, bool>>,
 }
 
 impl Calendars {
@@ -365,7 +369,8 @@ impl Calendars {
             labels.insert(place, label);
         }
         choices.push(json!({ "choice": format!("new:{}", sioul_core::vdir::LOCAL), "label": say("extension-calendar-new-here", &[]) }));
-        Self { choices, labels, chosen: crate::backend::config_read().map(|c| c.extensions.calendars) }
+        let settings = crate::backend::config_read().map(|c| c.extensions);
+        Self { choices, labels, chosen: settings.as_ref().map(|e| e.calendars.clone()), busy: settings.map(|e| e.busy) }
     }
 }
 
@@ -385,7 +390,9 @@ fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Valu
         }
         (false, Some(label), _) => (say("extension-agenda-next", &[("calendar", label.clone())]), false),
     };
-    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place })
+    // Whether its lessons count as the person's own busy time: their choice, or the extension's suggestion.
+    let busy = calendars.busy.as_ref().and_then(|b| b.get(&sioul_core::config::extension_calendar_key(extension, &agenda.id)).copied()).unwrap_or(agenda.busy);
+    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "busy": busy })
 }
 
 /// The page's view set on the window's thread.
@@ -711,8 +718,9 @@ pub(crate) fn remove(qt: &QtThread, id: &str, keep: bool) {
             let (_, refused) = door().take_out(&id);
             taken = refused == 0;
             // The calendars chosen for it leave the shared settings: another device that
-            // still runs it writes nothing until one is chosen again there (R2 c).
-            if let Err(why) = sioul_core::config::forget_extension_calendars(&crate::backend::config_path(), &id) {
+            // still runs it writes nothing until one is chosen again there (R2 c);
+            // its busy choices leave with them.
+            if let Err(why) = sioul_core::config::forget_extension(&crate::backend::config_path(), &id) {
                 eprintln!("sioul: extensions: {id}: its calendars in the settings: {why}");
             }
         }
@@ -804,6 +812,39 @@ pub(crate) fn choose_calendar(qt: &QtThread, shared: &std::sync::Arc<crate::back
         if let Some(old) = before.filter(|old| *old != place).and_then(|old| door::calendar_at(&old)) {
             let (removed, refused) = door::take_out_of(&old, &id, &agenda);
             let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: another calendar chosen; {removed} lessons taken out of the one before, {refused} refused", jiff::Timestamp::now())]);
+        }
+        if installed.enabled && (installed.signed_in || installed.offer.sign_in.is_none()) {
+            refresh(Some(&qt), &id);
+        }
+    });
+}
+
+/// Whether an agenda's lessons count as the person's own busy time, chosen on
+/// the page (the toggle beside the calendar). Kept in the shared settings
+/// (`[extensions.busy]`), so every device writes the same transparency; then
+/// a refresh writes the lessons again with it (`TRANSP:OPAQUE` or
+/// `TRANSPARENT`). A shared setting like the calendar choice, not a secret.
+pub(crate) fn choose_busy(qt: &QtThread, id: &str, agenda: &str, counts: bool) {
+    let Some(installed) = state::load(&state::path()).get(id).cloned() else { return };
+    if let Err(why) = sioul_core::config::set_extension_busy(&crate::backend::config_path(), id, agenda, counts) {
+        eprintln!("sioul: extensions: {id}: a busy choice: {why}");
+        crate::backend::set_status(qt, say("extension-calendar-not-kept", &[]));
+        return;
+    }
+    // The calendar its lessons are in now, to take them out of so the refresh writes them fresh.
+    let place = chosen_calendars(id).and_then(|c| c.get(agenda).cloned());
+    show(qt);
+    let (qt, id, agenda) = (qt.clone(), id.to_string(), agenda.to_string());
+    std::thread::spawn(move || {
+        let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: busy time set to {counts}", jiff::Timestamp::now())]);
+        // The busy mark is not part of the lesson's hash, so a refresh alone would
+        // leave the events already written as they are: they are taken out first,
+        // then the refresh writes them again with the transparency now chosen (the
+        // way a calendar change relocates them). A device whose fetch is not the
+        // freshest writes nothing; another device's next refresh restores them.
+        if let Some(calendar) = place.and_then(|p| door::calendar_at(&p)) {
+            let (removed, refused) = door::take_out_of(&calendar, &id, &agenda);
+            let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: {removed} lessons taken out to rewrite their busy state, {refused} refused", jiff::Timestamp::now())]);
         }
         if installed.enabled && (installed.signed_in || installed.offer.sign_in.is_none()) {
             refresh(Some(&qt), &id);
@@ -1405,7 +1446,7 @@ mod tests {
         assert!(door.0.borrow().is_empty(), "no calendar chosen: nothing written");
         let kids = |agenda: &str| (agenda == "pupil-1").then(|| "local/kids".to_string());
         let (brought, log_written) = take_in(&door, "timetable", &first, true, &kids, 100);
-        assert_eq!(brought, vec![Brought { id: "pupil-1".into(), name: "Timetable: Alex".into(), events: 3, calendar: "local/kids".into(), read: 100, problem: None }]);
+        assert_eq!(brought, vec![Brought { id: "pupil-1".into(), name: "Timetable: Alex".into(), events: 3, calendar: "local/kids".into(), read: 100, problem: None, busy: false }]);
         let (place, handed) = door.0.borrow()["pupil-1"].clone();
         assert_eq!((place.as_str(), handed.events, handed.calendar.matches("BEGIN:VEVENT").count()), ("local/kids", 3, 3));
         // The 20th answered 500: the door is told, to leave B as it is.
@@ -1421,7 +1462,7 @@ mod tests {
         assert!(door.0.borrow().is_empty());
         assert_eq!((later[0].read, later[0].calendar.as_str()), (0, "local/kids"));
         // The record: when each was read kept, a pupil no longer named kept with where its lessons went.
-        let before = vec![Brought { id: "pupil-0".into(), name: "Timetable: Sam".into(), events: 9, calendar: "local/sam".into(), read: 50, problem: None }, brought[0].clone()];
+        let before = vec![Brought { id: "pupil-0".into(), name: "Timetable: Sam".into(), events: 9, calendar: "local/sam".into(), read: 50, problem: None, busy: false }, brought[0].clone()];
         let after = merged(&before, later);
         assert_eq!(after.iter().map(|b| (b.id.as_str(), b.read)).collect::<Vec<_>>(), vec![("pupil-1", 100), ("pupil-0", 50)]);
         // The log: ids and fixed words, never the agenda's name.
