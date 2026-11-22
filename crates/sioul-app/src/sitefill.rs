@@ -22,7 +22,7 @@
 //!   with the address it shows then, and the password is read from the
 //!   vault only then, for the same scheme, host and port alone, while the
 //!   vault is still open.
-//! - a request waits two minutes for the window's answer; then the window's
+//! - a request waits ten minutes for the window's answer; then the window's
 //!   card closes and its cancel brings the site back, saying no login was
 //!   chosen in time. A screen that goes while its fill waits, or finds no
 //!   window, tells it here ("forget"): the request and any login chosen for
@@ -39,9 +39,14 @@
 use crate::backend::{QtThread, Shared, tr};
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// How long a login chosen in the window waits for its site, and a request
-/// for the window to read it as it starts: two minutes.
+/// How long a login chosen in the window waits for its site: two minutes.
 const WAITS: i64 = 120;
+
+/// How long a request waits for the window's answer, from the tap: ten
+/// minutes, the time to open the vault (the master password, a code from
+/// another app or by e-mail) and to choose; and for a window that starts
+/// later to read it.
+const ASKED: i64 = 600;
 
 /// What the screen asked: the site's own login filled ("fill"), or any login chosen ("choose").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,7 +150,7 @@ pub(crate) struct Fills {
     serial: i32,
     request: Option<Request>,
     ticket: Option<Ticket>,
-    /// A request ran out of its two minutes in the window: said once by the site back in front.
+    /// A request ran out of its ten minutes in the window: said once by the site back in front.
     unanswered: bool,
 }
 
@@ -181,18 +186,18 @@ impl Fills {
         Answer::Window
     }
 
-    /// The request the window has to answer, while it waits (two minutes from
+    /// The request the window has to answer, while it waits (ten minutes from
     /// the tap): {serial, url, mode, left}, `left` its seconds still to wait,
     /// after which the window reads it again and closes its card.
     pub(crate) fn waiting(&self, now: i64) -> Option<serde_json::Value> {
-        self.request.as_ref().filter(|r| now - r.at <= WAITS).map(|r| serde_json::json!({ "serial": r.serial, "url": r.url, "mode": r.mode.word(), "left": WAITS - (now - r.at) }))
+        self.request.as_ref().filter(|r| now - r.at <= ASKED).map(|r| serde_json::json!({ "serial": r.serial, "url": r.url, "mode": r.mode.word(), "left": ASKED - (now - r.at) }))
     }
 
     /// The login `id` chosen in the window for request `serial`, while it
     /// waits: kept as the ticket the site takes, the request answered.
     /// Whether it was the request waiting.
     pub(crate) fn chosen(&mut self, serial: i32, id: &str, now: i64) -> bool {
-        if id.is_empty() || !self.request.as_ref().is_some_and(|r| r.serial == serial && now - r.at <= WAITS) {
+        if id.is_empty() || !self.request.as_ref().is_some_and(|r| r.serial == serial && now - r.at <= ASKED) {
             return false;
         }
         let Some(request) = self.request.take() else { return false };
@@ -201,11 +206,11 @@ impl Fills {
     }
 
     /// Request `serial` cancelled in the window, or its card closed when its
-    /// two minutes ran out (then the site says so as it comes back):
+    /// ten minutes ran out (then the site says so as it comes back):
     /// nothing to fill. Whether it was the request kept.
     pub(crate) fn cancelled(&mut self, serial: i32, now: i64) -> bool {
         let Some(request) = self.request.as_ref().filter(|r| r.serial == serial) else { return false };
-        self.unanswered = now - request.at > WAITS;
+        self.unanswered = now - request.at > ASKED;
         self.request = None;
         self.ticket = None;
         true
@@ -338,7 +343,7 @@ pub(crate) fn chosen(serial: i32, id: &str) {
     }
 }
 
-/// Request `serial` cancelled in the window, or its two minutes over: the site brought back, nothing filled.
+/// Request `serial` cancelled in the window, or its ten minutes over: the site brought back, nothing filled.
 pub(crate) fn cancelled(serial: i32) {
     if fills().cancelled(serial, jiff::Timestamp::now().as_second()) {
         back();
@@ -531,11 +536,11 @@ mod tests {
         assert_eq!(fills.take(Some(&shared), asked, now + 6), Answer::Waiting, "the older ticket dropped by the new question");
 
         let stale = Fills { serial: 7, request: Some(Request { serial: 7, url: asked.into(), mode: Mode::Choose, at: now }), ticket: None, unanswered: false };
-        assert!(stale.waiting(now + WAITS + 1).is_none(), "a request older than two minutes is not begun by a window starting later");
+        assert!(stale.waiting(now + ASKED + 1).is_none(), "a request older than ten minutes is not begun by a window starting later");
     }
 
     /// A card never outlives its request (review of 22 November 2026,
-    /// finding 8). A request waits two minutes from the tap, its seconds
+    /// finding 8). A request waits ten minutes from the tap, its seconds
     /// left told to the window; then no login is taken for it, and the
     /// window's cancel brings the site back, which says once that none was
     /// chosen in time. A screen that goes while its fill waits has its
@@ -550,17 +555,17 @@ mod tests {
         let mut fills = Fills::new();
         assert_eq!(fills.ask(Some(&shared), true, asked, Mode::Fill, now), Answer::Window);
         let serial = fills.waiting(now).unwrap()["serial"].as_i64().unwrap() as i32;
-        assert_eq!(fills.waiting(now + 30).unwrap()["left"], WAITS - 30, "its seconds left");
-        assert_eq!(fills.waiting(now + WAITS).unwrap()["left"], 0);
-        assert!(fills.waiting(now + WAITS + 1).is_none(), "two minutes over: no longer waiting");
-        assert!(!fills.chosen(serial, "a", now + WAITS + 1), "no login taken for it then");
-        assert!(fills.cancelled(serial, now + WAITS + 1), "the window's cancel brings the site back");
-        assert_eq!(fills.take(Some(&shared), asked, now + WAITS + 2), Answer::Said(tr().text("site-screen-fill-unanswered", None)), "said once");
-        assert_eq!(fills.take(Some(&shared), asked, now + WAITS + 3), Answer::Nothing);
+        assert_eq!(fills.waiting(now + 30).unwrap()["left"], ASKED - 30, "its seconds left");
+        assert_eq!(fills.waiting(now + ASKED).unwrap()["left"], 0);
+        assert!(fills.waiting(now + ASKED + 1).is_none(), "ten minutes over: no longer waiting");
+        assert!(!fills.chosen(serial, "a", now + ASKED + 1), "no login taken for it then");
+        assert!(fills.cancelled(serial, now + ASKED + 1), "the window's cancel brings the site back");
+        assert_eq!(fills.take(Some(&shared), asked, now + ASKED + 2), Answer::Said(tr().text("site-screen-fill-unanswered", None)), "said once");
+        assert_eq!(fills.take(Some(&shared), asked, now + ASKED + 3), Answer::Nothing);
         // Cancelled in time: nothing said.
         assert_eq!(fills.ask(Some(&shared), true, asked, Mode::Fill, now), Answer::Window);
         let serial = fills.waiting(now).unwrap()["serial"].as_i64().unwrap() as i32;
-        assert!(fills.cancelled(serial, now + WAITS));
+        assert!(fills.cancelled(serial, now + ASKED));
         assert_eq!(fills.take(Some(&shared), asked, now + WAITS + 1), Answer::Nothing);
         // The screen gone: the request forgotten, the window told; a cancel after it changes nothing.
         assert_eq!(fills.ask(Some(&shared), true, asked, Mode::Choose, now), Answer::Window);

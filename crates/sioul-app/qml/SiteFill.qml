@@ -14,7 +14,7 @@
 // made (Android may have ended Sioul meanwhile, the site's screen alone made
 // again) and at each `siteFillAsked`. A card closes once its request no
 // longer waits (review of 22 November 2026, finding 8): its screen gone or
-// another site opened (Rust forgot it), or its two minutes over (Rust then
+// another site opened (Rust forgot it), or its ten minutes over (Rust then
 // brings the site back, saying that no login was chosen in time). Made on
 // Android only (main.qml).
 
@@ -42,7 +42,7 @@ Item {
     // one still open has its cards closed and needs no answer: Rust keeps
     // the newer one alone. One that no longer waits, none newer coming,
     // has its cards closed and is handed back as cancelled, once: Rust
-    // takes that only while it still holds the request (its two minutes
+    // takes that only while it still holds the request (its ten minutes
     // over), and then brings the site back.
     function take() {
         const said = fill.sioul.siteFillWaiting()
@@ -89,7 +89,7 @@ Item {
         chooser.now().begin(fill.asked.url)
     }
 
-    // The request read again once its two minutes are over ("left", in seconds).
+    // The request read again once its ten minutes are over ("left", in seconds).
     function expireIn(request) {
         expiry.interval = Math.max(1, request.left || 0) * 1000 + 250
         expiry.restart()
@@ -124,7 +124,7 @@ Item {
 
     Component.onCompleted: fill.take()
 
-    // A request's two minutes: then it is read again, and closed when it no longer waits.
+    // A request's ten minutes: then it is read again, and closed when it no longer waits.
     Timer {
         id: expiry
 

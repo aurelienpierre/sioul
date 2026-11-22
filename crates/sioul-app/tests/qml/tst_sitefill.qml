@@ -9,7 +9,7 @@
 // begun once; a request waiting as the window starts is begun then; the
 // vault and the chooser are asked for the request's own address; the vault
 // locked while the chooser asks hands back a cancel; a card closes once its
-// request no longer waits (forgotten by Rust, or its two minutes over). The
+// request no longer waits (forgotten by Rust, or its ten minutes over). The
 // vault's own rules are Rust's (sitefill.rs, sites.rs); here no password
 // ever reaches the stand-in. Run by tools/qml-test.sh.
 
@@ -267,7 +267,7 @@ Item {
             verify(fill.asked === null)
         }
 
-        // Its two minutes over, the request no longer waits: the card closes by itself, and
+        // Its ten minutes over, the request no longer waits: the card closes by itself, and
         // the cancel goes to Rust, which still holds it and brings the site back.
         function test_a_request_s_two_minutes_over_close_its_card() {
             mock.until = Date.now() + 700
