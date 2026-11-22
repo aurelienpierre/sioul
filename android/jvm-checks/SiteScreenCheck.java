@@ -128,13 +128,21 @@ public final class SiteScreenCheck
         expect("an account set: the vault's lines shown", SiteWeb.Opening.of(site("{\"vault\": true}")).vault);
         expect("only a true that is JSON's own", !SiteWeb.Opening.of(site("{\"vault\": \"true\"}")).vault && !SiteWeb.Opening.of(site("{\"vault\": 1}")).vault && !SiteWeb.Opening.of(site("{\"vault\": false}")).vault);
         String signInPage = "https://secure.bank.example.co.uk/login?next=%2F";
-        String[] sameOrigin = { "https://secure.bank.example.co.uk/", "https://secure.bank.example.co.uk/account#top", "HTTPS://Secure.Bank.Example.co.uk:443/x", "https://user@secure.bank.example.co.uk/" };
-        for (String now : sameOrigin)
-            expect("the same scheme, host and port: filled at " + now, SiteWeb.sameOrigin(signInPage, now));
-        String[] otherOrigin = { "http://secure.bank.example.co.uk/login", "https://secure.bank.example.co.uk:8443/login", "https://bank.example.co.uk/login", "https://secure.bank.example.co.uk.example.net/", "https://look-alike.example.net/login", "https://look-alike.example.net/@secure.bank.example.co.uk", "about:blank", "", "javascript:alert(1)", "file:///sdcard/a.html", "https://secure.bank.example.co.uk:99999/", "https://secure.bank.example.co.uk:x/" };
-        for (String now : otherOrigin)
-            expect("another scheme, host or port: nothing filled at " + now, !SiteWeb.sameOrigin(signInPage, now));
-        expect("asked on http: nothing, whatever follows", !SiteWeb.sameOrigin("http://secure.bank.example.co.uk/", "http://secure.bank.example.co.uk/") && !SiteWeb.sameOrigin(null, signInPage) && !SiteWeb.sameOrigin(signInPage, null));
+        // The cases Rust's same-origin test reads too, from one file (review of 22 November 2026, finding 5).
+        Path originCases = Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "tests", "same-origin.txt");
+        int originRead = 0;
+        for (String line : read(originCases).split("\n")) {
+            if (line.isBlank() || line.startsWith("#"))
+                continue;
+            String[] fields = line.split("\t", -1);
+            String asked = fields.length == 3 && fields[1].equals("\"\"") ? "" : fields.length == 3 ? fields[1] : null;
+            String now = fields.length == 3 && fields[2].equals("\"\"") ? "" : fields.length == 3 ? fields[2] : null;
+            expect("a case of three fields: " + line, fields.length == 3 && (fields[0].equals("same") || fields[0].equals("other")));
+            expect((fields[0].equals("same") ? "the same scheme, host and port: filled at " : "another scheme, host or port: nothing filled at ") + now + " (asked " + asked + ")", asked != null && SiteWeb.sameOrigin(asked, now) == fields[0].equals("same"));
+            originRead++;
+        }
+        expect("the cases read: " + originRead, originRead >= 30);
+        expect("asked or now unknown: nothing", !SiteWeb.sameOrigin(null, signInPage) && !SiteWeb.sameOrigin(signInPage, null));
         expect("a port read, 443 unsaid", SiteWeb.port("https://a.example.org/") == 443 && SiteWeb.port("https://a.example.org:8443/x") == 8443 && SiteWeb.port("https://[::1]:8080/") == 8080 && SiteWeb.port("https://[::1]/") == 443 && SiteWeb.port("http://a.example.org/") == -1 && SiteWeb.port("https://a.example.org:70000/") == -1);
         org.json.JSONObject askedFill = new org.json.JSONObject(SiteWeb.fillAsked(signInPage, "choose"));
         expect("Rust is asked the committed address and the mode, nothing else", askedFill.length() == 2 && askedFill.getString("url").equals(signInPage) && askedFill.getString("mode").equals("choose"));
@@ -142,7 +150,7 @@ public final class SiteScreenCheck
         expect("and for the window's answer, the address alone", takenFill.length() == 1 && takenFill.getString("url").equals(signInPage));
         expect("the vault's words, in English when Rust gives none", bank.word("fill").equals("Fill from Bitwarden") && bank.word("choose_login").equals("Choose a login\u2026") && !bank.word("fill_changed").isEmpty() && !bank.word("fill_https").isEmpty());
         String sitefill = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "sitefill.rs"));
-        expect("Rust's same-origin test holds the same rule (sitefill.rs)", sitefill.contains("fn the_same_origin_is_the_scheme_the_host_and_the_port()") && sitefill.contains("\"https://bank.example.org:8443/login\"") && sitefill.contains("\"http://bank.example.org/login\""));
+        expect("Rust's same-origin test reads the same cases (sitefill.rs)", body(sitefill, "    fn the_same_origin_is_the_scheme_the_host_and_the_port() {", "    ").contains("include_str!(\"../tests/same-origin.txt\")"));
 
         // ------------------------------------------------ The host shown
         expect("the host alone, no user, no port, lower case", SiteWeb.host("https://user:pw@Secure.Bank.Example.org:8443/a?b#c").equals("secure.bank.example.org"));
@@ -428,10 +436,11 @@ public final class SiteScreenCheck
         expect("the extra read once", read == 1);
         expect("the extra checked before anything", screen.indexOf("SiteWeb.Opening.of(getIntent().getStringExtra(SITE))") < screen.indexOf("setContentView"));
         for (String source : new String[] { screen, web }) {
-            Matcher log = Pattern.compile("Log\\.\\w\\(([^;]*)\\);").matcher(source);
+            Matcher log = Pattern.compile("(?s)Log\\.\\w\\((.*?)\\);").matcher(source);
             while (log.find()) {
-                String said = log.group(1);
-                expect("nothing of a page in a log line: " + said, !said.matches("(?is).*\\b(url|address|committed|popupCommitted|cookies?|agent|name|disposition|asked)\\b.*") && !said.contains("getUrl") && !said.contains("getCookie"));
+                // What is not fixed words: a fixed sentence may say "asked" or "address".
+                String said = log.group(1).replaceAll("\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"");
+                expect("nothing of a page in a log line: " + log.group(1), !said.matches("(?is).*\\b(url|address|committed|popupCommitted|cookies?|agent|name|disposition|asked)\\b.*") && !said.contains("getUrl") && !said.contains("getCookie"));
             }
         }
         expect("one screen at a time, in Sioul's task", body(web, "private static boolean open(", "    ").contains("Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP"));
@@ -597,6 +606,15 @@ public final class SiteScreenCheck
             }
         }
         expect("one evaluateJavascript in all of Sioul's Java: " + evaluated, evaluated == 1);
+        // Nor a script by an address (review of 22 November 2026, finding 10): loadUrl("javascript:…") runs one too.
+        List<String> scriptAddresses = new ArrayList<>();
+        try (java.util.stream.Stream<Path> all = Files.list(java)) {
+            for (Path source : (Iterable<Path>) all::iterator) {
+                if (Pattern.compile("(?i)javascript:").matcher(code(read(source))).find())
+                    scriptAddresses.add(source.getFileName().toString());
+            }
+        }
+        expect("no javascript: address in Sioul's Java: " + scriptAddresses, scriptAddresses.isEmpty());
         String running = body(screen, "private void run(WebView page, String address, String call)", "    ");
         expect("it is the fill's, run in the page asked, after its address is checked again", running.contains("page.evaluateJavascript(call, null);") && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") >= 0
             && running.indexOf("SiteWeb.sameOrigin(address, front == popup ? popupCommitted : committed)") < running.indexOf("page.evaluateJavascript(") && running.contains("front != page") && running.contains("say(site.word(\"fill_changed\"));"));
@@ -625,21 +643,44 @@ public final class SiteScreenCheck
         expect("Rust loaded before it is asked, as the receivers load it", reaching.indexOf("DoseAlarms.load(context);") >= 0 && reaching.indexOf("DoseAlarms.load(context);") < reaching.indexOf("nativeFill(verb, json)"));
         expect("Rust asked in one place", screen.split("nativeFill\\(", -1).length - 1 == 2);
         expect("off Android's main thread, the answer back on it", body(screen, "private void fillQuestion(String verb,", "    ").contains("new Thread(") && body(screen, "private void fillQuestion(String verb,", "    ").contains("runOnUiThread("));
+        // Each call to Android's log, over as many lines as it takes (review of 22 November 2026, finding 10);
+        // no other way out: neither the console's streams nor a stack trace.
         List<String> logged = new ArrayList<>();
         int logLines = 0;
+        int logCalls = 0;
         for (String source : new String[] { screen, web }) {
-            Matcher line = Pattern.compile("Log\\.\\w\\((.*)\\);").matcher(source);
+            logCalls += source.split("\\bLog\\.\\w+\\(", -1).length - 1;
+            Matcher line = Pattern.compile("(?s)\\bLog\\.\\w\\((.*?)\\);").matcher(source);
             while (line.find()) {
                 logLines++;
-                String arguments = line.group(1).replaceAll("\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"");
-                if (!arguments.matches("DoseAlarms\\.TAG, \"\"(\\s*\\+\\s*e\\.getClass\\(\\)\\.getSimpleName\\(\\))?"))
+                String arguments = line.group(1).replaceAll("\"(?:[^\"\\\\]|\\\\.)*\"", "\"\"").replaceAll("\\s+", " ");
+                if (!arguments.matches("DoseAlarms\\.TAG, \"\"( \\+ e\\.getClass\\(\\)\\.getSimpleName\\(\\))?"))
                     logged.add(line.group(1));
             }
+            for (String way : new String[] { "System.out", "System.err", "printStackTrace", "Log.getStackTraceString" })
+                expect("no " + way + " in the screen", !source.contains(way));
         }
-        expect("every log line of the screen fixed words and an exception's class, nothing it was handed: " + logged + ", of " + logLines, logged.isEmpty() && logLines >= 10);
+        expect("every log line of the screen fixed words and an exception's class, nothing it was handed: " + logged + ", of " + logLines, logged.isEmpty() && logLines >= 10 && logLines == logCalls);
         expect("the call never in an intent, a saved state or the clipboard", !running.contains("putExtra") && !screen.contains("ClipboardManager") && !screen.contains("setPrimaryClip") && !body(screen, "protected void onSaveInstanceState(", "    ").contains("fill"));
         expect("the call kept in no field: a local of the answer, then run", !Pattern.compile("(?m)^    (private |static |final )*String \\w*([Cc]all|[Aa]nswer|[Pp]assword)\\w*( =[^;]*)?;").matcher(screen).find()
             && body(screen, "private void answered(", "    ").contains("String call = said.optString(\"call\", \"\");"));
+        // Whatever its name, nothing keeps it: the call is named in these lines alone (review of 22 November 2026, finding 10).
+        List<String> callLines = new ArrayList<>();
+        for (String line : screen.split("\n")) {
+            if (Pattern.compile("\\bcall\\b").matcher(line).find())
+                callLines.add(line.trim());
+        }
+        expect("the call named in five lines alone, read, checked, handed to run, run: " + callLines, callLines.equals(List.of("String call = said.optString(\"call\", \"\");", "if (!call.isEmpty()) {", "run(page, address, call);", "private void run(WebView page, String address, String call)", "page.evaluateJavascript(call, null);")));
+        // And Rust's answer, whole or read: named in the fill's methods in these lines alone.
+        String fillSection = screen.substring(Math.max(0, screen.indexOf("private void fill(String mode)")), Math.max(0, screen.indexOf("static boolean comeBack(")));
+        List<String> answerLines = new ArrayList<>();
+        for (String line : fillSection.split("\n")) {
+            if (Pattern.compile("\\b(answer|json|said)\\b").matcher(line).find())
+                answerLines.add(line.trim());
+        }
+        expect("and Rust's answer in these alone: " + answerLines, answerLines.equals(List.of("private void fillQuestion(String verb, String json, WebView page, String address)", "String answer = rust(context, verb, json);", "answered(answer, page, address);",
+            "private static String rust(Context context, String verb, String json)", "return nativeFill(verb, json);", "private void answered(String json, WebView page, String address)", "JSONObject said;", "said = new JSONObject(json == null ? \"{}\" : json);", "said = new JSONObject();",
+            "if (said.optBoolean(\"window\", false))", "if (said.optBoolean(\"waiting\", false))", "if (said.optBoolean(\"window\", false)) {", "String call = said.optString(\"call\", \"\");", "String words = said.optString(\"said\", \"\");")));
         String forward = body(screen, "private void toWindow(", "    ");
         expect("the window brought forward in Sioul's task, the launcher's own activity reordered, never made twice", forward.contains("getLaunchIntentForPackage(getPackageName())") && forward.contains("new Intent().setComponent(window).addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)") && !forward.contains("NEW_TASK") && !forward.contains("CLEAR_TOP"));
         // Review of 22 November 2026, finding 4: until Android 10 the flag moves an activity only for a start
@@ -678,6 +719,12 @@ public final class SiteScreenCheck
         String nativeFill = body(bridge, "extern \"C\" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_SiteScreen_nativeFill(", "");
         expect("main.cpp's bridge: Rust's answer wiped as it is given back, nothing logged", nativeFill.contains("sioul_site_fill(") && nativeFill.contains("sioul_site_fill_free(answer);") && nativeFill.contains("utf16.fill(QChar(u'\\0'));") && !nativeFill.contains("__android_log") && !nativeFill.contains("printf"));
         expect("and Rust's side logs nothing of a fill", !sitefill.contains("eprintln!") && !sitefill.contains("println!") && !sitefill.contains("dbg!"));
+        // Where the password is read and the call built (sites.rs): nothing printed there either (finding 10).
+        String sitesRs = read(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "sites.rs"));
+        for (String function : new String[] { "pub(crate) fn login(", "pub(crate) fn fill_for(", "fn fill_at(", "pub(crate) fn fill_call(", "pub(crate) fn bitwarden_fill(", "fn js_text(", "pub(crate) fn wipe(", "pub(crate) fn bitwarden_login(" }) {
+            String text = body(sitesRs, function, "");
+            expect("sites.rs's " + function + "…) prints nothing", !text.isEmpty() && !text.matches("(?s).*\\b(e?print(ln)?|dbg|log::\\w+|tracing::\\w+|info|warn|error|debug|trace)!.*"));
+        }
         expect("a site given is checked before the screen opens", body(web, "private static boolean open(", "    ").contains("Opening.of(asked.toString()) == null"));
         String steps = code(read(java.resolve("StepService.java")));
         expect("StepService's door to the sites' verbs", steps.contains("if (verb.startsWith(\"site-\"))") && steps.contains("return SiteWeb.call(context, verb, asked);"));

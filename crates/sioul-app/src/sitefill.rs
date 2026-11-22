@@ -611,18 +611,22 @@ mod tests {
     /// The same origin, as the screen checks it (SiteWeb.sameOrigin): https,
     /// the same host whatever its case and a user before it, the same port
     /// (443 said or not); another host, port or scheme, a host that only
-    /// begins like it, or an address that is not https: not the same.
+    /// begins like it, or an address that is not https: not the same. The
+    /// cases are those the phone's Java check reads too, from one file
+    /// (review of 22 November 2026, finding 5), so that both rules hold the
+    /// same; a backslash ends the host, as browsers read it.
     #[test]
     fn the_same_origin_is_the_scheme_the_host_and_the_port() {
-        let page = "https://bank.example.org/login";
-        // A backslash ends the host, as browsers read it (and SiteWeb.host).
-        for same in ["https://bank.example.org/", "HTTPS://Bank.Example.org:443/account?x#y", "https://user@bank.example.org/", "https://bank.example.org", "https://bank.example.org\\@evil.example/"] {
-            assert!(same_origin(page, same), "{same}");
+        let cases = include_str!("../tests/same-origin.txt");
+        let mut read = 0;
+        for line in cases.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')) {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let &[verdict, asked, now] = fields.as_slice() else { panic!("three fields: {line:?}") };
+            let address = |text: &'static str| if text == "\"\"" { "" } else { text };
+            assert!(verdict == "same" || verdict == "other", "{line:?}");
+            assert_eq!(same_origin(address(asked), address(now)), verdict == "same", "{line:?}");
+            read += 1;
         }
-        for other in ["http://bank.example.org/login", "https://bank.example.org:8443/login", "https://bank.example.org.example.net/", "https://evil.example/@bank.example.org", "", "about:blank", "javascript:alert(1)", "https://bank.example.org:/"] {
-            assert!(!same_origin(page, other), "{other}");
-        }
-        assert!(!same_origin("http://bank.example.org/", "http://bank.example.org/"), "https only");
-        assert!(same_origin("https://[::1]:8443/a", "https://[::1]:8443/b") && !same_origin("https://[::1]:8443/a", "https://[::1]/b"));
+        assert!(read >= 30, "{read} cases");
     }
 }

@@ -1,0 +1,45 @@
+# Whether a login's fill still meets the page it was asked for: the same
+# https origin, scheme, host and port (443 when unsaid), whatever the path.
+# One list for both of its rules, read by both tests: Rust's
+# (crates/sioul-app/src/sitefill.rs, `same_origin`) and the phone's Java
+# (android/jvm-checks/SiteScreenCheck.java, `SiteWeb.sameOrigin`), so that
+# the two cannot drift apart. Invented addresses only.
+#
+# One case a line, three fields apart by a tab: "same" or "other", the
+# address asked, the address now; "" is the empty address.
+same	https://bank.example.org/login	https://bank.example.org/
+same	https://bank.example.org/login	HTTPS://Bank.Example.org:443/account?x#y
+same	https://bank.example.org/login	https://user@bank.example.org/
+same	https://bank.example.org/login	https://bank.example.org
+same	https://bank.example.org/login	https://bank.example.org\@evil.example/
+other	https://bank.example.org/login	http://bank.example.org/login
+other	https://bank.example.org/login	https://bank.example.org:8443/login
+other	https://bank.example.org/login	https://bank.example.org.example.net/
+other	https://bank.example.org/login	https://evil.example/@bank.example.org
+other	https://bank.example.org/login	""
+other	https://bank.example.org/login	about:blank
+other	https://bank.example.org/login	javascript:alert(1)
+other	https://bank.example.org/login	https://bank.example.org:/
+other	http://bank.example.org/	http://bank.example.org/
+other	""	https://bank.example.org/
+same	https://[::1]:8443/a	https://[::1]:8443/b
+other	https://[::1]:8443/a	https://[::1]/b
+other	https://[::1]:8443/a	https://[::2]:8443/a
+same	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk/
+same	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk/account#top
+same	https://secure.bank.example.co.uk/login?next=%2F	HTTPS://Secure.Bank.Example.co.uk:443/x
+same	https://secure.bank.example.co.uk/login?next=%2F	https://user@secure.bank.example.co.uk/
+same	https://secure.bank.example.co.uk:8443/login	https://secure.bank.example.co.uk:8443/account
+other	https://secure.bank.example.co.uk/login?next=%2F	http://secure.bank.example.co.uk/login
+other	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk:8443/login
+other	https://secure.bank.example.co.uk/login?next=%2F	https://bank.example.co.uk/login
+other	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk.example.net/
+other	https://secure.bank.example.co.uk/login?next=%2F	https://look-alike.example.net/login
+other	https://secure.bank.example.co.uk/login?next=%2F	https://look-alike.example.net/@secure.bank.example.co.uk
+other	https://secure.bank.example.co.uk/login?next=%2F	about:blank
+other	https://secure.bank.example.co.uk/login?next=%2F	""
+other	https://secure.bank.example.co.uk/login?next=%2F	javascript:alert(1)
+other	https://secure.bank.example.co.uk/login?next=%2F	file:///sdcard/a.html
+other	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk:99999/
+other	https://secure.bank.example.co.uk/login?next=%2F	https://secure.bank.example.co.uk:x/
+other	https://secure.bank.example.co.uk:99999/	https://secure.bank.example.co.uk:99999/
