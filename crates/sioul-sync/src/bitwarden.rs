@@ -822,7 +822,7 @@ struct Searched {
     /// Its sites as shown: `hosts` before folding.
     shown: Vec<String>,
     /// Its sites as hosts and ports, unfolded (`place`): what a fill made at
-    /// once and the chooser's "for <host>" hold against the page.
+    /// once and the chooser's "for `<host>`" hold against the page.
     places: Vec<(String, u16)>,
 }
 
@@ -1480,7 +1480,7 @@ mod tests {
     /// gives each customer a name (github.io). One leading "www." aside;
     /// the port written, else the scheme's own; a name in other alphabets
     /// is not its folded look-alike. The login chosen last on this very
-    /// host fills at once. The chooser says "for <host>" for every login
+    /// host fills at once. The chooser says "for `<host>`" for every login
     /// not made for the page's own host.
     #[test]
     fn a_login_fills_at_once_on_its_own_host_alone() {

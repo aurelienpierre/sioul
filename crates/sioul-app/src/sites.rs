@@ -577,7 +577,7 @@ pub(crate) fn origin_parts(url: &str) -> Option<(&'static str, String, u16)> {
 
 /// The origin of a page at `url` as its own `location.origin` says it: the
 /// scheme, the host, and the port unless it is the scheme's own
-/// ("https://example.org", "https://example.org:8443", "http://192.168.1.1").
+/// (`https://example.org`, `https://example.org:8443`, `http://192.168.1.1`).
 /// The address as a web view commits it: a name in other alphabets in its
 /// "xn--" form. None for an address that is not http or https.
 pub(crate) fn web_origin(url: &str) -> Option<String> {
