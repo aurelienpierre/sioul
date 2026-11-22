@@ -7,7 +7,7 @@
 
 use super::engine::{self, Limits, Services, Stop, WebAnswer, WebRequest};
 use super::*;
-use sioul_core::extensions::manifest::Grants;
+use sioul_core::extensions::manifest::{CredField, Grants};
 use std::collections::BTreeSet;
 
 /// Stand-in services: the web answers 200 with what was asked, the secret
@@ -53,7 +53,7 @@ impl Services for Stand {
 }
 
 fn grants(hosts: &[&str], sign_in: Option<&str>) -> Grants {
-    Grants { hosts: hosts.iter().map(|h| h.to_string()).collect::<BTreeSet<_>>(), sign_in: sign_in.map(str::to_string) }
+    Grants { hosts: hosts.iter().map(|h| h.to_string()).collect::<BTreeSet<_>>(), sign_in: sign_in.map(str::to_string), credentials: Vec::new() }
 }
 
 /// A WebAssembly text's string of bytes.
@@ -205,7 +205,7 @@ fn a_sign_in_is_shown_only_on_a_sign_in_call_and_hidden_from_the_log() {
     {
         let fragment = module(&imports, &[asks[0], r#"{"line":"token AT-fragment-5678 seen"}"#], body);
         let stand = Stand { returned: Some("example-app://cb#access_token=AT-fragment-5678&state=s".into()), ..Stand::default() };
-        let (outcome, _) = engine::call(&fragment, &given, &call_text(Call::SignIn(None), false), stand, &small(), true);
+        let (outcome, _) = engine::call(&fragment, &given, &call_text(Call::SignIn { choice: None, credentials: &[] }, false), stand, &small(), true);
         assert!(outcome.log.iter().any(|l| l.contains("token [hidden] seen")), "{:?}", outcome.log);
     }
     // In a refresh: refused, nothing shown.
@@ -213,21 +213,55 @@ fn a_sign_in_is_shown_only_on_a_sign_in_call_and_hidden_from_the_log() {
     assert_eq!(outcome.reply.unwrap(), r#"{"refused":"not-now"}"#);
     assert!(stand.pages.is_empty());
     // In a sign-in: the page shown with its site's name, the return given back, the code hidden from the log.
-    let (outcome, stand) = engine::call(&file, &given, &call_text(Call::SignIn(None), false), stand, &small(), true);
+    let (outcome, stand) = engine::call(&file, &given, &call_text(Call::SignIn { choice: None, credentials: &[] }, false), stand, &small(), true);
     assert_eq!(outcome.reply.unwrap(), r#"{"returned":"example-app://cb?code=OC-secret-1234&state=s"}"#);
     assert_eq!(stand.pages, vec!["sso.example.org https://sso.example.org/authorize?x=1".to_string()]);
     let log = outcome.log.join("\n");
     assert!(log.contains("got the code [hidden]") && !log.contains("OC-secret-1234"), "{log}");
     // D3: an address that begins alike but names another host is no return: the page counts as closed.
     let stand = Stand { returned: Some("example-app://cb.other.example/?code=OC-other".into()), ..Stand::default() };
-    let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn(None), false), stand, &small(), true);
+    let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn { choice: None, credentials: &[] }, false), stand, &small(), true);
     assert_eq!(outcome.reply.unwrap(), r#"{"cancelled":true}"#);
     // A page on a host not named, or a return not the one declared: refused.
     for ask in [r#"{"open":"https://evil.example.net/","watch":"example-app://cb"}"#, r#"{"open":"https://sso.example.org/","watch":"other-app://cb"}"#] {
         let file = module(&["sign_in", "answer", "reply"], &[ask], &echo("sign_in"));
-        let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn(None), false), Stand::default(), &small(), true);
+        let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn { choice: None, credentials: &[] }, false), Stand::default(), &small(), true);
         assert!(outcome.reply.unwrap().starts_with(r#"{"refused""#), "{ask}");
     }
+}
+
+/// A credentials sign-in: Sioul's form collected the fields and they travel
+/// in the call's JSON; the extension reads them, keeps its refresh token with
+/// `secret` (never the password), and the values are in the call's hidden set,
+/// so no log line carries them. Sioul keeps nothing of them.
+#[test]
+fn a_credentials_sign_in_carries_the_values_and_hides_them() {
+    let given = Grants { hosts: ["api.example.org"].iter().map(|h| h.to_string()).collect(), sign_in: None, credentials: vec![CredField::Email, CredField::Password] };
+    // The module logs a line holding the password, keeps a refresh token, and
+    // replies the call it was handed (so the test can read what reached it).
+    let imports = ["log", "secret", "answer", "reply"];
+    let asks = [r#"{"line":"typed hunter2-secret just now"}"#, r#"{"keep":"RT-planity-9999"}"#];
+    let body = "(local.set $n (call $log (i32.const $at_0) (i32.const $len_0)))
+    (call $answer (i32.const 49152))
+    (drop (call $secret (i32.const $at_1) (i32.const $len_1)))
+    (call $reply (local.get 0) (local.get 1))
+    i32.const 0";
+    let file = module(&imports, &asks, body);
+    let credentials = [(CredField::Email, "alex@example.org".to_string()), (CredField::Password, "hunter2-secret".to_string())];
+    let call = call_text(Call::SignIn { choice: None, credentials: &credentials }, false);
+    let (outcome, stand) = engine::call(&file, &given, &call, Stand::default(), &small(), true);
+    // The values reached the extension in the call's JSON.
+    let reached: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
+    assert_eq!(reached["call"], "sign-in");
+    assert_eq!(reached["credentials"]["email"], "alex@example.org");
+    assert_eq!(reached["credentials"]["password"], "hunter2-secret");
+    // The extension kept its token, never the password.
+    assert_eq!(stand.secret.as_deref(), Some("RT-planity-9999"));
+    // The password is hidden from every log line, whatever the extension wrote.
+    let log = outcome.log.join("\n");
+    assert!(log.contains("typed [hidden] just now") && !log.contains("hunter2-secret"), "{log}");
+    // Without `credentials`, a credentials offer is granted `secret` but not `sign_in`.
+    assert!(engine::call(&module(&["sign_in", "answer", "reply"], &[r#"{"open":"https://api.example.org/","watch":"x://y"}"#], &echo("sign_in")), &given, &call, Stand::default(), &small(), true).0.reply.is_err(), "no sign_in import for a credentials offer");
 }
 
 #[test]
@@ -411,8 +445,11 @@ fn what_sioul_holds_for_a_call_is_bounded_in_bytes() {
 #[test]
 fn calls_are_written_as_the_interface_says() {
     assert_eq!(call_text(Call::Refresh, true), r#"{"call":"refresh","interface":1,"lang":"fr"}"#);
-    assert_eq!(call_text(Call::SignIn(Some("example")), false), r#"{"call":"sign-in","choice":"example","interface":1,"lang":"en"}"#);
-    assert_eq!(call_text(Call::SignIn(None), false), r#"{"call":"sign-in","choice":null,"interface":1,"lang":"en"}"#);
+    assert_eq!(call_text(Call::SignIn { choice: Some("example"), credentials: &[] }, false), r#"{"call":"sign-in","choice":"example","interface":1,"lang":"en"}"#);
+    assert_eq!(call_text(Call::SignIn { choice: None, credentials: &[] }, false), r#"{"call":"sign-in","choice":null,"interface":1,"lang":"en"}"#);
+    // A credentials sign-in carries the fields, keyed by their fixed kind.
+    let credentials = [(CredField::Email, "a@example.org".to_string()), (CredField::Password, "p".to_string())];
+    assert_eq!(call_text(Call::SignIn { choice: None, credentials: &credentials }, false), r#"{"call":"sign-in","choice":null,"credentials":{"email":"a@example.org","password":"p"},"interface":1,"lang":"en"}"#);
 }
 
 /// The real Skolengo extension's file, built in the extensions' repository
@@ -427,7 +464,7 @@ fn skolengo_s_file_through_the_engine() {
     // Neither call below makes a request: the hosts are the tests' own.
     let given = grants(&["api.example.org", "sso.example.org"], Some("skoapp-prod://sign-in-callback"));
     // The platforms first, each with its id and its name.
-    let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn(None), true), Stand::default(), &Limits::default(), true);
+    let (outcome, _) = engine::call(&file, &given, &call_text(Call::SignIn { choice: None, credentials: &[] }, true), Stand::default(), &Limits::default(), true);
     let reply = sioul_core::extensions::reply::sign_in_reply(&outcome.reply.unwrap()).unwrap();
     let sioul_core::extensions::reply::SignInReply::Choose(choices) = reply else { panic!("{reply:?}") };
     assert!(choices.len() > 1 && choices.iter().all(|(id, name)| !id.is_empty() && !name.is_empty()), "{choices:?}");

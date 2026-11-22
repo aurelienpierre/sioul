@@ -174,8 +174,11 @@ pub fn forget_secret(id: &str) -> Result<(), crate::SyncError> {
 /// A call Sioul makes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Call<'a> {
-    /// The person pressed Sign in…, with what they chose if they were asked.
-    SignIn(Option<&'a str>),
+    /// The person pressed Sign in…, with what they chose if they were asked,
+    /// and the credential values collected by Sioul's form (empty for a
+    /// redirect sign-in). The values are passed to the extension this once,
+    /// in the call's JSON, and hidden from every log line (`engine::call`).
+    SignIn { choice: Option<&'a str>, credentials: &'a [(manifest::CredField, String)] },
     /// Sioul wants the extension's data now.
     Refresh,
 }
@@ -184,7 +187,15 @@ pub enum Call<'a> {
 pub fn call_text(call: Call<'_>, french: bool) -> String {
     let lang = if french { "fr" } else { "en" };
     let text = match call {
-        Call::SignIn(choice) => serde_json::json!({ "interface": sioul_core::extensions::INTERFACE, "call": "sign-in", "lang": lang, "choice": choice }),
+        Call::SignIn { choice, credentials } => {
+            let mut object = serde_json::json!({ "interface": sioul_core::extensions::INTERFACE, "call": "sign-in", "lang": lang, "choice": choice });
+            // Only a credentials sign-in carries this key; a redirect one is unchanged.
+            if !credentials.is_empty() {
+                let fields: serde_json::Map<String, serde_json::Value> = credentials.iter().map(|(field, value)| (field.tag().to_string(), serde_json::Value::String(value.clone()))).collect();
+                object["credentials"] = serde_json::Value::Object(fields);
+            }
+            object
+        }
         Call::Refresh => serde_json::json!({ "interface": sioul_core::extensions::INTERFACE, "call": "refresh", "lang": lang }),
     };
     text.to_string()
@@ -198,7 +209,7 @@ pub fn run(offer: &Offer, call: Call<'_>, french: bool, services: Real) -> (Outc
         Ok(file) => file,
         Err(why) => return (Outcome { reply: Err(engine::Stop::NotRead(why)), log: Vec::new(), held: 0, answered: None }, services),
     };
-    let may_sign_in = matches!(call, Call::SignIn(_));
+    let may_sign_in = matches!(call, Call::SignIn { .. });
     engine::call(&file, &offer.grants(), &call_text(call, french), services, &Limits::default(), may_sign_in)
 }
 

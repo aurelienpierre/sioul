@@ -249,10 +249,27 @@ fn granted(grants: &Grants) -> Vec<&'static str> {
     if !grants.hosts.is_empty() {
         names.push("web");
     }
+    // A redirect sign-in may watch for a page and keep its secret; a
+    // credentials sign-in keeps its secret (its refresh token) but shows no page.
     if grants.sign_in.is_some() {
         names.extend(["secret", "sign_in"]);
+    } else if !grants.credentials.is_empty() {
+        names.push("secret");
     }
     names
+}
+
+/// The credential values a `sign-in` call carries (`Call::SignIn`), to hide
+/// from every log line of the call; empty for any other call or shape. Sioul
+/// keeps the values only in the call's JSON and drops them when the call ends.
+fn credential_values(call: &str) -> Vec<String> {
+    match serde_json::from_str::<Value>(call) {
+        Ok(Value::Object(map)) => match map.get("credentials") {
+            Some(Value::Object(fields)) => fields.values().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
 }
 
 /// One call's state, the store's data.
@@ -713,8 +730,10 @@ fn link<S: Services + 'static>(linker: &mut Linker<Visit<S>>, grants: &Grants) -
     if !grants.hosts.is_empty() {
         linker.func_wrap("sioul", "web", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Web, ptr, len))?;
     }
-    if grants.sign_in.is_some() {
+    if grants.sign_in.is_some() || !grants.credentials.is_empty() {
         linker.func_wrap("sioul", "secret", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::Secret, ptr, len))?;
+    }
+    if grants.sign_in.is_some() {
         linker.func_wrap("sioul", "sign_in", |caller: Caller<'_, Visit<S>>, ptr: i32, len: i32| ask(caller, Kind::SignIn, ptr, len))?;
     }
     Ok(())
@@ -836,6 +855,11 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
     let engine = Engine::new(&config);
     let mut store = Store::new(&engine, visit);
     store.limiter(|visit| &mut visit.store_limits);
+    // A credentials sign-in's values are hidden before the module runs, so no
+    // log line of this call can carry them, whatever the extension writes.
+    for value in credential_values(call) {
+        store.data_mut().hide(&value);
+    }
     let reply = called(&engine, &mut store, file, grants, call, limits);
     let mut visit = store.into_data();
     // The hosts its manifest does not name: one line a call, each cut short, with its count.
