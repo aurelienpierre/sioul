@@ -1418,9 +1418,15 @@ pub mod qobject {
         #[qinvokable]
         fn note_outline(self: &Sioul, path: &QString, text: &QString) -> QString;
 
-        /// One note: text, HTML, tags, checkboxes, what is tied to it, as JSON.
+        /// One note: text, its blocks as read (HTML), tags, checkboxes, outline, what is tied to it, as JSON.
         #[qinvokable]
         fn note(self: &Sioul, path: &QString) -> QString;
+
+        /// The stamp of a text note's file as it is now (its "stamp" in
+        /// `note`), "" for none: the page reads the note open again only when
+        /// it changed (`work::note_stamp`).
+        #[qinvokable]
+        fn note_stamp(self: &Sioul, path: &QString) -> QString;
 
         /// Saves a note read as `stamp` (its "stamp" in `note`); returns JSON
         /// {problem, stamp, path, kept}: when the file changed meanwhile, this
@@ -7074,6 +7080,10 @@ impl qobject::Sioul {
 
     fn note(&self, path: &QString) -> QString {
         QString::from(&work::note(&self.shared(), &path.to_string()))
+    }
+
+    fn note_stamp(&self, path: &QString) -> QString {
+        QString::from(&work::note_stamp(&path.to_string()))
     }
 
     fn save_note(self: Pin<&mut Self>, path: &QString, text: &QString, stamp: &QString) -> QString {

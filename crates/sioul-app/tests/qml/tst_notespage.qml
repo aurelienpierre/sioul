@@ -71,8 +71,20 @@ Item {
         readonly property var parts: ["Where it stands", "The mock-up", "The pages", "Opening hours", "A menu entry for the children's corner of the library, below the photo of the reading room", "Launch"]
         readonly property string paragraph: "Two layouts were sketched, the calm one with the reading room's photo preferred by everyone at the first meeting. Each stage is invoiced at its end, and the site reads well on a phone, where most visitors look for when the library is open. The words stay short, the photos large, and nothing moves by itself on the page."
         readonly property string noteText: "# Fernhill Library\n\nFor Iris Calloway and Oskar.\n\n" + mock.parts.map(p => "## " + p + "\n\n" + mock.paragraph + "\n").join("\n") + "\n- [ ] Opening hours right under the photo\n"
-        // The headings as Rust gives them (`notesview::outline_of`): the first line of each part, from 5 on.
-        readonly property var outline: [{ level: 1, text: "Fernhill Library", line: 1, drawn: true }].concat(mock.parts.map((p, i) => ({ level: 2, text: p, line: 5 + 4 * i, drawn: true })))
+        // The headings as Rust gives them (`notesview::shown`): the first line of each part, from 5 on,
+        // each with its block (the title's heading, its paragraph, then a heading and a paragraph a part).
+        readonly property var outline: [{ level: 1, text: "Fernhill Library", line: 1, drawn: true, block: 0 }].concat(mock.parts.map((p, i) => ({ level: 2, text: p, line: 5 + 4 * i, drawn: true, block: 2 + 2 * i })))
+        // The note's blocks, as `compose::markdown_blocks` cuts it.
+        readonly property var blocks: [{ html: "<h1>Fernhill Library</h1>\n", kind: "h1" }, { html: "<p>For Iris Calloway and Oskar.</p>\n", kind: "p" }]
+            .concat(...mock.parts.map(p => [{ html: "<h2>" + p + "</h2>\n", kind: "h2" }, { html: "<p>" + mock.paragraph + "</p>\n", kind: "p" }]))
+            .concat([{ html: "<ul>\n<li><input disabled=\"\" type=\"checkbox\"/>\nOpening hours right under the photo</li>\n</ul>\n", kind: "ul" }])
+            .map((b, i) => ({ html: b.html, kind: b.kind, picture: false, key: "b" + i }))
+        function noteStamp(path) {
+            return path === "Projects/Fernhill Library.md" ? "1" : ""
+        }
+        function copyText(text) {
+            return true
+        }
 
         // The outline of a text being written, as `notesview::outline_json`: its "#" lines.
         function noteOutline(path, text) {
@@ -139,7 +151,7 @@ Item {
                 title: mock.longTitle,
                 kind: "text",
                 text: mock.noteText,
-                html: "<h1>Fernhill Library</h1><p>For Iris Calloway and Oskar.</p>" + mock.parts.map(p => "<h2>" + p + "</h2><p>" + mock.paragraph + "</p>").join("") + "<ul><li>Opening hours right under the photo</li></ul>",
+                blocks: mock.blocks,
                 outline: mock.outline,
                 tags: ["client", "website", "library", "children"],
                 checkboxes: [
@@ -233,14 +245,16 @@ Item {
         }
 
         // How far the note's text is from showing `words` at its top: 0 when it does,
-        // or as far down as it goes.
+        // or as far down as it goes. The first block made that draws them; none, as far as can be.
         function offTop(words) {
-            const reader = named(page, "noteReader")
-            const flick = named(page, "noteReadView").contentItem
-            const at = reader.getText(0, reader.length).indexOf(words)
-            verify(at >= 0, words + " drawn")
-            const bottom = flick.contentHeight - flick.height
-            return flick.contentY >= bottom - 1 ? 0 : Math.abs(reader.positionToRectangle(at).y - flick.contentY)
+            const list = named(page, "noteReadList")
+            list.forceLayout()
+            const made = all(list.contentItem, "noteBlock", []).filter(b => b.visible).sort((a, b) => a.index - b.index)
+            const block = made.find(b => b.getText(0, b.length).indexOf(words) >= 0)
+            if (block === undefined)
+                return Infinity
+            const at = block.getText(0, block.length).indexOf(words)
+            return list.atYEnd ? 0 : Math.abs(block.y + block.positionToRectangle(at).y - list.contentY)
         }
 
         function check(width) {
@@ -301,7 +315,7 @@ Item {
         // A heading pressed brings its place to the top of the note as it is read.
         function test_a_heading_pressed_brings_its_place_into_view() {
             openAt(1280)
-            const flick = named(page, "noteReadView").contentItem
+            const flick = named(page, "noteReadList")
             compare(flick.contentY, 0)
             const lines = headings(named(page, "outlineSide"))
             mouseClick(lines[4])
@@ -355,7 +369,7 @@ Item {
                 verify(rightOf(line) <= edge + 0.5, "a heading ends at " + rightOf(line) + ", past " + edge)
             // A heading chosen: the fold closes, the note's text takes its room, at that heading.
             mouseClick(lines[4])
-            tryVerify(() => !fold.open && named(page, "noteReadView").contentItem.contentY > 0 && offTop("Opening hours") < 2, 2000, "at the heading: " + offTop("Opening hours"))
+            tryVerify(() => !fold.open && named(page, "noteReadList").contentY > 0 && offTop("Opening hours") < 2, 2000, "at the heading: " + offTop("Opening hours"))
         }
     }
 }

@@ -13,6 +13,7 @@
 use crate::backend::{QtThread, Shared};
 use cxx_qt_lib::QString;
 use serde::Serialize;
+use sioul_core::compose::Block;
 use sioul_core::links::Loaded;
 use sioul_core::notes::{self, Dated, Found, FoundBy, Kinds, Note, NoteKind, Vault};
 use std::path::PathBuf;
@@ -326,13 +327,64 @@ pub(crate) struct OutlineRow {
     /// Drawn in the note as it is read; the title's heading is not (it is
     /// shown above the text): pressed, the note goes to its top.
     pub drawn: bool,
+    /// The block of the note as read that it starts (`place_headings`):
+    /// pressed, the reading view goes to it. None while the note is edited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub block: Option<usize>,
 }
 
 /// A text note's outline as it shows, its links made links first (`Vault::with_links`),
 /// so that a heading's words are those drawn; `title_line` is the line of the
 /// heading left out of the drawn text, 0 for none.
 pub(crate) fn outline_of(vault: &Vault, folder: &str, text: &str, title_line: usize) -> Vec<OutlineRow> {
-    notes::outline(&vault.with_links(folder, text)).into_iter().map(|h| OutlineRow { drawn: h.line != title_line, level: h.level, text: h.text, line: h.line }).collect()
+    notes::outline(&vault.with_links(folder, text)).into_iter().map(|h| OutlineRow { drawn: h.line != title_line, level: h.level, text: h.text, line: h.line, block: None }).collect()
+}
+
+/// A text note as the page reads it: its blocks (`compose::markdown_blocks`)
+/// and its outline, each drawn heading with its block. Its front matter is not
+/// shown, nor a first heading saying its title (shown above the text); its
+/// `[[links]]` are made links (`Vault::with_links`).
+pub(crate) fn shown(vault: &Vault, note: &Note, text: &str) -> (Vec<Block>, Vec<OutlineRow>) {
+    let (_, body_start) = notes::front_matter(text);
+    let blank = text.lines().skip(body_start).take_while(|l| l.trim().is_empty()).count();
+    let mut body_lines: Vec<&str> = text.lines().skip(body_start + blank).collect();
+    let mut title_line = 0;
+    if body_lines.first().is_some_and(|l| l.trim_start().strip_prefix("# ").is_some_and(|h| h.trim() == note.title)) {
+        body_lines.remove(0);
+        title_line = body_start + blank + 1;
+    }
+    let blocks = sioul_core::compose::markdown_blocks(&vault.with_links(note.folder(), &body_lines.join("\n")));
+    let mut outline = outline_of(vault, note.folder(), text, title_line);
+    place_headings(&mut outline, &blocks, body_start + blank + 1 + usize::from(title_line > 0));
+    (blocks, outline)
+}
+
+/// Each drawn heading of `rows` given the block it starts among `blocks`, cut
+/// from the note's text from its line `first` on (its front matter, the blank
+/// lines after it and the title's heading left out): a heading at the top
+/// level always starts one (`compose::markdown_blocks`).
+pub(crate) fn place_headings(rows: &mut [OutlineRow], blocks: &[Block], first: usize) {
+    for row in rows.iter_mut().filter(|r| r.drawn) {
+        row.block = blocks.binary_search_by_key(&row.line, |b| b.line + first - 1).ok();
+    }
+}
+
+/// A note's blocks as the window reads them, each with a key that finds it
+/// again when the note is read anew (its HTML's fingerprint, and how many
+/// blocks before it say the same): the reading view keeps the block at its
+/// top where it was (ListPlace.qml).
+pub(crate) fn blocks_json(blocks: Vec<Block>) -> serde_json::Value {
+    use std::hash::{Hash, Hasher};
+    let mut seen: std::collections::HashMap<u64, usize> = std::collections::HashMap::new();
+    let rows = blocks.into_iter().map(|block| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        block.html.hash(&mut hasher);
+        let print = hasher.finish();
+        let same = seen.entry(print).or_default();
+        *same += 1;
+        serde_json::json!({ "html": block.html, "kind": block.kind, "end": block.end, "picture": block.picture, "key": format!("{print:016x}-{same}") })
+    });
+    serde_json::Value::Array(rows.collect())
 }
 
 /// The outline of the text being written in the note at `path`, as JSON.
@@ -428,5 +480,29 @@ mod tests {
         let rows = outline_of(&vault, "", "# Plan\n\n## See [[Overview|the overview]]\n\n## Money\n", 1);
         let shape: Vec<(u8, &str, usize, bool)> = rows.iter().map(|h| (h.level, h.text.as_str(), h.line, h.drawn)).collect();
         assert_eq!(shape, vec![(1, "Plan", 1, false), (2, "See the overview", 3, true), (2, "Money", 5, true)]);
+    }
+
+    /// A note as read: its front matter and title's heading not drawn, each
+    /// drawn heading with the block it starts, the blocks keyed apart when
+    /// two say the same.
+    #[test]
+    fn notes_headings_find_their_blocks() {
+        let vault = Vault { notes: vec![Note { path: "Overview.md".into(), title: "Overview".into(), ..Note::default() }], ..vault() };
+        let note = Note { path: "Plan.md".into(), title: "Plan".into(), ..Note::default() };
+        let text = "---\ntags: [home]\n---\n\n# Plan\n\nWords.\n\n## See [[Overview|the overview]]\n\n- one\n- two\n\n---\n\n## Money\nUnderlined\n----------\n\n---\n";
+        let (blocks, outline) = shown(&vault, &note, text);
+        let kinds: Vec<&str> = blocks.iter().map(|b| b.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["p", "h2", "ul", "li", "hr", "h2", "h2", "hr"]);
+        let placed: Vec<(&str, bool, Option<usize>)> = outline.iter().map(|h| (h.text.as_str(), h.drawn, h.block)).collect();
+        assert_eq!(placed, vec![("Plan", false, None), ("See the overview", true, Some(1)), ("Money", true, Some(5)), ("Underlined", true, Some(6))]);
+        assert!(blocks[1].html.contains("the overview</a>"), "{}", blocks[1].html);
+        let json = blocks_json(blocks);
+        let keys: Vec<&str> = json.as_array().unwrap().iter().map(|b| b["key"].as_str().unwrap()).collect();
+        assert!(keys[4].ends_with("-1") && keys[7].ends_with("-2") && keys[4][..16] == keys[7][..16], "two rules, one fingerprint: {keys:?}");
+        assert_eq!((json[2]["kind"].as_str(), json[2]["end"].as_str(), json[3]["kind"].as_str()), (Some("ul"), Some("li"), Some("li")));
+        assert_eq!(json[0]["picture"], false);
+        // No title's heading: every heading drawn, from the text's first line.
+        let (blocks, outline) = shown(&vault, &Note { title: "Other".into(), ..note }, "# Plan\nWords.\n");
+        assert_eq!((blocks.len(), outline[0].drawn, outline[0].block), (2, true, Some(0)));
     }
 }

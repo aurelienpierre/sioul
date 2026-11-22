@@ -10,6 +10,11 @@
 // note, a task, a message); editing is one switch away. On the side: its
 // outline, what is tied to it, and its unticked lines, each one click from
 // becoming a task; on a narrow screen, the outline folds at the top of the note.
+//
+// A note is read as a list of its blocks (Rust cuts them: compose::markdown_blocks),
+// only those in sight laid out, so that a long note shows at once; the editor
+// takes the note's text only when Edit is pressed; a change elsewhere in the
+// notes folder leaves the note open as it is (docs/tasks.md, "Notes: a long note opens at once").
 
 pragma ComponentBehavior: Bound
 
@@ -52,6 +57,12 @@ Item {
     Component.onCompleted: page.takeShown()
     property string path: ""
     property var note: null
+    // The note as read: its blocks, each { html, kind, end, picture, key } (`notesview::blocks_json`),
+    // and the stamp of the text they were made from. Its file unchanged, the note is not read again.
+    property var blocks: []
+    property string shownStamp: ""
+    // The whole note selected in the reading view (Ctrl+A): copying takes its Markdown text.
+    property bool wholeSelected: false
     // The note open, as what new things are tied to.
     readonly property var source: page.note && page.path !== "" ? { uri: page.sioul.uriOf("note", page.path), kind: "note", key: page.path, title: page.note.title } : null
     property bool editing: false
@@ -158,6 +169,7 @@ Item {
             page.save()
         page.path = path
         page.editing = false
+        page.wholeSelected = false
         page.reload()
     }
 
@@ -208,12 +220,30 @@ Item {
     readonly property var outline: page.note === null || page.kind !== "text" ? [] : page.editing ? page.editedOutline : (page.note.outline || [])
     // Shown only for two headings or more.
     readonly property bool outlined: page.outline.length >= 2
-    onEditingChanged: page.editedOutline = page.editing && page.note ? page.note.outline || [] : []
+    // The editor holds the note's text only while it is edited: read, no item holds the whole text.
+    onEditingChanged: {
+        page.wholeSelected = false
+        page.editedOutline = page.editing && page.note ? page.note.outline || [] : []
+        editor.text = page.editing && page.note ? page.note.text : ""
+    }
+
+    // The block at the top of the reading view, and the heading of the
+    // outline it is under (its line marked there): -1 before the first.
+    readonly property int topBlock: readList.count > 0 ? readList.indexAt(1, readList.contentY + 1) : -1
+    readonly property int readHeading: {
+        if (page.editing || page.topBlock < 0)
+            return -1
+        let found = -1
+        page.outline.forEach((h, i) => {
+            if (h.block !== undefined && h.block <= page.topBlock)
+                found = i
+        })
+        return found
+    }
 
     // A heading of the outline pressed: its place in the note brought to the
-    // top of the view. Read, the heading is found among the blocks of the
-    // drawn text, in order (Qt's plain text of a rich text separates its
-    // blocks with U+2029); edited, the cursor goes to its line.
+    // top of the view. Read, its block (Rust says which: `notesview::place_headings`);
+    // edited, the cursor goes to its line.
     function goToHeading(heading) {
         if (page.editing) {
             const text = editor.text
@@ -231,37 +261,68 @@ Item {
             page.scrollTo(editView, editor.positionToRectangle(at).y)
             return
         }
-        if (!heading.drawn) {
-            page.scrollTo(readView, 0)
-            return
-        }
-        const drawn = page.outline.filter(h => h.drawn)
-        const wanted = drawn.findIndex(h => h.line === heading.line)
-        const blocks = reader.getText(0, reader.length).split("\u2029")
-        const plain = words => words.replace(/[\s\u2028\u00a0]+/g, " ").trim()
-        let start = 0
-        let block = 0
-        for (let i = 0; i <= wanted && block < blocks.length; ++i) {
-            let found = block
-            while (found < blocks.length && plain(blocks[found]) !== plain(drawn[i].text))
-                found += 1
-            if (found >= blocks.length)
-                continue
-            for (; block < found; ++block)
-                start += blocks[block].length + 1
-            if (i === wanted) {
-                page.scrollTo(readView, reader.positionToRectangle(start).y)
-                return
-            }
-            start += blocks[block].length + 1
-            block += 1
-        }
+        // The note just read: its blocks given to the list first.
+        if (readPlace.rows !== page.blocks)
+            readPlace.apply()
+        // Moved on purpose: the place noted before is not put back over it.
+        readPlace.leave()
+        if (!heading.drawn || heading.block === undefined || heading.block < 0 || heading.block >= readList.count)
+            readList.positionViewAtBeginning()
+        else
+            readList.positionViewAtIndex(heading.block, ListView.Beginning)
     }
 
     // A note's view scrolled so that `y` of its text is at its top, as far as it goes.
     function scrollTo(view, y) {
         const flick = view.contentItem
         flick.contentY = Math.max(0, Math.min(y, flick.contentHeight - flick.height))
+    }
+
+    // The space under block `index` of the note as read: the one Qt's rich
+    // text leaves between two blocks of one document, the larger of the
+    // margins that meet. Above: a heading's own, none for a table nor for an
+    // item of a list drawn tight, else a paragraph's; under: none for an item
+    // its own words or a nested list end, else a paragraph's. None under the
+    // last. `kind` and `end`: the elements a block's first and last lines are
+    // drawn in (`compose::Block`). tst_notesblocks.qml holds it to the whole
+    // note's layout.
+    function gapBelow(index) {
+        const next = readPlace.rows[index + 1]
+        if (next === undefined || next.kind === "table")
+            return 0
+        const above = ({ "h1": 18, "h2": 16, "h3": 14, "li": 0 })[next.kind]
+        return Math.max(above === undefined ? 12 : above, ["li", "ul", "ol"].indexOf(readPlace.rows[index].end) >= 0 ? 0 : 12)
+    }
+
+    // A block's rich text as drawn: links in the theme's colour (rich text
+    // would draw them pure blue), lines spaced, pictures no wider than `room`
+    // (only a block holding one reads the width). An item with another of its
+    // list after it (`more`) has no space under its list: Qt gives that space
+    // to a list's last item, before a list nested in it.
+    function blockText(block, more, room) {
+        const html = (block.picture ? page.fitted(block.html, room) : block.html).replace(/<a href=/g, '<a style="color:' + page.theme.accent + '" href=')
+        return page.theme.spaced(more ? "<style>ul, ol { margin-bottom: 0px; }</style>" + html : html)
+    }
+
+    // Whether block `index` is an item of a list, another item of it under it.
+    function itemFollowed(index) {
+        const next = readPlace.rows[index + 1]
+        return next !== undefined && next.kind.startsWith("li")
+    }
+
+    // A key pressed in the reading view: Ctrl+A selects the whole note, then
+    // copying puts its Markdown text on the clipboard; anything else leaves
+    // the selection to the block (a selection made with the mouse stays in one).
+    function readingKey(event) {
+        if (event.matches(StandardKey.SelectAll)) {
+            page.wholeSelected = true
+            event.accepted = true
+        } else if (page.wholeSelected && event.matches(StandardKey.Copy)) {
+            if (page.note)
+                page.sioul.copyText(page.note.text)
+            event.accepted = true
+        } else if (page.wholeSelected && event.key !== Qt.Key_Control && event.key !== Qt.Key_Shift && event.key !== Qt.Key_Meta && event.key !== Qt.Key_Alt)
+            page.wholeSelected = false
     }
 
     // Pictures in a note: never wider than the column, their line not spaced.
@@ -344,11 +405,24 @@ Item {
             page.open(first.path)
     }
 
+    // The note open read again, only when its own file changed (its stamp): a
+    // change elsewhere in the folder, a tie made, the plan made again set
+    // nothing, and the view stays where it is. Changed, its blocks go to the
+    // list, which keeps the block at its top (`readPlace`); the editor, while
+    // nothing is typed in it, takes the new text.
     function reload() {
-        const text = page.path === "" ? "" : page.sioul.note(page.path)
-        page.note = text === "" ? null : JSON.parse(text)
         page.dirty = false
         page.newer = false
+        if (page.path !== "" && page.note !== null && page.note.path === page.path && page.shownStamp !== "" && page.sioul.noteStamp(page.path) === page.shownStamp)
+            return
+        const text = page.path === "" ? "" : page.sioul.note(page.path)
+        const note = text === "" ? null : JSON.parse(text)
+        page.wholeSelected = false
+        page.note = note
+        page.shownStamp = note !== null && note.stamp ? note.stamp : ""
+        page.blocks = note !== null && note.blocks ? note.blocks : []
+        if (page.editing && note !== null && editor.text !== note.text)
+            editor.text = note.text
     }
 
     function save() {
@@ -469,8 +543,8 @@ Item {
                 page.reload()
                 return
             }
-            const text = page.sioul.note(page.path)
-            if (text === "" || JSON.parse(text).stamp !== page.note.stamp)
+            const stamp = page.sioul.noteStamp(page.path)
+            if (stamp === "" || stamp !== page.note.stamp)
                 page.newer = true
         }
     }
@@ -957,12 +1031,18 @@ Item {
                             text: page.editing ? page.sioul.text("note-read") : page.sioul.text("ui-edit")
                             icon.name: page.editing ? "view-hidden" : "document-edit"
                             icon.color: page.theme.text
+                            // Back to reading once saved, where the reading view was; a text that
+                            // could not be saved stays in the editor, the line under the page says why.
                             onClicked: {
-                                if (page.editing) {
-                                    page.save()
-                                    page.reload()
+                                if (!page.editing) {
+                                    page.editing = true
+                                    return
                                 }
-                                page.editing = !page.editing
+                                page.save()
+                                if (page.dirty)
+                                    return
+                                page.editing = false
+                                page.reload()
                             }
                         }
                         Button {
@@ -1008,6 +1088,7 @@ Item {
                                 width: parent.width
                                 theme: page.theme
                                 headings: page.narrow ? page.outline : []
+                                current: page.readHeading
                                 onChosen: heading => {
                                     outlineFold.open = false
                                     page.wanted = { heading: heading }
@@ -1091,6 +1172,20 @@ Item {
                         Layout.fillHeight: true
                     }
 
+                    // The note's blocks given to the list: read again (its file changed),
+                    // the block at the top stays where it was; another note, from its top.
+                    ListPlace {
+                        id: readPlace
+
+                        view: readList
+                        source: page.blocks
+                        key: "key"
+                        scope: page.path
+                    }
+                    // The note as read: a list of its blocks, only those in sight (and a
+                    // little around) laid out, each delegate used again for the next
+                    // block scrolled to. The whole note selected (Ctrl+A): its ground in
+                    // the selection's colour.
                     ScrollView {
                         id: readView
 
@@ -1098,30 +1193,59 @@ Item {
                         visible: !page.editing && page.kind === "text"
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        contentWidth: availableWidth
                         clip: true
+                        background: Rectangle {
+                            color: page.wholeSelected ? Qt.alpha(page.theme.selection, 0.3) : "transparent"
+                            radius: page.theme.radius
+                        }
 
-                        TextEdit {
-                            id: reader
+                        ListView {
+                            id: readList
 
-                            objectName: "noteReader"
-                            width: parent.width
-                            readOnly: true
-                            selectByMouse: true
-                            // Pictures written the usual Markdown way, relative to the note.
-                            baseUrl: page.note && page.note.base ? page.note.base : ""
-                            textFormat: TextEdit.RichText
-                            wrapMode: TextEdit.Wrap
-                            // Links in the theme's colour: rich text would draw them pure blue. Lines get air.
-                            // rich on purpose: Markdown made HTML in Rust (compose::markdown_html): HTML written in it shows as words, a picture from elsewhere as a link.
-                            text: page.note && page.kind === "text" ? page.theme.spaced(page.fitted(page.note.html, width - 8).replace(/<a href=/g, '<a style="color:' + page.theme.accent + '" href=')) : ""
-                            color: page.theme.text
-                            font.family: page.theme.readingFamily || font.family
-                            font.pixelSize: page.theme.readingSize
-                            onLinkActivated: link => page.follow(link)
+                            objectName: "noteReadList"
+                            model: readPlace.rows
+                            reuseItems: true
+                            cacheBuffer: 600
 
-                            HoverHandler {
-                                cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
+                            // A block: one text item, nothing else at work in it. Its text
+                            // depends on the width only when it holds a picture.
+                            delegate: TextEdit {
+                                id: block
+
+                                required property var modelData
+                                required property int index
+
+                                objectName: "noteBlock"
+                                width: readList.width
+                                // The space before the next block under it: a block brought to
+                                // the top shows its first line there.
+                                bottomPadding: page.gapBelow(block.index)
+                                readOnly: true
+                                selectByMouse: true
+                                // Pictures written the usual Markdown way, relative to the note.
+                                baseUrl: page.note && page.note.base ? page.note.base : ""
+                                textFormat: TextEdit.RichText
+                                wrapMode: TextEdit.Wrap
+                                // rich on purpose: Markdown made HTML in Rust (compose::markdown_blocks): HTML written in it shows as words, a picture from elsewhere as a link.
+                                text: page.blockText(block.modelData, page.itemFollowed(block.index), block.modelData.picture ? block.width - 8 : 0)
+                                color: page.theme.text
+                                font.family: page.theme.readingFamily || font.family
+                                font.pixelSize: page.theme.readingSize
+                                onLinkActivated: link => page.follow(link)
+                                Keys.onPressed: event => page.readingKey(event)
+                                // A click in a block ends the whole note's selection.
+                                onActiveFocusChanged: {
+                                    if (block.activeFocus)
+                                        page.wholeSelected = false
+                                }
+                                onCursorPositionChanged: {
+                                    if (block.activeFocus)
+                                        page.wholeSelected = false
+                                }
+
+                                HoverHandler {
+                                    cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
+                                }
                             }
                         }
                     }
@@ -1137,7 +1261,7 @@ Item {
                             id: editor
 
                             objectName: "noteEditor"
-                            text: page.note ? page.note.text : ""
+                            // Its text given when Edit is pressed, taken back after (`onEditingChanged`).
                             wrapMode: TextArea.Wrap
 
                             // A field shows where it is: a border, darker when it has the focus.
@@ -1208,11 +1332,13 @@ Item {
                                 Layout.fillWidth: true
                                 theme: page.theme
                                 headings: page.narrow ? [] : page.outline
+                                current: page.readHeading
                                 onChosen: heading => page.goToHeading(heading)
                             }
                         }
                         Button {
-                            visible: page.note !== null && page.note.related.some(r => r.kind === "event")
+                            // Tied to an event: what is tied follows the ties as they change, the note's text unchanged.
+                            visible: page.note !== null && relatedList.items.some(r => r.kind === "event")
                             Layout.fillWidth: true
                             text: page.sioul.text("note-send-guests")
                             icon.name: "mail-message-new"
@@ -1231,6 +1357,8 @@ Item {
                             source: page.source
                         }
                         RelatedList {
+                            id: relatedList
+
                             Layout.fillWidth: true
                             sioul: page.sioul
                             theme: page.theme
@@ -1373,6 +1501,10 @@ Item {
                         else if (page.path === noteMenuForm.target.path) {
                             page.path = ""
                             page.note = null
+                            page.blocks = []
+                            page.shownStamp = ""
+                            page.dirty = false
+                            page.editing = false
                         }
                     }
                 }
