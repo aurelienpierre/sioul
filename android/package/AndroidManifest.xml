@@ -172,7 +172,10 @@
              closes it, so that the window shows at once on what was tapped
              (finishOnTaskLaunch, which Android applies only with that flag);
              the site stays signed in. Recents, which brings the task back as
-             it was, keeps it. -->
+             it was, keeps it. While the window asks for a fill (Bitwarden's
+             unlock card or chooser), the screen is under the window, the
+             task's root, which Android spares: it stays then, and comes back
+             once the window has its answer. -->
         <activity
             android:name="com.aurelienpierre.sioul.SiteScreen"
             android:exported="false"
