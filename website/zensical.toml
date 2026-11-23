@@ -112,6 +112,9 @@ nav = [
       { "The persons one does admin for" = "dev/research/persons.md" },
       { "Sorting mail by topic" = "dev/research/mail-topics.md" },
       { "The chain of ties" = "dev/research/link-graph.md" },
+      { "Holding other apps' notifications" = "dev/research/android-holding.md" },
+      { "A device for each part of life" = "dev/research/devices.md" },
+      { "Invoices: the law and the standard" = "dev/research/invoicing.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },
