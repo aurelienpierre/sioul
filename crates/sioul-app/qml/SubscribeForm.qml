@@ -313,7 +313,16 @@ ColumnLayout {
         objectName: "subscribeBusy"
         visible: kind.currentIndex === 0
         Layout.fillWidth: true
-        text: form.sioul.text("subscribe-engagements")
+        text: form.sioul.text("agenda-busy-time")
+    }
+    // What it does, under it: the same line as on its line in Your agendas and an extension's switch.
+    Label {
+        objectName: "subscribeBusyHelp"
+        visible: busy.visible
+        Layout.fillWidth: true
+        text: form.sioul.text("agenda-busy-time-help")
+        wrapMode: Text.Wrap
+        color: form.theme.muted
     }
     WrapCheckBox {
         id: afterClass

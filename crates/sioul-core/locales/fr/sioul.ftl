@@ -4154,7 +4154,8 @@ extension-calendar-for = Le calendrier pour { $name }
 extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
 # À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
-extension-busy = Compter comme mon temps occupé
+agenda-busy-time = Compter comme mon temps occupé
+agenda-busy-time-help = Indisponible pendant eux : « Pendant une indisponibilité » de Ne pas déranger s’applique, la disponibilité que vous partagez les montre et le plan garde leur temps.
 # La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
 sign-in-window-title = Connexion sur { $host }
 sign-in-site = Vous vous connectez sur : { $host }
@@ -5083,7 +5084,6 @@ subscribe-holidays-none = Des événements
 subscribe-holidays-public = Des jours fériés
 subscribe-holidays-school = Des vacances scolaires
 subscribe-days-off = Ses jours comptent comme mes jours sans travail
-subscribe-engagements = Ce sont mes propres engagements : indisponible pendant eux, et ils prennent mon temps
 subscribe-after-class = Les vacances commencent après la classe : leur premier jour est encore un jour de classe, et le jour de la reprise n’en fait pas partie
 subscribe-make = S’abonner
 subscribe-taken = Cet agenda est déjà parmi vos abonnements.

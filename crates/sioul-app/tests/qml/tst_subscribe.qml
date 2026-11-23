@@ -281,7 +281,9 @@ Item {
             const busy = root.one(form, "subscribeBusy")
             verify(busy.visible, "a calendar of events, as the form opens")
             verify(!busy.checked, "off unless ticked")
-            compare(busy.text, "subscribe-engagements")
+            compare(busy.text, "agenda-busy-time", "one sentence, the extension's switch's too")
+            verify(root.one(form, "subscribeBusyHelp").visible)
+            compare(root.one(form, "subscribeBusyHelp").text, "agenda-busy-time-help")
             root.one(form, "subscribeAddress").text = "https://calendar.example.org/appointments.ics"
             mouseClick(busy)
             verify(busy.checked)
@@ -384,7 +386,7 @@ Item {
             compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
         }
 
-        // The review's F41: "These are my own engagements" offered on a calendar of events,
+        // The review's F41: "Count these as my busy time" offered on a calendar of events,
         // never on one of holidays, off until ticked, then sent; its colour chosen here.
         function test_own_engagements_and_its_colour() {
             const setup = createTemporaryObject(setupComponent, root)
@@ -392,6 +394,8 @@ Item {
             const boxes = root.named(setup, "subscriptionEngagements").filter(b => b.visible)
             compare(boxes.length, 1, "on the calendar of events alone")
             verify(!boxes[0].checked, "off unless ticked")
+            compare(boxes[0].text, "agenda-busy-time", "the form's and the extension's words")
+            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).map(l => l.text), ["agenda-busy-time-help"])
             mouseClick(boxes[0])
             verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "engagements" && c[3] === "true"), JSON.stringify(mock.calls))
             const dots = root.named(setup, "subscriptionColour").filter(d => d.visible)
@@ -401,6 +405,7 @@ Item {
             setup.toggle("subscribed/timetable")
             setup.toggle("subscribed/zone-a")
             compare(root.named(setup, "subscriptionEngagements").filter(b => b.visible).length, 0, "holidays act through the days off alone")
+            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).length, 0)
         }
 
         // The review's F19 and F20: settings that do not read: the line says so, and Stop alone is offered.

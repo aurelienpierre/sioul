@@ -89,7 +89,8 @@ pub struct Subscription {
     /// "#rrggbb", its colour in the agenda; unsaid, the agenda's own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub colour: Option<String>,
-    /// "These are my own engagements": its events mark you busy (do not
+    /// "Count these as my busy time" (the window's `agenda-busy-time`, the
+    /// extensions' switch's words too): its events mark you busy (do not
     /// disturb, the availability you share) and hold your time, as your own
     /// agendas' do. Unsaid, no: a calendar read from elsewhere never makes
     /// you busy by itself (the review's F41). A calendar of holidays never

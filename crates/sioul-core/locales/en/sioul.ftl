@@ -4120,8 +4120,11 @@ extension-calendar-new-here = A new calendar on this device only
 extension-calendar-for = The calendar for { $name }
 extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
-# Beside the calendar: whether these events are the person's own busy time (OPAQUE) or free (TRANSPARENT).
-extension-busy = Count these as my busy time
+# Whether an agenda's events are the person's own busy time, one sentence for one idea (23 November 2026): an
+# extension agenda's switch, beside its calendar (OPAQUE or TRANSPARENT, `[extensions.busy]`), and a subscribed
+# calendar's tick, in the form and on its line (`engagements`); the line under each says what it does.
+agenda-busy-time = Count these as my busy time
+agenda-busy-time-help = Busy during them: do-not-disturb “While busy” holds, the availability you share shows them, and the plan keeps their time.
 # An extension's sign-in page, on a computer: the site's name always in sight above the page.
 sign-in-window-title = Sign in on { $host }
 sign-in-site = You sign in on: { $host }
@@ -5050,7 +5053,6 @@ subscribe-holidays-none = Events
 subscribe-holidays-public = Public holidays
 subscribe-holidays-school = School holidays
 subscribe-days-off = Its days count as my days off
-subscribe-engagements = These are my own engagements: busy during them, and they take my time
 subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
 subscribe-make = Subscribe
 subscribe-taken = This calendar is subscribed already.
