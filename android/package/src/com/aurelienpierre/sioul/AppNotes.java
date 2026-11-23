@@ -106,8 +106,15 @@ import java.util.concurrent.atomic.AtomicReference;
  * ({@link Asked}), released under Android's hint that silences
  * notifications, a few seconds at most, the phone kept awake meanwhile,
  * moved past any of Sioul's own reminders and doses read again right
- * before. A person's comes back at their time as Android brings it,
- * ringing as its channel says.
+ * before. A person's message comes back so on every version (held apps
+ * phase 1, B2; on 11 to 13.0, where every return is silent already, in a
+ * window without the hint), and Sioul tells the batch once, with a notice
+ * of its own that rings once the window closed (HeldNotices).
+ *
+ * While anything that will come back is held, one line of Sioul's own in
+ * the shade says so, with Show now (B1, HeldNotices); at the first binding
+ * after the phone started, what Android lost of what Sioul held is said
+ * once (B3).
  *
  * Linked to one of your devices (a companion-device association, asked once
  * by {@link Companion}), Sioul also makes the channels of the apps it
@@ -154,6 +161,8 @@ public final class AppNotes extends NotificationListenerService
     static final String LINKED = "com.aurelienpierre.sioul.action.LINKED";
     /** The quiet window's end, by an alarm that counts sleep: the hint never outlives it. */
     static final String CLOSE = "com.aurelienpierre.sioul.action.QUIET_CLOSE";
+    /** Show now, pressed on the line of what Sioul holds (HeldNotices): a release of this phone, then a review. */
+    static final String SHOW = "com.aurelienpierre.sioul.action.HELD_SHOW";
     /** Sioul's doses' alarms, as DoseAlarms keeps them (its RECORD, read here, never written): no window on their times. */
     private static final String DOSE_RECORD = "dose-alarms.json";
 
@@ -187,12 +196,41 @@ public final class AppNotes extends NotificationListenerService
     private final Runnable answer = this::answer;
     /** The SMS app's notifications taken away after the step named them: one runnable for a burst of changes. */
     private final Runnable withdraw = this::withdraw;
+    /** The line of what Sioul holds written again after a hold or a return: one runnable for a burst of them. */
+    private final Runnable lineSoon = this::lineNow;
+    /** A hold or a return settles this long before the line is written again (Android holds what it was asked by then). */
+    private static final long LINE_SETTLE_MS = 1_000;
+    /** The line as last posted (HeldNotices), so that one saying the same is not posted again; null: none known. */
+    private HeldNotices.Line shown;
+    /** People's messages come back since Sioul last told it (B2), kept on the worker. */
+    private final HeldNotices.Waited waited = new HeldNotices.Waited();
+    /** Told once: one runnable, so that a window's batch is told once. */
+    private final Runnable tell = this::tell;
+    /** A window closed, or one came back outside it, told this long after: their decisions made, the hint off. */
+    private static final long TELL_SETTLE_MS = 1_500;
+    /** The listener's own preferences, this process's: the count of the phone's starts last seen (B3). */
+    private static final String LISTENER = "sioul-listener";
+    private static final String BOOT = "boot";
+    /** After the phone started, what Android lost is looked for this late: the apps that post theirs again at a start have. */
+    private static final long LOST_AFTER_MS = 60_000;
+    /** The phone started since the last look, what Android lost not said yet: the reviews keep the ledger's marks until then. */
+    private volatile boolean lostPending;
+    /** What Android lost looked for: one runnable. */
+    private final Runnable lost = this::lost;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
 
     /** What is held, worked out again: {"snooze": [{"key", "ms"}]}, for the keys Android holds now. */
     static native String nativeReview(String json);
+
+    /**
+     * What Sioul says in the shade of what it holds (crates/sioul-app/src/
+     * appnotes.rs, `shade`): "line" ({snoozed}: the standing line's words,
+     * {text, public, show, channel}), "show" (Show now: a release of this
+     * phone, {released}).
+     */
+    static native String nativeShade(String verb, String json);
 
     /**
      * Replies from your computers (crates/sioul-app/src/replies.rs): "due"
@@ -570,6 +608,8 @@ public final class AppNotes extends NotificationListenerService
         window.dropped();
         letGo();
         unwatch();
+        // Nothing can be shown again nor kept true from here: the line goes with the listener.
+        HeldNotices.cancelLine(this);
         thread.quitSafely();
         super.onDestroy();
     }
@@ -586,6 +626,8 @@ public final class AppNotes extends NotificationListenerService
         running = this;
         worker.post(() -> {
             watch();
+            // The first binding after the phone started: what Android lost of what Sioul held, said once, a minute on (B3).
+            started();
             review("connected");
             // What became due while Android had not bound the listener yet.
             answer();
@@ -618,6 +660,11 @@ public final class AppNotes extends NotificationListenerService
         // Its hint went with it (NotificationManagerService, onServiceRemovedLocked): the window forgotten.
         window.dropped();
         worker.post(this::unwatch);
+        // The line of what Sioul holds goes until Android binds the listener again: none could keep it true.
+        worker.post(() -> {
+            shown = null;
+            HeldNotices.cancelLine(this);
+        });
     }
 
     /**
@@ -637,11 +684,11 @@ public final class AppNotes extends NotificationListenerService
         Ranking given = ranked ? ranking : null;
         int kept = Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE | Notification.FLAG_NO_CLEAR;
         boolean runs = n == null || (n.flags & kept) != 0 || !sbn.isClearable();
-        // While a quiet window is open, every notification posted is heard here, at once, on Android's thread.
+        if (!runs && !getPackageName().equals(sbn.getPackageName()))
+            worker.post(() -> decide(sbn, given));
+        // While a quiet window is open, every notification posted is heard here, at once, on Android's thread;
+        // after its decision was queued, so that what the window's close tells counts it (B2).
         heard(sbn, n, given, runs);
-        if (runs || getPackageName().equals(sbn.getPackageName()))
-            return;
-        worker.post(() -> decide(sbn, given));
     }
 
     /**
@@ -654,8 +701,6 @@ public final class AppNotes extends NotificationListenerService
      */
     private void heard(StatusBarNotification sbn, Notification n, Ranking ranking, boolean runs)
     {
-        if (!window.used())
-            return;
         boolean own = getPackageName().equals(sbn.getPackageName());
         String channel = n == null || n.getChannelId() == null ? "" : n.getChannelId();
         boolean dose = own && channel.startsWith("doses");
@@ -713,7 +758,7 @@ public final class AppNotes extends NotificationListenerService
             JSONObject decided = new JSONObject(answer);
             long hold = decided.optLong("hold", 0);
             if (hold > 0 && decided.optBoolean("quiet", false)) {
-                snooze(sbn.getKey(), window.hold(sbn.getKey(), hold));
+                snooze(sbn.getKey(), window.hold(sbn.getKey(), hold, decided.optBoolean("people", false)));
             } else {
                 window.forget(sbn.getKey());
                 if (hold > 0)
@@ -730,6 +775,14 @@ public final class AppNotes extends NotificationListenerService
             // A channel that rang while held, Sioul making the gathered apps silent itself.
             if (decided.optBoolean("channels", false))
                 channels();
+            // A person's message back at its time, which would have rung: told once, with those of its window (B2).
+            if (decided.optBoolean("waited", false))
+                waited(sbn, ranking);
+            // Held now, or back from being held: the line of what Sioul holds written again, once a burst settled.
+            if (decided.optBoolean("changed", false)) {
+                worker.removeCallbacks(lineSoon);
+                worker.postDelayed(lineSoon, LINE_SETTLE_MS);
+            }
         } catch (Throwable e) {
             // Sioul's library that does not load, Rust that fails: the notification stays as it came.
             Log.e(TAG, "Notes: a notification was not decided; it comes as sent.", e);
@@ -975,6 +1028,8 @@ public final class AppNotes extends NotificationListenerService
             if (left > 0)
                 Log.i(TAG, "Notes: quiet window closed; " + left + " not come back within it.");
             letGo();
+            // People's messages it brought back, told once the hint is off and their decisions are made (B2).
+            tellSoon();
         }
     }
 
@@ -1003,6 +1058,8 @@ public final class AppNotes extends NotificationListenerService
                     pending.finish();
             } else if (CLOSE.equals(action)) {
                 listener.window.close();
+            } else if (SHOW.equals(action)) {
+                listener.worker.post(listener::show);
             } else if (LINKED.equals(action)) {
                 listener.worker.post(listener::channels);
             }
@@ -1168,7 +1225,7 @@ public final class AppNotes extends NotificationListenerService
             // Whether the phone's do-not-disturb silences every text now: a text whose cell says ◑ comes then,
             // without a sound. Android ranks no held notification, so the filter and its policy say it.
             boolean silenced = silencesTexts();
-            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).toString());
+            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).put("keep", lostPending).toString());
             if (answer == null || answer.isEmpty() || "null".equals(answer)) {
                 Log.w(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.");
                 return;
@@ -1181,7 +1238,7 @@ public final class AppNotes extends NotificationListenerService
                     continue;
                 // Quiet: a few minutes past its new time, Android's own timer the safety net; due now, nothing
                 // here: Sioul's alarm opens the window (never a review).
-                long ms = window.moved(one.optLong("ms", 1000), one.optBoolean("quiet", false));
+                long ms = window.moved(one.optLong("ms", 1000), one.optBoolean("quiet", false), one.optBoolean("people", false));
                 if (ms > 0)
                     snooze(one.optString("key"), ms);
             }
@@ -1192,18 +1249,230 @@ public final class AppNotes extends NotificationListenerService
             JSONArray quiet = reviewed.optJSONArray("quiet");
             if (quiet != null) {
                 Map<String, Long> times = new HashMap<>();
+                Set<String> people = new HashSet<>();
                 for (int i = 0; i < quiet.length(); i++) {
                     JSONObject one = quiet.optJSONObject(i);
-                    if (one != null && !one.optString("key", "").isEmpty())
+                    if (one != null && !one.optString("key", "").isEmpty()) {
                         times.put(one.optString("key"), one.optLong("at", 0));
+                        if (one.optBoolean("people", false))
+                            people.add(one.optString("key"));
+                    }
                 }
-                window.follow(times);
+                window.follow(times, people);
             }
+            // What Sioul holds now, in its line in the shade.
+            line(keys);
         } catch (Throwable e) {
             Log.e(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.", e);
         }
         // The choices may have changed (an app's sound given back, Stop): the channels worked out again.
         channels();
+    }
+
+    // ---------------------------------------------------------------- what Sioul says in the shade
+
+    /**
+     * The line of what Sioul holds (HeldNotices), of what Android holds now
+     * (`keys`), as Rust says it: posted, updated, or taken away when nothing
+     * waits; never posted again when it says the same. On the worker thread.
+     */
+    private void line(JSONArray keys)
+    {
+        if (!connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("line", new JSONObject().put("snoozed", keys).toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            HeldNotices.Line line = HeldNotices.Line.of(new JSONObject(answer));
+            if (line.same(shown))
+                return;
+            HeldNotices.line(this, line);
+            shown = line;
+        } catch (Throwable e) {
+            // Rust that fails, Android's service gone a moment: the line stays as it was, until the next change.
+            Log.w(TAG, "Notes: the line of what Sioul holds not written: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** The line written again, of what Android holds now (after a hold or a return settled). On the worker thread. */
+    private void lineNow()
+    {
+        if (!connected)
+            return;
+        JSONArray keys = new JSONArray();
+        try {
+            StatusBarNotification[] held = getSnoozedNotifications();
+            if (held != null)
+                for (StatusBarNotification sbn : held)
+                    keys.put(sbn.getKey());
+        } catch (RuntimeException e) {
+            // Unbound meanwhile: the line goes as the listener does.
+            return;
+        }
+        line(keys);
+    }
+
+    /**
+     * Show now, on the line of what Sioul holds: a release of this phone, as
+     * "Let what your phone holds through" (Rust's `shade`, "show": never
+     * during a pause), then a review, which lets through what was held before
+     * it, but the blocked and a conversation set to never, and writes the
+     * line again. On the worker thread.
+     */
+    private void show()
+    {
+        if (!connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("show", "{}");
+            boolean released = answer != null && !answer.isEmpty() && !"null".equals(answer) && new JSONObject(answer).optBoolean("released", false);
+            Log.i(TAG, released ? "Notes: Show now: what was held comes now." : "Notes: Show now: nothing released (a pause, or the switch's file not written).");
+        } catch (Throwable e) {
+            Log.w(TAG, "Notes: Show now: nothing released: " + e.getClass().getSimpleName());
+        }
+        review("show");
+    }
+
+    /**
+     * A person's message come back at its time (Rust's `waited`), told once
+     * when its channel would have rung (its importance, do-not-disturb's
+     * filter: Sioul's notice never rings for what would not have) and it
+     * came back without a sound of its own: inside a window, or outside one
+     * where returns are silent already ({@link QuietWindow#tells}). Told when
+     * the window closes, or soon when none is open. On the worker thread.
+     */
+    private void waited(StatusBarNotification sbn, Ranking ranking)
+    {
+        Notification n = sbn.getNotification();
+        boolean summary = n != null && (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+        boolean rings = n != null && ranking != null
+            && QuietWindow.rings(ranking.getImportance(), ranking.matchesInterruptionFilter(), n.fullScreenIntent != null, n.category, false, summary);
+        if (!rings || !window.tells(sbn.getPostTime()))
+            return;
+        Bundle extras = n.extras == null ? new Bundle() : n.extras;
+        waited.add(sbn.getPackageName(), label(sbn.getPackageName(), extras));
+        if (!window.isOpen())
+            tellSoon();
+    }
+
+    /** What waited told a moment from now, once: one runnable for a window's batch. Any thread. */
+    private void tellSoon()
+    {
+        worker.removeCallbacks(tell);
+        worker.postDelayed(tell, TELL_SETTLE_MS);
+    }
+
+    /**
+     * People's messages that waited, told once (B2): Rust's words ("Four
+     * messages waited: Signal and WhatsApp."), posted with a sound
+     * (HeldNotices.waited); counts only in the log. Nothing when none came
+     * back. On the worker thread.
+     */
+    private void tell()
+    {
+        if (window.isOpen())
+            return;
+        HeldNotices.Waited batch = waited.take();
+        if (batch.count == 0 || !connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("waited", batch.json().toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            HeldNotices.Told told = HeldNotices.Told.of(new JSONObject(answer));
+            if (told.text.isEmpty())
+                return;
+            HeldNotices.waited(this, told, batch.onlyApp());
+            // How many, never which nor from whom.
+            Log.i(TAG, "Notes: " + batch.count + " message(s) that waited told once.");
+        } catch (Throwable e) {
+            Log.w(TAG, "Notes: the messages that waited were not told: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** The count of the phone's starts, as Android keeps it (Settings.Global.BOOT_COUNT, Android 7 and later); -1 when it cannot say. */
+    private int bootCount()
+    {
+        try {
+            return Settings.Global.getInt(getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** The listener's own preferences, in its process. */
+    private SharedPreferences listenerPrefs()
+    {
+        return getSharedPreferences(LISTENER, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * At a binding: the phone started since the last one (B3,
+     * {@link HeldNotices#afterStart}): what Android lost looked for a minute
+     * on, the ledger's marks kept until then; the first binding of this
+     * Sioul: the count noted, nothing to compare with. On the worker thread.
+     */
+    private void started()
+    {
+        int count = bootCount();
+        switch (HeldNotices.afterStart(listenerPrefs().getInt(BOOT, -1), count)) {
+        case HeldNotices.NOTE_START:
+            listenerPrefs().edit().putInt(BOOT, count).apply();
+            break;
+        case HeldNotices.LOOK:
+            lostPending = true;
+            worker.removeCallbacks(lost);
+            worker.postDelayed(lost, LOST_AFTER_MS);
+            break;
+        default:
+            break;
+        }
+    }
+
+    /**
+     * What Android lost of what Sioul held, after the phone started (B3):
+     * the ledger's marks that Android neither holds nor shows, said once
+     * (Rust's `shade`, "lost": how many, from which apps, never a word of a
+     * message), then forgotten; the start noted, never looked at again.
+     * Unbound meanwhile: looked for at the next binding. On the worker thread.
+     */
+    private void lost()
+    {
+        if (!connected)
+            return;
+        try {
+            JSONArray snoozed = new JSONArray();
+            JSONArray active = new JSONArray();
+            StatusBarNotification[] held = getSnoozedNotifications();
+            if (held != null)
+                for (StatusBarNotification sbn : held)
+                    snoozed.put(sbn.getKey());
+            StatusBarNotification[] shown = getActiveNotifications();
+            if (shown != null)
+                for (StatusBarNotification sbn : shown)
+                    active.put(sbn.getKey());
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("lost", new JSONObject().put("snoozed", snoozed).put("active", active).toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            JSONObject said = new JSONObject(answer);
+            HeldNotices.Told told = HeldNotices.Told.of(said);
+            if (!told.text.isEmpty())
+                HeldNotices.lost(this, told, HeldNotices.onlyApp(said.optJSONArray("packages")));
+            listenerPrefs().edit().putInt(BOOT, bootCount()).apply();
+            lostPending = false;
+            // How many, never which nor from whom.
+            Log.i(TAG, "Notes: after the phone started, " + said.optInt("count", 0) + " held notification(s) lost, told once.");
+            lineNow();
+        } catch (Throwable e) {
+            // The marks no longer kept for it: the next binding of this start looks again.
+            lostPending = false;
+            Log.w(TAG, "Notes: what Android lost after the start was not looked for: " + e.getClass().getSimpleName());
+        }
     }
 
     // ---------------------------------------------------------------- Sioul's files watched

@@ -6,7 +6,7 @@
 // does with other apps' notifications and what it never does; Android's
 // notification access and its two steps for an app installed from a file;
 // holding on or off, and people's messages held too or not (held apps
-// phase 1, A2); the gathered times; what rang before Sioul held it,
+// phase 1, A2); the line in the phone's shade of what Sioul holds (B1); the gathered times; what rang before Sioul held it,
 // each with Android's page to make it silent, or made silent by Sioul itself
 // once Android links it to your computer (what it made silent, each app's
 // sound given back, Stop). What reaches you ▸ Exceptions
@@ -29,8 +29,8 @@ ColumnLayout {
     required property var sioul
     // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
-    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, people, times, heard, rang, link, silenced, apps, conversations, sites, grid, more}.
-    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, people: null, times: "", heard: "", rang: [], link: { available: false, linked: false, on: false, giving_back: false, given_back: false }, silenced: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
+    // appnotes.rs's `setup`: {android, access, restricted, contacts, hold, people, shade, times, heard, rang, link, silenced, apps, conversations, sites, grid, more}.
+    property var shown: ({ android: false, access: false, restricted: false, contacts: false, hold: null, people: null, shade: null, times: "", heard: "", rang: [], link: { available: false, linked: false, on: false, giving_back: false, given_back: false }, silenced: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false })
     // Holding is on: people's messages may be held too (`shown.people`, under it).
     readonly property bool holding: setup.shown.hold !== null && setup.shown.hold !== undefined && setup.shown.hold.value === true
     // Sioul makes the gathered apps silent itself: linked to your computer, and asked.
@@ -206,6 +206,16 @@ ColumnLayout {
         visible: setup.phonePart && setup.holding && setup.shown.people !== null && setup.shown.people !== undefined
         Layout.fillWidth: true
         setting: setup.shown.people || { key: "people", kind: "bool", label: "", help: "", value: false, choices: [] }
+        sioul: setup.sioul
+        theme: setup.theme
+        onSave: (key, value) => setup.act("set", { key: key, value: value })
+    }
+    // The line in the phone's shade while Sioul holds something (held apps phase 1, B1): on unless turned off.
+    SettingRow {
+        objectName: "appNotesShade"
+        visible: setup.phonePart && setup.holding && setup.shown.shade !== null && setup.shown.shade !== undefined
+        Layout.fillWidth: true
+        setting: setup.shown.shade || { key: "shade", kind: "bool", label: "", help: "", value: true, choices: [] }
         sioul: setup.sioul
         theme: setup.theme
         onSave: (key, value) => setup.act("set", { key: key, value: value })

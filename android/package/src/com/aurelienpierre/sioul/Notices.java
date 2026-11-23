@@ -497,11 +497,34 @@ final class Notices
 
     /**
      * The groups whose summaries Sioul keeps (Android 16): its notices' two,
-     * the background service's card's and the time running's. The alarm at
+     * the background service's card's, the time running's, the line of what
+     * Sioul holds of other apps' notifications and the notice of people's
+     * messages that waited (HeldNotices). The alarm at
      * waking's is left without one: a full-screen alarm while it rings, its
      * "rings again" line a minute after its time at most.
      */
-    static final String[] GROUPS = { GROUP + INFORMATIVE, GROUP + ACTIONABLE, StepService.GROUP, TimeNote.GROUP };
+    static final String[] GROUPS = { GROUP + INFORMATIVE, GROUP + ACTIONABLE, StepService.GROUP, TimeNote.GROUP, HeldNotices.GROUP_HELD, HeldNotices.GROUP_WAITED };
+
+    /**
+     * The channel a group's summary goes to while Android does not show its
+     * children yet: "To act on"'s for something to do, the line's own for the
+     * line of what Sioul holds (never a channel that shows more than it), the
+     * one of messages that waited for its notice, else "Notices". Pure
+     * (NoticesCheck).
+     *
+     * @param group the group
+     * @return the channel's id
+     */
+    static String summaryChannel(String group)
+    {
+        if ((GROUP + ACTIONABLE).equals(group))
+            return ACT;
+        if (HeldNotices.GROUP_HELD.equals(group))
+            return HeldNotices.HELD;
+        if (HeldNotices.GROUP_WAITED.equals(group))
+            return HeldNotices.WAITED;
+        return NOTICES;
+    }
 
     /** A notification's key here: its number and its tag ("" without one). */
     static String key(int id, String tag)
@@ -629,7 +652,7 @@ final class Notices
             }
             String channel = channelOf.get(group);
             if (channel == null)
-                channel = (GROUP + ACTIONABLE).equals(group) ? ACT : NOTICES;
+                channel = summaryChannel(group);
             String title = (GROUP + ACTIONABLE).equals(group) ? word(context, null, "act") : (GROUP + INFORMATIVE).equals(group) ? word(context, null, "notices") : "Sioul";
             Notification.Builder head = new Notification.Builder(context, channel)
                 .setSmallIcon(R.drawable.sioul_notification)

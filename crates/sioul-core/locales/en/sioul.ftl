@@ -6754,6 +6754,24 @@ appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
 appnotes-people = Hold people's messages too, by who writes and when
 appnotes-people-help = On, a person's message comes when What reaches you lets them reach you, Sioul telling who writes by your contacts once allowed to read them; off, it comes at once, but from the blocked, and from the conversations, people and apps you gave times of their own or set to gathered or never.
+appnotes-shade = Say in the phone's notifications what Sioul holds
+appnotes-shade-help = While Sioul holds something that will come, one line without a sound among Android's notifications says from which apps and until when, never who wrote; Show now lets it through, a tap opens this card. Off, nothing shows there.
+appnotes-shade-show = Show now
+appnotes-shade-channel = Held notifications
+appnotes-shade-public = Sioul holds notifications until their time.
+appnotes-waited = { $n ->
+    [one] One message waited: { $apps }.
+   *[other] { $Count } messages waited: { $apps }.
+}
+appnotes-waited-many = Many messages waited: { $apps }.
+appnotes-waited-public = Messages waited.
+appnotes-waited-channel = Messages that waited
+appnotes-lost-one = Before the restart, Sioul was holding a notification from { $apps }: open it to read it.
+appnotes-lost-app = Before the restart, Sioul was holding { $count } notifications from { $apps }: open it to read them.
+appnotes-lost-apps = Before the restart, Sioul was holding { $count } notifications from { $apps }: open them to read them.
+appnotes-lost-public = Before the restart, Sioul was holding notifications: open their apps to read them.
+appnotes-many = many
+appnotes-many-f = many
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
 appnotes-sound = Android starts a notification's sound before Sioul sees it, and stops it as soon as Sioul holds the notification, a moment later. What Sioul gathers comes back without a sound. To spare even that instant, make the apps Sioul holds silent in Android's settings (below, each one that began to ring), or let Sioul do it. Chats and SMS keep their sound, so that the people let through ring; one Sioul holds is cut as it is held, and comes back at its time. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.

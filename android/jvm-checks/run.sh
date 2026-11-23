@@ -139,6 +139,18 @@
 #   reminders; the plan of what comes back quiet; read from the sources, the
 #   hint asked in one place, the alarm's receiver in the listener's process,
 #   never exported, the safety net within Rust's LATE.
+# - HeldCheck: what Sioul says in the phone's shade of what it holds (held
+#   apps phase 1, part B; HeldNotices, AppNotes): the standing line as Rust
+#   words it, posted again only when it changes, its one door (this phone's
+#   card), its group and summary; read from the sources, its channel at the
+#   minimum importance, never ongoing, Show now the listener's own broadcast,
+#   a release then a review, the line written at each review and after a hold
+#   or a return, gone when the listener is unbound; nothing of it logged. The
+#   notice of people's messages that waited (B2): kept by app, told once, its
+#   channel with a sound, posted anew, gone after ten minutes or at a tap,
+#   told only for what would have rung and came back silent. After a restart
+#   (B3): Android's count of the phone's starts read at a binding, what it
+#   lost looked for a minute on, said once among Sioul's notices.
 # - SilenceCheck: the channels Sioul makes silent itself (ChannelSilence),
 #   against a stand-in phone and Rust's record: each one's importance written
 #   down before it changes; one silent already or gone left; Rust or Android
@@ -198,7 +210,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck ChosenCheck MailOpenCheck EventOpenCheck QuietCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck ChosenCheck MailOpenCheck EventOpenCheck QuietCheck HeldCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

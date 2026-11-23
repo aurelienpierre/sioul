@@ -16,13 +16,18 @@ import java.util.Set;
 /**
  * The quiet window (docs/android.md, "The quiet window"; option 1 of
  * docs/research/android-holding.md): a few seconds under Android's listener
- * hint HINT_HOST_DISABLE_NOTIFICATION_EFFECTS, while what Sioul gathered
- * comes back, so that it comes back without a sound.
+ * hint HINT_HOST_DISABLE_NOTIFICATION_EFFECTS, while what Sioul held comes
+ * back, so that it comes back without a sound; people's messages among it
+ * are then told once, by a notice of Sioul's own with a sound, once the
+ * window is closed (held apps phase 1, B2: AppNotes, HeldNotices).
  *
- * Used only where a held notification's return rings ({@link #returnsRing}):
- * Android 9 and 10, and Android 13 from its first quarterly release on. On
- * 11, 12, 12L and 13.0 every return is silent already: there nothing changes
- * from before (no window, no time past, no plan).
+ * The hint is used only where a held notification's return rings
+ * ({@link #returnsRing}): Android 9 and 10, and Android 13 from its first
+ * quarterly release on; there every return without a sound is planned. On
+ * 11, 12, 12L and 13.0 every return is silent already: there only people's
+ * messages are planned, and their window opens without the hint, so that
+ * their return comes from Sioul's own alarm and is told once; what Sioul
+ * gathers is held exactly until its time, as before.
  *
  * A gathered notification is held a few minutes past its time
  * ({@link #SAFETY_MS}: Android's own timer, the safety net) and planned at
@@ -118,7 +123,8 @@ final class QuietWindow
     static final String QPR1_PATCH = "2022-12";
 
     private final Host host;
-    private final boolean used;
+    /** The hint is used here: a held notification's return rings ({@link #returnsRing}). */
+    private final boolean hinted;
     private final boolean fixed;
     private final Plan plan = new Plan();
     /** The released keys not come back yet. */
@@ -128,17 +134,22 @@ final class QuietWindow
     /** The keys Android showed as the window opened: an update of one, alerting once, would not have rung. */
     private final Set<String> shownAtOpen = new HashSet<>();
     private boolean open;
-    /** When the hint was last taken off (wall clock, ms); -1: never. */
+    /** When the last window opened (wall clock, ms); -1: never. */
+    private long openedAt = -1;
+    /** When the last window closed, its hint taken off (wall clock, ms); -1: never. */
     private long clearedAt = -1;
+    /** Sioul's own reminders and doses, where no hint silences them: none to keep away from. */
+    private static final long[] NONE = {};
 
     /**
-     * `used`: a held notification's return rings here ({@link #returnsRing});
-     * `fixed`: a held notification keeps its first time (Android 9 and 10).
+     * `hinted`: a held notification's return rings here ({@link #returnsRing}),
+     * and the hint silences it; `fixed`: a held notification keeps its first
+     * time (Android 9 and 10).
      */
-    QuietWindow(Host host, boolean used, boolean fixed)
+    QuietWindow(Host host, boolean hinted, boolean fixed)
     {
         this.host = host;
-        this.used = used;
+        this.hinted = hinted;
         this.fixed = fixed;
     }
 
@@ -164,10 +175,21 @@ final class QuietWindow
         return true;
     }
 
-    /** Whether the window is used here. */
-    boolean used()
+    /** Whether the hint is used here: a held notification's return rings, and the window silences it. */
+    boolean hinted()
     {
-        return used;
+        return hinted;
+    }
+
+    /**
+     * Whether a notification whose return comes without a sound is planned
+     * here, brought back by Sioul's alarm: where returns ring, every one;
+     * where they are silent already, a person's message alone (`people`),
+     * whose return Sioul tells once (held apps phase 1, B2).
+     */
+    boolean plans(boolean people)
+    {
+        return hinted || people;
     }
 
     /** Whether the hint is set now. */
@@ -178,13 +200,14 @@ final class QuietWindow
 
     /**
      * A notification whose return comes without a sound, which Rust holds
-     * `ms`: planned at its time, and how long Android holds it: a few minutes
-     * past its time, the safety net; on Android 9 and 10, exactly its time;
-     * where the window is not used, as asked.
+     * `ms` (`people`: a person's message): planned at its time, and how long
+     * Android holds it: a few minutes past its time, the safety net; on
+     * Android 9 and 10, exactly its time; one not planned here
+     * ({@link #plans}), as asked.
      */
-    synchronized long hold(String key, long ms)
+    synchronized long hold(String key, long ms, boolean people)
     {
-        if (!used)
+        if (!plans(people))
             return ms;
         plan.put(key, host.now() + ms);
         arm();
@@ -201,25 +224,32 @@ final class QuietWindow
     }
 
     /**
-     * A review's new time for a held notification (`ms` from now): how long
-     * Android holds it now; -1, nothing to ask Android: one due now comes in
-     * the window Sioul's alarm opens (never from a review).
+     * A review's new time for a held notification (`ms` from now; `people`, a
+     * person's message): how long Android holds it now; -1, nothing to ask
+     * Android: one due now comes in the window Sioul's alarm opens (never
+     * from a review).
      */
-    synchronized long moved(long ms, boolean quiet)
+    synchronized long moved(long ms, boolean quiet, boolean people)
     {
-        if (!quiet || !used)
+        if (!quiet || !plans(people))
             return ms;
         if (ms <= DUE_MS)
             return -1;
         return fixed ? ms : ms + SAFETY_MS;
     }
 
-    /** Rust's list at a review (key → time, ms): the plan rebuilt from it, the alarm set; no window opens here. */
-    synchronized void follow(Map<String, Long> rust)
+    /**
+     * Rust's list at a review (key → time, ms; `people`, the keys of
+     * people's messages among them): the plan rebuilt from those planned
+     * here ({@link #plans}), the alarm set; no window opens here.
+     */
+    synchronized void follow(Map<String, Long> rust, Set<String> people)
     {
-        if (!used)
-            return;
-        plan.follow(rust, fixed, host.now());
+        Map<String, Long> planned = new HashMap<>();
+        for (Map.Entry<String, Long> one : rust.entrySet())
+            if (plans(people.contains(one.getKey())))
+                planned.put(one.getKey(), one.getValue());
+        plan.follow(planned, fixed, host.now());
         arm();
     }
 
@@ -246,8 +276,6 @@ final class QuietWindow
      */
     synchronized boolean rang()
     {
-        if (!used)
-            return false;
         long now = host.now();
         long ahead = fixed ? LEAD_MS + DUE_MS : DUE_MS;
         if (!plan.hasDue(now, ahead)) {
@@ -256,7 +284,7 @@ final class QuietWindow
         }
         long length = fixed ? LEAD_MS + AT_MOST_MS : AGAIN_MS + AT_MOST_MS;
         long latest = fixed ? now : plan.next() + SAFETY_MS - BEFORE_SAFETY_MS;
-        long start = start(now, host.own(), length, latest);
+        long start = start(now, own(), length, latest);
         if (start < 0) {
             plan.due(now, ahead);
             arm();
@@ -286,7 +314,7 @@ final class QuietWindow
      */
     private void arm()
     {
-        long[] own = host.own();
+        long[] own = own();
         while (true) {
             long next = plan.next();
             if (next < 0) {
@@ -305,10 +333,19 @@ final class QuietWindow
     }
 
     /**
+     * Sioul's own reminders and doses to come, which a window keeps away
+     * from where the hint would silence them; none where no hint is used.
+     */
+    private long[] own()
+    {
+        return hinted ? host.own() : NONE;
+    }
+
+    /**
      * Opened over `keys` (none: nothing, and false): the phone kept awake
-     * the window's length and a margin, the hint set, then each held again
-     * for a second when `move` (Android 11 and later), else left to come at
-     * its own time; closed after `atMost` at the latest.
+     * the window's length and a margin, the hint set where it is used, then
+     * each held again for a second when `move` (Android 11 and later), else
+     * left to come at its own time; closed after `atMost` at the latest.
      */
     private boolean open(Collection<String> keys, boolean move, long atMost)
     {
@@ -316,10 +353,13 @@ final class QuietWindow
             return false;
         if (!open) {
             open = true;
+            openedAt = host.now();
             host.awake(atMost + MARGIN_MS);
-            host.hint(true);
+            if (hinted)
+                host.hint(true);
         }
-        shownAtOpen.addAll(host.active());
+        if (hinted)
+            shownAtOpen.addAll(host.active());
         waiting.addAll(keys);
         if (move)
             for (String key : keys)
@@ -331,15 +371,15 @@ final class QuietWindow
     /**
      * A notification posted, any app's, Sioul's own included (`postTime`, as
      * Android says it): one released is crossed off, and the window closes
-     * once each came back; another, while open, is a stranger when it would
-     * have rung (`rings`), unless it updates one shown as the window opened
-     * and alerts once; one posted before the hint went, heard just after, is
-     * one too.
+     * once each came back; another, while a window with the hint is open, is
+     * a stranger when it would have rung (`rings`), unless it updates one
+     * shown as the window opened and alerts once; one posted before the hint
+     * went, heard just after, is one too.
      */
     synchronized void posted(String key, boolean rings, boolean alertOnce, long postTime)
     {
         if (!open) {
-            if (rings && clearedAt >= 0 && postTime <= clearedAt && host.now() - clearedAt < LATE_STRANGER_MS)
+            if (hinted && rings && clearedAt >= 0 && postTime <= clearedAt && host.now() - clearedAt < LATE_STRANGER_MS)
                 ringAgain(List.of(key));
             return;
         }
@@ -348,8 +388,30 @@ final class QuietWindow
                 close();
             return;
         }
-        if (rings && !(alertOnce && shownAtOpen.contains(key)))
+        if (hinted && rings && !(alertOnce && shownAtOpen.contains(key)))
             strangers.add(key);
+    }
+
+    /**
+     * Whether a notification posted at `postTime` (Android's, wall clock)
+     * came while the last window was open: one it brought back, without a
+     * sound of its own.
+     */
+    synchronized boolean inside(long postTime)
+    {
+        return openedAt >= 0 && postTime >= openedAt && (open || postTime <= clearedAt);
+    }
+
+    /**
+     * Whether a person's message come back at its time, posted at `postTime`,
+     * is told by Sioul's own notice (held apps phase 1, B2): it came inside a
+     * window, without a sound of its own; or, outside one, where returns are
+     * silent already (Android's safety net there). Where returns ring, one
+     * outside a window rang by itself: never told again.
+     */
+    synchronized boolean tells(long postTime)
+    {
+        return inside(postTime) || !hinted;
     }
 
     /**
@@ -367,7 +429,8 @@ final class QuietWindow
         int left = waiting.size();
         try {
             host.ending(-1);
-            host.hint(false);
+            if (hinted)
+                host.hint(false);
         } finally {
             clearedAt = host.now();
             ringAgain(new ArrayList<>(strangers));
@@ -402,6 +465,7 @@ final class QuietWindow
         if (!open)
             return;
         open = false;
+        clearedAt = host.now();
         int left = waiting.size();
         strangers.clear();
         waiting.clear();
