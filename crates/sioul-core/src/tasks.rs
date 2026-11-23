@@ -275,6 +275,12 @@ pub struct Task {
     /// on the child's page with its holder's name, never in your plan nor your Next.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub elsewhere: bool,
+    /// The supplies it plans to use (`supplies::PLANNED`), each once.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub supplies: Vec<crate::supplies::Use>,
+    /// A task to resupply: the supply's id (`supplies::RESUPPLY`); "" for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub resupply: String,
 }
 
 impl Task {
@@ -711,6 +717,8 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "CREATED" => task.created = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             "LAST-MODIFIED" => task.modified = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
+            crate::supplies::PLANNED => task.supplies.extend(crate::supplies::use_of(line)),
+            crate::supplies::RESUPPLY => task.resupply = value.trim().to_string(),
             crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
             crate::pairs::SET_ASIDE => {
                 task.set_aside = value.trim().to_string();
@@ -739,6 +747,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
         task.start = kept;
     }
     task.felt = crate::demands::felt_of(&felt);
+    task.supplies = crate::supplies::merged(std::mem::take(&mut task.supplies));
     // DURATION with DTSTART stands for DUE (RFC 5545 §3.6.2).
     if task.due.is_empty()
         && let (Some(minutes), Some(line)) = (duration, start_line)

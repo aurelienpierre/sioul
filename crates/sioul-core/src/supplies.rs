@@ -19,8 +19,15 @@
 //!   task it came from. Several lines of one id: the latest `at` wins.
 //! - **The stock** is the latest count, plus what was received after it, less
 //!   what was used after it, "after" by when each happened (`stock_of`).
+//!   **Free** is the stock less what the open tasks plan to use (their
+//!   `X-SIOUL-SUPPLY;X-SIOUL-ID=<id>:<quantity>` lines); "low" and "none
+//!   left" are said of what is free.
+//! - **The task to resupply** (`to_resupply`): made once when what is free is
+//!   at or under `low_at` and none is open for that supply, its UID the same
+//!   on every device, its file named by it, so that two devices write one.
 
 use crate::areas::Area;
+use crate::tasks::Task;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -32,6 +39,15 @@ pub const FILE: &str = "sioul-supplies.toml";
 pub const MOVES: &str = "sioul-supplies-moves";
 /// The table each supply is written in.
 const TABLE: &str = "supply";
+/// The tag of a task to resupply.
+pub const TAG: &str = "supplies";
+/// The line that marks a task to resupply, with the supply's id.
+pub const RESUPPLY: &str = "X-SIOUL-RESUPPLY";
+/// A task's planned use of a supply: `X-SIOUL-SUPPLY;X-SIOUL-ID=<id>:<quantity>`.
+pub const PLANNED: &str = "X-SIOUL-SUPPLY";
+/// The parameter that names the supply on those lines.
+pub const ID: &str = "X-SIOUL-ID";
+
 // ---------------------------------------------------------------- quantities
 
 /// A quantity, in millionths: kept as written (six decimals at most),
@@ -164,10 +180,43 @@ impl<'de> Deserialize<'de> for Qty {
     }
 }
 
+/// One supply and a quantity: a line of a task, planned or used.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Use {
+    /// The supply's id.
+    pub id: String,
+    pub quantity: Qty,
+}
+
+/// A task's line of a supply (`PLANNED`, `USED`): its id and quantity;
+/// none when it names no supply or says no number.
+pub fn use_of(line: &str) -> Option<Use> {
+    let id = crate::lines::param(line, ID)?.trim().to_string();
+    let quantity = Qty::parse(&crate::lines::unescape(crate::lines::value(line).trim()))?;
+    (is_id(&id) && quantity >= Qty::ZERO).then_some(Use { id, quantity })
+}
+
+/// A task's line for a supply's use: planned (`PLANNED`) or used (`USED`).
+pub fn use_line(name: &str, used: &Use) -> String {
+    format!("{name};{ID}={}:{}", used.id, used.quantity.text())
+}
+
 /// Whether a word can be a supply's id: what `id_for` makes, and what a
 /// hand-written one may hold that stays one parameter of a task's line.
 pub fn is_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+/// Lines of one supply said twice in a task: the last one counts.
+pub fn merged(uses: Vec<Use>) -> Vec<Use> {
+    let mut out: Vec<Use> = Vec::new();
+    for used in uses {
+        match out.iter_mut().find(|u| u.id == used.id) {
+            Some(there) => there.quantity = used.quantity,
+            None => out.push(used),
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------- the list
@@ -660,11 +709,154 @@ pub fn stock_of(lines: &[&Move]) -> Qty {
     base + received - used
 }
 
-// ---------------------------------------------------------------- by hand
+/// What the open tasks plan to use of each supply.
+pub fn planned(tasks: &[Task]) -> BTreeMap<String, Qty> {
+    let mut out: BTreeMap<String, Qty> = BTreeMap::new();
+    let mut seen = BTreeSet::new();
+    for task in tasks.iter().filter(|t| t.status.is_open() && seen.insert(t.uid.as_str())) {
+        for used in &task.supplies {
+            let sum = out.entry(used.id.clone()).or_default();
+            *sum = *sum + used.quantity;
+        }
+    }
+    out
+}
+
+/// Where a supply stands: its stock, what open tasks plan, what is free.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Standing {
+    pub stock: Qty,
+    pub planned: Qty,
+    pub free: Qty,
+    /// What is free is at or under its `low_at`, and above nothing.
+    pub low: bool,
+    /// Nothing is free.
+    pub none_left: bool,
+}
+
+/// Where `supply` stands, from the latest lines and the open tasks' plans.
+pub fn standing(supply: &Supply, latest: &BTreeMap<String, Move>, planned: &BTreeMap<String, Qty>) -> Standing {
+    let stock = stock_of(&lines_of(latest, &supply.id));
+    let planned = planned.get(&supply.id).copied().unwrap_or_default();
+    let free = stock - planned;
+    let none_left = free <= Qty::ZERO;
+    Standing { stock, planned, free, low: !none_left && supply.low_at.is_some_and(|low| free <= low), none_left }
+}
+
+// ---------------------------------------------------------------- ids
+
+/// A use's id: the task, the supply and the task's completion stamp, the
+/// same on every device that reads the task finished.
+pub fn used_id(task: &str, supply: &str, stamp: i64) -> String {
+    crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("used\n{task}\n{supply}\n{stamp}"))
+}
+
+/// What a task to resupply brought: the same, "received".
+pub fn received_id(task: &str, supply: &str, stamp: i64) -> String {
+    crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("received\n{task}\n{supply}\n{stamp}"))
+}
+
+/// The UID of the task to resupply `supply` after the line `line` (its
+/// latest count or received): the same on every device.
+pub fn resupply_uid(supply: &str, line: &str) -> String {
+    crate::holders::uuid_v5(&crate::holders::NAMESPACE, &format!("resupply\n{supply}\n{line}"))
+}
 
 /// A movement said now by hand: a count, or something received; its id by chance.
 pub fn by_hand(supply: &str, kind: Kind, quantity: Qty, now: i64) -> Move {
     Move { id: crate::ids::new(), at: now, on: None, supply: supply.to_string(), kind, quantity, task: String::new(), device: String::new() }
+}
+
+// ---------------------------------------------------------------- tasks
+
+/// One task to resupply to make (`to_resupply`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Resupply {
+    pub uid: String,
+    pub supply: Supply,
+}
+
+/// The tasks to resupply to make now: for each supply kept (not archived)
+/// with a `low_at`, whose free stock is at or under it, none open for it,
+/// and none made yet after its latest count or received (by its UID: made
+/// here or on any device, done, or deleted since).
+pub fn to_resupply(list: &List, moves: &Moves, tasks: &[Task]) -> Vec<Resupply> {
+    let latest = latest(&moves.lines);
+    let plans = planned(tasks);
+    let mut out = Vec::new();
+    for supply in list.supplies.iter().filter(|s| !s.archived && s.low_at.is_some()) {
+        let standing = standing(supply, &latest, &plans);
+        if !(standing.low || standing.none_left) {
+            continue;
+        }
+        if tasks.iter().any(|t| t.status.is_open() && t.resupply == supply.id) {
+            continue;
+        }
+        let base = lines_of(&latest, &supply.id).into_iter().rfind(|m| matches!(m.kind, Kind::Count | Kind::Received)).map(|m| m.id.clone()).unwrap_or_default();
+        let uid = resupply_uid(&supply.id, &base);
+        if moves.made.contains(&uid) || tasks.iter().any(|t| t.uid == uid) {
+            continue;
+        }
+        out.push(Resupply { uid, supply: supply.clone() });
+    }
+    out
+}
+
+/// A task to resupply's file: `title`, tagged `supplies`, for what the
+/// supply is for, in its project, marked with the supply's id.
+pub fn resupply_text(resupply: &Resupply, title: &str, zone: &jiff::tz::TimeZone, now: &jiff::Zoned) -> Result<String, String> {
+    let supply = &resupply.supply;
+    let edit = crate::tasks::TaskEdit {
+        title: title.to_string(),
+        categories: vec![TAG.to_string()],
+        area: Area::parse(&supply.area).filter(|a| !a.is_empty()).map(|a| a.id()).unwrap_or_default(),
+        projects: if supply.project.trim().is_empty() { Vec::new() } else { vec![supply.project.trim().to_string()] },
+        ..crate::tasks::TaskEdit::default()
+    };
+    let text = crate::tasks::new_task(&edit, &resupply.uid, zone, now)?;
+    crate::tasks::add_lines(&text, &[format!("{RESUPPLY}:{}", supply.id)], now)
+}
+
+/// The tasks to resupply made now in `list`, each in a file named by its
+/// UID (two devices write one file), and kept as made in this device's
+/// file. `title` words a supply's task. Returns the UIDs made.
+pub fn make_resupplies(root: &Path, device: &str, tasks: &[Task], list: &crate::vdir::Collection, title: &dyn Fn(&Supply) -> String, zone: &jiff::tz::TimeZone, now: &jiff::Zoned) -> Result<Vec<String>, String> {
+    let Ok(supplies) = List::load(root) else { return Ok(Vec::new()) };
+    if supplies.supplies.is_empty() {
+        return Ok(Vec::new());
+    }
+    let moves = read_moves(root, device);
+    if moves.own_unreadable {
+        return Ok(Vec::new());
+    }
+    let mut made = Vec::new();
+    let mut uids = Vec::new();
+    for resupply in to_resupply(&supplies, &moves, tasks) {
+        let path = list.dir.join(format!("{}.ics", resupply.uid));
+        if !path.exists() {
+            let text = resupply_text(&resupply, &title(&resupply.supply), zone, now)?;
+            crate::vdir::write_item(&path, &text)?;
+            uids.push(resupply.uid.clone());
+        }
+        made.push(Made { task: resupply.uid, supply: resupply.supply.id, at: now.timestamp().as_second() });
+    }
+    record(root, device, &[], &made)?;
+    Ok(uids)
+}
+
+/// The list the tasks to resupply go to: the page's choice (`[supplies]
+/// list`), else as Health's errands choose theirs: the errands' list, your
+/// usual list, the first list on a server (so a phone has them), else one
+/// on this device. Only a list that takes tasks and can be written.
+pub fn resupply_list(config: &crate::config::Config) -> Option<crate::vdir::Collection> {
+    let lists: Vec<crate::vdir::Collection> = crate::tasks::lists().into_iter().filter(|c| !c.read_only).collect();
+    let id = |c: &crate::vdir::Collection| format!("{}/{}", c.account, c.id);
+    let errands = crate::health::Health::load(&crate::health::Health::default_path()).errands_list;
+    [config.supplies.list.clone().unwrap_or_default(), errands, config.tasks.list.clone().unwrap_or_default()]
+        .into_iter()
+        .find_map(|wanted| lists.iter().find(|c| !wanted.is_empty() && id(c) == wanted).cloned())
+        .or_else(|| lists.iter().find(|c| c.account != crate::vdir::LOCAL).cloned())
+        .or_else(|| lists.first().cloned())
 }
 
 #[cfg(test)]

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! Supplies' tests (docs/supplies.md): the stock from movements, the list
-//! and the files read leniently.
+//! Supplies' tests (docs/supplies.md): the stock from movements, free and
+//! low, the task to resupply made once, the list and the files read leniently.
 
 use super::*;
+use crate::tasks::{Status, task_of_text};
 
 /// A folder of its own for one test.
 fn folder(name: &str) -> PathBuf {
@@ -34,6 +35,11 @@ fn three(root: &Path) {
         "# Invented supplies.\n[[supply]]\nid = \"stamps\"\nname = \"Stamps\"\ncategory = \"Post\"\narea = \"work\"\nlow_at = 10\nbought_by = 50\n\n[[supply]]\nid = \"envelopes\"\nname = \"Envelopes\"\ncategory = \"Post\"\nlow_at = 10\n\n[[supply]]\nid = \"cards\"\nname = \"Gift cards\"\ncategory = \"Shop\"\nlow_at = 5\n",
     )
     .unwrap();
+}
+
+/// An open task planning `uses`.
+fn open(uid: &str, uses: &[(&str, &str)]) -> Task {
+    Task { uid: uid.into(), title: uid.into(), supplies: uses.iter().map(|(id, n)| Use { id: id.to_string(), quantity: q(n) }).collect(), ..Task::default() }
 }
 
 #[test]
@@ -85,6 +91,76 @@ fn a_use_put_right_after_a_count_counts_where_it_was() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Free is the stock less what open tasks plan; low and none left are said of it.
+#[test]
+fn low_is_said_of_what_is_free() {
+    let root = folder("free");
+    three(&root);
+    record(&root, "desk", &[line("c1", 100, "cards", Kind::Count, "8")], &[]).unwrap();
+    let list = List::load(&root).unwrap();
+    let moves = read_moves(&root, "desk");
+    let cards = list.get("cards").unwrap();
+    let tasks: Vec<Task> = (0..3).map(|n| open(&format!("sale-{n}"), &[("cards", "1")])).collect();
+    let now = standing(cards, &latest(&moves.lines), &planned(&tasks));
+    assert_eq!((now.stock.text(), now.planned.text(), now.free.text(), now.low, now.none_left), ("8".into(), "3".into(), "5".into(), true, false));
+    // Ten sales come in with eight cards: none left, before any card is used.
+    let ten: Vec<Task> = (0..10).map(|n| open(&format!("sale-{n}"), &[("cards", "1")])).collect();
+    let now = standing(cards, &latest(&moves.lines), &planned(&ten));
+    assert!(now.none_left && !now.low && now.free == Qty::whole(-2));
+    // A task done plans nothing more; a supply without `low_at` is never low.
+    let mut tasks = tasks;
+    tasks[0].status = Status::Completed;
+    assert_eq!(planned(&tasks).get("cards").copied(), Some(q("2")));
+    let envelopes = Supply { low_at: None, ..list.get("envelopes").unwrap().clone() };
+    assert!(!standing(&envelopes, &BTreeMap::new(), &BTreeMap::new()).low);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The task to resupply: its UID the same on two devices, made once,
+/// never again while one is open nor once made (even deleted).
+#[test]
+fn the_task_to_resupply_is_made_once() {
+    let root = folder("resupply");
+    three(&root);
+    record(&root, "desk", &[line("c1", 100, "stamps", Kind::Count, "12"), line("c2", 100, "envelopes", Kind::Count, "40"), line("c3", 100, "cards", Kind::Count, "40")], &[]).unwrap();
+    let list = List::load(&root).unwrap();
+    let sales: Vec<Task> = (0..3).map(|n| open(&format!("sale-{n}"), &[("stamps", "1")])).collect();
+    let desk = to_resupply(&list, &read_moves(&root, "desk"), &sales);
+    let phone = to_resupply(&list, &read_moves(&root, "phone"), &sales);
+    assert_eq!(desk.iter().map(|r| r.supply.id.as_str()).collect::<Vec<_>>(), ["stamps"]);
+    assert_eq!(desk[0].uid, phone[0].uid, "the same UID on every device");
+    assert_eq!(desk[0].uid, resupply_uid("stamps", "c1"));
+    // Its file: a task to resupply, tagged, for the supply's area, marked with its id.
+    let zone = jiff::tz::TimeZone::UTC;
+    let now = jiff::Timestamp::from_second(1000).unwrap().to_zoned(zone.clone());
+    let text = resupply_text(&desk[0], "Resupply: Stamps", &zone, &now).unwrap();
+    let task = task_of_text(&text, &zone).unwrap();
+    assert_eq!((task.uid.as_str(), task.title.as_str(), task.resupply.as_str(), task.area.as_str(), task.categories.clone()), (desk[0].uid.as_str(), "Resupply: Stamps", "stamps", "work", vec![TAG.to_string()]));
+    // One is open: no second. Made, then deleted: not again.
+    let mut with = sales.clone();
+    with.push(Task { resupply: "stamps".into(), uid: "another".into(), ..Task::default() });
+    assert!(to_resupply(&list, &read_moves(&root, "desk"), &with).is_empty());
+    record(&root, "phone", &[], &[Made { task: desk[0].uid.clone(), supply: "stamps".into(), at: 1000 }]).unwrap();
+    assert!(to_resupply(&list, &read_moves(&root, "desk"), &sales).is_empty(), "made on another device");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An archived supply keeps its history, and no task to resupply is made for it.
+#[test]
+fn an_archived_supply_keeps_its_history_and_asks_for_nothing() {
+    let root = folder("archived");
+    three(&root);
+    record(&root, "desk", &[line("c1", 100, "stamps", Kind::Count, "1")], &[]).unwrap();
+    change(&root, "stamps", &Change { archived: Some(true), ..Change::default() }).unwrap();
+    let list = List::load(&root).unwrap();
+    assert!(list.get("stamps").unwrap().archived);
+    assert!(to_resupply(&list, &read_moves(&root, "desk"), &[]).iter().all(|r| r.supply.id != "stamps"));
+    assert_eq!(stock(&root, "desk", "stamps").text(), "1");
+    change(&root, "stamps", &Change { archived: Some(false), ..Change::default() }).unwrap();
+    assert!(!List::load(&root).unwrap().get("stamps").unwrap().archived);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The list: a new supply's id made from its name once, unique; a change
 /// key by key, the comment and the other supplies kept; a supply that does
 /// not read passed over; a file that does not read never written over.
@@ -131,4 +207,15 @@ fn a_movements_file_that_does_not_read_is_never_written_over() {
     assert_eq!(device_file("a/b:c"), "a_b_c.toml");
     assert_eq!(device_file(""), "this-device.toml");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// The lines a phone's account manager sends back (an X- property, its
+/// parameter and its value kept as text, escaped or not) read the same.
+#[test]
+fn a_task_s_supplies_read_back_as_another_program_writes_them() {
+    let zone = jiff::tz::TimeZone::UTC;
+    let text = "BEGIN:VCALENDAR\r\nBEGIN:VTODO\r\nUID:x\r\nSUMMARY:x\r\nX-SIOUL-SUPPLY;X-SIOUL-ID=\"stamps\":1\r\nx-sioul-supply;x-sioul-id=cards:2\r\nX-SIOUL-SUPPLY;X-SIOUL-ID=cards:3\r\nX-SIOUL-SUPPLY;X-SIOUL-ID=ink:lots\r\nX-SIOUL-RESUPPLY:tape\r\nEND:VTODO\r\nEND:VCALENDAR\r\n";
+    let task = task_of_text(text, &zone).unwrap();
+    assert_eq!(task.supplies, [Use { id: "stamps".into(), quantity: q("1") }, Use { id: "cards".into(), quantity: q("3") }]);
+    assert_eq!(task.resupply, "tape");
 }

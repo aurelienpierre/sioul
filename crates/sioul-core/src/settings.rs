@@ -368,6 +368,14 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-papers-group", None);
             b.push("papers.folder", "papers-folder", Kind::Folder, SettingValue::Text(config.papers_folder().display().to_string()));
         }
+        // The Supplies page's own (docs/supplies.md): where its tasks to resupply go; unsaid,
+        // as Health's errands choose theirs.
+        "supplies" => {
+            let s = b.push("supplies.list", "supplies-list", Kind::Choice, SettingValue::Text(config.supplies.list.clone().unwrap_or_default()));
+            s.choices = std::iter::once(Choice { value: SettingValue::Text(String::new()), label: tr.text("set-supplies-list-usual", None) })
+                .chain(lists.iter().map(|(id, name)| Choice { value: SettingValue::Text(id.clone()), label: name.clone() }))
+                .collect();
+        }
         "porch" => {
             // Working hours and days off are Sioul's as a whole: in the settings page.
             b.note(tr.text("set-hours-elsewhere", None), Vec::new());
@@ -1724,6 +1732,7 @@ mod tests {
         assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
         assert_eq!(keys("letters"), vec!["letters.folder", "letters.inbox"]);
         assert_eq!(keys("papers"), vec!["papers.folder"]);
+        assert_eq!(keys("supplies"), vec!["supplies.list"]);
         assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).

@@ -953,6 +953,8 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
+        // Supplies (docs/supplies.md): the tasks to resupply made, once, where they go.
+        crate::supplies::upkeep(&qt, &shared, &desk.loaded.tasks);
         // The plan's time for busy tasks with a date asked and no time of their own, as this
         // window's plan lays it (`availability::plan_spans`), for the busy tasks' shared record
         // (`mirrors::plan_seen`); then your availabilities: their mirrors from the freshest view,
