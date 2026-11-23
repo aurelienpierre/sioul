@@ -1861,10 +1861,11 @@ impl Attention {
     /// holds (`Now::through`), so that the mode lets ring what the screening
     /// lets through. Messages: the starred when the matrix lets anyone write
     /// then, never wider, though Sioul may hold other apps' notifications:
-    /// Android sounds a notification before any listener hears of it
-    /// (docs/android.md, "Sound"), so a contact's message let through the
-    /// mode, then held by Sioul, would ring once; the mode alone keeps a
-    /// held message silent. A row at the gathered times (◎) lets nobody
+    /// Android starts a notification's sound before any listener hears of
+    /// it (docs/android.md, "Sound") and stops it only once the listener
+    /// holds it, so a contact's message let through the mode, then held by
+    /// Sioul, would start to ring; the mode alone keeps a held message silent
+    /// from its first instant. A row at the gathered times (◎) lets nobody
     /// through a mode, as one that waits (○): a mode cannot wait for a time.
     pub fn silence_at(&self, now: &Now, phone: Phone) -> Silence {
         let passes = |channel: Channel, person: Person| self.person(channel, person, false, now) == Level::Now;

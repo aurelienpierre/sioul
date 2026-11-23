@@ -116,7 +116,7 @@ The rule (7 October 2026): do not disturb is a property of an individual, not of
 | | Sioul | Android |
 |---|---|---|
 | A call | rings, or goes to voicemail (the screening service declines it) | whether a call that rings makes a sound (the mode's policy, then your own do-not-disturb) |
-| A message, another app's notification | shows now, or waits (the listener snoozes it) | whether it sounds; its first sound may play before Sioul's listener hears of it |
+| A message, another app's notification | shows now, or waits (the listener snoozes it) | whether it sounds; its sound may start before Sioul's listener hears of it, and stops once Sioul holds it |
 | Do not disturb | one switch for every device (`state/do-not-disturb.toml`) | mirrored as the mode "Do not disturb (Sioul)", Sioul's own `AutomaticZenRule` |
 | Your own Android modes (Bedtime, driving) | read as a press of the switch (`heard`) | yours alone: Sioul never writes them, and from Android 15 never ends them |
 

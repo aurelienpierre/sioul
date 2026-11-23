@@ -42,8 +42,9 @@
 //! `app-notes-channels.toml` in the state). Never what a notification says.
 //!
 //! The sound (docs/android.md; docs/research/android-holding.md): Android
-//! rings a notification before Sioul sees it, and, from Android 13 QPR1,
-//! again when a held one comes back. What Sioul gathers comes back in a
+//! starts a notification's sound before Sioul sees it, and stops it once
+//! Sioul holds it (the snooze's `cancelNotificationLocked` clears it); from
+//! Android 13 QPR1, a held one rings again when it comes back. What Sioul gathers comes back in a
 //! quiet window (`Held::quiet`, AppNotes.java); linked to one of your
 //! devices (a companion-device association), Sioul makes the gathered apps'
 //! channels silent itself (`channels_plan`), and gives each back when the
