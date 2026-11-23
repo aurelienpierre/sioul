@@ -953,6 +953,9 @@ fn replan_now(qt: &QtThread, shared: &Arc<Shared>) {
         // What the children's holder lines ask of your agendas (several agendas, part 3): your
         // stand-ins made, following their child event or taken out, the follow-ups, each said once.
         crate::children::upkeep(&qt, &shared, &desk.loaded.events);
+        // Supplies (docs/supplies.md): the finished tasks applied in this device's own file, only
+        // what is missing; the tasks to resupply made, once, where they go.
+        crate::supplies::upkeep(&qt, &shared, &desk.loaded.tasks);
         // The plan's time for busy tasks with a date asked and no time of their own, as this
         // window's plan lays it (`availability::plan_spans`), for the busy tasks' shared record
         // (`mirrors::plan_seen`); then your availabilities: their mirrors from the freshest view,
@@ -1291,6 +1294,8 @@ pub(crate) fn new_form(shared: &Shared, from: &str, key: &str, start: f64, list:
         "sessions": [],
         "related": [],
         "area_tags": area_tags,
+        // The supplies to choose from, for its form's section (`supplies::of_task`).
+        "supplies": crate::supplies::of_task(&Task::default()),
         "lists": writable_lists(),
         "list": list_id,
         "limited": limited,
@@ -1395,6 +1400,11 @@ pub(crate) fn local_task(qt: &QtThread, shared: &Arc<Shared>, list_name: &str, e
 
 fn find(shared: &Shared, uid: &str) -> Result<Task, String> {
     loaded(shared).tasks.iter().find(|t| t.uid == uid).cloned().ok_or_else(|| tr().text("task-gone", None))
+}
+
+/// Changes one task's file with `change`, unless it can only be read (for the other modules).
+pub(crate) fn change_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str, edit: impl FnOnce(&str) -> Result<String, String>) -> Result<(), String> {
+    change(qt, shared, uid, edit)
 }
 
 /// Changes one task's file with `change`, unless it can only be read.
@@ -1620,6 +1630,8 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
         keeps_ties: bool,
         /// What the availability you share holds for it, under its Busy switch (`mirrors::busy_line`); "" for nothing to say.
         busy_line: String,
+        /// Its supplies (`supplies::of_task`): those to choose from, what it plans, what it used.
+        supplies: serde_json::Value,
     }
     let config = load_config();
     let limited = tasks::lists()
@@ -1666,13 +1678,14 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
     };
     let keeps_ties = sioul_core::pairs::links_kept(&config)(&task.list_id);
     let busy_line = crate::mirrors::busy_line(&config, &loaded.tasks, uid);
-    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties, busy_line })
+    let supplies = crate::supplies::of_task(task);
+    crate::backend::json(&Shown { detail, lists: writable_lists(), list: &task.list_id, limited, budget, proposed, parent_title, appointment, keeps_ties, busy_line, supplies })
 }
 
 /// A task read again from its own file, its list's marks kept from `known`
 /// (its list, its colour, whether it can be written); None when the file is
 /// gone or holds no task any more.
-fn from_its_file(known: &Task) -> Option<Task> {
+pub(crate) fn from_its_file(known: &Task) -> Option<Task> {
     let text = std::fs::read_to_string(&known.key).ok()?;
     if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
         return None;
@@ -2047,6 +2060,9 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
     let after = Desk::new(Arc::new(read_loaded(shared)), shared);
     let effect = taskview::done_effect(&after.context(), &before.plan, uid);
     let line = if effect.is_empty() { tr().text("task-done-said", None) } else { format!("{} {effect}", tr().text("task-done-said", None)) };
+    // What it used of your supplies, applied now, with no question; "Change…" beside it (docs/supplies.md).
+    let used = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|was| crate::supplies::finished(was, after.loaded.tasks.iter().find(|t| t.uid == uid))).unwrap_or_default();
+    let line = if used.is_empty() { line } else { format!("{line} {used}") };
     tell(qt, shared, line.clone());
     // "How was it?" offered on the status line, after the line that says it is done.
     let done = uid.to_string();

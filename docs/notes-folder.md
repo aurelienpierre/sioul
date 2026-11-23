@@ -64,7 +64,7 @@ Sioul's own lists leave the notes folder for a place of their own, once on each 
 
 | Thing | Before the move (every release before) | After this device moved |
 |---|---|---|
-| Lists: projects (`sioul-projects.toml`, or `sioul-cases.toml` and its `.before-rename` copies), client profiles, budgets, the bank's lines, movements, contracts, the papers' list | the notes folder's root | `<data>/records/`, under the same names (`~/.local/share/sioul/records/` on Linux) |
+| Lists: projects (`sioul-projects.toml`, or `sioul-cases.toml` and its `.before-rename` copies), client profiles, supplies and each device's file of their movements (`sioul-supplies-moves/`), budgets, the bank's lines, movements, contracts, the papers' list | the notes folder's root | `<data>/records/`, under the same names (`~/.local/share/sioul/records/` on Linux) |
 | The letters' list and texts | `letters/letters.toml`, `letters/<id>.txt` in the notes folder | `<data>/records/letters/` |
 | Papers' files | `papers/…` in the notes folder, `file = "papers/x.pdf"` | the papers' folder (`[papers] folder`, `Documents/Papers` by default), `file = "x.pdf"` |
 | Letters' scans and the folder scans arrive in | `letters/<year>/…`, `letters/inbox/` in the notes folder | the letters' folder (`[letters] folder`, `Documents/Letters` by default), `file = "<year>/…"`, `inbox/` (unless `[letters] inbox` names another) |

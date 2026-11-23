@@ -228,6 +228,7 @@ mod stars;
 mod storage;
 mod steps;
 mod subscriptions;
+mod supplies;
 // tell: the window's notices, one call about one thing (docs/notifications.md).
 mod tell;
 mod timenote;

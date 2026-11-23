@@ -10673,3 +10673,87 @@ hours-lookup-nobody = Personne ne peut être interrogé pour ce bureau maintenan
 hours-source-name-map-at = le service de recherche de la carte ({ $host })
 hours-task-not-followed = Cette tâche ne suit pas ces horaires : elle est proposée à toute heure.
 hours-task-follow = Les suivre
+
+## Stocks (docs/supplies.md) : ce qui s’use ou se vend, et ce qu’il en reste.
+ui-supplies = Stocks
+supplies-help = Ce que vous utilisez ou vendez (timbres, enveloppes, cartes, nourriture du chat), et combien il en reste. Chaque article est compté à partir de ce qui est arrivé et de ce que vos tâches ont utilisé ; une tâche peut dire ce qu’elle utilisera, et la terminer le retire. Quand l’un baisse, une tâche pour réapprovisionner est créée, une fois.
+supplies-new = Nouvel article
+supplies-tab-now = Pour maintenant
+supplies-tab-all = Tous les articles
+supplies-none-now = Aucun article pour ce à quoi sert ce moment.
+supplies-elsewhere = { $n ->
+    [one] Un autre pour d’autres moments, dans Tous les articles.
+   *[other] { $countf } autres pour d’autres moments, dans Tous les articles.
+}
+supplies-archived = { $n ->
+    [one] Archivé : un
+   *[other] Archivés : { $countf }
+}
+supplies-no-category = Autres
+supplies-left = reste { $quantity }
+supplies-planned = prévu : { $quantity }
+supplies-low = stock bas
+supplies-none-left = épuisé
+supplies-in-stock = en stock : { $quantity }
+supplies-low-at = seuil : { $quantity }
+supplies-buy-at = acheté { $price }
+supplies-sell-at = revendu { $price }
+supplies-amount = { $quantity } { $name }
+supplies-done-used = Utilisé : { $what }.
+supplies-task-uses = Utilise : { $what }
+supplies-task-used = A utilisé : { $what }
+supplies-card-what = Ce que c’est
+supplies-field-name = Nom
+supplies-field-name-hint = Timbres, enveloppes, cartes cadeaux…
+supplies-field-category = Catégorie
+supplies-field-category-hint = Un mot à vous : poste, boutique, cuisine…
+supplies-field-for = À quoi il sert
+supplies-field-unit = Unité
+supplies-field-unit-hint = une pièce
+supplies-field-buy = Prix d’achat, à l’unité
+supplies-field-sell = Prix de revente, à l’unité
+supplies-field-optional = facultatif
+supplies-field-low-at = Seuil
+supplies-field-low-at-hint = jamais bas
+supplies-field-bought-by = Acheté d’habitude par
+supplies-field-project = Ses tâches pour réapprovisionner vont dans le projet
+supplies-first-count = Combien il y en a maintenant
+supplies-card-stock = En stock
+supplies-under-zero = Moins que rien : comptez de nouveau pour le remettre juste.
+supplies-resupplied = « { $title } » a été fait { $day }. Combien en sont arrivés ?
+supplies-received = Reçu…
+supplies-count-again = Recompter…
+supplies-received-ask = Combien en sont arrivés ?
+supplies-count-ask = Combien y en a-t-il maintenant ?
+supplies-arrived-title = Combien en sont arrivés ?
+supplies-card-planned = Prévu
+supplies-card-planned-none = Aucune tâche ouverte ne prévoit de l’utiliser.
+supplies-card-history = Historique
+supplies-history-none = Rien encore.
+supplies-history-all = Tout l’historique
+supplies-moved-count = Compté : { $quantity }
+supplies-moved-received = Reçu : { $quantity }
+supplies-moved-used = Utilisé : { $quantity }
+supplies-archive = Archiver
+supplies-unarchive = Le reprendre
+supplies-section = Stocks
+supplies-used-section = Stocks utilisés
+supplies-used-title = Ce qu’elle a utilisé
+supplies-used-button = Stocks utilisés…
+supplies-change = Changer…
+supplies-add = Ajouter un article
+supplies-line-remove = Retirer cette ligne
+supplies-quantity = Combien
+supplies-not-done = Cette tâche n’est pas faite : ce qu’elle a utilisé se dit une fois qu’elle l’est.
+supplies-unreadable = La liste des stocks n’a pas pu être lue, et rien n’a été écrit par-dessus : { $what }
+supplies-moves-unreadable = Les mouvements de stocks de cet appareil n’ont pas pu être lus, et rien n’y est écrit : { $what }
+supplies-name-needed = Un article a besoin d’un nom.
+supplies-gone = Cet article n’est plus là : { $what }
+supplies-number-unreadable = « { $what } » n’est pas un nombre.
+supplies-list-name = Stocks
+supplies-resupply-title = Réapprovisionner : { $name }
+supplies-resupply-made = « { $title } » est dans { $list }.
+set-supplies-list = Les tâches pour réapprovisionner vont dans
+set-supplies-list-help = La liste où une tâche pour réapprovisionner est créée, quand un article baisse ; le projet de l’article, s’il en a un, la reçoit aussi. Si rien n’est dit, comme les démarches de Santé choisissent la leur : leur liste, sinon votre liste habituelle.
+set-supplies-list-usual = Comme les démarches de Santé
+loss-supplies = les stocks qu’elle utilise

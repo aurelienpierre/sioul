@@ -10285,3 +10285,87 @@ hours-lookup-nobody = Nobody can be asked for this office now.
 hours-source-name-map-at = the map's search service ({ $host })
 hours-task-not-followed = This task does not follow these hours: it is proposed at any time.
 hours-task-follow = Follow them
+
+## Supplies (docs/supplies.md): what is used up or sold, and what is left of it.
+ui-supplies = Supplies
+supplies-help = What you use up or sell (stamps, envelopes, cards, cat food), and how many are left. Each is counted from what came in and what your tasks used; a task can say what it will use, and finishing it takes that out. When one runs low, a task to resupply is made, once.
+supplies-new = New supply
+supplies-tab-now = For now
+supplies-tab-all = All supplies
+supplies-none-now = No supply for what now is for.
+supplies-elsewhere = { $n ->
+    [one] One more for other times, under All supplies.
+   *[other] { $count } more for other times, under All supplies.
+}
+supplies-archived = { $n ->
+    [one] Archived: one
+   *[other] Archived: { $count }
+}
+supplies-no-category = Other
+supplies-left = { $quantity } left
+supplies-planned = { $quantity } planned
+supplies-low = low
+supplies-none-left = none left
+supplies-in-stock = in stock: { $quantity }
+supplies-low-at = low at: { $quantity }
+supplies-buy-at = bought at { $price }
+supplies-sell-at = sold at { $price }
+supplies-amount = { $quantity } { $name }
+supplies-done-used = Used { $what }.
+supplies-task-uses = Uses: { $what }
+supplies-task-used = Used: { $what }
+supplies-card-what = What it is
+supplies-field-name = Name
+supplies-field-name-hint = Stamps, envelopes, gift cards…
+supplies-field-category = Category
+supplies-field-category-hint = A word of yours: post, shop, kitchen…
+supplies-field-for = What it is for
+supplies-field-unit = Unit
+supplies-field-unit-hint = a piece
+supplies-field-buy = Buying price, a unit
+supplies-field-sell = Reselling price, a unit
+supplies-field-optional = optional
+supplies-field-low-at = Low at
+supplies-field-low-at-hint = never low
+supplies-field-bought-by = Usually bought by
+supplies-field-project = Its tasks to resupply go to the project
+supplies-first-count = How many there are now
+supplies-card-stock = In stock
+supplies-under-zero = Fewer than none: count again to set it right.
+supplies-resupplied = “{ $title }” was done on { $day }. How many came in?
+supplies-received = Received…
+supplies-count-again = Count again…
+supplies-received-ask = How many came in?
+supplies-count-ask = How many are there now?
+supplies-arrived-title = How many came in?
+supplies-card-planned = Planned
+supplies-card-planned-none = No open task plans to use it.
+supplies-card-history = History
+supplies-history-none = Nothing yet.
+supplies-history-all = The whole history
+supplies-moved-count = Counted: { $quantity }
+supplies-moved-received = Received: { $quantity }
+supplies-moved-used = Used: { $quantity }
+supplies-archive = Archive
+supplies-unarchive = Bring it back
+supplies-section = Supplies
+supplies-used-section = Supplies used
+supplies-used-title = What it used
+supplies-used-button = Supplies used…
+supplies-change = Change…
+supplies-add = Add a supply
+supplies-line-remove = Take this line off
+supplies-quantity = How many
+supplies-not-done = This task is not done: what it used is said once it is.
+supplies-unreadable = The list of supplies could not be read, and nothing was written over it: { $what }
+supplies-moves-unreadable = This device's movements of supplies could not be read, and nothing is written into them: { $what }
+supplies-name-needed = A supply needs a name.
+supplies-gone = This supply is no longer there: { $what }
+supplies-number-unreadable = “{ $what }” is not a number.
+supplies-list-name = Supplies
+supplies-resupply-title = Resupply: { $name }
+supplies-resupply-made = “{ $title }” is in { $list }.
+set-supplies-list = Tasks to resupply go to
+set-supplies-list-help = The task list a task to resupply is made in, when a supply runs low; a supply's project, when it has one, gets it too. Unsaid, as Health's errands choose theirs: their list, else your usual one.
+set-supplies-list-usual = As Health's errands
+loss-supplies = the supplies it uses

@@ -55,6 +55,8 @@ pub(crate) fn heard(kind: Kind) -> Heard {
         Kind::Invoices => (true, false, false),
         // An issued record, a life or a journal: the same views, and the tie index, which reads the issued invoices (the second review of phase 3, R15).
         Kind::Issued => (true, false, false),
+        // The Supplies page and an open card read them again.
+        Kind::Supplies => (true, false, false),
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
@@ -111,6 +113,7 @@ fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kin
         Kind::Projects => sioul.as_mut().projects_changed(),
         Kind::Topics => sioul.as_mut().topics_changed(),
         Kind::Invoices | Kind::Issued => sioul.as_mut().invoices_changed(),
+        Kind::Supplies => sioul.as_mut().supplies_changed(),
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => {}
     }
 }
@@ -129,6 +132,8 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
         // The invoices' folder holds drafts and records alike: both are said when it arrives.
         "data/invoices/" => vec![Kind::Invoices, Kind::Issued],
         "notes/sioul-clients.toml" => vec![Kind::Invoices],
+        // The supplies' list and every device's movements.
+        sioul_sync::share::SUPPLIES | sioul_sync::share::SUPPLY_MOVES => vec![Kind::Supplies],
         "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" | "notes/sioul-contracts.toml" | sioul_sync::share::MOVEMENTS => vec![Kind::Money],
         "notes/sioul-papers.toml" | "files/papers/" => vec![Kind::Papers],
         // The notes folder, paper letters and notes' own links in it.
@@ -160,7 +165,8 @@ pub(crate) fn remade(kinds: &BTreeSet<Kind>) -> Remade {
         // The Porch says the declarations and the invoices not paid yet.
         views: any(&[Kind::Money, Kind::Accounts, Kind::Projects, Kind::Papers, Kind::Letters, Kind::Sites, Kind::Invoices, Kind::Issued]),
         // Contacts too: an office's card says the hours its tasks follow (`opening`).
-        work: any(&[Kind::Calendars, Kind::Contacts, Kind::Notes, Kind::Links, Kind::Projects]),
+        // Supplies: another device's movements may make a supply low, its task to resupply due (`supplies::upkeep`).
+        work: any(&[Kind::Calendars, Kind::Contacts, Kind::Notes, Kind::Links, Kind::Projects, Kind::Supplies]),
     }
 }
 
@@ -248,6 +254,9 @@ mod tests {
         assert!(kinds_of("data/calendars/local/").contains(&Kind::Calendars));
         assert!(kinds_of("files/notes/").contains(&Kind::Letters), "letters live in the notes folder");
         assert_eq!((kinds_of("data/invoices/"), kinds_of("notes/sioul-clients.toml")), (vec![Kind::Invoices, Kind::Issued], vec![Kind::Invoices]));
+        // The supplies and another device's movements of them: the page reads them again, the plan is made again.
+        assert_eq!((kinds_of(sioul_sync::share::SUPPLIES), kinds_of(sioul_sync::share::SUPPLY_MOVES)), (vec![Kind::Supplies], vec![Kind::Supplies]));
+        assert!(remade(&[Kind::Supplies].into_iter().collect()).work, "a supply low now may want its task to resupply");
     }
 
     /// Each kind reaches its views: a signal for the views that read it

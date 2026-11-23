@@ -37,6 +37,7 @@ nav = [
       { "Contacts and the map" = "guide/contacts.md" },
       { "Notes" = "guide/notes.md" },
       { "Projects" = "guide/projects.md" },
+      { "Supplies" = "guide/supplies.md" },
       { "Time and invoices" = "guide/time.md" },
       { "Budgets and bank accounts" = "guide/budgets.md" },
       { "Papers and letters" = "guide/papers.md" },
@@ -150,6 +151,7 @@ nav = [
     { "Money and papers" = [
       { "Accounting" = "dev/accounting.md" },
       { "Papers" = "dev/papers.md" },
+      { "Supplies" = "dev/supplies.md" },
     ] },
     { "Elsewhere" = [
       { "Compatibility" = "dev/compatibility.md" },

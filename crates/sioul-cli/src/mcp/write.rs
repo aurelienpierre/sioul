@@ -211,6 +211,8 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     };
     vdir::write_item(Path::new(&task.key), &text)?;
     closing.write()?;
+    // Its supplies follow at once (docs/supplies.md), as when the window finishes it.
+    let used = crate::tasks::supplies_after(s, task, &text, true);
     // What finishing it changed, said once.
     let after = Desk::read(s);
     let effect = match too.filter(|_| !closing.is_empty()) {
@@ -218,8 +220,8 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
         None => taskview::done_effect(&after.context(s), &desk.plan, &task.uid),
     };
     let comes_back = !task.repeat.is_empty();
-    let text = [said, format!("{}  [{}]", one_line(&task.title), task.uid), one_line(&effect)].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n");
-    Ok(Answer { text, data: json!({ "uid": task.uid, "changed": true, "comes_back": comes_back, "effect": effect }) })
+    let text = [said, format!("{}  [{}]", one_line(&task.title), task.uid), one_line(&effect), one_line(&used)].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n");
+    Ok(Answer { text, data: json!({ "uid": task.uid, "changed": true, "comes_back": comes_back, "effect": effect, "used": used }) })
 }
 
 pub fn add_event(s: &Session, args: &Args) -> Result<Answer, String> {

@@ -143,6 +143,9 @@ pub struct Config {
     /// Papers: their folder once Sioul's lists left the notes folder (docs/papers.md).
     #[serde(default)]
     pub papers: PaperSettings,
+    /// Supplies: where their tasks to resupply go (docs/supplies.md).
+    #[serde(default)]
+    pub supplies: SupplySettings,
     /// Where this device keeps Sioul's own lists (`storage::Storage`): read
     /// from the state folder by `load`, never from this file, which travels.
     #[serde(skip)]
@@ -913,6 +916,15 @@ pub struct PaperSettings {
     /// `Papers` in the documents folder (`storage::default_papers`).
     #[serde(default)]
     pub folder: Option<String>,
+}
+
+/// Supplies (docs/supplies.md): the Supplies page's own setting, behind its ⚙.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct SupplySettings {
+    /// The task list the tasks to resupply go to ("account/id", `supplies.list`);
+    /// unset: as Health's errands choose theirs (`supplies::resupply_list`).
+    #[serde(default)]
+    pub list: Option<String>,
 }
 
 /// Reminders before dates (docs/reminders.md): one quiet notification each, never again.

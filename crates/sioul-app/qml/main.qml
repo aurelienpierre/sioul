@@ -193,11 +193,11 @@ SioulWindow {
     }
 
     // Each page's name, by its place in the pages' stack.
-    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title", "ui-letters", "ui-ties"]
+    readonly property var pageNames: ["ui-porch", "ui-tasks", "ui-mail", "ui-sites", "ui-agenda", "ui-contacts", "ui-notes", "ui-projects", "ui-time", "ui-budgets", "ui-health", "ui-accounts", "ui-parameters", "ui-papers", "texts-page-title", "ui-letters", "ui-ties", "ui-supplies"]
     // Each page is made when it is first shown, then kept: the window opens
     // with the Porch alone, and a page asked for (a link, "New") is made
     // before it is used, as the page is set first.
-    property var made: sioul.grabFolder() !== "" && !["memory", "rest", "rest-shared"].includes(sioul.grabSteps()) ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true, 16: true }) : ({ 0: true })
+    property var made: sioul.grabFolder() !== "" && !["memory", "rest", "rest-shared"].includes(sioul.grabSteps()) ? ({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true, 13: true, 14: true, 15: true, 16: true, 17: true }) : ({ 0: true })
     onPageChanged: {
         window.placesOpen = false
         // On a phone the card covers the page: the page asked for shows (review of 590eb18, M3).
@@ -211,10 +211,10 @@ SioulWindow {
     // Each page's file, read the first time it is made (setSource, for their
     // required properties): what it imports (maps, PDFs, sites, sounds) is
     // loaded then, not as the window opens. Android has its own Sites page.
-    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml", "LettersPage.qml", "ChainPage.qml"]
+    readonly property var pageFiles: ["PorchPage.qml", "TasksPage.qml", "MailPage.qml", Qt.platform.os === "android" ? "android/SitesPage.qml" : "SitesPage.qml", "AgendaPage.qml", "ContactsPage.qml", "NotesPage.qml", "ProjectsPage.qml", "TimePage.qml", "BudgetsPage.qml", "HealthPage.qml", "AccountsPage.qml", "ParametersPage.qml", "PapersPage.qml", "TextsPage.qml", "LettersPage.qml", "ChainPage.qml", "SuppliesPage.qml"]
     onMadeChanged: window.makePages()
     function makePages() {
-        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader, lettersPageLoader, chainPageLoader]
+        const loaders = [porchPageLoader, tasksPageLoader, mailPageLoader, sitesPageLoader, agendaPageLoader, contactsPageLoader, notesPageLoader, projectsPageLoader, timePageLoader, budgetsPageLoader, healthPageLoader, accountsPageLoader, parametersPageLoader, papersPageLoader, textsPageLoader, lettersPageLoader, chainPageLoader, suppliesPageLoader]
         for (let i = 0; i < loaders.length; i++) {
             if (window.made[i] !== true || loaders[i].status !== Loader.Null)
                 continue
@@ -246,6 +246,8 @@ SioulWindow {
     readonly property var lettersPage: lettersPageLoader.item
     // The chain of ties from one thing (ChainPage.qml), opened from any thing's card or menu.
     readonly property var chainPage: chainPageLoader.item
+    // Supplies: what is used up or sold, and what is left of it (SuppliesPage.qml).
+    readonly property var suppliesPage: suppliesPageLoader.item
     // The page it was opened from, which Back gives again.
     property int chainFrom: 0
     // The thing last shown with its card's buttons (ThingActions.qml), whose ties Ctrl+G opens.
@@ -544,10 +546,15 @@ SioulWindow {
             papersPage.startFrom(file, title, kind)
         }
 
-        // A task done: "How was it?" beside the line that says so, gone with it.
+        // A task done: "How was it?" beside the line that says so, gone with it; what it used
+        // of your supplies, "Change…" beside it; a task to resupply asks how many came in.
         function onTaskDone(uid) {
             window.lastDone = uid
             window.lastDoneSaid = sioul.status
+            const supplies = sioul.taskSupplies(uid)
+            window.lastDoneSupplies = supplies === "null" ? null : JSON.parse(supplies)
+            if (window.lastDoneSupplies !== null && window.lastDoneSupplies.done && window.lastDoneSupplies.resupply)
+                window.suppliesAsk(uid, "arrived")
         }
 
         // On Windows, a notice with something to open, through Sioul's icon
@@ -571,6 +578,19 @@ SioulWindow {
     // The task just done, and the status line that said so.
     property string lastDone: ""
     property string lastDoneSaid: ""
+    // Its supplies (`supplies::task_supplies`): what it used, "Change…" in the status line.
+    property var lastDoneSupplies: null
+
+    // What a task done used, said again ("used"), or how many came in for a task to
+    // resupply ("arrived") (SuppliesUsed.qml, made the first time).
+    function suppliesAsk(uid, mode) {
+        if (suppliesUsedForm.item === null)
+            suppliesUsedForm.setSource("SuppliesUsed.qml", { sioul: sioul, theme: theme })
+        if (mode === "arrived")
+            suppliesUsedForm.item.arrive(uid)
+        else
+            suppliesUsedForm.item.ask(uid)
+    }
 
     // What the tray's last notice is about ({address, hint, until}, `onTrayNotice`):
     // a click on its message opens it, once, until then.
@@ -6615,6 +6635,9 @@ SioulWindow {
         id: howWasItForm
     }
     Loader {
+        id: suppliesUsedForm
+    }
+    Loader {
         id: paymentForm
     }
     Loader {
@@ -6971,6 +6994,9 @@ SioulWindow {
                     }
                     Loader {
                         id: chainPageLoader
+                    }
+                    Loader {
+                        id: suppliesPageLoader
                     }
                 }
 

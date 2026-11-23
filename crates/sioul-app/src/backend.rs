@@ -221,6 +221,37 @@ pub mod qobject {
         #[qinvokable]
         fn plan_renewal(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// The Supplies page, as JSON (`supplies::page`): its calm view, every supply, the archived.
+        #[qinvokable]
+        fn supplies_page(self: &Sioul) -> QString;
+
+        /// A supply's card, as JSON (`supplies::card`); "null" when it is gone.
+        #[qinvokable]
+        fn supply_card(self: &Sioul, id: &QString) -> QString;
+
+        /// A supply saved from its card (new when `id` is empty), with a first
+        /// count for a new one ("" for none); returns {id} or {error}.
+        #[qinvokable]
+        fn save_supply(self: Pin<&mut Sioul>, id: &QString, change: &QString, first: &QString) -> QString;
+
+        /// "Received…" (`kind` "received") or "Count again…" ("count") on a
+        /// supply's card; returns what went wrong, else "".
+        #[qinvokable]
+        fn supply_moved(self: Pin<&mut Sioul>, id: &QString, kind: &QString, quantity: &QString) -> QString;
+
+        /// A task's supplies, as JSON (`supplies::task_supplies`): for the
+        /// status line after a tick, and "How many came in?"; "null" when gone.
+        #[qinvokable]
+        fn task_supplies(self: &Sioul, uid: &QString) -> QString;
+
+        /// What a task done used, said again (JSON [{id, quantity}]); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_supplies_used(self: Pin<&mut Sioul>, uid: &QString, uses: &QString) -> QString;
+
+        /// How many came in, for a task to resupply done; returns what went wrong, else "".
+        #[qinvokable]
+        fn supply_arrived(self: Pin<&mut Sioul>, uid: &QString, quantity: &QString) -> QString;
+
         /// The household, as JSON (`persons::household`): you first, the
         /// others, children's other parents apart, the relations a form offers.
         #[qinvokable]
@@ -3311,6 +3342,10 @@ pub mod qobject {
         #[qsignal]
         fn papers_changed(self: Pin<&mut Sioul>);
 
+        /// The supplies or their movements changed (`changes`): the Supplies page and an open card read them again.
+        #[qsignal]
+        fn supplies_changed(self: Pin<&mut Sioul>);
+
         /// Money changed (budgets, bank accounts and movements, contracts):
         /// the bank's and the contracts' sections and a person's page read it again.
         #[qsignal]
@@ -5519,6 +5554,34 @@ impl qobject::Sioul {
 
     fn plan_renewal(self: Pin<&mut Self>, id: &QString) -> QString {
         QString::from(&crate::papers::plan_renewal(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn supplies_page(&self) -> QString {
+        QString::from(&crate::supplies::page(&self.shared()))
+    }
+
+    fn supply_card(&self, id: &QString) -> QString {
+        QString::from(&crate::supplies::card(&self.shared(), &id.to_string()))
+    }
+
+    fn save_supply(self: Pin<&mut Self>, id: &QString, change: &QString, first: &QString) -> QString {
+        QString::from(&crate::supplies::save(&id.to_string(), &change.to_string(), &first.to_string()))
+    }
+
+    fn supply_moved(self: Pin<&mut Self>, id: &QString, kind: &QString, quantity: &QString) -> QString {
+        QString::from(&crate::supplies::moved(&self.qt_thread(), &self.shared(), &id.to_string(), &kind.to_string(), &quantity.to_string()))
+    }
+
+    fn task_supplies(&self, uid: &QString) -> QString {
+        QString::from(&crate::supplies::task_supplies(&self.shared(), &uid.to_string()))
+    }
+
+    fn set_supplies_used(self: Pin<&mut Self>, uid: &QString, uses: &QString) -> QString {
+        QString::from(&crate::supplies::set_used(&self.qt_thread(), &self.shared(), &uid.to_string(), &uses.to_string()))
+    }
+
+    fn supply_arrived(self: Pin<&mut Self>, uid: &QString, quantity: &QString) -> QString {
+        QString::from(&crate::supplies::arrived(&self.qt_thread(), &self.shared(), &uid.to_string(), &quantity.to_string()))
     }
 
     fn household(&self) -> QString {

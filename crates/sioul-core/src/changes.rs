@@ -60,10 +60,12 @@ pub enum Kind {
     /// draft says `Invoices` alone, so that saving one as it is typed reads
     /// nothing again (the second review of phase 3, R15).
     Issued,
+    /// Supplies (`sioul-supplies.toml`) and their movements (`sioul-supplies-moves/`).
+    Supplies,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 15] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices, Kind::Issued];
+    pub const ALL: [Kind; 16] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices, Kind::Issued, Kind::Supplies];
 
     /// Its place among the kinds, for a set of them as bits.
     pub fn bit(self) -> u32 {
@@ -88,6 +90,7 @@ impl Kind {
             Kind::Topics => "topics",
             Kind::Invoices => "invoices",
             Kind::Issued => "issued",
+            Kind::Supplies => "supplies",
         }
     }
 }

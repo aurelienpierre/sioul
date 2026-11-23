@@ -725,12 +725,40 @@ pub fn get_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let (lines, steps) = steps_shown(&desk, &task.uid);
     let mut data = task_json(&task);
     data["steps"] = steps;
+    // Its supplies (docs/supplies.md): what it plans, and done, what it used, each with its supply's name.
+    let (supplies, used, supply_lines) = supplies_shown(s, &task);
+    data["supplies"] = supplies;
+    data["supplies_used"] = used;
     // An appointment kept from agents: not even its address.
     if data["appointment"].as_str().is_some_and(|uri| !desk.consent.allows(uri)) {
         data["appointment"] = Value::Null;
     }
-    let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(lines).chain(checklist_lines(&task.notes)).collect::<Vec<_>>().join("\n");
+    let text = std::iter::once(format!("{} · {}  <{}>", one_line(&task.title), one_line(&task.list), links::task_uri(&task.uid))).chain(supply_lines).chain(lines).chain(checklist_lines(&task.notes)).collect::<Vec<_>>().join("\n");
     Ok(Answer { text, data })
+}
+
+/// A task's supplies for an agent: what it plans, and, done, what it used
+/// (null while it is open), each {supply, name, quantity, unit}; and the
+/// lines that say them.
+fn supplies_shown(s: &Session, task: &Task) -> (Value, Value, Vec<String>) {
+    use sioul_core::supplies::{self, Use};
+    if task.supplies.is_empty() && !task.used_said {
+        return (json!([]), Value::Null, Vec::new());
+    }
+    let list = s.config.records_root().and_then(|root| supplies::List::load(&root).ok()).unwrap_or_default();
+    let data = |uses: &[Use]| Value::Array(uses.iter().map(|u| json!({ "supply": u.id, "name": list.get(&u.id).map_or(u.id.as_str(), |x| x.name_shown()), "quantity": u.quantity, "unit": list.get(&u.id).map_or("", |x| x.unit.as_str()) })).collect());
+    let words = |uses: &[Use]| uses.iter().map(|u| supplies::named(u, &list, &s.tr)).collect::<Vec<_>>().join(", ");
+    let mut lines = Vec::new();
+    if !task.supplies.is_empty() {
+        lines.push(one_line(&s.say("supplies-task-uses", &[("what", words(&task.supplies))])));
+    }
+    let used = if task.status == Status::Completed {
+        lines.push(one_line(&s.say("supplies-task-used", &[("what", words(supplies::used_by(task)))])));
+        data(supplies::used_by(task))
+    } else {
+        Value::Null
+    };
+    (data(&task.supplies), used, lines)
 }
 
 /// The most steps one call adds: a composed task is a few small steps.
@@ -923,6 +951,8 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         }
     }
     let mut text = tasks::apply(&current, &edit, &zone, &now)?;
+    // Finished by this change: its supplies follow once it is written (docs/supplies.md).
+    let mut finished = false;
     if let Some(status) = args.text("status")? {
         let status = match status.as_str() {
             "needs-action" => Status::NeedsAction,
@@ -932,6 +962,7 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
             other => return Err(format!("“status” is needs-action, in-process, completed or cancelled; not “{}”.", one_line(other))),
         };
         if status != task.status {
+            finished = status == Status::Completed;
             text = tasks::set_status(&text, status, &zone, &now)?;
         }
     }
@@ -944,11 +975,16 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         None
     };
     let mut files = Vec::new();
+    let mut used = String::new();
     if text != current {
         vdir::write_item(Path::new(&task.key), &text)?;
         files.push(FileChange::of(Path::new(&task.key), Some(current.clone())));
+        used = crate::tasks::supplies_after(s, &task, &text, finished);
     }
     let mut line = s.say("agent-task-changed", &[("title", one_line(&edit.title))]);
+    if !used.is_empty() {
+        line = format!("{line} {}", one_line(&used));
+    }
     if let Some((closing, Some(whole))) = closing {
         merge_files(&mut files, closing.write()?);
         line = format!("{line} {}", s.say("composed-done-too", &[("whole", one_line(&whole))]));

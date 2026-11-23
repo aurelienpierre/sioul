@@ -177,6 +177,19 @@ Item {
             text: line.sioul.text("felt-ask")
             onChosen: line.window.howWasIt(line.window.lastDone)
         }
+        // What it used of your supplies, applied with no question: changed in one optional
+        // press ("Change…"); for a task that planned none, "Supplies used…", once you keep some.
+        LineButton {
+            readonly property var supplies: line.window.lastDoneSupplies
+
+            objectName: "lineSuppliesUsed"
+            visible: howButton.visible && supplies !== null && (supplies.used.length > 0 || (supplies.keeps && supplies.done && supplies.planned.length === 0))
+            theme: line.theme
+            compact: line.compact
+            icon.name: "package-x-generic"
+            text: supplies !== null && supplies.used.length > 0 ? line.sioul.text("supplies-change") : line.sioul.text("supplies-used-button")
+            onChosen: line.window.suppliesAsk(line.window.lastDone, "used")
+        }
         // Back from free time, the end of work said once: one key keeps the usual end, no reason asked.
         LineButton {
             visible: line.window.freeSaid !== "" && line.sioul.undoLine === "" && line.sioul.status === line.window.freeSaid && line.pauses.can_keep

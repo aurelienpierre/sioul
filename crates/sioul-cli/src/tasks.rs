@@ -458,6 +458,17 @@ fn show(s: &Session, wanted: &str) -> Result<(), String> {
     if !task.notes.is_empty() {
         println!("\n{}", plain_lines(&task.notes));
     }
+    // Its supplies (docs/supplies.md): what it plans, and done, what it used.
+    if let Some(root) = s.config.records_root().filter(|_| !task.supplies.is_empty() || task.used_said) {
+        let list = sioul_core::supplies::List::load(&root).unwrap_or_default();
+        let words = |uses: &[sioul_core::supplies::Use]| uses.iter().map(|u| sioul_core::supplies::named(u, &list, &s.tr)).collect::<Vec<_>>().join(", ");
+        if !task.supplies.is_empty() {
+            println!("  {}", one_line(&s.say("supplies-task-uses", &[("what", words(&task.supplies))])));
+        }
+        if task.status == Status::Completed {
+            println!("  {}", one_line(&s.say("supplies-task-used", &[("what", words(sioul_core::supplies::used_by(task)))])));
+        }
+    }
     for step in &view.steps {
         print_card(step, 1);
     }
@@ -661,6 +672,25 @@ fn attach(s: &Session, wanted: &str, event: &str, on: Option<&str>, no_sync: boo
     Ok(())
 }
 
+/// What a task's state just written does to the supplies on this device
+/// (docs/supplies.md), as the window does it: finished, what it used taken
+/// out of the stock (a repeating task's turn at once), open again given
+/// back. Returns what it used in words ("Used 1 Stamps."), else "".
+pub(crate) fn supplies_after(s: &Session, before: &Task, text: &str, finished: bool) -> String {
+    use sioul_core::supplies;
+    let after = tasks::task_of_text(text, &sioul_core::zone::current());
+    let concerned = |t: &Task| !t.supplies.is_empty() || t.used_said || !t.resupply.is_empty();
+    let (Some(root), Some(after)) = (s.config.records_root(), after) else { return String::new() };
+    if !concerned(before) && !concerned(&after) {
+        return String::new();
+    }
+    let device = sioul_sync::share::Here::load(&sioul_core::config::state_dir()).id;
+    match supplies::after_status(&root, &device, before, &after, finished, sioul_core::zone::now().timestamp().as_second()) {
+        Ok(uses) => supplies::said_used(&uses, &supplies::List::load(&root).unwrap_or_default(), &s.tr),
+        Err(e) => e,
+    }
+}
+
 fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     let desk = Desk::read(s);
     let task = desk.find(s, wanted)?;
@@ -670,6 +700,9 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, status, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
+    // Its supplies follow at once (docs/supplies.md); what it used said with the done line.
+    let used = supplies_after(s, task, &text, status == Status::Completed && task.status != Status::Completed);
+    let used = if used.is_empty() { used } else { format!(" {}", one_line(&used)) };
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks");
     // only a step done for good: a repeating one's turn comes back open, and closes nothing.
     if status == Status::Completed && sioul_core::composed::done_for_good(&text) {
@@ -677,7 +710,7 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
         if !closing.is_empty() {
             closing.write()?;
             let whole = sioul_core::composed::closing_with(&desk.loaded.tasks, &task.uid).first().map(|t| t.title.clone()).unwrap_or_default();
-            println!("{}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
+            println!("{}{used}", s.say("composed-done-too", &[("whole", one_line(&whole))]));
             return write_task(s, task, &text);
         }
     }
@@ -685,7 +718,7 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
         // What finishing it changed, said once.
         let after = Desk::read(s);
         let effect = taskview::done_effect(&after.context(s), &desk.plan, &task.uid);
-        println!("{}", if effect.is_empty() { s.tr.text("task-done-said", None) } else { format!("{} {}", s.tr.text("task-done-said", None), one_line(&effect)) });
+        println!("{}{used}", if effect.is_empty() { s.tr.text("task-done-said", None) } else { format!("{} {}", s.tr.text("task-done-said", None), one_line(&effect)) });
     }
     write_task(s, task, &text)
 }

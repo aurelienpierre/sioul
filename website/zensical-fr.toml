@@ -38,6 +38,7 @@ nav = [
       { "Les contacts et la carte" = "guide/contacts.md" },
       { "Les notes" = "guide/notes.md" },
       { "Les projets" = "guide/projects.md" },
+      { "Les stocks" = "guide/supplies.md" },
       { "Le temps et les factures" = "guide/time.md" },
       { "Les budgets et les comptes bancaires" = "guide/budgets.md" },
       { "Les papiers et les lettres" = "guide/papers.md" },

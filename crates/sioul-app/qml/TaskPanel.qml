@@ -388,6 +388,9 @@ Panel {
         add("task-field-repeat", e.repeat ? panel.sioul.text("repeat-" + e.repeat) : "")
         const list = panel.detail.lists ? panel.detail.lists.find(l => l.id === panel.detail.list) : null
         add("task-field-list", list ? list.name : "")
+        // The supplies it plans to use (docs/supplies.md); done, its section says what it used.
+        if (!panel.done && panel.detail.supplies && panel.detail.supplies.planned.length > 0)
+            add("supplies-section", panel.detail.supplies.planned.map(p => p.text).join(", "))
         return rows
     }
 
@@ -1655,6 +1658,64 @@ Panel {
                 forecast: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands : ({})
                 kept: panel.feltToday()
                 onGiven: values => panel.keepFelt(values)
+            }
+            // Done: what it really used of your supplies (docs/supplies.md), each line
+            // changeable, "Add a supply"; kept on its card, to put right days later.
+            // Made only when it shows: a task's card keeps few objects alive (tst_cards, the budget).
+            Loader {
+                id: suppliesUsed
+
+                readonly property var supplies: panel.detail && panel.detail.supplies ? panel.detail.supplies : null
+
+                objectName: "taskSuppliesUsed"
+                active: !panel.form && panel.card !== null && panel.card.status === "completed" && suppliesUsed.supplies !== null && (suppliesUsed.supplies.keeps || suppliesUsed.supplies.used.length > 0)
+                visible: suppliesUsed.active
+                Layout.fillWidth: true
+
+                sourceComponent: Section {
+                    theme: panel.theme
+                    title: panel.sioul.text("supplies-used-section")
+
+                    SupplyLines {
+                        Layout.fillWidth: true
+                        sioul: panel.sioul
+                        theme: panel.theme
+                        editable: panel.canEdit
+                        choices: suppliesUsed.supplies ? suppliesUsed.supplies.choices : []
+                        value: suppliesUsed.supplies ? (suppliesUsed.supplies.used.length > 0 ? suppliesUsed.supplies.used : suppliesUsed.supplies.planned) : []
+                        onEdited: value => {
+                            const problem = panel.sioul.setSuppliesUsed(panel.uid, JSON.stringify(value))
+                            error.text = problem
+                            panel.reload()
+                        }
+                    }
+                }
+            }
+            // Its supplies (docs/supplies.md): what it plans to use, a line each; shown once
+            // you keep supplies, or when it has some. Applied when it is done, with no question.
+            Loader {
+                id: suppliesPlanned
+
+                readonly property var supplies: panel.detail && panel.detail.supplies ? panel.detail.supplies : null
+
+                objectName: "taskSupplies"
+                active: panel.form && panel.canEdit && panel.detail !== null && suppliesPlanned.supplies !== null && (suppliesPlanned.supplies.keeps || (panel.detail.edit.supplies || []).length > 0)
+                visible: suppliesPlanned.active
+                Layout.fillWidth: true
+
+                sourceComponent: Section {
+                    theme: panel.theme
+                    title: panel.sioul.text("supplies-section")
+
+                    SupplyLines {
+                        Layout.fillWidth: true
+                        sioul: panel.sioul
+                        theme: panel.theme
+                        choices: suppliesPlanned.supplies ? suppliesPlanned.supplies.choices : []
+                        value: panel.detail && panel.detail.edit.supplies ? panel.detail.edit.supplies : []
+                        onEdited: value => panel.change("supplies", value)
+                    }
+                }
             }
 
             // The rest, folded, in the form.

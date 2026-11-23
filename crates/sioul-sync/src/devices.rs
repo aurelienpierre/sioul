@@ -155,6 +155,15 @@ pub struct Entry {
     /// field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub clients: u32,
+    /// Whether its Sioul has the supplies' stores (`share::SUPPLIES`, the
+    /// list, and `share::SUPPLY_MOVES`, each device's movements;
+    /// `sioul_core::supplies`): 1 from a build that has them, 0 from an
+    /// older one, which takes the list for a note. They travel only once
+    /// every other device that counts says 1 (`share::supplies_shared`), as
+    /// the client profiles do. An older Sioul reads the entry as before, the
+    /// field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub supplies: u32,
     /// Where its Sioul keeps its own lists (docs/notes-folder.md, "What
     /// lives where"): `STORAGE_KNOWS` (1) from a build that knows the new
     /// places, its lists still in the notes folder; `STORAGE_MOVED` (2) once
