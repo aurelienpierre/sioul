@@ -2977,6 +2977,10 @@ pub mod qobject {
         #[qinvokable]
         fn extension_busy(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, counts: bool);
 
+        /// The address book an extension's set of contacts goes into: `choice` "new:<account>" or "place:<account/id>".
+        #[qinvokable]
+        fn extension_book(self: Pin<&mut Sioul>, id: &QString, set: &QString, choice: &QString);
+
         /// The sign-in page's word (SignInWindow.qml): the address it returned to, "" when closed.
         #[qinvokable]
         fn sign_in_returned(self: Pin<&mut Sioul>, address: &QString);
@@ -8944,6 +8948,10 @@ impl qobject::Sioul {
 
     fn extension_busy(self: Pin<&mut Self>, id: &QString, agenda: &QString, counts: bool) {
         crate::extensions::choose_busy(&self.qt_thread(), &id.to_string(), &agenda.to_string(), counts);
+    }
+
+    fn extension_book(self: Pin<&mut Self>, id: &QString, set: &QString, choice: &QString) {
+        crate::extensions::choose_book(&self.qt_thread(), &self.shared(), &id.to_string(), &set.to_string(), &choice.to_string());
     }
 
     fn sign_in_returned(self: Pin<&mut Self>, address: &QString) {
