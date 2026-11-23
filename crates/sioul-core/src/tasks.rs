@@ -278,6 +278,13 @@ pub struct Task {
     /// The supplies it plans to use (`supplies::PLANNED`), each once.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub supplies: Vec<crate::supplies::Use>,
+    /// What it used, as Sioul wrote it when it finished it or as it was put
+    /// right since (`supplies::USED`); read only when `used_said`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub supplies_used: Vec<crate::supplies::Use>,
+    /// It says what it used: else, finished, it used what it planned (`supplies::used_by`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub used_said: bool,
     /// A task to resupply: the supply's id (`supplies::RESUPPLY`); "" for none.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub resupply: String,
@@ -718,6 +725,10 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
             "LAST-MODIFIED" => task.modified = zoned(line, zone).map_or(0, |z| z.timestamp().as_second()),
             crate::pairs::UNTIED => task.untied.push(value.trim().to_string()),
             crate::supplies::PLANNED => task.supplies.extend(crate::supplies::use_of(line)),
+            crate::supplies::USED => {
+                task.used_said = true;
+                task.supplies_used.extend(crate::supplies::use_of(line));
+            }
             crate::supplies::RESUPPLY => task.resupply = value.trim().to_string(),
             crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
             crate::pairs::SET_ASIDE => {
@@ -748,6 +759,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
     }
     task.felt = crate::demands::felt_of(&felt);
     task.supplies = crate::supplies::merged(std::mem::take(&mut task.supplies));
+    task.supplies_used = crate::supplies::merged(std::mem::take(&mut task.supplies_used));
     // DURATION with DTSTART stands for DUE (RFC 5545 §3.6.2).
     if task.due.is_empty()
         && let (Some(minutes), Some(line)) = (duration, start_line)
@@ -849,6 +861,9 @@ pub struct TaskEdit {
     /// Never read from a task, never given to the window.
     #[serde(default, skip_serializing)]
     pub sort_order: Option<i64>,
+    /// The supplies it plans to use, a line each (`supplies::PLANNED`).
+    #[serde(default)]
+    pub supplies: Vec<crate::supplies::Use>,
 }
 
 impl TaskEdit {
@@ -917,6 +932,7 @@ impl TaskEdit {
             repeat: task.repeat.clone(),
             wait_gaps: BTreeMap::new(),
             sort_order: None,
+            supplies: task.supplies.clone(),
         }
     }
 
@@ -955,6 +971,7 @@ impl TaskEdit {
             contacts: unique(self.contacts.iter().filter(|c| !c.name.trim().is_empty() || !c.uri.trim().is_empty()).map(|c| ContactRef { name: c.name.trim().to_string(), uri: c.uri.trim().to_string() })),
             projects: unique(self.projects.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())),
             repeat: self.repeat.trim().to_lowercase(),
+            supplies: crate::supplies::merged(self.supplies.iter().filter(|u| crate::supplies::is_id(u.id.trim()) && u.quantity > crate::supplies::Qty::ZERO).map(|u| crate::supplies::Use { id: u.id.trim().to_string(), quantity: u.quantity }).collect()),
             ..self.clone()
         }
     }
@@ -1117,6 +1134,7 @@ struct Changed {
     margins: bool,
     demands: bool,
     repeat: bool,
+    supplies: bool,
 }
 
 impl Changed {
@@ -1142,10 +1160,11 @@ impl Changed {
             margins: old.margins != new.margins,
             demands: old.demands != new.demands,
             repeat: old.repeat != new.repeat,
+            supplies: old.supplies != new.supplies,
         }
     }
 
-    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, at: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, busy: true, energy: true, margins: true, demands: true, repeat: true };
+    const ALL: Changed = Changed { title: true, notes: true, location: true, status: true, start: true, due: true, at: true, estimate: true, priority: true, categories: true, kind: true, office: true, office_times: true, area: true, billable: true, busy: true, energy: true, margins: true, demands: true, repeat: true, supplies: true };
 
     /// Whether a line of this name is written again.
     fn rewrites(&self, name: &str) -> bool {
@@ -1168,6 +1187,7 @@ impl Changed {
             crate::demands::BEFORE | crate::demands::AFTER => self.margins,
             crate::demands::COST | crate::demands::GAIN => self.demands,
             "RRULE" => self.repeat,
+            crate::supplies::PLANNED => self.supplies,
             _ => false,
         }
     }
@@ -1243,6 +1263,9 @@ fn field_lines(edit: &TaskEdit, changed: Changed, zone: &TimeZone, now: &Zoned) 
     if changed.repeat && matches!(edit.repeat.as_str(), "daily" | "weekly" | "monthly" | "yearly") {
         out.push(format!("RRULE:FREQ={}", edit.repeat.to_ascii_uppercase()));
     }
+    if changed.supplies {
+        out.extend(edit.supplies.iter().map(|u| crate::supplies::use_line(crate::supplies::PLANNED, u)));
+    }
     Ok(out)
 }
 
@@ -1304,6 +1327,12 @@ fn rewrite(text: &str, keep: impl Fn(&str) -> bool, added: Vec<String>, now: &Zo
 /// The task's text with the form's changes: only the lines of what changed
 /// are written again; nothing changed, nothing is written.
 pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Result<String, String> {
+    apply_with(text, edit, zone, now, None)
+}
+
+/// `apply`, its lines of what the task used (`supplies::USED`) replaced by
+/// `used` in the same change when given: the stamps written once.
+fn apply_with(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned, used: Option<Vec<String>>) -> Result<String, String> {
     let before = task_of_text(text, zone).ok_or("no task")?;
     let (mut old, mut edit) = (TaskEdit::of(&before).tidy(), edit.tidy());
     // The word as the file has it: rated costs then write their level over a stale one.
@@ -1311,7 +1340,7 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     // How it went is written by `set_felt` only, never by the form; its place by `set_sequence`.
     edit.felt = old.felt;
     edit.sort_order = None;
-    if old == edit {
+    if old == edit && used.is_none() {
         return Ok(text.to_string());
     }
     // A time given for a day gone by says nothing: written for another reason, the task leaves it.
@@ -1331,9 +1360,13 @@ pub fn apply(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned) -> Resul
     added.extend(edit.links.iter().filter(|l| !old.links.contains(l)).map(link_line));
     added.extend(edit.contacts.iter().filter(|c| !old.contacts.contains(c)).map(contact_line));
     added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| project_line(c)));
+    if let Some(used) = &used {
+        added.extend(used.iter().cloned());
+    }
     let keep = |line: &str| {
         let name = lines::name(line);
         match name.as_str() {
+            crate::supplies::USED => used.is_none(),
             "RELATED-TO" => {
                 let r = relation_of(line);
                 match r.kind.as_str() {
@@ -1382,7 +1415,18 @@ pub fn set_status(text: &str, status: Status, zone: &TimeZone, now: &Zoned) -> R
             edit.status = Status::NeedsAction;
         }
     }
-    apply(text, &edit, zone, now)
+    // What it used (docs/supplies.md): finished by Sioul, what it planned, said on the task;
+    // open again or dropped, nothing (its use given back by `supplies::settle`). Only when its
+    // state changed: a tick on a task done already keeps what was put right since.
+    let done = edit.status == Status::Completed;
+    let used = if edit.status == task.status || (!done && !task.used_said) || (done && task.supplies.is_empty() && !task.used_said) {
+        None
+    } else if done {
+        Some(task.supplies.iter().map(|u| crate::supplies::use_line(crate::supplies::USED, u)).collect())
+    } else {
+        Some(Vec::new())
+    };
+    apply_with(text, &edit, zone, now, used)
 }
 
 /// A repeating task's dates at their next turn after `today`, the distance

@@ -264,6 +264,17 @@ Item {
                 detail.limited = ["start", "due_hour", "estimate"]
                 return JSON.stringify(detail)
             }
+            if (uid === "t11" || uid === "t12") {
+                // Supplies (docs/supplies.md): t11 open, planning a stamp and an envelope; t12 done, its use said.
+                const detail = mock.taskDetail(uid, uid === "t11" ? "Send a gift card" : "Sent a gift card")
+                const choices = [{ id: "stamps", name: "Stamps", unit: "", quantity: 0, text: "Stamps" }, { id: "envelopes", name: "Envelopes", unit: "", quantity: 0, text: "Envelopes" }]
+                detail.edit.supplies = [{ id: "stamps", quantity: 1 }, { id: "envelopes", quantity: 1 }]
+                const lines = [{ id: "stamps", name: "Stamps", unit: "", quantity: 1, text: "1 Stamps" }, { id: "envelopes", name: "Envelopes", unit: "", quantity: 1, text: "1 Envelopes" }]
+                detail.supplies = { keeps: true, choices: choices, planned: lines, used: uid === "t12" ? lines : [], done: uid === "t12", turn: false, said: "", resupply: null }
+                if (uid === "t12")
+                    detail.card.status = "completed"
+                return JSON.stringify(detail)
+            }
             if (uid === "t10") {
                 // A call tied to an office whose card has hours, unticked: it does not follow them.
                 const detail = mock.taskDetail(uid, "Call the tax office")
@@ -309,6 +320,10 @@ Item {
             return JSON.stringify(uid === "" ? { uid: "t9" } : {})
         }
         function searchTasks(text) { return "[]" }
+        function setSuppliesUsed(uid, uses) {
+            mock.calls.push({ what: "setSuppliesUsed", uid: uid, uses: JSON.parse(uses) })
+            return ""
+        }
         function descriptionHtml(markdown, tickable) { return "<p>" + markdown + "</p>" }
         // The events the task form's field finds: a repeating one by its next times, each row its agenda.
         property string lastSearchKind: ""
@@ -1137,6 +1152,59 @@ Item {
             wait(10)
             const line = root.find(panel, "taskBusyLine")
             verify(line !== null && line.visible && line.text === "Its time is not known yet.")
+        }
+
+        // A task's supplies (docs/supplies.md): its form's section, a line changed or added
+        // saved with the form; a task with none of them, and nothing kept, shows no section.
+        function test_a_task_s_supplies_in_its_form() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t11" })
+            wait(50)
+            const panel = host.taskPanel
+            verify(panel !== null && panel.uid === "t11")
+            verify(!root.find(panel, "taskSupplies").visible, "its details first: the form's section waits for Edit")
+            panel.editing = true
+            wait(20)
+            const section = root.find(panel, "taskSupplies")
+            verify(section !== null && section.visible)
+            verify(!root.find(panel, "taskSuppliesUsed").visible, "open: nothing used yet")
+            mock.calls = []
+            const quantity = root.find(section, "supplyQuantity:1")
+            quantity.text = "2"
+            quantity.editingFinished()
+            // The rows made again from the saved form: the old ones gone first.
+            wait(20)
+            let saved = mock.calls.filter(c => c.what === "saveTask")
+            compare(saved.length, 1, JSON.stringify(mock.calls))
+            compare(JSON.stringify(saved[0].edit.supplies), JSON.stringify([{ id: "stamps", quantity: 1 }, { id: "envelopes", quantity: 2 }]))
+            // Pressed as by hand (it lies below the panel's fold, where a click at its place lands elsewhere).
+            root.find(root.find(panel, "taskSupplies"), "supplyRemove:0").clicked()
+            saved = mock.calls.filter(c => c.what === "saveTask")
+            compare(JSON.stringify(saved[saved.length - 1].edit.supplies), JSON.stringify([{ id: "envelopes", quantity: 2 }]))
+            // A task read with no supplies at all (nothing kept): no section.
+            host.show({ kind: "step", owner: "t1" })
+            wait(50)
+            host.taskPanel.editing = true
+            wait(20)
+            verify(!root.find(host.taskPanel, "taskSupplies").visible)
+        }
+
+        // A task done keeps its section "Supplies used": a line put right days later.
+        function test_a_task_done_keeps_what_it_used() {
+            const host = makeHost()
+            host.show({ kind: "step", owner: "t12" })
+            wait(50)
+            const panel = host.taskPanel
+            const section = root.find(panel, "taskSuppliesUsed")
+            verify(section !== null && section.visible)
+            mock.calls = []
+            const quantity = root.find(section, "supplyQuantity:0")
+            quantity.text = "2"
+            quantity.editingFinished()
+            const said = mock.calls.filter(c => c.what === "setSuppliesUsed")
+            compare(said.length, 1, JSON.stringify(mock.calls))
+            compare(said[0].uid, "t12")
+            compare(JSON.stringify(said[0].uses), JSON.stringify([{ id: "stamps", quantity: 2 }, { id: "envelopes", quantity: 1 }]))
         }
 
         // A call tied to an office with hours, unticked: its panel says it does not follow

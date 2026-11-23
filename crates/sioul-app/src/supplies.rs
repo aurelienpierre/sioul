@@ -3,16 +3,18 @@
 
 //! Supplies in the window (docs/supplies.md): the page (its calm view, what
 //! now is for, and its full list), a supply's card, the movements said by
-//! hand ("Received…", "Count again…"), how many came in for a task to
-//! resupply, and the upkeep after each re-plan: the tasks to resupply made.
+//! hand ("Received…", "Count again…"), a task's supplies (its form's lines,
+//! what it used, said in one press after a tick), "How many came in?" when a
+//! task to resupply is done, and the upkeep after each re-plan: the finished
+//! tasks applied (`supplies::settle`) and the tasks to resupply made.
 
 use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
 use serde::Serialize;
-use sioul_core::supplies::{self, Change, Kind, List, Qty, Supply};
+use sioul_core::supplies::{self, Change, Kind, List, Qty, Supply, Use};
 use sioul_core::tasks::{Status, Task};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Where the supplies' list and movements are: the notes folder, or `records/` once moved.
 fn root() -> Option<PathBuf> {
@@ -23,6 +25,11 @@ fn root() -> Option<PathBuf> {
 fn device() -> String {
     crate::notices::here_id()
 }
+
+/// The turns of repeating tasks done in this run, by UID: the stamp their
+/// use was written under (`supplies::turn_done`), for "Change…" in the
+/// status line. The task itself comes back open and keeps nothing of it.
+static TURNS: Mutex<BTreeMap<String, i64>> = Mutex::new(BTreeMap::new());
 
 /// A quantity in words, its unit after it: "12", "200 g".
 fn amount(quantity: Qty, unit: &str) -> String {
@@ -352,6 +359,112 @@ pub(crate) fn moved(qt: &QtThread, shared: &Arc<Shared>, id: &str, kind: &str, q
     }
 }
 
+/// One line of a task's supplies, as the panel and the status line show it.
+#[derive(Debug, Clone, Default, Serialize)]
+struct UseRow {
+    id: String,
+    name: String,
+    unit: String,
+    quantity: f64,
+    text: String,
+}
+
+fn use_rows(uses: &[Use], list: &List) -> Vec<UseRow> {
+    uses.iter()
+        .map(|u| {
+            let supply = list.get(&u.id);
+            UseRow { id: u.id.clone(), name: supply.map_or(u.id.as_str(), |s| s.name_shown()).to_string(), unit: supply.map(|s| s.unit.clone()).unwrap_or_default(), quantity: u.quantity.as_f64(), text: supplies::named(u, list, tr()) }
+        })
+        .collect()
+}
+
+/// A task's supplies, as JSON: whether the person keeps supplies, the
+/// supplies to choose from (those kept, not archived), what it plans, what
+/// it used (done, or a repeating task's turn done in this run), and, for a
+/// task to resupply, its supply and what it is bought by.
+#[derive(Debug, Default, Serialize)]
+struct OfTask {
+    keeps: bool,
+    choices: Vec<UseRow>,
+    planned: Vec<UseRow>,
+    used: Vec<UseRow>,
+    done: bool,
+    /// A repeating task's turn done in this run: what it used is its turn's.
+    turn: bool,
+    /// "Used 1 Stamps, 1 Envelopes." for the status line; "" when nothing.
+    said: String,
+    resupply: Option<UseRow>,
+}
+
+fn of_task_value(task: &Task) -> OfTask {
+    let Some(root) = root() else { return OfTask::default() };
+    let list = List::load(&root).unwrap_or_default();
+    let done = task.status == Status::Completed;
+    let turn = TURNS.lock().ok().and_then(|t| t.get(&task.uid).copied());
+    let used: Vec<Use> = match (done, turn) {
+        (true, _) => supplies::used_by(task).to_vec(),
+        (false, Some(stamp)) => {
+            let moves = supplies::read_moves(&root, &device());
+            supplies::latest(&moves.lines).into_values().filter(|m| m.task == task.uid && m.kind == Kind::Used && m.when() == stamp).map(|m| Use { id: m.supply, quantity: m.quantity }).collect()
+        }
+        _ => Vec::new(),
+    };
+    let said = supplies::said_used(&used, &list, tr());
+    let resupply = list.get(&task.resupply).map(|s| UseRow { id: s.id.clone(), name: s.name_shown().to_string(), unit: s.unit.clone(), quantity: s.bought_by.map_or(0.0, Qty::as_f64), text: s.bought_by.map(|q| q.shown(tr())).unwrap_or_default() });
+    OfTask {
+        keeps: !list.supplies.is_empty(),
+        choices: list.supplies.iter().filter(|s| !s.archived).map(|s| UseRow { id: s.id.clone(), name: s.name_shown().to_string(), unit: s.unit.clone(), quantity: 0.0, text: s.name_shown().to_string() }).collect(),
+        planned: use_rows(&task.supplies, &list),
+        used: use_rows(&used, &list),
+        done,
+        turn: turn.is_some() && !done,
+        said,
+        resupply,
+    }
+}
+
+/// A task's supplies (`OfTask`), for its panel.
+pub(crate) fn of_task(task: &Task) -> serde_json::Value {
+    serde_json::to_value(of_task_value(task)).unwrap_or_default()
+}
+
+/// A task's supplies by its UID, for the status line after a tick; "null" when it is gone.
+pub(crate) fn task_supplies(shared: &Shared, uid: &str) -> String {
+    match crate::work::find_task(shared, uid).ok().and_then(|t| crate::work::from_its_file(&t)) {
+        Some(task) => json(&of_task_value(&task)),
+        None => "null".into(),
+    }
+}
+
+/// What a task used, said again (JSON [{id, quantity}]): on a task done, its
+/// lines of what it used written anew and the movements following; on a
+/// repeating task's turn done in this run, that turn's movements. Returns
+/// what went wrong, else "".
+pub(crate) fn set_used(qt: &QtThread, shared: &Arc<Shared>, uid: &str, uses: &str) -> String {
+    let Some(root) = root() else { return tr().text("error-no-store", None) };
+    let uses: Vec<Use> = match serde_json::from_str::<Vec<Use>>(uses) {
+        Ok(uses) => uses.into_iter().filter(|u| supplies::is_id(&u.id) && u.quantity >= Qty::ZERO).collect(),
+        Err(e) => return e.to_string(),
+    };
+    let Ok(task) = crate::work::find_task(shared, uid) else { return tr().text("task-gone", None) };
+    let now = sioul_core::zone::now();
+    let turn = TURNS.lock().ok().and_then(|t| t.get(uid).copied());
+    if task.status != Status::Completed {
+        return match turn {
+            Some(stamp) => supplies::turn_used(&root, &device(), uid, stamp, &uses, now.timestamp().as_second()).map(|()| crate::work::show_work(qt, shared)).err().unwrap_or_default(),
+            None => tr().text("supplies-not-done", None),
+        };
+    }
+    if let Err(e) = crate::work::change_task(qt, shared, uid, |text| supplies::with_used(text, &uses, &now)) {
+        return e;
+    }
+    // The movements follow at once, before the plan is made again.
+    if let Some(fresh) = crate::work::from_its_file(&task) {
+        let _ = supplies::settle(&root, &device(), std::slice::from_ref(&fresh), now.timestamp().as_second());
+    }
+    String::new()
+}
+
 /// "How many came in?" answered for a task to resupply done: its arrival
 /// written (`supplies::arrived`). Returns what went wrong, else "".
 pub(crate) fn arrived(qt: &QtThread, shared: &Arc<Shared>, uid: &str, quantity: &str) -> String {
@@ -367,12 +480,40 @@ pub(crate) fn arrived(qt: &QtThread, shared: &Arc<Shared>, uid: &str, quantity: 
     }
 }
 
-/// After each re-plan, on its thread: the tasks to resupply made, each said
-/// once; their account told, and the plan made again when one was made.
+/// A task just finished in the window (`work::set_status`), `before` as it
+/// was: a repeating one's turn written now, its stamp kept for "Change…";
+/// any other applied at once from its file (the re-plan's `upkeep` would
+/// too, a moment later). Returns what the status line adds: "Used 1 Stamps."
+pub(crate) fn finished(before: &Task, after: Option<&Task>) -> String {
+    let (Some(root), Some(after)) = (root(), after) else { return String::new() };
+    let now = sioul_core::zone::now().timestamp().as_second();
+    let turn = !before.repeat.is_empty() && after.status != Status::Completed && !before.supplies.is_empty();
+    match supplies::after_status(&root, &device(), before, after, true, now) {
+        Ok(_) if turn => {
+            if let Ok(mut turns) = TURNS.lock() {
+                turns.insert(before.uid.clone(), now);
+            }
+            of_task_value(after).said
+        }
+        Ok(_) => of_task_value(after).said,
+        Err(e) => {
+            eprintln!("sioul: supplies: {e}");
+            String::new()
+        }
+    }
+}
+
+/// After each re-plan, on its thread: the finished tasks applied
+/// (`supplies::settle`, only what is missing written, in this device's own
+/// file), then the tasks to resupply made, each said once; their account
+/// told, and the plan made again when one was made.
 pub(crate) fn upkeep(qt: &QtThread, shared: &Arc<Shared>, tasks: &[Task]) {
     let Some(root) = root() else { return };
     let device = device();
     let now = sioul_core::zone::now();
+    if let Err(e) = supplies::settle(&root, &device, tasks, now.timestamp().as_second()) {
+        eprintln!("sioul: supplies: {e}");
+    }
     let config = load_config();
     // No list at all: one on this device, as Health's errands get theirs.
     let list = match supplies::resupply_list(&config) {

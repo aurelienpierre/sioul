@@ -183,9 +183,11 @@ fn main() {
         "qml/JoinPanel.qml",
         "qml/PapersPage.qml",
         "qml/PaperDialog.qml",
-        // Supplies: the page and a supply's card.
+        // Supplies: the page, a supply's card, a task's lines of supplies, what a task done used.
         "qml/SuppliesPage.qml",
         "qml/SupplyCard.qml",
+        "qml/SupplyLines.qml",
+        "qml/SuppliesUsed.qml",
         "qml/Household.qml",
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",

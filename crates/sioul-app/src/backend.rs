@@ -239,6 +239,15 @@ pub mod qobject {
         #[qinvokable]
         fn supply_moved(self: Pin<&mut Sioul>, id: &QString, kind: &QString, quantity: &QString) -> QString;
 
+        /// A task's supplies, as JSON (`supplies::task_supplies`): for the
+        /// status line after a tick, and "How many came in?"; "null" when gone.
+        #[qinvokable]
+        fn task_supplies(self: &Sioul, uid: &QString) -> QString;
+
+        /// What a task done used, said again (JSON [{id, quantity}]); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_supplies_used(self: Pin<&mut Sioul>, uid: &QString, uses: &QString) -> QString;
+
         /// How many came in, for a task to resupply done; returns what went wrong, else "".
         #[qinvokable]
         fn supply_arrived(self: Pin<&mut Sioul>, uid: &QString, quantity: &QString) -> QString;
@@ -5557,6 +5566,14 @@ impl qobject::Sioul {
 
     fn supply_moved(self: Pin<&mut Self>, id: &QString, kind: &QString, quantity: &QString) -> QString {
         QString::from(&crate::supplies::moved(&self.qt_thread(), &self.shared(), &id.to_string(), &kind.to_string(), &quantity.to_string()))
+    }
+
+    fn task_supplies(&self, uid: &QString) -> QString {
+        QString::from(&crate::supplies::task_supplies(&self.shared(), &uid.to_string()))
+    }
+
+    fn set_supplies_used(self: Pin<&mut Self>, uid: &QString, uses: &QString) -> QString {
+        QString::from(&crate::supplies::set_used(&self.qt_thread(), &self.shared(), &uid.to_string(), &uses.to_string()))
     }
 
     fn supply_arrived(self: Pin<&mut Self>, uid: &QString, quantity: &QString) -> QString {

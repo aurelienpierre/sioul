@@ -546,10 +546,15 @@ SioulWindow {
             papersPage.startFrom(file, title, kind)
         }
 
-        // A task done: "How was it?" beside the line that says so, gone with it.
+        // A task done: "How was it?" beside the line that says so, gone with it; what it used
+        // of your supplies, "Change…" beside it; a task to resupply asks how many came in.
         function onTaskDone(uid) {
             window.lastDone = uid
             window.lastDoneSaid = sioul.status
+            const supplies = sioul.taskSupplies(uid)
+            window.lastDoneSupplies = supplies === "null" ? null : JSON.parse(supplies)
+            if (window.lastDoneSupplies !== null && window.lastDoneSupplies.done && window.lastDoneSupplies.resupply)
+                window.suppliesAsk(uid, "arrived")
         }
 
         // On Windows, a notice with something to open, through Sioul's icon
@@ -573,6 +578,19 @@ SioulWindow {
     // The task just done, and the status line that said so.
     property string lastDone: ""
     property string lastDoneSaid: ""
+    // Its supplies (`supplies::task_supplies`): what it used, "Change…" in the status line.
+    property var lastDoneSupplies: null
+
+    // What a task done used, said again ("used"), or how many came in for a task to
+    // resupply ("arrived") (SuppliesUsed.qml, made the first time).
+    function suppliesAsk(uid, mode) {
+        if (suppliesUsedForm.item === null)
+            suppliesUsedForm.setSource("SuppliesUsed.qml", { sioul: sioul, theme: theme })
+        if (mode === "arrived")
+            suppliesUsedForm.item.arrive(uid)
+        else
+            suppliesUsedForm.item.ask(uid)
+    }
 
     // What the tray's last notice is about ({address, hint, until}, `onTrayNotice`):
     // a click on its message opens it, once, until then.
@@ -6615,6 +6633,9 @@ SioulWindow {
     }
     Loader {
         id: howWasItForm
+    }
+    Loader {
+        id: suppliesUsedForm
     }
     Loader {
         id: paymentForm

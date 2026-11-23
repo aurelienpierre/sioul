@@ -8,7 +8,9 @@
 // past the screen's edge; the page's sentence while nothing is kept. A
 // supply's card (SupplyCard.qml): a new one made with its first count; on
 // one kept, a field saved as it changes, "Received…" and "Count again…" in
-// place, its planned tasks and history as links. Run by tools/qml-test.sh.
+// place, its planned tasks and history as links. What a task done used
+// (SuppliesUsed.qml, SupplyLines.qml): a line changed, added, taken off, and
+// "How many came in?" filled with what it is bought by. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -66,6 +68,26 @@ Item {
             mock.calls.push({ what: "supplyMoved", id: id, kind: kind, quantity: quantity })
             return mock.movedAnswer
         }
+        function taskSupplies(uid) {
+            return JSON.stringify({
+                keeps: true,
+                choices: [{ id: "stamps", name: "Stamps", unit: "", quantity: 0, text: "Stamps" }, { id: "envelopes", name: "Envelopes", unit: "", quantity: 0, text: "Envelopes" }, { id: "cards", name: "Gift cards", unit: "", quantity: 0, text: "Gift cards" }],
+                planned: [{ id: "stamps", name: "Stamps", unit: "", quantity: 1, text: "1 Stamps" }],
+                used: uid === "resupply" ? [] : [{ id: "stamps", name: "Stamps", unit: "", quantity: 1, text: "1 Stamps" }],
+                done: true,
+                turn: false,
+                said: "Used 1 Stamps.",
+                resupply: uid === "resupply" ? { id: "stamps", name: "Stamps", unit: "", quantity: 50, text: "50" } : null
+            })
+        }
+        function setSuppliesUsed(uid, uses) {
+            mock.calls.push({ what: "setSuppliesUsed", uid: uid, uses: JSON.parse(uses) })
+            return ""
+        }
+        function supplyArrived(uid, quantity) {
+            mock.calls.push({ what: "supplyArrived", uid: uid, quantity: quantity })
+            return ""
+        }
         function text(key) {
             return key === "qt-locale" ? "en_GB" : key
         }
@@ -101,6 +123,13 @@ Item {
         sioul: mock
         theme: testTheme
         window: shell
+    }
+
+    SuppliesUsed {
+        id: used
+
+        sioul: mock
+        theme: testTheme
     }
 
     TestCase {
@@ -262,6 +291,49 @@ Item {
             compare(card.problem, "supplies-number-unreadable")
             compare(card.asking, "count")
             card.close()
+        }
+
+        // What a task done used: a line changed, one added, one taken off, then saved.
+        function test_what_a_task_done_used() {
+            used.ask("sale")
+            tryVerify(() => used.opened)
+            compare(JSON.stringify(used.lines), JSON.stringify([{ id: "stamps", quantity: 1 }]))
+            const quantity = find(used.contentItem, "supplyQuantity:0")
+            quantity.text = "2"
+            quantity.editingFinished()
+            compare(JSON.stringify(used.lines), JSON.stringify([{ id: "stamps", quantity: 2 }]))
+            // Each change makes the rows again: the old ones gone before the next press.
+            wait(20)
+            mouseClick(find(used.contentItem, "supplyAdd"))
+            compare(JSON.stringify(used.lines), JSON.stringify([{ id: "stamps", quantity: 2 }, { id: "envelopes", quantity: 1 }]))
+            wait(20)
+            mouseClick(find(used.contentItem, "supplyRemove:0"))
+            compare(JSON.stringify(used.lines), JSON.stringify([{ id: "envelopes", quantity: 1 }]))
+            wait(20)
+            // A quantity that is no number: put back, nothing changed.
+            const again = find(used.contentItem, "supplyQuantity:0")
+            again.text = "a few"
+            again.editingFinished()
+            compare(JSON.stringify(used.lines), JSON.stringify([{ id: "envelopes", quantity: 1 }]))
+            used.save()
+            const saved = mock.calls.filter(c => c.what === "setSuppliesUsed")
+            compare(saved.length, 1)
+            compare(JSON.stringify(saved[0].uses), JSON.stringify([{ id: "envelopes", quantity: 1 }]))
+            verify(!used.opened)
+        }
+
+        // A task to resupply done: how many came in, filled with what it is usually bought by.
+        function test_how_many_came_in() {
+            used.arrive("resupply")
+            tryVerify(() => used.opened)
+            compare(used.mode, "arrived")
+            const count = find(used.contentItem, "suppliesArrivedCount")
+            compare(count.text, "50")
+            count.text = "40"
+            used.save()
+            const arrived = mock.calls.filter(c => c.what === "supplyArrived")
+            compare(arrived.length, 1)
+            compare(arrived[0].uid + "|" + arrived[0].quantity, "resupply|40")
         }
     }
 }

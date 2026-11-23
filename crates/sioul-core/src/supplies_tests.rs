@@ -2,10 +2,11 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Supplies' tests (docs/supplies.md): the stock from movements, free and
-//! low, the task to resupply made once, the list and the files read leniently.
+//! low, applying a finished task once on any number of devices, the task to
+//! resupply made once, the list and the files read leniently.
 
 use super::*;
-use crate::tasks::{Status, task_of_text};
+use crate::tasks::{TaskEdit, task_of_text};
 
 /// A folder of its own for one test.
 fn folder(name: &str) -> PathBuf {
@@ -35,6 +36,11 @@ fn three(root: &Path) {
         "# Invented supplies.\n[[supply]]\nid = \"stamps\"\nname = \"Stamps\"\ncategory = \"Post\"\narea = \"work\"\nlow_at = 10\nbought_by = 50\n\n[[supply]]\nid = \"envelopes\"\nname = \"Envelopes\"\ncategory = \"Post\"\nlow_at = 10\n\n[[supply]]\nid = \"cards\"\nname = \"Gift cards\"\ncategory = \"Shop\"\nlow_at = 5\n",
     )
     .unwrap();
+}
+
+/// A task done at `stamp`, planning `uses`.
+fn done(uid: &str, stamp: i64, uses: &[(&str, &str)]) -> Task {
+    Task { uid: uid.into(), title: uid.into(), status: Status::Completed, completed: Some(stamp), modified: stamp, supplies: uses.iter().map(|(id, n)| Use { id: id.to_string(), quantity: q(n) }).collect(), ..Task::default() }
 }
 
 /// An open task planning `uses`.
@@ -116,8 +122,79 @@ fn low_is_said_of_what_is_free() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A task done is applied once, whichever devices read it done; changing
+/// what it used writes one line; set back to open, its supplies come back.
+#[test]
+fn a_finished_task_is_applied_once_on_every_device() {
+    let root = folder("settle");
+    three(&root);
+    record(&root, "desk", &[line("c1", 100, "stamps", Kind::Count, "12"), line("c2", 100, "cards", Kind::Count, "12")], &[]).unwrap();
+    // Finished elsewhere (no line of what it used): it used what it planned.
+    let sale = done("sale", 1000, &[("stamps", "1"), ("cards", "1")]);
+    let written = settle(&root, "desk", std::slice::from_ref(&sale), 1100).unwrap();
+    assert_eq!(written.len(), 2);
+    assert!(settle(&root, "desk", std::slice::from_ref(&sale), 1200).unwrap().is_empty(), "nothing twice");
+    // The phone reads it done too: the same ids, nothing to write, one use.
+    assert!(settle(&root, "phone", std::slice::from_ref(&sale), 1300).unwrap().is_empty());
+    assert_eq!((stock(&root, "phone", "stamps").text(), stock(&root, "phone", "cards").text()), ("11".into(), "11".into()));
+    // Two devices reading it before either wrote: two lines of one id, one use.
+    let other = done("other", 2000, &[("stamps", "2")]);
+    settle(&root, "laptop", std::slice::from_ref(&other), 2100).unwrap();
+    record(&root, "tablet", &[Move { id: used_id("other", "stamps", 2000), on: Some(2000), task: "other".into(), ..line("x", 2100, "stamps", Kind::Used, "2") }], &[]).unwrap();
+    assert_eq!(stock(&root, "desk", "stamps").text(), "9");
+    // Put right: a second stamp used on the sale.
+    let mut righted = sale.clone();
+    righted.used_said = true;
+    righted.supplies_used = vec![Use { id: "stamps".into(), quantity: q("2") }, Use { id: "cards".into(), quantity: q("1") }];
+    righted.modified = 3000;
+    assert_eq!(settle(&root, "desk", std::slice::from_ref(&righted), 3000).unwrap().len(), 1);
+    assert_eq!(stock(&root, "desk", "stamps").text(), "8");
+    // A device that read the sale before it was put right never says it back.
+    assert!(settle(&root, "phone", std::slice::from_ref(&sale), 3100).unwrap().is_empty());
+    assert_eq!(stock(&root, "phone", "stamps").text(), "8");
+    // Set back to open: its supplies come back, by lines at 0.
+    let reopened = Task { status: Status::NeedsAction, completed: None, modified: 4000, ..righted.clone() };
+    assert_eq!(settle(&root, "desk", std::slice::from_ref(&reopened), 4000).unwrap().len(), 2);
+    assert_eq!((stock(&root, "desk", "stamps").text(), stock(&root, "desk", "cards").text()), ("10".into(), "12".into()));
+    // Done again later: a new stamp, a new use.
+    let again = done("sale", 5000, &[("stamps", "1"), ("cards", "1")]);
+    settle(&root, "desk", std::slice::from_ref(&again), 5000).unwrap();
+    assert_eq!(stock(&root, "desk", "stamps").text(), "9");
+    // A supply taken off it while done: given back.
+    let fewer = Task { used_said: true, supplies_used: vec![Use { id: "stamps".into(), quantity: q("1") }], modified: 6000, ..again.clone() };
+    settle(&root, "desk", std::slice::from_ref(&fewer), 6000).unwrap();
+    assert_eq!(stock(&root, "desk", "cards").text(), "12");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Nothing of supplies anywhere: nothing read, nothing written.
+#[test]
+fn no_supplies_writes_nothing() {
+    let root = folder("none");
+    assert!(settle(&root, "desk", &[Task { uid: "plain".into(), status: Status::Completed, completed: Some(1), ..Task::default() }], 2).unwrap().is_empty());
+    assert!(!moves_dir(&root).exists());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A repeating task's turn is written when done, and never given back by
+/// `settle`, which cannot see the turn in the task.
+#[test]
+fn a_turn_of_a_repeating_task_is_written_when_done() {
+    let root = folder("turn");
+    three(&root);
+    record(&root, "desk", &[line("c1", 100, "stamps", Kind::Count, "12")], &[]).unwrap();
+    let weekly = Task { repeat: "weekly".into(), ..open("weekly", &[("stamps", "2")]) };
+    turn_done(&root, "desk", &weekly, 1000, 1000).unwrap();
+    assert!(settle(&root, "desk", std::slice::from_ref(&weekly), 1100).unwrap().is_empty());
+    assert_eq!(stock(&root, "desk", "stamps").text(), "10");
+    turn_used(&root, "desk", "weekly", 1000, &[Use { id: "stamps".into(), quantity: q("3") }], 1200).unwrap();
+    assert_eq!(stock(&root, "desk", "stamps").text(), "9");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The task to resupply: its UID the same on two devices, made once,
-/// never again while one is open nor once made (even deleted).
+/// never again while one is open nor once made (even deleted), and again
+/// after the next count or arrival.
 #[test]
 fn the_task_to_resupply_is_made_once() {
     let root = folder("resupply");
@@ -142,6 +219,17 @@ fn the_task_to_resupply_is_made_once() {
     assert!(to_resupply(&list, &read_moves(&root, "desk"), &with).is_empty());
     record(&root, "phone", &[], &[Made { task: desk[0].uid.clone(), supply: "stamps".into(), at: 1000 }]).unwrap();
     assert!(to_resupply(&list, &read_moves(&root, "desk"), &sales).is_empty(), "made on another device");
+    // Done: what it brought comes in (bought by 50) once, by whichever device reads it first.
+    let resupplied = Task { resupply: "stamps".into(), ..done(&desk[0].uid, 2000, &[]) };
+    let mut tasks = sales.clone();
+    tasks.push(resupplied.clone());
+    let written = settle(&root, "desk", &tasks, 2100).unwrap();
+    assert_eq!(written.iter().map(|m| (m.kind, m.quantity.text())).collect::<Vec<_>>(), [(Kind::Received, "50".to_string())]);
+    assert!(settle(&root, "phone", &tasks, 2200).unwrap().is_empty());
+    // "How many came in?" 40: the answer replaces it, and nothing puts it back.
+    arrived(&root, "desk", &resupplied, q("40"), 2300).unwrap();
+    assert!(settle(&root, "phone", &tasks, 2400).unwrap().is_empty());
+    assert_eq!(stock(&root, "desk", "stamps").text(), "52");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -203,10 +291,50 @@ fn a_movements_file_that_does_not_read_is_never_written_over() {
     assert!(moves.own_unreadable && moves.unreadable == [device_file("desk")]);
     assert_eq!(moves.lines.len(), 1, "a line that does not read is passed over");
     assert!(record(&root, "desk", &[line("c2", 200, "stamps", Kind::Count, "3")], &[]).is_err());
+    assert!(settle(&root, "desk", &[done("t", 1, &[("stamps", "1")])], 2).is_err());
     assert_eq!(std::fs::read_to_string(moves_dir(&root).join(device_file("desk"))).unwrap(), "[[move]\n");
     assert_eq!(device_file("a/b:c"), "a_b_c.toml");
     assert_eq!(device_file(""), "this-device.toml");
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A task's supplies: planned lines from its form, what it used written
+/// when Sioul finishes it, taken out when it is open again; a tick on a
+/// task done already keeps what was put right since.
+#[test]
+fn a_task_says_what_it_plans_and_what_it_used() {
+    let zone = jiff::tz::TimeZone::UTC;
+    let now = jiff::Timestamp::from_second(1_800_000_000).unwrap().to_zoned(zone.clone());
+    let edit = TaskEdit { title: "Send a gift card".into(), supplies: vec![Use { id: "stamps".into(), quantity: q("1") }, Use { id: "cards".into(), quantity: q("1.5") }, Use { id: "bad id".into(), quantity: q("1") }], ..TaskEdit::default() };
+    let text = crate::tasks::new_task(&edit, "sale", &zone, &now).unwrap();
+    assert!(text.contains("X-SIOUL-SUPPLY;X-SIOUL-ID=stamps:1\r\n") && text.contains("X-SIOUL-SUPPLY;X-SIOUL-ID=cards:1.5\r\n") && !text.contains("bad"), "{text}");
+    let task = task_of_text(&text, &zone).unwrap();
+    assert_eq!(task.supplies.len(), 2);
+    assert!(!task.used_said);
+    // Saved unchanged by the form: nothing written.
+    assert_eq!(crate::tasks::apply(&text, &TaskEdit::of(&task), &zone, &now).unwrap(), text);
+    // Finished by Sioul: what it planned, said on it.
+    let finished = crate::tasks::set_status(&text, Status::Completed, &zone, &now).unwrap();
+    let task = task_of_text(&finished, &zone).unwrap();
+    assert!(task.used_said && task.supplies_used == task.supplies, "{finished}");
+    assert_eq!(finished.matches("SEQUENCE:").count(), 1);
+    // Put right: two stamps, no card; the card at 0, so that it never reads as planned.
+    let righted = with_used(&finished, &[Use { id: "stamps".into(), quantity: q("2") }], &now).unwrap();
+    let task = task_of_text(&righted, &zone).unwrap();
+    assert_eq!(used_by(&task), [Use { id: "stamps".into(), quantity: q("2") }, Use { id: "cards".into(), quantity: Qty::ZERO }]);
+    // Ticked done again: kept.
+    assert_eq!(crate::tasks::set_status(&righted, Status::Completed, &zone, &now).unwrap(), righted);
+    // Open again: what it used goes; its plan stays.
+    let reopened = crate::tasks::set_status(&righted, Status::NeedsAction, &zone, &now).unwrap();
+    let task = task_of_text(&reopened, &zone).unwrap();
+    assert!(!task.used_said && task.supplies.len() == 2, "{reopened}");
+    // A supply taken off its plan by the form.
+    let fewer = TaskEdit { supplies: vec![Use { id: "cards".into(), quantity: q("1") }], ..TaskEdit::of(&task) };
+    let changed = crate::tasks::apply(&reopened, &fewer, &zone, &now).unwrap();
+    assert!(!changed.contains("ID=stamps") && changed.contains("X-SIOUL-SUPPLY;X-SIOUL-ID=cards:1\r\n"), "{changed}");
+    // A task with no supplies done: no line of what it used.
+    let plain = crate::tasks::new_task(&TaskEdit { title: "Plain".into(), ..TaskEdit::default() }, "plain", &zone, &now).unwrap();
+    assert!(!crate::tasks::set_status(&plain, Status::Completed, &zone, &now).unwrap().contains(USED));
 }
 
 /// The lines a phone's account manager sends back (an X- property, its

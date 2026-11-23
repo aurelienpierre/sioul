@@ -19,15 +19,22 @@
 //!   task it came from. Several lines of one id: the latest `at` wins.
 //! - **The stock** is the latest count, plus what was received after it, less
 //!   what was used after it, "after" by when each happened (`stock_of`).
-//!   **Free** is the stock less what the open tasks plan to use (their
-//!   `X-SIOUL-SUPPLY;X-SIOUL-ID=<id>:<quantity>` lines); "low" and "none
-//!   left" are said of what is free.
+//!   **Free** is the stock less what the open tasks plan to use; "low" and
+//!   "none left" are said of what is free.
+//! - **A task's supplies** are lines of the task itself (`tasks`):
+//!   `X-SIOUL-SUPPLY;X-SIOUL-ID=<id>:<quantity>` for what it plans to use,
+//!   `X-SIOUL-SUPPLY-USED` for what it used, written when Sioul finishes it.
+//!   **Applying is idempotent** (`settle`): whatever finished a task (a tick
+//!   here, another device, another program), every device makes its own file
+//!   say what the finished tasks say, each use's id made from the task, the
+//!   supply and the completion stamp, so that a task read finished by two
+//!   devices counts once.
 //! - **The task to resupply** (`to_resupply`): made once when what is free is
 //!   at or under `low_at` and none is open for that supply, its UID the same
 //!   on every device, its file named by it, so that two devices write one.
 
 use crate::areas::Area;
-use crate::tasks::Task;
+use crate::tasks::{Status, Task};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -45,6 +52,8 @@ pub const TAG: &str = "supplies";
 pub const RESUPPLY: &str = "X-SIOUL-RESUPPLY";
 /// A task's planned use of a supply: `X-SIOUL-SUPPLY;X-SIOUL-ID=<id>:<quantity>`.
 pub const PLANNED: &str = "X-SIOUL-SUPPLY";
+/// What a finished task really used: the same form.
+pub const USED: &str = "X-SIOUL-SUPPLY-USED";
 /// The parameter that names the supply on those lines.
 pub const ID: &str = "X-SIOUL-ID";
 
@@ -769,15 +778,180 @@ pub fn by_hand(supply: &str, kind: Kind, quantity: Qty, now: i64) -> Move {
 
 // ---------------------------------------------------------------- tasks
 
+/// What a finished task used: its `USED` lines when Sioul wrote them, else
+/// what it planned (finished in another program).
+pub fn used_by(task: &Task) -> &[Use] {
+    if task.used_said { &task.supplies_used } else { &task.supplies }
+}
+
+/// A task's text with its `USED` lines said anew: `uses`, every supply it
+/// planned or used before and not among them at 0 (used nothing of it), so
+/// that a finished task that used nothing never reads as what it planned.
+pub fn with_used(text: &str, uses: &[Use], now: &jiff::Zoned) -> Result<String, String> {
+    let task = crate::tasks::task_of_text(text, &crate::zone::current()).ok_or("no task")?;
+    let mut lines: Vec<Use> = merged(uses.iter().filter(|u| is_id(&u.id)).cloned().collect());
+    for before in task.supplies.iter().chain(task.supplies_used.iter()) {
+        if !lines.iter().any(|u| u.id == before.id) {
+            lines.push(Use { id: before.id.clone(), quantity: Qty::ZERO });
+        }
+    }
+    let added: Vec<String> = lines.iter().map(|u| use_line(USED, u)).collect();
+    let drop = |line: &str| crate::lines::name(line) == USED;
+    let wanted: Vec<String> = crate::lines::unfold(text).into_iter().filter(|l| drop(l.as_str())).collect();
+    if wanted == added {
+        return Ok(text.to_string());
+    }
+    crate::tasks::replace_lines(text, drop, added, now)
+}
+
+/// Every device's file made to say what the finished tasks say, this
+/// device writing only in its own (docs/supplies.md, "Applying"): for each
+/// task done (not one that comes back: its turns are written when done,
+/// `turn_done`), a use line per supply it used, its id from the task, the
+/// supply and the completion stamp; for a task to resupply done, what it
+/// brought (`bought_by`) when no device said it yet; a line of a task no
+/// longer done, or of a supply taken off it, at 0. Only what is missing or
+/// different is written, never over a word said after the task last changed
+/// (another device's correction, read before the task it was made on).
+/// Returns the lines written.
+pub fn settle(root: &Path, device: &str, tasks: &[Task], now: i64) -> Result<Vec<Move>, String> {
+    // Nothing of supplies anywhere: nothing read, nothing written.
+    let concerned = tasks.iter().any(|t| !t.supplies.is_empty() || t.used_said || !t.resupply.is_empty());
+    if !concerned && !moves_dir(root).is_dir() {
+        return Ok(Vec::new());
+    }
+    let moves = read_moves(root, device);
+    if moves.own_unreadable {
+        return Err(format!("{}: {}", moves_dir(root).join(device_file(device)).display(), "does not read"));
+    }
+    let list = List::load(root).unwrap_or_default();
+    let latest = latest(&moves.lines);
+    let mut of_task: BTreeMap<&str, Vec<&Move>> = BTreeMap::new();
+    for line in latest.values().filter(|m| !m.task.is_empty() && m.kind != Kind::Count) {
+        of_task.entry(line.task.as_str()).or_default().push(line);
+    }
+    let mut out: Vec<Move> = Vec::new();
+    let mut seen = BTreeSet::new();
+    for task in tasks.iter().filter(|t| seen.insert(t.uid.as_str())) {
+        if !task.repeat.is_empty() {
+            continue;
+        }
+        let theirs = of_task.get(task.uid.as_str()).cloned().unwrap_or_default();
+        if theirs.is_empty() && task.supplies.is_empty() && !task.used_said && task.resupply.is_empty() {
+            continue;
+        }
+        // A line said after the task last changed is a word made on a newer state of it: left.
+        let older = |line: &Move| task.modified == 0 || line.at <= task.modified;
+        let mut kept: BTreeSet<String> = BTreeSet::new();
+        if task.status == Status::Completed
+            && let Some(stamp) = task.completed
+        {
+            for used in used_by(task) {
+                let id = used_id(&task.uid, &used.id, stamp);
+                kept.insert(id.clone());
+                let differs = match latest.get(&id) {
+                    None => !used.quantity.is_zero(),
+                    Some(line) => line.quantity != used.quantity && older(line),
+                };
+                if differs {
+                    out.push(Move { id, at: now, on: Some(stamp), supply: used.id.clone(), kind: Kind::Used, quantity: used.quantity, task: task.uid.clone(), device: String::new() });
+                }
+            }
+            if !task.resupply.is_empty() {
+                let id = received_id(&task.uid, &task.resupply, stamp);
+                kept.insert(id.clone());
+                // Said once, by whichever device first reads it done: the person's answer changes it.
+                if !latest.contains_key(&id)
+                    && let Some(brought) = list.get(&task.resupply).and_then(|s| s.bought_by)
+                {
+                    out.push(Move { id, at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity: brought, task: task.uid.clone(), device: String::new() });
+                }
+            }
+        }
+        for line in theirs {
+            if !kept.contains(&line.id) && !line.quantity.is_zero() && older(line) {
+                out.push(Move { at: now, quantity: Qty::ZERO, device: String::new(), ..line.clone() });
+            }
+        }
+    }
+    record(root, device, &out, &[])?;
+    Ok(out)
+}
+
+/// A task's state just written on this device (the window's tick, `sioul
+/// tasks done`, an agent's tool), `before` as it was and `after` as its file
+/// says now: a repeating task's turn done (`finished`, the task back open)
+/// written at once (`turn_done`), any other applied (`settle`). Returns what
+/// it used, for the words that say it (`said_used`); nothing when it is not done.
+pub fn after_status(root: &Path, device: &str, before: &Task, after: &Task, finished: bool, now: i64) -> Result<Vec<Use>, String> {
+    if finished && !before.repeat.is_empty() && after.status != Status::Completed {
+        if before.supplies.is_empty() {
+            return Ok(Vec::new());
+        }
+        turn_done(root, device, before, now, now)?;
+        return Ok(before.supplies.clone());
+    }
+    if after.supplies.is_empty() && !after.used_said && after.resupply.is_empty() && !before.used_said {
+        return Ok(Vec::new());
+    }
+    settle(root, device, std::slice::from_ref(after), now)?;
+    Ok(if after.status == Status::Completed { used_by(after).to_vec() } else { Vec::new() })
+}
+
 /// A quantity in words, its unit after it: "12", "200 g".
 pub fn amount(quantity: Qty, unit: &str, tr: &crate::i18n::Translator) -> String {
     let number = quantity.shown(tr);
     if unit.trim().is_empty() { number } else { format!("{number} {}", unit.trim()) }
 }
 
+/// What a line of a task uses, in words: "1 Stamps", "200 g Flour" (the
+/// name is the person's own, never made plural or singular).
+pub fn named(used: &Use, list: &List, tr: &crate::i18n::Translator) -> String {
+    let supply = list.get(&used.id);
+    let mut args = crate::i18n::args();
+    args.set("quantity", amount(used.quantity, supply.map_or("", |s| s.unit.as_str()), tr));
+    args.set("name", supply.map_or(used.id.as_str(), |s| s.name_shown()).to_string());
+    tr.text("supplies-amount", Some(&args))
+}
+
+/// "Used 1 Stamps, 1 Envelopes.": what a finished task used, its lines at 0
+/// left out; "" when nothing.
+pub fn said_used(uses: &[Use], list: &List, tr: &crate::i18n::Translator) -> String {
+    let what: Vec<String> = uses.iter().filter(|u| !u.quantity.is_zero()).map(|u| named(u, list, tr)).collect();
+    if what.is_empty() {
+        return String::new();
+    }
+    let mut args = crate::i18n::args();
+    args.set("what", what.join(", "));
+    tr.text("supplies-done-used", Some(&args))
+}
+
+/// A repeating task's turn done at `stamp`: what it plans written as used,
+/// at once (the task comes back open, and no other device can read the
+/// turn). Returns the lines written.
+pub fn turn_done(root: &Path, device: &str, task: &Task, stamp: i64, now: i64) -> Result<Vec<Move>, String> {
+    let lines: Vec<Move> = task.supplies.iter().filter(|u| !u.quantity.is_zero()).map(|u| Move { id: used_id(&task.uid, &u.id, stamp), at: now, on: Some(stamp), supply: u.id.clone(), kind: Kind::Used, quantity: u.quantity, task: task.uid.clone(), device: String::new() }).collect();
+    record(root, device, &lines, &[])?;
+    Ok(lines)
+}
+
+/// A repeating task's turn done at `stamp`, what it used said again:
+/// `uses`, and every supply it used before at 0.
+pub fn turn_used(root: &Path, device: &str, task: &str, stamp: i64, uses: &[Use], now: i64) -> Result<(), String> {
+    let moves = read_moves(root, device);
+    let latest = latest(&moves.lines);
+    let mut lines: Vec<Move> = merged(uses.to_vec()).into_iter().map(|u| Move { id: used_id(task, &u.id, stamp), at: now, on: Some(stamp), supply: u.id, kind: Kind::Used, quantity: u.quantity, task: task.to_string(), device: String::new() }).collect();
+    for line in latest.values().filter(|m| m.task == task && m.kind == Kind::Used && m.when() == stamp) {
+        if !lines.iter().any(|l| l.id == line.id) {
+            lines.push(Move { at: now, quantity: Qty::ZERO, device: String::new(), ..line.clone() });
+        }
+    }
+    record(root, device, &lines, &[])
+}
+
 /// What a task to resupply brought, said by the person ("How many came
-/// in?"): its received line, its id from the task, the supply and the
-/// task's completion (`received_id`).
+/// in?"): its received line, the id `settle` gives it, so that the answer
+/// replaces what `bought_by` said.
 pub fn arrived(root: &Path, device: &str, task: &Task, quantity: Qty, now: i64) -> Result<(), String> {
     let stamp = task.completed.ok_or("not done")?;
     if task.resupply.is_empty() {
