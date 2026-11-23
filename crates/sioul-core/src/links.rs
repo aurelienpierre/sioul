@@ -271,9 +271,10 @@ pub fn id_of(uri: &str) -> String {
 pub struct Edge {
     pub from: String,
     pub to: String,
-    /// "note" (its notes), "source" (made from), "waits" (waits for), "step"
-    /// (a step of), "contact", "project" ("case" in ties written before the
-    /// name changed), "mention" (a note names it),
+    /// "note" (its notes), "source" (made from), "made" (a task a project's
+    /// route made of a message, from the task: `routetasks::MADE`), "waits"
+    /// (waits for), "step" (a step of), "contact", "project" ("case" in ties
+    /// written before the name changed), "mention" (a note names it),
     /// "answers" (a reply), "link".
     #[serde(default)]
     pub how: String,
@@ -453,7 +454,7 @@ impl Found {
 fn inverse(how: &str) -> &'static str {
     match how {
         "note" => "notes-of",
-        "source" => "made",
+        "source" | "made" => "made",
         "waits" => "unblocks",
         "step" => "step",
         "contact" => "involves",
@@ -469,7 +470,8 @@ fn inverse(how: &str) -> &'static str {
 fn forward(how: &str) -> &'static str {
     match how {
         "note" => "note",
-        "source" => "source",
+        // A task a route made of a message (`routetasks::MADE`): made from it.
+        "source" | "made" => "source",
         "waits" => "waits-for",
         "step" => "part-of",
         "contact" => "contact",

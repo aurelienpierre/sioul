@@ -32,6 +32,9 @@ ColumnLayout {
     signal save(string key, var value, var shown)
     // Another row of the panel asked for (a calendar of busy blocks opens Your availability).
     signal goTo(string key)
+    // A project's route asks for its form of a task made of each message
+    // (RouteTask.qml): its switch turned on, or its Change… (`route` as its row has it).
+    signal routeTask(var route)
     // What the panel shows changed behind its back (lists left, the vault locked): its rows read again.
     signal changedElsewhere()
     // The vault's state as the card that holds a "vault" row reads it ("locked", "unlocked"),
@@ -1399,6 +1402,12 @@ ColumnLayout {
 
         sourceComponent: Component {
             ColumnLayout {
+                id: routesColumn
+
+                // The project's models of task, each in one line (`routetasks::models`), by id.
+                readonly property string projectId: field.setting.key.replace(/^project\./, "").replace(/\.routes$/, "")
+                readonly property var models: field.setting.kind === "routes" && field.sioul.routeModels !== undefined ? JSON.parse(field.sioul.routeModels(routesColumn.projectId) || "[]") : []
+
                 spacing: 8
 
                 Repeater {
@@ -1410,9 +1419,19 @@ ColumnLayout {
                         required property var modelData
                         required property int index
 
+                        // The model it makes, when it makes tasks: {id, name, summary, missing}; null for none.
+                        readonly property var makes: (route.modelData.makes || "") === "" ? null : (routesColumn.models.find(m => m.id === route.modelData.makes) || { id: route.modelData.makes, name: "", summary: "", missing: false })
+
                         function changed(part, text) {
                             const all = JSON.parse(JSON.stringify(field.setting.value))
                             all[route.index][part] = text.split(",").map(t => t.trim()).filter(t => t !== "")
+                            field.save(field.setting.key, all, field.setting.value)
+                        }
+
+                        // It takes mail only, makes no task any more: its model stays on the project.
+                        function unmake() {
+                            const all = JSON.parse(JSON.stringify(field.setting.value))
+                            all[route.index].makes = ""
                             field.save(field.setting.key, all, field.setting.value)
                         }
 
@@ -1469,6 +1488,53 @@ ColumnLayout {
                                         }
                                     }
                                 }
+                            }
+                            // Make a task of each message (docs/notes-folder.md, "Routes that make tasks"):
+                            // on, its form opens; made, what each task is in one line, Change… beside.
+                            WrapCheckBox {
+                                id: makesBox
+
+                                objectName: "routeMakes:" + route.index
+                                Layout.fillWidth: true
+                                text: field.sioul.text("routetasks-switch")
+                                checked: route.makes !== null
+                                onClicked: {
+                                    makesBox.checked = Qt.binding(() => route.makes !== null)
+                                    if (route.makes === null)
+                                        field.routeTask(route.modelData)
+                                    else
+                                        route.unmake()
+                                }
+                            }
+                            RowLayout {
+                                visible: route.makes !== null
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                Label {
+                                    objectName: "routeMakesLine:" + route.index
+                                    Layout.fillWidth: true
+                                    text: route.makes ? [route.makes.name, route.makes.summary].filter(t => t !== "").join(" · ") : ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: field.theme.text
+                                }
+                                Button {
+                                    objectName: "routeMakesChange:" + route.index
+                                    flat: true
+                                    text: field.sioul.text("supplies-change")
+                                    onClicked: field.routeTask(route.modelData)
+                                }
+                            }
+                            Label {
+                                objectName: "routeMakesMissing:" + route.index
+                                visible: route.makes !== null && route.makes.missing === true
+                                Layout.fillWidth: true
+                                text: field.sioul.text("routetasks-days-missing-line")
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: field.theme.muted
                             }
                         }
                     }

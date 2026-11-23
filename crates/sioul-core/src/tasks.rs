@@ -288,6 +288,10 @@ pub struct Task {
     /// A task to resupply: the supply's id (`supplies::RESUPPLY`); "" for none.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub resupply: String,
+    /// Where a task a route made came from: its message's address
+    /// (`routetasks::ORIGIN`, `mid:<Message-ID>`); "" for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub origin: String,
 }
 
 impl Task {
@@ -730,6 +734,7 @@ pub fn task_of_text(text: &str, zone: &TimeZone) -> Option<Task> {
                 task.supplies_used.extend(crate::supplies::use_of(line));
             }
             crate::supplies::RESUPPLY => task.resupply = value.trim().to_string(),
+            crate::routetasks::ORIGIN => task.origin = lines::unescape(value.trim()),
             crate::anchors::ANCHOR => task.after = value.trim().eq_ignore_ascii_case("AFTER"),
             crate::pairs::SET_ASIDE => {
                 task.set_aside = value.trim().to_string();

@@ -658,6 +658,9 @@ impl TieIndex {
                     Kind::Contact => (How::Contact, Need::Nothing),
                     _ => (How::Source, Need::Nothing),
                 },
+                // A task a project's route made of a message (`routetasks::MADE`): made from it, the
+                // message weighed as the route's tie of it is.
+                crate::routetasks::MADE => (How::Source, if mail_end { Need::NotSetAside } else { Need::Nothing }),
                 "waits" => (How::Waits, Need::Nothing),
                 "step" => (How::Step, Need::Nothing),
                 "contact" => (How::Contact, Need::Nothing),

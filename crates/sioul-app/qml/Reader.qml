@@ -494,6 +494,13 @@ Panel {
                 text: reader.sioul.text("payment-from")
                 onTriggered: reader.window.askPayment("mail", reader.key, reader.item ? reader.item.trust_level : "")
             }
+            // A project's route made of it, each message like it a task (RouteTask.qml).
+            MenuItem {
+                visible: reader.reading !== null && !!reader.reading.from_address
+                height: visible ? implicitHeight : 0
+                text: reader.sioul.text("routetasks-like-this")
+                onTriggered: reader.window.routeTaskFromMail(reader.key)
+            }
             MenuSeparator {}
             MenuItem {
                 visible: reader.reading !== null && !!reader.reading.from_address

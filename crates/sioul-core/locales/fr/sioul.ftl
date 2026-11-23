@@ -10742,9 +10742,9 @@ supplies-moved-used = Utilisé : { $quantity }
 supplies-archive = Archiver
 supplies-unarchive = Le reprendre
 supplies-section = Stocks
-supplies-used-section = Stocks utilisés
+supplies-used-section = Articles utilisés
 supplies-used-title = Ce qu’elle a utilisé
-supplies-used-button = Stocks utilisés…
+supplies-used-button = Articles utilisés…
 supplies-change = Changer…
 supplies-add = Ajouter un article
 supplies-line-remove = Retirer cette ligne
@@ -10762,3 +10762,49 @@ set-supplies-list = Les tâches pour réapprovisionner vont dans
 set-supplies-list-help = La liste où une tâche pour réapprovisionner est créée, quand un article baisse ; le projet de l’article, s’il en a un, la reçoit aussi. Si rien n’est dit, comme les démarches de Santé choisissent la leur : leur liste, sinon votre liste habituelle.
 set-supplies-list-usual = Comme les démarches de Santé
 loss-supplies = les stocks qu’elle utilise
+## Les règles qui font une tâche de chaque courriel (docs/notes-folder.md, « Routes that make tasks »).
+routetasks-switch = Faire une tâche de chaque courriel
+routetasks-like-this = Faire une tâche des courriels comme celui-ci…
+routetasks-title = Faire une tâche de chaque courriel
+routetasks-which = Quels courriels
+routetasks-project = Projet
+routetasks-project-new = Un nouveau projet
+routetasks-project-new-hint = Son nom : Cartes cadeaux…
+routetasks-project-needed = Choisissez un projet, ou nommez-en un nouveau.
+routetasks-from = Des adresses ou des domaines
+routetasks-gate = Seul le courrier que le Porche laisse entrer fait une tâche : jamais ce qu’il met de côté, et par son expéditeur, seulement le courrier dont l’expéditeur est prouvé.
+routetasks-task = La tâche
+routetasks-model = Faite comme
+routetasks-model-new = Un nouveau modèle
+routetasks-name = Nom
+routetasks-name-hint = Envoyer une carte cadeau
+routetasks-prefix = Devant son titre
+routetasks-prefix-hint = Envoyer :
+routetasks-title-shown = Son titre : { $title }
+routetasks-list = Dans la liste
+routetasks-list-usual = La liste habituelle
+routetasks-asked = Date demandée
+routetasks-days-after = { $n ->
+        [0] jour travaillé : le jour où arrive le courriel, ou le suivant
+        [one] jour travaillé après l’arrivée du courriel
+       *[other] jours travaillés après l’arrivée du courriel
+    }
+routetasks-days-help = Les jours travaillés sont les jours qui ont des heures de travail dans votre semaine (du lundi au vendredi quand aucune n’est dite), moins vos jours de congé : les périodes que vous avez saisies, et les jours fériés dès que leur calendrier est abonné (Paramètres ▸ Heures ▸ Vacances et jours fériés).
+routetasks-estimate = Première estimation
+routetasks-minutes = minutes
+routetasks-saved = Désormais, chaque courriel que prend cette règle fait une tâche.
+routetasks-also = { $n ->
+        [one] Aussi pour le courriel déjà là
+       *[other] Aussi pour les { $count } courriels déjà là
+    }
+routetasks-not-now = Pas maintenant
+routetasks-days = { $n ->
+        [0] Demandée le jour où arrive le courriel, ou le jour travaillé suivant
+        [one] Demandée un jour travaillé après le courriel
+       *[other] Demandée { $count } jours travaillés après le courriel
+    }
+routetasks-days-missing = Demandée le premier jour travaillé après le courriel
+routetasks-days-missing-line = Son nombre de jours travaillés manque : chaque tâche est demandée pour le premier jour travaillé après son courriel. Changer… pour le dire.
+routetasks-in-list = dans { $list }
+routetasks-made = « { $title } » est dans { $list }, faite d’un courriel, demandée pour { $day }.
+routetasks-made-many = { $Countf } tâches ont été faites de courriels, dans { $list }.

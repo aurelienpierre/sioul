@@ -24,3 +24,23 @@ from_domains = ["health-insurer.example"]
 [[project.route]]
 from_domains = ["hospital.example"]
 subject_contains = ["certificate", "attestation"]
+
+[[project]]
+id = "gift-cards"
+title = "Gift cards"
+area = "work"
+# Each sale the shop tells of makes a task, once (docs/notes-folder.md, "Routes that make tasks").
+[[project.route]]
+from_addresses = ["shop@example.org"]
+subject_contains = ["New sale"]
+makes = "send-a-gift-card"
+# The model of those tasks: in the list "Work", asked for 3 business days after
+# the mail came, 15 minutes, each planning a stamp, an envelope and a card.
+[[project.model]]
+id = "send-a-gift-card"
+name = "Send a gift card"
+list = "nextcloud/work"
+prefix = "Send:"
+business_days = 3
+estimate = 15
+supplies = [{ id = "stamps", quantity = 1 }, { id = "envelopes", quantity = 1 }, { id = "cards", quantity = 1 }]

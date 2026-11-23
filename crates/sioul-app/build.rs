@@ -188,6 +188,8 @@ fn main() {
         "qml/SupplyCard.qml",
         "qml/SupplyLines.qml",
         "qml/SuppliesUsed.qml",
+        // A route that makes a task of each message: its form.
+        "qml/RouteTask.qml",
         "qml/Household.qml",
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",

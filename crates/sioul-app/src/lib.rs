@@ -213,6 +213,8 @@ mod reaches;
 mod remind;
 mod replies;
 mod reviews;
+// Routes that make a task of each message they take (docs/notes-folder.md, "Routes that make tasks").
+mod routetasks;
 mod securitykey;
 mod senders;
 mod series;

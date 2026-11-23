@@ -493,6 +493,7 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         onSave: (key, value, shown) => page.saveRoutes(key, value, shown)
+                        onRouteTask: route => page.window.routeTaskFor(page.openId, route)
                     }
                 }
 

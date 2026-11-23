@@ -330,6 +330,8 @@ pub mod reminders;
 pub mod replies;
 pub mod projects;
 pub mod projectview;
+// Routes that make a task of each message they take (docs/notes-folder.md, "Routes that make tasks").
+pub mod routetasks;
 pub mod reading;
 pub mod rules;
 pub mod stars;

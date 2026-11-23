@@ -1,6 +1,6 @@
 # Supplies
 
-What you use up or sell: stamps, envelopes, cards printed by hand, cat food. Each supply is one line of a list of Sioul's own; how many are left is worked out from movements, never stored; a task can say what it will use, and finishing it takes that out of the stock; when what is free runs low, a task to resupply is made, once. The page is **Supplies** in English, **Stocks** in French (« Fournitures » would leave sold goods out). Part 1 of the design of 23 November 2026: the supplies, their page, and tasks that use them; part 2, routes that make a task of each message, is built apart.
+What you use up or sell: stamps, envelopes, cards printed by hand, cat food. Each supply is one line of a list of Sioul's own; how many are left is worked out from movements, never stored; a task can say what it will use, and finishing it takes that out of the stock; when what is free runs low, a task to resupply is made, once. The page is **Supplies** in English, **Stocks** in French (« Fournitures » would leave sold goods out). Part 1 of the design of 23 November 2026: the supplies, their page, and tasks that use them; part 2: routes that make a task of each message, each planning the supplies of its model ([notes-folder.md](notes-folder.md#routes-that-make-tasks)).
 
 Code: `sioul_core::supplies` (the list, the movements, the stock, `settle`, the task to resupply), `sioul_core::tasks` (a task's lines), `crates/sioul-app/src/supplies.rs` and `qml/SuppliesPage.qml`, `SupplyCard.qml`, `SupplyLines.qml`, `SuppliesUsed.qml` (the window), `sioul_sync::share` (`SUPPLIES`, `SUPPLY_MOVES`). Tests: `crates/sioul-core/src/supplies_tests.rs`, `crates/sioul-app/tests/qml/tst_supplies.qml`.
 
@@ -71,6 +71,9 @@ at = 1795435200
 - **Used**: `tasks::set_status` writes them when the task's state changes to done (its plan copied) and takes them off when it changes back (open again or dropped), in the same single write; a tick on a task done already keeps what was put right. A finished task without them (finished in another program) used what it planned (`used_by`).
 - **A repeating task**: a turn done comes back open, with no completion in its file, so no other device can see it. Its use is written at once by whatever finished it (the window, `sioul tasks done`, the agents' tools: `after_status` → `turn_done`, its id from the moment), never given back by `settle`; **Change…** in the status line puts that turn right while the window runs. No `X-SIOUL-SUPPLY-USED` on a repeating task.
 
+## Tasks a route makes
+A project's route that makes a task of each message ([notes-folder.md](notes-folder.md#routes-that-make-tasks)) writes the supplies of its model on each task (`X-SIOUL-SUPPLY`, as the form does): open, they count in what is free at once, so that ten sales arriving with eight cards in stock make the cards "none left" as the mails arrive, and a task to resupply is made then, not when the eighth card is used. The model's supplies are chosen in the route's form ("Make a task of each message"), shown once the person keeps supplies; finished, such a task is applied as any other.
+
 ## Applying, on every device
 
 **Applying is idempotent** (`settle`): after every re-plan in the window (`supplies::upkeep`, which runs after the children's upkeep), and right after the command line or an agent's tool changes a task's state (`after_status`), each device makes its own file say what the tasks say:
@@ -101,8 +104,7 @@ In the part **Projects and money** of the sharing ([database.md](database.md)), 
 
 ## Not done
 
-- Part 2: a route that makes a task of each message, its supplies planned by a model of task on the project.
-- A project's page listing the supplies its tasks use.
+- A project's page listing the supplies its routes and tasks use.
 - Named sets ("gift card kit"), the buying price as a sale's cost and a resupply as an expense in the books, one task per supplier for several low supplies, fields read from a mail, a card printed from a template, shops' orders: each on its own word.
 - A repeating task's turn done among several changed together (Search's batch) is not counted: only the window's tick, `sioul tasks done` and the agents' tools write a turn's use, since the task comes back open and keeps nothing of it.
 - No product was researched for a comparison: the guide's page has no table of other programs.
