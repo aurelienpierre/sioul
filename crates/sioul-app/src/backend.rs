@@ -252,6 +252,33 @@ pub mod qobject {
         #[qinvokable]
         fn supply_arrived(self: Pin<&mut Sioul>, uid: &QString, quantity: &QString) -> QString;
 
+        /// A project's models of task, for its routes' lines, as JSON
+        /// (`routetasks::models`): [{id, name, summary, missing}].
+        #[qinvokable]
+        fn route_models(self: &Sioul, project: &QString) -> QString;
+
+        /// The form of a route that makes a task of each message, as JSON
+        /// (`routetasks::form`): for a project's route (`route`, its id), or
+        /// for the message in `key`, filled with its sender and its subject's
+        /// words between brackets.
+        #[qinvokable]
+        fn route_task_form(self: &Sioul, project: &QString, route: &QString, key: &QString) -> QString;
+
+        /// The title a route of these words of the subject (JSON list) would
+        /// give a message's task, the prefix in front (`routetasks::title`).
+        #[qinvokable]
+        fn route_task_title(self: &Sioul, subject: &QString, words: &QString, prefix: &QString) -> QString;
+
+        /// A route that makes tasks saved with its model, from its form
+        /// (`routetasks::save`): {project, route, model, already, error}.
+        #[qinvokable]
+        fn save_route_task(self: Pin<&mut Sioul>, form: &QString) -> QString;
+
+        /// "Also for the 12 messages already here": their tasks made, once,
+        /// off the window's thread; returns what went wrong, else "".
+        #[qinvokable]
+        fn route_task_also(self: Pin<&mut Sioul>, project: &QString, route: &QString) -> QString;
+
         /// The household, as JSON (`persons::household`): you first, the
         /// others, children's other parents apart, the relations a form offers.
         #[qinvokable]
@@ -5580,6 +5607,26 @@ impl qobject::Sioul {
 
     fn supply_arrived(self: Pin<&mut Self>, uid: &QString, quantity: &QString) -> QString {
         QString::from(&crate::supplies::arrived(&self.qt_thread(), &self.shared(), &uid.to_string(), &quantity.to_string()))
+    }
+
+    fn route_models(&self, project: &QString) -> QString {
+        QString::from(&crate::routetasks::models(&project.to_string()))
+    }
+
+    fn route_task_form(&self, project: &QString, route: &QString, key: &QString) -> QString {
+        QString::from(&crate::routetasks::form(&project.to_string(), &route.to_string(), &key.to_string()))
+    }
+
+    fn route_task_title(&self, subject: &QString, words: &QString, prefix: &QString) -> QString {
+        QString::from(&crate::routetasks::title(&subject.to_string(), &words.to_string(), &prefix.to_string()))
+    }
+
+    fn save_route_task(self: Pin<&mut Self>, form: &QString) -> QString {
+        QString::from(&crate::routetasks::save(&self.shared(), &form.to_string()))
+    }
+
+    fn route_task_also(self: Pin<&mut Self>, project: &QString, route: &QString) -> QString {
+        QString::from(&crate::routetasks::also(&self.qt_thread(), &self.shared(), &project.to_string(), &route.to_string()))
     }
 
     fn household(&self) -> QString {

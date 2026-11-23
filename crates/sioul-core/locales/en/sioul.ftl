@@ -10316,5 +10316,48 @@ set-supplies-list-help = The task list a task to resupply is made in, when a sup
 set-supplies-list-usual = As Health's errands
 loss-supplies = the supplies it uses
 ## Routes that make a task of each message (docs/notes-folder.md, "Routes that make tasks").
+routetasks-switch = Make a task of each message
+routetasks-like-this = Make a task of mail like this…
+routetasks-title = Make a task of each message
+routetasks-which = Which mail
+routetasks-project = Project
+routetasks-project-new = A new project
+routetasks-project-new-hint = Its name: Gift cards…
+routetasks-project-needed = Choose a project, or name a new one.
+routetasks-from = From the addresses or domains
+routetasks-gate = Only mail the Porch lets in makes a task: never what it sets aside, and by its sender only mail whose sender is proven.
+routetasks-task = The task
+routetasks-model = Made as
+routetasks-model-new = A new model
+routetasks-name = Name
+routetasks-name-hint = Send a gift card
+routetasks-prefix = Before its title
+routetasks-prefix-hint = Send:
+routetasks-title-shown = Its title: { $title }
+routetasks-list = In the list
+routetasks-list-usual = The usual list
+routetasks-asked = Date asked
+routetasks-days-after = { $n ->
+        [0] business days: the day the mail comes, or the next business day
+        [one] business day after the mail came
+       *[other] business days after the mail came
+    }
+routetasks-days-help = Business days are the days with working hours in your week (Monday to Friday when none are set), less your days off: the periods you typed, and public holidays once their calendar is subscribed (Settings ▸ Hours ▸ Vacations and holidays).
+routetasks-estimate = First estimate
+routetasks-minutes = minutes
+routetasks-saved = From now on, each message this route takes makes a task.
+routetasks-also = { $n ->
+        [one] Also for the message already here
+       *[other] Also for the { $count } messages already here
+    }
+routetasks-not-now = Not now
+routetasks-days = { $n ->
+        [0] Asked on the day the mail comes, or the next business day
+        [one] Asked one business day after the mail
+       *[other] Asked { $count } business days after the mail
+    }
+routetasks-days-missing = Asked the first business day after the mail
+routetasks-days-missing-line = Its number of business days is missing: each task is asked for the first business day after its mail. Change… to say it.
+routetasks-in-list = in { $list }
 routetasks-made = “{ $title }” is in { $list }, made from a message, asked for { $day }.
 routetasks-made-many = { $Count } tasks were made from messages, in { $list }.

@@ -666,6 +666,19 @@ SioulWindow {
         budgetsPage.startContract(JSON.parse(sioul.contractFrom(subject, from)))
     }
 
+    // A project's route that makes a task of each message: its form
+    // (RouteTask.qml; docs/notes-folder.md, "Routes that make tasks"), `route`
+    // as its row in the routes' editor has it.
+    function routeTaskFor(project, route) {
+        routeTask.now().forRoute(project, route)
+    }
+
+    // A message's ⋮ ▸ "Make a task of mail like this…": the same form, filled
+    // with its sender and the words between brackets in its subject, in its project.
+    function routeTaskFromMail(key) {
+        routeTask.now().forMail(key)
+    }
+
     // The search's "Make it a filter…" (MailSearch.qml): a new mail filter with
     // its conditions ({conditions, match}, as the filters write them), last in
     // the list, its editor open in Mail ▸ ⚙ to choose what it does.
@@ -1407,6 +1420,23 @@ SioulWindow {
             ContactImport {
                 sioul: sioul
                 theme: theme
+            }
+        }
+    }
+
+    // A route that makes a task of each message (RouteTask.qml): made the
+    // first time it is asked for; saved, the open project shows its routes again.
+    Later {
+        id: routeTask
+
+        sourceComponent: Component {
+            RouteTask {
+                sioul: sioul
+                theme: theme
+                onKept: {
+                    if (window.projectsPage)
+                        window.projectsPage.reload()
+                }
             }
         }
     }
