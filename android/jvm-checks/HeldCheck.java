@@ -30,6 +30,12 @@ import org.json.JSONObject;
  *   decision queued before the window hears its notification; told only
  *   for what would have rung and came back silent, once the window closed;
  *   people's messages planned on every version; counts only in the log.
+ * - B3, after a restart: what a binding does with Android's count of the
+ *   phone's starts; a tap's one app. Read from the sources: looked for a
+ *   minute after the first binding of a start, before its first review, the
+ *   reviews keeping the ledger's marks meanwhile, what Android holds and
+ *   shows compared, said once among Sioul's notices (no sound, a day at
+ *   most), the start noted after; counts only in the log.
  */
 public final class HeldCheck
 {
@@ -159,6 +165,29 @@ public final class HeldCheck
         expect("people's messages planned on every version", notes.contains("window.hold(sbn.getKey(), hold, decided.optBoolean(\"people\", false))") && notes.contains("window.follow(times, people);"), true);
         expect("nothing of what waited logged but a count", logs(tell + waitedNotes), "[]");
         expect("Rust says people and waited", rust.contains("\"people\": people, \"waited\": waited") && rust.contains("\"people\": person"), true);
+
+        // B3: after a restart, the count of the phone's starts.
+        expect("the first binding of this Sioul: the count noted, nothing compared", HeldNotices.afterStart(-1, 41), HeldNotices.NOTE_START);
+        expect("the same start: nothing", HeldNotices.afterStart(41, 41), HeldNotices.SAME_START);
+        expect("the phone started since: looked for", HeldNotices.afterStart(41, 42), HeldNotices.LOOK);
+        expect("Android cannot say: nothing", HeldNotices.afterStart(41, -1) + " " + HeldNotices.afterStart(-1, -1), HeldNotices.SAME_START + " " + HeldNotices.SAME_START);
+        expect("one app: a tap opens it", HeldNotices.onlyApp(new org.json.JSONArray("[\"org.thoughtcrime.securesms\"]")), "org.thoughtcrime.securesms");
+        expect("several, none or nothing said: a tap opens none", HeldNotices.onlyApp(new org.json.JSONArray("[\"a.b\",\"c.d\"]")) + " " + HeldNotices.onlyApp(new org.json.JSONArray("[]")) + " " + HeldNotices.onlyApp(null) + " " + HeldNotices.onlyApp(new org.json.JSONArray("[\" \"]")), "null null null null");
+        expect("a day at most", HeldNotices.LOST_MS, 86_400_000L);
+        String lostCode = body(held, "static void lost(Context context, Told told, String onlyApp)");
+        expect("something to know: the notices' channel, no sound, their group", lostCode.contains("new Notification.Builder(context, Notices.NOTICES)") && lostCode.contains("Notices.channels(context, null);") && lostCode.contains("Notices.GROUP + Notices.INFORMATIVE") && lostCode.contains(".setOnlyAlertOnce(true)"), true);
+        expect("gone at a tap or after a day", lostCode.contains(".setAutoCancel(true)") && lostCode.contains(".setTimeoutAfter(LOST_MS)") && lostCode.contains("tapped(context, LOST, onlyApp)"), true);
+        String connected = body(notes, "public void onListenerConnected()");
+        expect("looked for at the binding, before the first review", connected.indexOf("started();") > 0 && connected.indexOf("started();") < connected.indexOf("review(\"connected\");"), true);
+        String started = body(notes, "private void started()");
+        expect("Android's count of starts, a minute on", notes.contains("Settings.Global.BOOT_COUNT") && started.contains("worker.postDelayed(lost, LOST_AFTER_MS);") && started.contains("lostPending = true;"), true);
+        expect("the marks kept meanwhile", body(notes, "private void review(String reason)").contains(".put(\"keep\", lostPending)"), true);
+        String lostNotes = body(notes, "private void lost()");
+        expect("what Android holds and shows compared", lostNotes.contains("getSnoozedNotifications()") && lostNotes.contains("getActiveNotifications()") && lostNotes.contains("nativeShade(\"lost\""), true);
+        expect("the start noted once said, never looked at again", lostNotes.indexOf("listenerPrefs().edit().putInt(BOOT, bootCount()).apply();") > lostNotes.indexOf("nativeShade(\"lost\"") && lostNotes.contains("lostPending = false;"), true);
+        expect("unbound meanwhile: the next binding looks", lostNotes.indexOf("if (!connected)\n            return;") >= 0, true);
+        expect("nothing of what was lost logged but a count", logs(lostNotes.replace("said.optInt(\"count\", 0)", "count")), "[]");
+        expect("Rust keeps the marks while asked", rust.contains("ledger.held.retain(|hash, held| keep || present.contains(hash)"), true);
 
         System.out.println("HeldCheck: " + (checked - failed) + " of " + checked + " held");
         if (failed > 0)

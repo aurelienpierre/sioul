@@ -557,6 +557,11 @@ fn hashes(keys: &Value) -> std::collections::BTreeSet<String> {
 /// - "waited" `{count, apps: [names]}` → `{text, public, channel}`: people's
 ///   messages come back at their time, told once with a sound (B2,
 ///   `appnotes::waited_line`): "Four messages waited: Signal and WhatsApp."
+/// - "lost" `{snoozed, active: [keys]}` → `{text, public, count, packages}`: at
+///   the listener's first look after the phone started (B3), what the ledger
+///   says is held and Android neither holds nor shows was lost: said once
+///   (`appnotes::lost_line`), then forgotten (`Ledger::lost`); `text` "" when
+///   nothing was; `packages`, their apps, for a tap to open the one.
 fn shade(verb: &str, json: &str) -> String {
     shade_at(verb, json, &sioul_core::zone::now())
 }
@@ -595,6 +600,32 @@ fn shade_at(verb: &str, json: &str, now: &Zoned) -> String {
             let text = if count == 0 || apps.is_empty() { String::new() } else { appnotes::waited_line(tr, count, &apps) };
             json!({ "text": text, "public": tr.text("appnotes-waited-public", None), "channel": tr.text("appnotes-waited-channel", None) }).to_string()
         }
+        "lost" => {
+            let mut present = hashes(&asked["snoozed"]);
+            present.extend(hashes(&asked["active"]));
+            let stamp = now.timestamp().as_second();
+            let path = Ledger::default_path();
+            let lost = sioul_core::filelock::with_lock(&path, || {
+                let mut ledger = Ledger::load(&path);
+                ledger.forget_old(stamp, &Choices::load(&Choices::default_path()));
+                let lost = ledger.lost(&present);
+                if let Err(e) = ledger.save(&path) {
+                    eprintln!("Notes: {e}");
+                }
+                lost
+            });
+            let (mut labels, mut packages): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
+            for held in &lost {
+                if !labels.contains(&held.label) {
+                    labels.push(held.label.clone());
+                }
+                if !packages.contains(&held.app) {
+                    packages.push(held.app.clone());
+                }
+            }
+            let text = if lost.is_empty() { String::new() } else { appnotes::lost_line(tr, lost.len(), &labels) };
+            json!({ "text": text, "public": tr.text("appnotes-lost-public", None), "count": lost.len(), "packages": packages }).to_string()
+        }
         _ => "null".to_string(),
     }
 }
@@ -623,6 +654,9 @@ fn review_at(json: &str, now: &Zoned) -> String {
     // The phone's do-not-disturb silences now, as Java read its filter: a text whose cell says ◑
     // comes then, without a sound (decision 13); an older Java says nothing, read as not silenced.
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
+    // The phone just started, what Android lost not said yet (B3, `shade`'s "lost"): the marks of what it no
+    // longer holds are kept until then.
+    let keep = asked["keep"].as_bool().unwrap_or(false);
     let config = load_config();
     let attention = sioul_core::attention::Attention::of(&config);
     let choices = settled_choices(&attention, true);
@@ -648,7 +682,7 @@ fn review_at(json: &str, now: &Zoned) -> String {
         let mut ledger = Ledger::load(&path);
         let (_, ahead) = if paused { (false, Vec::new()) } else { ledger.apply_releases(&releases, stamp) };
         let present: std::collections::BTreeSet<String> = keys.iter().map(|k| appnotes::key_hash(k)).collect();
-        ledger.held.retain(|hash, held| present.contains(hash) || stamp - held.since < 60);
+        ledger.held.retain(|hash, held| keep || present.contains(hash) || stamp - held.since < 60);
         let mut again = Vec::new();
         let mut quiet = Vec::new();
         let mut counted = Vec::new();
@@ -1743,6 +1777,57 @@ mod tests {
         assert_eq!((told["public"].as_str(), told["channel"].as_str()), (Some(tr().text("appnotes-waited-public", None).as_str()), Some(tr().text("appnotes-waited-channel", None).as_str())));
         assert_eq!(words(json!({ "count": 0, "apps": ["Signal"] }))["text"], "");
         assert_eq!(words(json!({ "count": 2, "apps": [] }))["text"], "");
+        crate::everywhere::files_cleared();
+    }
+
+    /// After a restart (held apps phase 1, B3): while the listener has not
+    /// looked yet, a review keeps the marks of what Android no longer holds
+    /// (`keep`); the look then says what Android neither holds nor shows,
+    /// by app, with their packages for a tap, and forgets it; a second look
+    /// says nothing. Without `keep`, a review lets those marks go, as before.
+    #[test]
+    fn what_a_restart_lost_is_said_then_forgotten() {
+        sioul_core::config::stand_ins_only();
+        const SIGNAL_1: &str = "0|org.thoughtcrime.securesms|3|null|10300";
+        const SIGNAL_2: &str = "0|org.thoughtcrime.securesms|4|null|10300";
+        const SHOP_KEY: &str = "0|com.shop.example|1|null|10500";
+        const BLOCKED: &str = "0|com.whatsapp|9|null|10400";
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        let now = sioul_core::zone::now();
+        let stamp = now.timestamp().as_second();
+        let held = |app: &str, label: &str, kind: &str| appnotes::Held { app: app.into(), label: label.into(), kind: kind.into(), via: "messages".into(), who: "neutral".into(), conversation: "talk-noa".into(), since: stamp - 3600, until: stamp + 7200, ..Default::default() };
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(SIGNAL_1), held("org.thoughtcrime.securesms", "Signal", "people"));
+        ledger.held.insert(appnotes::key_hash(SIGNAL_2), held("org.thoughtcrime.securesms", "Signal", "people"));
+        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "Shop", "gathered"));
+        ledger.held.insert(appnotes::key_hash(BLOCKED), appnotes::Held { kind: "never".into(), who: "blocked".into(), until: stamp + appnotes::FOR_GOOD, ..held("com.whatsapp", "WhatsApp", "people") });
+        ledger.conversations.insert("talk-noa".into(), appnotes::SeenTalk { app: "org.thoughtcrime.securesms".into(), label: "Signal".into(), title: "Noa Martin".into(), group: false, seen: stamp });
+        ledger.save(&Ledger::default_path()).unwrap();
+        // The phone just started: Android holds only the shop's (its app posted it again). A review meanwhile keeps the rest.
+        let _ = review_at(&json!({ "snoozed": [SHOP_KEY], "reason": "connected", "keep": true }).to_string(), &now);
+        assert_eq!(Ledger::load(&Ledger::default_path()).held.len(), 4, "kept until the look");
+        let looked: serde_json::Value = serde_json::from_str(&shade_at("lost", &json!({ "snoozed": [SHOP_KEY], "active": [] }).to_string(), &now)).unwrap();
+        assert_eq!(looked["count"], 2, "{looked}");
+        assert_eq!(looked["packages"], json!(["org.thoughtcrime.securesms"]), "{looked}");
+        assert_eq!(looked["text"], appnotes::lost_line(tr(), 2, &["Signal".to_string()]), "{looked}");
+        for never in ["WhatsApp", "Noa", "Shop"] {
+            assert!(!looked["text"].as_str().unwrap().contains(never), "{never}: {looked}");
+        }
+        assert!(!looked["public"].as_str().unwrap().contains("Signal"));
+        let kept = Ledger::load(&Ledger::default_path());
+        assert_eq!(kept.held.keys().cloned().collect::<Vec<_>>(), [appnotes::key_hash(SHOP_KEY)], "the lost forgotten, the blocked's with them, the shop's kept");
+        let again: serde_json::Value = serde_json::from_str(&shade_at("lost", &json!({ "snoozed": [SHOP_KEY], "active": [] }).to_string(), &now)).unwrap();
+        assert_eq!((again["text"].as_str(), again["count"].as_u64()), (Some(""), Some(0)), "once: {again}");
+        // One the phone shows (its app posted it again, its time past) was not lost either.
+        ledger.save(&Ledger::default_path()).unwrap();
+        let shown: serde_json::Value = serde_json::from_str(&shade_at("lost", &json!({ "snoozed": [SHOP_KEY], "active": [SIGNAL_1, SIGNAL_2] }).to_string(), &now)).unwrap();
+        assert_eq!(shown["count"], 0, "{shown}");
+        // Without the look pending, a review lets go of what Android no longer holds, as before.
+        ledger.save(&Ledger::default_path()).unwrap();
+        let _ = review_at(&json!({ "snoozed": [SHOP_KEY], "reason": "files" }).to_string(), &now);
+        assert_eq!(Ledger::load(&Ledger::default_path()).held.len(), 1);
         crate::everywhere::files_cleared();
     }
 

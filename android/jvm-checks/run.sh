@@ -148,7 +148,9 @@
 #   or a return, gone when the listener is unbound; nothing of it logged. The
 #   notice of people's messages that waited (B2): kept by app, told once, its
 #   channel with a sound, posted anew, gone after ten minutes or at a tap,
-#   told only for what would have rung and came back silent.
+#   told only for what would have rung and came back silent. After a restart
+#   (B3): Android's count of the phone's starts read at a binding, what it
+#   lost looked for a minute on, said once among Sioul's notices.
 # - SilenceCheck: the channels Sioul makes silent itself (ChannelSilence),
 #   against a stand-in phone and Rust's record: each one's importance written
 #   down before it changes; one silent already or gone left; Rust or Android

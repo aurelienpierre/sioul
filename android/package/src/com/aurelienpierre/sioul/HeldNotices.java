@@ -36,6 +36,9 @@ import java.util.Collections;
  *   "Four messages waited: Signal and WhatsApp.", posted once the window
  *   closed, gone after ten minutes or at a tap, which opens their app when
  *   they all came from one.
+ * - After a restart (B3): what Android lost of what Sioul held, said once,
+ *   without a sound, among Sioul's notices: "Before the restart, Sioul was
+ *   holding two notifications from Signal: open it to read them."
  *
  * Each in a group of its own, its summary kept on Android 16 as the notices'
  * are ({@link Notices#tidy}). Sioul's own notifications are never held by
@@ -303,5 +306,86 @@ final class HeldNotices
         Intent app = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(onlyApp)
                          .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         return PendingIntent.getActivity(context, Notices.requestCode(tag, onlyApp), app, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    // ---------------------------------------------------------------- B3: after a restart
+
+    /** The notice after a restart: its tag (with {@link Notices#NOTE}), in the notices' group of things to know. */
+    static final String LOST = "sioul:lost";
+    /** It stays a day at most: past that, the restart is old news. */
+    static final long LOST_MS = 24 * 3600_000L;
+    /** {@link #afterStart}: nothing to do (the same start, or Android cannot say). */
+    static final int SAME_START = 0;
+    /** {@link #afterStart}: the first binding of this Sioul: the count noted, nothing to compare with. */
+    static final int NOTE_START = 1;
+    /** {@link #afterStart}: the phone started since the last binding: what Android lost is looked for. */
+    static final int LOOK = 2;
+
+    /**
+     * What a binding does with the count of the phone's starts (B3): `kept`,
+     * the count last noted (-1: none yet); `now`, Android's
+     * (Settings.Global.BOOT_COUNT; -1: it cannot say). Pure (HeldCheck).
+     *
+     * @param kept the count last noted, or -1
+     * @param now Android's count now, or -1
+     * @return {@link #SAME_START}, {@link #NOTE_START} or {@link #LOOK}
+     */
+    static int afterStart(int kept, int now)
+    {
+        if (now < 0)
+            return SAME_START;
+        if (kept < 0)
+            return NOTE_START;
+        return kept == now ? SAME_START : LOOK;
+    }
+
+    /**
+     * The one app of a list of packages (Rust's "packages"), or null for
+     * none or several: a tap then opens no app. Pure (HeldCheck).
+     *
+     * @param packages the packages, or null
+     * @return the one package, or null
+     */
+    static String onlyApp(org.json.JSONArray packages)
+    {
+        if (packages == null || packages.length() != 1)
+            return null;
+        String one = packages.optString(0, "").trim();
+        return one.isEmpty() ? null : one;
+    }
+
+    /**
+     * What Android lost of what Sioul held, after a restart, said once (B3):
+     * something to know, on the "Notices" channel (no sound), in its group,
+     * a day at most; a tap opens their app when they all came from one,
+     * else only takes it away. Any thread.
+     *
+     * @param context the listener
+     * @param told Rust's words
+     * @param onlyApp the one app's package, or null for several
+     */
+    static void lost(Context context, Told told, String onlyApp)
+    {
+        Notices.channels(context, null);
+        String group = Notices.GROUP + Notices.INFORMATIVE;
+        Notification note = new Notification.Builder(context, Notices.NOTICES)
+            .setSmallIcon(R.drawable.sioul_notification)
+            .setColor(context.getColor(R.color.sioul_green))
+            .setContentText(told.text)
+            .setStyle(new Notification.BigTextStyle().bigText(told.text))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicOf(context, Notices.NOTICES, told))
+            .setContentIntent(tapped(context, LOST, onlyApp))
+            .setDeleteIntent(NoticeReceiver.deleted(context, LOST))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setOngoing(false)
+            .setTimeoutAfter(LOST_MS)
+            .setGroup(group)
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+            .build();
+        context.getSystemService(NotificationManager.class).notify(LOST, Notices.NOTE, note);
+        Notices.tidy(context, Collections.singletonList(new Notices.Child(Notices.NOTE, LOST, group, System.currentTimeMillis() + LOST_MS)), Collections.emptySet());
     }
 }

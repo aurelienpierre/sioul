@@ -112,7 +112,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * of its own that rings once the window closed (HeldNotices).
  *
  * While anything that will come back is held, one line of Sioul's own in
- * the shade says so, with Show now (B1, HeldNotices).
+ * the shade says so, with Show now (B1, HeldNotices); at the first binding
+ * after the phone started, what Android lost of what Sioul held is said
+ * once (B3).
  *
  * Linked to one of your devices (a companion-device association, asked once
  * by {@link Companion}), Sioul also makes the channels of the apps it
@@ -206,6 +208,15 @@ public final class AppNotes extends NotificationListenerService
     private final Runnable tell = this::tell;
     /** A window closed, or one came back outside it, told this long after: their decisions made, the hint off. */
     private static final long TELL_SETTLE_MS = 1_500;
+    /** The listener's own preferences, this process's: the count of the phone's starts last seen (B3). */
+    private static final String LISTENER = "sioul-listener";
+    private static final String BOOT = "boot";
+    /** After the phone started, what Android lost is looked for this late: the apps that post theirs again at a start have. */
+    private static final long LOST_AFTER_MS = 60_000;
+    /** The phone started since the last look, what Android lost not said yet: the reviews keep the ledger's marks until then. */
+    private volatile boolean lostPending;
+    /** What Android lost looked for: one runnable. */
+    private final Runnable lost = this::lost;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
@@ -615,6 +626,8 @@ public final class AppNotes extends NotificationListenerService
         running = this;
         worker.post(() -> {
             watch();
+            // The first binding after the phone started: what Android lost of what Sioul held, said once, a minute on (B3).
+            started();
             review("connected");
             // What became due while Android had not bound the listener yet.
             answer();
@@ -1212,7 +1225,7 @@ public final class AppNotes extends NotificationListenerService
             // Whether the phone's do-not-disturb silences every text now: a text whose cell says ◑ comes then,
             // without a sound. Android ranks no held notification, so the filter and its policy say it.
             boolean silenced = silencesTexts();
-            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).toString());
+            String answer = nativeReview(new JSONObject().put("snoozed", keys).put("reason", reason).put("silenced", silenced).put("keep", lostPending).toString());
             if (answer == null || answer.isEmpty() || "null".equals(answer)) {
                 Log.w(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.");
                 return;
@@ -1378,6 +1391,87 @@ public final class AppNotes extends NotificationListenerService
             Log.i(TAG, "Notes: " + batch.count + " message(s) that waited told once.");
         } catch (Throwable e) {
             Log.w(TAG, "Notes: the messages that waited were not told: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** The count of the phone's starts, as Android keeps it (Settings.Global.BOOT_COUNT, Android 7 and later); -1 when it cannot say. */
+    private int bootCount()
+    {
+        try {
+            return Settings.Global.getInt(getContentResolver(), Settings.Global.BOOT_COUNT, -1);
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** The listener's own preferences, in its process. */
+    private SharedPreferences listenerPrefs()
+    {
+        return getSharedPreferences(LISTENER, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * At a binding: the phone started since the last one (B3,
+     * {@link HeldNotices#afterStart}): what Android lost looked for a minute
+     * on, the ledger's marks kept until then; the first binding of this
+     * Sioul: the count noted, nothing to compare with. On the worker thread.
+     */
+    private void started()
+    {
+        int count = bootCount();
+        switch (HeldNotices.afterStart(listenerPrefs().getInt(BOOT, -1), count)) {
+        case HeldNotices.NOTE_START:
+            listenerPrefs().edit().putInt(BOOT, count).apply();
+            break;
+        case HeldNotices.LOOK:
+            lostPending = true;
+            worker.removeCallbacks(lost);
+            worker.postDelayed(lost, LOST_AFTER_MS);
+            break;
+        default:
+            break;
+        }
+    }
+
+    /**
+     * What Android lost of what Sioul held, after the phone started (B3):
+     * the ledger's marks that Android neither holds nor shows, said once
+     * (Rust's `shade`, "lost": how many, from which apps, never a word of a
+     * message), then forgotten; the start noted, never looked at again.
+     * Unbound meanwhile: looked for at the next binding. On the worker thread.
+     */
+    private void lost()
+    {
+        if (!connected)
+            return;
+        try {
+            JSONArray snoozed = new JSONArray();
+            JSONArray active = new JSONArray();
+            StatusBarNotification[] held = getSnoozedNotifications();
+            if (held != null)
+                for (StatusBarNotification sbn : held)
+                    snoozed.put(sbn.getKey());
+            StatusBarNotification[] shown = getActiveNotifications();
+            if (shown != null)
+                for (StatusBarNotification sbn : shown)
+                    active.put(sbn.getKey());
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("lost", new JSONObject().put("snoozed", snoozed).put("active", active).toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            JSONObject said = new JSONObject(answer);
+            HeldNotices.Told told = HeldNotices.Told.of(said);
+            if (!told.text.isEmpty())
+                HeldNotices.lost(this, told, HeldNotices.onlyApp(said.optJSONArray("packages")));
+            listenerPrefs().edit().putInt(BOOT, bootCount()).apply();
+            lostPending = false;
+            // How many, never which nor from whom.
+            Log.i(TAG, "Notes: after the phone started, " + said.optInt("count", 0) + " held notification(s) lost, told once.");
+            lineNow();
+        } catch (Throwable e) {
+            // The marks no longer kept for it: the next binding of this start looks again.
+            lostPending = false;
+            Log.w(TAG, "Notes: what Android lost after the start was not looked for: " + e.getClass().getSimpleName());
         }
     }
 

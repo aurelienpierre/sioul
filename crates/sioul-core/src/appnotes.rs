@@ -1799,6 +1799,19 @@ impl Ledger {
         }
     }
 
+    /// What Android lost of what Sioul held (held apps phase 1, B3): at the
+    /// first look after the phone started, each mark whose notification
+    /// Android neither holds nor shows (`present`: the hashes of their keys,
+    /// `key_hash`) is forgotten; those that would have come back are
+    /// returned, to be said once (`lost_line`), what was held for good
+    /// forgotten without a word.
+    pub fn lost(&mut self, present: &std::collections::BTreeSet<String>) -> Vec<Held> {
+        let gone: Vec<String> = self.held.keys().filter(|hash| !present.contains(*hash)).cloned().collect();
+        let mut lost: Vec<Held> = gone.iter().filter_map(|hash| self.held.remove(hash)).filter(|held| held.kind != "never").collect();
+        lost.sort_by_key(|held| (held.since, held.label.clone()));
+        lost
+    }
+
     /// Whether this notification is one Sioul held that Android brings back now (or a little before its time).
     pub fn returning(&self, hash: &str, now: i64) -> bool {
         self.held.get(hash).is_some_and(|h| now >= h.until - 120)
@@ -2141,6 +2154,25 @@ pub fn waited_line(tr: &Translator, count: usize, labels: &[String]) -> String {
     let mut args = if count > 12 { crate::i18n::args() } else { tr.counted(count) };
     args.set("apps", apps_in_words(tr, labels));
     tr.text(if count > 12 { "appnotes-waited-many" } else { "appnotes-waited" }, Some(&args))
+}
+
+/// Sioul's notice after a restart of the phone (held apps phase 1, B3):
+/// "Before the restart, Sioul was holding two notifications from Signal:
+/// open it to read them." `count` held, from `labels` (the apps' names, in
+/// order); the count in words, "many" past twelve; never a word of a message,
+/// never who wrote nor a conversation.
+pub fn lost_line(tr: &Translator, count: usize, labels: &[String]) -> String {
+    let mut args = crate::i18n::args();
+    args.set("apps", apps_in_words(tr, labels));
+    let many = count > 12;
+    args.set("count", if many { tr.text("appnotes-many", None) } else { tr.count(count, false, false) });
+    args.set("countf", if many { tr.text("appnotes-many-f", None) } else { tr.count(count, false, true) });
+    let id = match (count, labels.len()) {
+        (0 | 1, _) => "appnotes-lost-one",
+        (_, 0 | 1) => "appnotes-lost-app",
+        _ => "appnotes-lost-apps",
+    };
+    tr.text(id, Some(&args))
 }
 
 /// "13:00", "tomorrow at 09:00", "Monday 12 October at 09:00".
@@ -3078,6 +3110,41 @@ mod tests {
         let fr = Translator::new("fr");
         assert_eq!(waited_line(&fr, 4, &apps), "Quatre messages ont attendu\u{202f}: Signal et WhatsApp.");
         assert_eq!(waited_line(&fr, 1, &apps[..1]), "Un message a attendu\u{202f}: Signal.");
+    }
+
+    /// After a restart (held apps phase 1, B3): what Android neither holds
+    /// nor shows was lost, forgotten from the ledger; what would have come
+    /// back is said once, by app, held for good forgotten without a word;
+    /// what Android still holds or shows is kept. The words: counted in
+    /// words, "many" past twelve, "open it" for one app, never who wrote.
+    #[test]
+    fn what_a_restart_lost_is_said_once_by_app() {
+        let held = |app: &str, label: &str, kind: &str, since: i64| Held { app: app.into(), label: label.into(), kind: kind.into(), via: "messages".into(), who: "neutral".into(), conversation: "c-noa".into(), since, until: since + 3600, ..Held::default() };
+        let mut ledger = Ledger::default();
+        ledger.held.insert("a".into(), held("org.thoughtcrime.securesms", "Signal", "people", 10));
+        ledger.held.insert("b".into(), held("org.thoughtcrime.securesms", "Signal", "people", 20));
+        ledger.held.insert("c".into(), held("com.whatsapp", "WhatsApp", "never", 5));
+        ledger.held.insert("d".into(), held("com.shop.example", "Shop", "gathered", 30));
+        ledger.held.insert("e".into(), held("com.whatsapp", "WhatsApp", "people", 40));
+        // Android still holds Shop's (its app posted it again at the start) and shows WhatsApp's.
+        let present: std::collections::BTreeSet<String> = ["d", "e"].iter().map(|s| s.to_string()).collect();
+        let lost = ledger.lost(&present);
+        assert_eq!(lost.iter().map(|h| h.label.as_str()).collect::<Vec<_>>(), ["Signal", "Signal"], "held for good never said");
+        assert_eq!(ledger.held.keys().collect::<Vec<_>>(), ["d", "e"], "the lost forgotten, held for good with them");
+        assert!(ledger.lost(&present).is_empty(), "once");
+        let tr = Translator::new("en");
+        let signal = ["Signal".to_string()];
+        let two = ["Signal".to_string(), "WhatsApp".to_string()];
+        assert_eq!(lost_line(&tr, 2, &signal), "Before the restart, Sioul was holding two notifications from Signal: open it to read them.");
+        assert_eq!(lost_line(&tr, 1, &signal), "Before the restart, Sioul was holding a notification from Signal: open it to read it.");
+        assert_eq!(lost_line(&tr, 3, &two), "Before the restart, Sioul was holding three notifications from Signal and WhatsApp: open them to read them.");
+        assert_eq!(lost_line(&tr, 20, &two), "Before the restart, Sioul was holding many notifications from Signal and WhatsApp: open them to read them.");
+        let fr = Translator::new("fr");
+        assert_eq!(lost_line(&fr, 2, &signal), "Avant le redémarrage, Sioul retenait deux notifications de Signal\u{202f}: ouvrez l’application pour les lire.");
+        assert_eq!(lost_line(&fr, 20, &two), "Avant le redémarrage, Sioul retenait de nombreuses notifications de Signal et WhatsApp\u{202f}: ouvrez ces applications pour les lire.");
+        for line in [lost_line(&tr, 2, &signal), lost_line(&fr, 3, &two)] {
+            assert!(!line.contains("Noa") && !line.contains("c-noa"), "{line}");
+        }
     }
 
     #[test]
