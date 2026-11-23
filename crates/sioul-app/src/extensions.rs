@@ -613,7 +613,13 @@ fn read_list(qt: Option<QtThread>) {
         let address = load_config().extensions.manifest_address().to_string();
         let read = store::read_manifest(&address, SystemTime::now()).and_then(|manifest| apply(&manifest, &address).map(|()| manifest));
         let (manifest, problem) = match read {
-            Ok(manifest) => (Some(manifest), None),
+            Ok(manifest) => {
+                // An entry this Sioul cannot use is left out alone: said in the log.
+                for why in &manifest.left_out {
+                    eprintln!("sioul: extensions: the list: left out: {why}");
+                }
+                (Some(manifest), None)
+            }
             Err(problem) => {
                 eprintln!("sioul: extensions: the list: {problem}");
                 (None, Some(problem))

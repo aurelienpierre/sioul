@@ -17,8 +17,8 @@ const MOST_HOSTS: usize = 64;
 
 /// A fixed kind of credential field an extension may ask for through Sioul's
 /// own form (never free text): its label and framing are Sioul's, the kind
-/// alone comes from the signed manifest. The set is closed: an unknown kind
-/// in a manifest is a fault, so the manifest is refused (`parse`).
+/// alone comes from the signed manifest. The set is closed: an offer asking
+/// for an unknown kind is left out (`parse`), the rest of the list kept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CredField {
@@ -133,33 +133,58 @@ pub struct Manifest {
     /// The SHA-256 of its exact bytes, hexadecimal: two manifests under one serial differ by it.
     pub sha256: String,
     pub offers: Vec<Offer>,
+    /// The entries this Sioul cannot use, each with its reason: left out
+    /// alone, the rest of the list stands.
+    pub left_out: Vec<String>,
 }
 
 /// Fields this Sioul does not know are passed over: it grants only what it knows.
+/// Each entry is read on its own, so one this Sioul cannot read (a credential
+/// kind from a newer Sioul, say) is left out alone.
 #[derive(Deserialize)]
 struct Raw {
     format: u32,
     serial: u64,
     #[serde(default, rename = "extension")]
-    extensions: Vec<Offer>,
+    extensions: Vec<toml::Value>,
 }
 
-/// The manifest's text read, each offer checked; the first fault said.
+/// The manifest's text read, each offer checked. The whole file is refused
+/// only when it does not read or is of another form; an offer at fault is
+/// left out alone with its reason, and a second offer of one id is left out.
 pub fn parse(text: &str) -> Result<Manifest, String> {
     let raw: Raw = toml::from_str(text).map_err(|e| format!("the manifest does not read: {e}"))?;
     if raw.format != FORMAT {
         return Err(format!("a manifest of form {} (this Sioul reads {FORMAT})", raw.format));
     }
     let mut seen = BTreeSet::new();
-    for offer in &raw.extensions {
-        check(offer)?;
-        if !seen.insert(offer.id.clone()) {
-            return Err(format!("{} is offered twice", offer.id));
+    let (mut offers, mut left_out) = (Vec::new(), Vec::new());
+    for (n, entry) in raw.extensions.into_iter().enumerate() {
+        let named = entry.get("id").and_then(|id| id.as_str()).map(str::to_string).unwrap_or_else(|| format!("entry {}", n + 1));
+        let mut offer: Offer = match entry.try_into() {
+            Ok(offer) => offer,
+            Err(e) => {
+                left_out.push(format!("{named}: it does not read: {}", e.to_string().trim()));
+                continue;
+            }
+        };
+        if let Err(fault) = check(&offer) {
+            left_out.push(fault);
+            continue;
         }
+        if !seen.insert(offer.id.clone()) {
+            left_out.push(format!("{}: offered twice, the first kept", offer.id));
+            continue;
+        }
+        // A name always shows: the id when none is given.
+        if offer.name.en.trim().is_empty() && offer.name.fr.trim().is_empty() {
+            offer.name.en = offer.id.clone();
+        }
+        offers.push(offer);
     }
     use sha2::Digest;
     let sha256 = sha2::Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
-    Ok(Manifest { serial: raw.serial, sha256, offers: raw.extensions })
+    Ok(Manifest { serial: raw.serial, sha256, offers, left_out })
 }
 
 /// An offer checked as the manifest's own are: also each offer this device
@@ -173,11 +198,8 @@ pub fn check(offer: &Offer) -> Result<(), String> {
     if offer.version.is_empty() || offer.version.len() > 32 || !offer.version.bytes().all(|b| b.is_ascii_alphanumeric() || b".-+".contains(&b)) {
         return fault("a version that is not one");
     }
-    for words in [&offer.name, &offer.about] {
-        if words.en.trim().is_empty() || words.fr.trim().is_empty() || words.en.len() > 600 || words.fr.len() > 600 {
-            return fault("its name and what it does, in English and French, are needed");
-        }
-    }
+    // Its name and what it does are never a fault: any length, and a
+    // language left empty shows the other (`Words::said`).
     if offer.hosts.len() > MOST_HOSTS || !offer.hosts.iter().all(|h| host_name(h)) {
         return fault("a host that is not a name");
     }
@@ -306,8 +328,10 @@ mod tests {
         assert_eq!(file_address_on(r"C:\Users\x\ext\manifest.toml", &offer.file, true), r"C:\Users\x\ext/timetable-0.1.0.wasm");
         assert_eq!(file_address_on(r"/home/x/ext/a\manifest.toml", &offer.file, false), "/home/x/ext/timetable-0.1.0.wasm");
         assert_eq!(file_address_on(r"https://example.org/ext/a\manifest.toml", &offer.file, true), "https://example.org/ext/timetable-0.1.0.wasm");
+        // Another form refuses the whole file.
+        assert!(parse(&SAMPLE.replace("format = 1", "format = 2")).is_err());
+        // An offer at fault is left out alone, with its reason.
         for (from, to) in [
-            ("format = 1", "format = 2"),
             (r#"id = "timetable""#, r#"id = "../x""#),
             (r#""sso.example.org""#, r#""*.example.org""#),
             (r#""sso.example.org""#, r#""192.168.1.1""#),
@@ -317,12 +341,28 @@ mod tests {
             (r#"file = "timetable-0.1.0.wasm""#, r#"file = "../timetable.wasm""#),
             (r#"file = "timetable-0.1.0.wasm""#, r#"file = "http://example.org/t.wasm""#),
             ("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "0123"),
-            (r#"fr = "Un emploi du temps""#, r#"fr = """#),
+            ("interface = 1", r#"interface = "one""#),
         ] {
-            assert!(parse(&SAMPLE.replace(from, to)).is_err(), "{to}");
+            let read = parse(&SAMPLE.replace(from, to)).unwrap();
+            assert!(read.offers.is_empty() && read.left_out.len() == 1, "{to}");
         }
         let twice = format!("{SAMPLE}\n{}", &SAMPLE[SAMPLE.find("[[extension]]").unwrap()..]);
-        assert!(parse(&twice).is_err(), "an id offered twice");
+        let read = parse(&twice).unwrap();
+        assert_eq!((read.offers.len(), read.left_out.len()), (1, 1), "an id offered twice: the first kept");
+        // One offer at fault beside a good one: the good one stands.
+        let bad = SAMPLE[SAMPLE.find("[[extension]]").unwrap()..].replace(r#"id = "timetable""#, r#"id = "other""#).replace(r#""sso.example.org""#, r#""*.example.org""#);
+        let read = parse(&format!("{SAMPLE}\n{bad}")).unwrap();
+        assert_eq!(read.offers.len(), 1);
+        assert_eq!(read.offers[0].id, "timetable");
+        assert!(read.left_out[0].starts_with("other:"), "{:?}", read.left_out);
+        // Its name and what it does: any length, one language enough, none at all the id.
+        let long = "x".repeat(2000);
+        let read = parse(&SAMPLE.replace(r#"fr = "Des cours.""#, &format!("fr = \"{long}\""))).unwrap();
+        assert_eq!(read.offers[0].about.said(true), long);
+        let read = parse(&SAMPLE.replace(r#"fr = "Un emploi du temps""#, r#"fr = """#)).unwrap();
+        assert_eq!(read.offers[0].name.said(true), "A timetable");
+        let read = parse(&SAMPLE.replace(r#"en = "A timetable", fr = "Un emploi du temps""#, r#"en = "", fr = """#)).unwrap();
+        assert_eq!(read.offers[0].name.said(false), "timetable");
         // An interface this Sioul does not speak is listed, not usable.
         assert!(!parse(&SAMPLE.replace("interface = 1", "interface = 2")).unwrap().offers[0].usable());
     }
@@ -384,7 +424,7 @@ mod tests {
         assert!(parse(&credentials_sample(r#""username", "password", "server", "one-time-code""#)).is_ok());
         assert!(parse(&credentials_sample(r#""web-address", "password""#)).is_ok());
         // Unknown kind, no password, a field twice, more than four, and both a
-        // redirect sign-in and credentials: each a fault. A link counts in the four.
+        // redirect sign-in and credentials: each leaves the offer out. A link counts in the four.
         for credentials in [
             r#""token", "password""#,
             r#""web_address", "password""#,
@@ -394,11 +434,12 @@ mod tests {
             r#""email", "username", "server", "one-time-code", "password""#,
             r#""email", "username", "web-address", "one-time-code", "password""#,
         ] {
-            assert!(parse(&credentials_sample(credentials)).is_err(), "{credentials}");
+            let read = parse(&credentials_sample(credentials)).unwrap();
+            assert!(read.offers.is_empty() && read.left_out.len() == 1, "{credentials}");
         }
         // SAMPLE keeps its redirect sign_in; adding credentials beside it is a fault.
         let both = SAMPLE.replace(r#"file = "timetable-0.1.0.wasm""#, "credentials = [\"password\"]\nfile = \"timetable-0.1.0.wasm\"");
-        assert!(parse(&both).is_err(), "a redirect sign-in and credentials together");
+        assert!(parse(&both).unwrap().offers.is_empty(), "a redirect sign-in and credentials together");
     }
 
     #[test]
