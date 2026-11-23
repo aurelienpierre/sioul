@@ -129,7 +129,7 @@ impl Qty {
     }
 
     /// As TOML writes it: an integer when whole, else a float.
-    fn toml(self) -> toml_edit::Value {
+    pub fn toml(self) -> toml_edit::Value {
         if self.0 % Qty::SCALE == 0 { toml_edit::Value::from(self.0 / Qty::SCALE) } else { toml_edit::Value::from(self.as_f64()) }
     }
 

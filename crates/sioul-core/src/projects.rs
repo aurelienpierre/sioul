@@ -109,9 +109,81 @@ pub struct Project {
     /// existed opens none.
     #[serde(default)]
     pub ai: bool,
+    /// Its models of task (`[[project.model]]`): what a task made of a
+    /// message is, which a route that makes tasks points at (`Route::makes`;
+    /// docs/notes-folder.md, "Routes that make tasks"). Read leniently: a
+    /// model that does not read is left out, never the whole file.
+    #[serde(rename = "model", default, deserialize_with = "models_of")]
+    pub models: Vec<Model>,
+}
+
+/// The business days a new model's form is filled with
+/// (`routetasks::BUSINESS_DAYS`), and a model's value when its file does not say them.
+pub const BUSINESS_DAYS: u32 = 3;
+
+/// A model of task, on its project (`[[project.model]]`): what a task made
+/// of a message is (its list, the date asked, its first estimate, its title's
+/// prefix, the supplies it will use), apart from what makes it (a route's
+/// `makes`; later, a shop's orders), so that two routes may use one model.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Model {
+    /// Short, stable, unique among the project's models.
+    pub id: String,
+    /// "Send a gift card".
+    pub name: String,
+    /// The task list its tasks go into, "account/id"; "" for the usual one.
+    pub list: String,
+    /// Put in front of each task's title ("Send:"); "" for none.
+    pub prefix: String,
+    /// The date asked: so many business days after the mail came
+    /// (`routetasks::date_asked`). Required; none when a file written by
+    /// hand leaves it out or says no number: the first business day after
+    /// the mail, and the route's line says it is missing.
+    pub business_days: Option<u32>,
+    /// The first estimate, in minutes; none unsaid.
+    pub estimate: Option<u32>,
+    /// What each task plans to use (`supplies::PLANNED`).
+    pub supplies: Vec<crate::supplies::Use>,
+}
+
+/// A model as its table says it; none without an id.
+fn model_of(value: &toml::Value) -> Option<Model> {
+    let table = value.as_table()?;
+    let text = |key: &str| table.get(key).and_then(toml::Value::as_str).map(|s| s.trim().to_string()).unwrap_or_default();
+    let number = |key: &str| table.get(key).and_then(toml::Value::as_integer).and_then(|n| u32::try_from(n).ok());
+    let id = text("id");
+    if id.is_empty() {
+        return None;
+    }
+    let supplies = table
+        .get("supplies")
+        .and_then(toml::Value::as_array)
+        .map(|list| list.iter().filter_map(|u| u.clone().try_into::<crate::supplies::Use>().ok()).filter(|u| crate::supplies::is_id(&u.id) && u.quantity >= crate::supplies::Qty::ZERO).collect())
+        .unwrap_or_default();
+    let prefix = table.get("prefix").and_then(toml::Value::as_str).unwrap_or_default().to_string();
+    Some(Model { id, name: text("name"), list: text("list"), prefix, business_days: number("business_days"), estimate: number("estimate").filter(|m| *m > 0), supplies: crate::supplies::merged(supplies) })
+}
+
+/// The models of a project's file, each read alone (`model_of`).
+fn models_of<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<Model>, D::Error> {
+    let values: Vec<toml::Value> = match toml::Value::deserialize(deserializer)? {
+        toml::Value::Array(list) => list,
+        _ => Vec::new(),
+    };
+    Ok(values.iter().filter_map(model_of).collect())
+}
+
+/// A route's `makes`, when it says a word; anything else, none.
+fn makes_of<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(toml::Value::deserialize(deserializer)?.as_str().map(|s| s.trim().to_string()).unwrap_or_default())
 }
 
 impl Project {
+    /// One of its models, by id.
+    pub fn model(&self, id: &str) -> Option<&Model> {
+        (!id.is_empty()).then(|| self.models.iter().find(|m| m.id == id)).flatten()
+    }
+
     /// Work done for a client: its time can be billed.
     pub fn is_for_client(&self) -> bool {
         self.kind.as_deref() == Some("project")
@@ -463,6 +535,10 @@ pub struct Route {
     /// Words in an attachment's file name: "devis", "facture", ".ics".
     #[serde(default)]
     pub attachment_contains: Vec<String>,
+    /// The model of task it makes of each message it takes (`Model::id`,
+    /// among its project's); "" for none (`routetasks`).
+    #[serde(default, deserialize_with = "makes_of")]
+    pub makes: String,
 }
 
 /// Which field of a message matched a route.
@@ -674,6 +750,9 @@ pub struct RouteValue {
     pub text_contains: Vec<String>,
     #[serde(default)]
     pub attachment_contains: Vec<String>,
+    /// The model of task it makes of each message (`Route::makes`); "" for none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub makes: String,
 }
 
 impl From<&Route> for RouteValue {
@@ -685,6 +764,69 @@ impl From<&Route> for RouteValue {
             subject_contains: route.subject_contains.clone(),
             text_contains: route.text_contains.clone(),
             attachment_contains: route.attachment_contains.clone(),
+            makes: route.makes.clone(),
+        }
+    }
+}
+
+impl RouteValue {
+    /// The route as a project's routes read it.
+    pub fn route(&self) -> Route {
+        Route {
+            id: self.id.clone(),
+            from_domains: self.from_domains.clone(),
+            from_addresses: self.from_addresses.clone(),
+            subject_contains: self.subject_contains.clone(),
+            text_contains: self.text_contains.clone(),
+            attachment_contains: self.attachment_contains.clone(),
+            makes: self.makes.clone(),
+        }
+    }
+
+    /// The same words as `other`, whatever their ids and what they make.
+    pub fn same_words(&self, other: &RouteValue) -> bool {
+        let words = |r: &RouteValue| {
+            let clean = |list: &[String]| {
+                let mut out: Vec<String> = list.iter().map(|w| w.trim().to_lowercase()).filter(|w| !w.is_empty()).collect();
+                out.sort();
+                out
+            };
+            [clean(&r.from_domains), clean(&r.from_addresses), clean(&r.subject_contains), clean(&r.text_contains), clean(&r.attachment_contains)]
+        };
+        words(self) == words(other)
+    }
+}
+
+/// A model of task as its form gives it (`save_route_task`): "" or 0 for
+/// what is unsaid, an empty `id` for a new one.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, Deserialize)]
+pub struct ModelValue {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub list: String,
+    #[serde(default)]
+    pub prefix: String,
+    #[serde(default)]
+    pub business_days: u32,
+    #[serde(default)]
+    pub estimate: u32,
+    #[serde(default)]
+    pub supplies: Vec<crate::supplies::Use>,
+}
+
+impl From<&Model> for ModelValue {
+    fn from(model: &Model) -> ModelValue {
+        ModelValue {
+            id: model.id.clone(),
+            name: model.name.clone(),
+            list: model.list.clone(),
+            prefix: model.prefix.clone(),
+            business_days: model.business_days.unwrap_or(BUSINESS_DAYS),
+            estimate: model.estimate.unwrap_or(0),
+            supplies: model.supplies.clone(),
         }
     }
 }
@@ -731,47 +873,168 @@ pub fn remove_project(file: &Path, project_id: &str) -> Result<(), String> {
     })
 }
 
+/// What a route's table holds that this Sioul writes: every other key (a
+/// newer Sioul's) stays as it is when the route is written again.
+const ROUTE_KEYS: [&str; 7] = ["id", "from_domains", "from_addresses", "subject_contains", "text_contains", "attachment_contains", "makes"];
+
 /// Replaces a project's routes in its file, in place: its other fields and
 /// the file's comments stay. Routes left empty are dropped. Each keeps its
 /// id, and one without (new, or written before routes had ids) takes one.
 pub fn set_routes(file: &Path, project_id: &str, routes: &[RouteValue]) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(file, || {
-        use toml_edit::{Array, ArrayOfTables, value};
         let mut doc = read_doc(file, false)?;
         let project = entry_mut(&mut doc, project_id).ok_or_else(|| format!("{}: no project {project_id}", file.display()))?;
-        let mut tables = ArrayOfTables::new();
-        let mut given: Vec<String> = routes.iter().map(|r| r.id.trim().to_string()).filter(|id| !id.is_empty()).collect();
-        for route in routes {
-            let lists: Vec<(&str, Vec<&str>)> = [
-                ("from_domains", &route.from_domains),
-                ("from_addresses", &route.from_addresses),
-                ("subject_contains", &route.subject_contains),
-                ("text_contains", &route.text_contains),
-                ("attachment_contains", &route.attachment_contains),
-            ]
-            .into_iter()
-            .map(|(key, list)| (key, list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<&str>>()))
-            .filter(|(_, cleaned)| !cleaned.is_empty())
-            .collect();
-            if lists.is_empty() {
-                continue;
-            }
-            let mut table = Table::new();
-            let id = if route.id.trim().is_empty() { first_id(project_id, &lists, &given) } else { route.id.trim().to_string() };
-            given.push(id.clone());
-            table["id"] = value(id);
-            for (key, cleaned) in lists {
-                table[key] = value(cleaned.into_iter().collect::<Array>());
-            }
-            tables.push(table);
-        }
-        if tables.is_empty() {
-            project.remove("route");
-        } else {
-            project["route"] = Item::ArrayOfTables(tables);
-        }
+        write_routes(project, project_id, routes);
         write_doc(file, &doc)
+    })
+}
+
+/// A project's routes written into its table (`set_routes`), and their ids
+/// as written, in order (none for a route left empty, which is dropped).
+fn write_routes(project: &mut Table, project_id: &str, routes: &[RouteValue]) -> Vec<Option<String>> {
+    use toml_edit::{Array, ArrayOfTables, value};
+    // Each route as written before, by its id: what a newer Sioul wrote there stays.
+    let before: Vec<Table> = project.get("route").and_then(Item::as_array_of_tables).map(|list| list.iter().cloned().collect()).unwrap_or_default();
+    let mut tables = ArrayOfTables::new();
+    let mut given: Vec<String> = routes.iter().map(|r| r.id.trim().to_string()).filter(|id| !id.is_empty()).collect();
+    let mut ids = Vec::with_capacity(routes.len());
+    for route in routes {
+        let lists: Vec<(&str, Vec<&str>)> = [
+            ("from_domains", &route.from_domains),
+            ("from_addresses", &route.from_addresses),
+            ("subject_contains", &route.subject_contains),
+            ("text_contains", &route.text_contains),
+            ("attachment_contains", &route.attachment_contains),
+        ]
+        .into_iter()
+        .map(|(key, list)| (key, list.iter().map(|s| s.trim()).filter(|s| !s.is_empty()).collect::<Vec<&str>>()))
+        .filter(|(_, cleaned)| !cleaned.is_empty())
+        .collect();
+        if lists.is_empty() {
+            ids.push(None);
+            continue;
+        }
+        let id = if route.id.trim().is_empty() { first_id(project_id, &lists, &given) } else { route.id.trim().to_string() };
+        given.push(id.clone());
+        let mut table = before.iter().find(|t| !route.id.trim().is_empty() && id_of(t) == Some(route.id.trim())).cloned().unwrap_or_default();
+        for key in ROUTE_KEYS {
+            table.remove(key);
+        }
+        table["id"] = value(id.as_str());
+        for (key, cleaned) in lists {
+            table[key] = value(cleaned.into_iter().collect::<Array>());
+        }
+        if !route.makes.trim().is_empty() {
+            table["makes"] = value(route.makes.trim());
+        }
+        tables.push(table);
+        ids.push(Some(id));
+    }
+    if tables.is_empty() {
+        project.remove("route");
+    } else {
+        project["route"] = Item::ArrayOfTables(tables);
+    }
+    ids
+}
+
+/// What a model's table holds that this Sioul writes.
+const MODEL_KEYS: [&str; 7] = ["id", "name", "list", "prefix", "business_days", "estimate", "supplies"];
+
+/// A model written into its project's table, by its id; a new one (`id`
+/// empty or not there) takes an id made from its name, unique among the
+/// project's models. Every key a newer Sioul wrote in it stays. Returns its id.
+fn write_model(project: &mut Table, model: &ModelValue) -> Result<String, String> {
+    use toml_edit::{Array, ArrayOfTables, InlineTable, value};
+    let list = project.entry("model").or_insert(Item::ArrayOfTables(ArrayOfTables::new())).as_array_of_tables_mut().ok_or("`model` is not a list of tables")?;
+    let taken: Vec<String> = list.iter().filter_map(|t| id_of(t).map(str::to_string)).collect();
+    let id = if !model.id.trim().is_empty() && taken.iter().any(|t| t == model.id.trim()) { model.id.trim().to_string() } else { new_id(if model.name.trim().is_empty() { "task" } else { &model.name }, &taken) };
+    if !taken.contains(&id) {
+        let mut table = Table::new();
+        table["id"] = value(id.as_str());
+        list.push(table);
+    }
+    let table = list.iter_mut().find(|t| id_of(t) == Some(id.as_str())).ok_or("model not written")?;
+    for key in MODEL_KEYS {
+        if key != "id" {
+            table.remove(key);
+        }
+    }
+    for (key, text) in [("name", model.name.trim()), ("list", model.list.trim()), ("prefix", model.prefix.as_str())] {
+        if !text.trim().is_empty() {
+            table[key] = value(text);
+        }
+    }
+    // Always said: the date asked is required (0, the first business day on or after the mail).
+    table["business_days"] = value(i64::from(model.business_days));
+    if model.estimate > 0 {
+        table["estimate"] = value(i64::from(model.estimate));
+    }
+    let uses = crate::supplies::merged(model.supplies.iter().filter(|u| crate::supplies::is_id(&u.id) && u.quantity > crate::supplies::Qty::ZERO).cloned().collect());
+    if !uses.is_empty() {
+        let mut array = Array::new();
+        for used in &uses {
+            let mut one = InlineTable::new();
+            one.insert("id", used.id.as_str().into());
+            one.insert("quantity", used.quantity.toml());
+            array.push(toml_edit::Value::InlineTable(one));
+        }
+        table["supplies"] = value(array);
+    }
+    Ok(id)
+}
+
+/// What `save_route_task` wrote: the project's, the route's and the model's ids.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct RouteTask {
+    pub project: String,
+    pub route: String,
+    pub model: String,
+}
+
+/// A route that makes a task of each message, and its model, written in one
+/// step under the file's lock (docs/notes-folder.md, "Routes that make
+/// tasks"): the model by its id (new when it has none); the route by its id,
+/// else one of the same words, else a new one at the end, its `makes` the
+/// model's. A route given with no words names one by its id alone: its words
+/// stay as they are. The rest of the file, comments and every other route
+/// with them, as it was.
+pub fn save_route_task(file: &Path, project_id: &str, route: &RouteValue, model: &ModelValue) -> Result<RouteTask, String> {
+    crate::filelock::with_lock(file, || {
+        let fail = |e: &str| format!("{}: {e}", file.display());
+        let mut doc = read_doc(file, false)?;
+        // The routes as the file holds them now.
+        let mut routes: Vec<RouteValue> = read_projects(&doc.to_string())
+            .map_err(|e| fail(&e.to_string()))?
+            .into_iter()
+            .find(|p| p.id == project_id)
+            .map(|p| p.routes.iter().map(RouteValue::from).collect())
+            .unwrap_or_default();
+        let project = entry_mut(&mut doc, project_id).ok_or_else(|| fail(&format!("no project {project_id}")))?;
+        let model_id = write_model(project, model).map_err(|e| fail(&e))?;
+        let wanted = route.id.trim();
+        let at = routes.iter().position(|r| !wanted.is_empty() && r.id == wanted).or_else(|| routes.iter().position(|r| r.same_words(route)));
+        let words = !route.same_words(&RouteValue::default());
+        let at = match at {
+            Some(at) => {
+                if words {
+                    routes[at] = RouteValue { id: routes[at].id.clone(), makes: model_id.clone(), ..route.clone() };
+                } else {
+                    routes[at].makes.clone_from(&model_id);
+                }
+                at
+            }
+            None if words => {
+                routes.push(RouteValue { id: String::new(), makes: model_id.clone(), ..route.clone() });
+                routes.len() - 1
+            }
+            None => return Err(fail("a route takes some mail: a sender, words of the subject…")),
+        };
+        let ids = write_routes(project, project_id, &routes);
+        let route_id = ids.get(at).cloned().flatten().ok_or_else(|| fail("a route takes some mail: a sender, words of the subject…"))?;
+        write_doc(file, &doc)?;
+        Ok(RouteTask { project: project_id.to_string(), route: route_id, model: model_id })
     })
 }
 
@@ -840,6 +1103,55 @@ mod tests {
         assert_eq!((area_in("garden"), of("garden").area_of()), (None, None), "nothing ticked: unsaid");
         save("later", "someday");
         assert_eq!(area_in("later"), Some("someday".into()), "a word no Sioul reads is never written, nor taken out");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The projects' file: a model and its route written in one step, read
+    /// back; a second save of the same route changes the model in place; a model
+    /// that does not read is left out, never the whole file; a model without
+    /// its number reads as none; what a newer Sioul wrote in a route and a model
+    /// stays through this one's writes; `set_routes` keeps `makes`.
+    #[test]
+    fn a_model_and_its_route_in_the_projects_file() {
+        let dir = scratch("project-models");
+        let file = dir.join(FILE);
+        std::fs::write(&file, "# Mine\n[[project]]\nid = \"gift-cards\"\ntitle = \"Gift cards\"\n\n[[project.route]]\nid = \"r1\"\nfrom_addresses = [\"shop@example.org\"]\nsubject_contains = [\"New sale\"]\nlater = \"a newer Sioul's\"\n\n[[project.model]]\nid = \"broken\"\nsupplies = \"many\"\nbusiness_days = \"three\"\n\n[[project.model]]\nname = \"no id\"\n").unwrap();
+        let store = || ProjectStore::load(&dir).unwrap();
+        let project = store().get("gift-cards").unwrap().clone();
+        assert_eq!(project.models.len(), 1, "a model without an id is left out");
+        assert_eq!((project.models[0].business_days, project.models[0].supplies.len()), (None, 0), "what does not read reads as unsaid");
+        let model = ModelValue { name: "Send a gift card".into(), list: "local/work".into(), prefix: "Send:".into(), business_days: 3, estimate: 15, supplies: vec![crate::supplies::Use { id: "stamps".into(), quantity: crate::supplies::Qty::whole(1) }, crate::supplies::Use { id: "cards".into(), quantity: crate::supplies::Qty::whole(1) }], ..ModelValue::default() };
+        let route = RouteValue { id: "r1".into(), ..RouteValue::default() };
+        let saved = save_route_task(&file, "gift-cards", &route, &model).unwrap();
+        assert_eq!((saved.route.as_str(), saved.model.as_str()), ("r1", "send-a-gift-card"));
+        let project = store().get("gift-cards").unwrap().clone();
+        let made = project.model("send-a-gift-card").unwrap();
+        assert_eq!((made.business_days, made.estimate, made.prefix.as_str(), made.list.as_str()), (Some(3), Some(15), "Send:", "local/work"));
+        assert_eq!(made.supplies, model.supplies);
+        assert_eq!((project.routes[0].makes.as_str(), project.routes[0].subject_contains.clone()), ("send-a-gift-card", vec!["New sale".to_string()]), "a route named by its id alone keeps its words");
+        let text = std::fs::read_to_string(&file).unwrap();
+        assert!(text.starts_with("# Mine") && text.contains("later = \"a newer Sioul's\""), "{text}");
+        // Changed: the same model, in place.
+        let again = save_route_task(&file, "gift-cards", &route, &ModelValue { id: "send-a-gift-card".into(), business_days: 0, ..model.clone() }).unwrap();
+        assert_eq!(again.model, "send-a-gift-card");
+        assert_eq!(store().get("gift-cards").unwrap().models.len(), 2);
+        assert_eq!(store().get("gift-cards").unwrap().model("send-a-gift-card").unwrap().business_days, Some(0));
+        // A new route of other words, from a message: added, its makes the model.
+        let other = RouteValue { from_domains: vec!["market.example.org".into()], subject_contains: vec!["Order".into()], ..RouteValue::default() };
+        let added = save_route_task(&file, "gift-cards", &other, &ModelValue { id: "send-a-gift-card".into(), ..model.clone() }).unwrap();
+        assert_ne!(added.route, "r1");
+        assert_eq!(store().get("gift-cards").unwrap().routes.len(), 2);
+        // The routes' editor writes them back: `makes` and the newer Sioul's key stay; one switched off loses `makes`.
+        let mut routes: Vec<RouteValue> = store().get("gift-cards").unwrap().routes.iter().map(RouteValue::from).collect();
+        routes[1].makes.clear();
+        set_routes(&file, "gift-cards", &routes).unwrap();
+        let project = store().get("gift-cards").unwrap().clone();
+        assert_eq!((project.routes[0].makes.as_str(), project.routes[1].makes.as_str()), ("send-a-gift-card", ""));
+        assert!(std::fs::read_to_string(&file).unwrap().contains("later = \"a newer Sioul's\""));
+        // No words at all and no route of that id: refused, nothing written.
+        let before = std::fs::read_to_string(&file).unwrap();
+        assert!(save_route_task(&file, "gift-cards", &RouteValue::default(), &model).is_err());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), before);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
