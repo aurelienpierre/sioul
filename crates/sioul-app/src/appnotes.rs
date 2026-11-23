@@ -109,30 +109,47 @@ fn live(config: &Config, now: &Zoned) -> Live {
 }
 
 /// Who wrote, as your address books and lists say (`porch::Senders`): none
-/// when nobody knows a name; whether their card is one of your people's
-/// (`porch::Judged::circle`: by a number or an address, never by a name,
-/// which anyone can take, an SMS's sender id included: review L1); and
+/// when Sioul cannot tell (nobody named; a name in no card, or one anyone can
+/// take; a number or an address none of Sioul's lists knows while the
+/// phone's address book could not be asked), which `appnotes::decide` judges
+/// as a contact's, never a stranger's (held apps phase 1, A1); a stranger
+/// only for a number or an address that neither Sioul's lists nor the
+/// phone's address book, asked, knows. Whether their card is one of your
+/// people's (`porch::Judged::circle`: by a number or an address, never by a
+/// name, which anyone can take, an SMS's sender id included: review L1); and
 /// whether the Always through list holds them (by a number or an address,
 /// never a name).
 fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool, bool) {
     match sender {
-        Sender::Known { numbers, emails, contact } => {
+        Sender::Known { numbers, emails, contact, asked } => {
             let by_number = numbers.iter().map(|n| senders.judge_number(n)).find(|j| j.by != By::Default);
             let by_address = emails.iter().map(|e| senders.judge(e)).find(|j| j.who != Who::Stranger);
             let region = sioul_core::reach::region(config);
             let admitted = numbers.iter().any(|n| always.admits_number(n, region)) || emails.iter().any(|e| always.admits_address(e));
-            // In the phone's address book though not in Sioul's: someone you know.
-            let unknown = if *contact { Who::Neutral } else { Who::Stranger };
+            // In the phone's address book though not in Sioul's: someone you know. In neither, the phone's
+            // address book asked: a stranger. Not asked: nobody can tell.
+            let unknown = if *contact {
+                Some(Who::Neutral)
+            } else if *asked {
+                Some(Who::Stranger)
+            } else {
+                None
+            };
             match by_number.or(by_address) {
                 Some(judged) => (Some(judged.who), judged.circle, admitted),
-                None => (Some(unknown), false, admitted),
+                None => (unknown, false, admitted),
             }
         }
-        // A name anyone can take may only hold more, and proves no one of your people (L1).
-        Sender::Named { name, book } => (senders.judge_name(name).map(|judged| appnotes::named(Some(judged.who), *book)), false, false),
+        // A name anyone can take may only hold more, and proves no one of your people (L1); any other
+        // name says nothing of who wrote (A1).
+        Sender::Named { name, book } => (appnotes::named(senders.judge_name(name).map(|judged| judged.who), *book), false, false),
         Sender::Unknown => (None, false, false),
     }
 }
+
+/// The why the tab says of a person's message from someone Sioul could not
+/// tell, judged as a contact's (`appnotes::unidentified`; "appnotes-why-unknown").
+const UNKNOWN: &str = "unknown";
 
 /// Reachable's end, for the listener's question (`Ask::reachable`, Unix
 /// seconds): while it lasts, everyone not blocked comes at once (part 3).
@@ -243,9 +260,12 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     // A text from a number nobody knows, from a root ARCEP keeps for machines: an automaton's, gathered
     // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise);
     // said so in its why and its line (review of part 2, F11).
-    let machine = matches!(&kind, Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now));
+    // Nobody knowing it here (a stranger, or the phone's address book not asked: A1), a number kept for machines is a machine's.
+    let machine = matches!(&kind, Kind::People(talk) if talk.sms && matches!(who, None | Some(Who::Stranger)) && machine_number(&talk.sender, &config, &now));
     let mut kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
     let (who, circle, admitted) = if matches!(kind, Kind::People(_)) { (who, circle, admitted) } else { (None, false, false) };
+    // Sioul cannot tell who wrote: judged as a contact, and said so (A1).
+    let unknown = appnotes::unidentified(&kind, who);
     let (area, unsaid) = area_of(&posted, &kind, &choices, &config);
     if let Kind::People(talk) = &mut kind {
         talk.to_unsaid = unsaid;
@@ -334,6 +354,13 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         {
             app.why = MACHINE.to_string();
         }
+        // Someone Sioul could not tell, judged as a contact (A1): the tab says so, never as a contact's.
+        if unknown
+            && matches!(decision.why, Why::Allowed | Why::Waiting)
+            && let Some(app) = ledger.apps.get_mut(&posted.package)
+        {
+            app.why = UNKNOWN.to_string();
+        }
         // Its return to come without a sound (an automaton's, held for good): Java holds it a few minutes
         // past its time and brings it back itself, in a quiet window (`QuietWindow`).
         let quiet = decision.until.is_some() && ledger.held.get(&hash).is_some_and(appnotes::Held::quiet);
@@ -366,9 +393,24 @@ fn decide_at(json: &str, now: &Zoned) -> String {
             cause
         });
         answer["line"] = json!(hold_line(if returning { "held again" } else { "held" }, kind_word(&kind), &decision, cause.as_ref(), gate.as_ref(), &now));
+    } else if unknown && decision.why == Why::Allowed {
+        // Let through from someone Sioul could not tell, as a contact's (A1): said, so that it is never taken
+        // for a contact's, without a name.
+        answer["line"] = json!(pass_line(kind_word(&kind)));
     }
     answer.to_string()
 }
+
+/// The listener's line when a person's message from someone Sioul could not
+/// tell comes at once, judged as a contact's (held apps phase 1, A1): "Notes:
+/// passed: messages 1; why: sender unknown (judged as a contact)." Never a
+/// name, a number nor an app.
+fn pass_line(kind: &str) -> String {
+    format!("Notes: passed: {kind} 1; why: {UNKNOWN_WHY}.")
+}
+
+/// The log's words for a sender Sioul could not tell (`appnotes::Cause::unknown`).
+const UNKNOWN_WHY: &str = "sender unknown (judged as a contact)";
 
 /// A notification on a channel Sioul made silent, ringing again
 /// (importance 3 or more): you gave it its sound back in Android's settings,
@@ -687,10 +729,11 @@ fn kind_word(kind: &Kind) -> &'static str {
 /// the kind of its channel, until when it waits, or for good, and what
 /// decided it (`appnotes::cause`): its conversation's or its app's own row,
 /// a gathering and what gathers it, what it is for, the columns of the
-/// matrix that hold it now (do-not-disturb with what holds it). "Notes:
-/// held: messages 1 until 10:50; why: dnd (busy)." Held again on
-/// its return at its time: "held again". Never a name, a number, an app nor
-/// who wrote.
+/// matrix that hold it now (do-not-disturb with what holds it); and, when
+/// Sioul could not tell who wrote, "sender unknown (judged as a contact)"
+/// (held apps phase 1, A1). "Notes: held: messages 1 until 10:50; why: dnd
+/// (busy)." Held again on its return at its time: "held again". Never a
+/// name, a number, an app nor who wrote.
 fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>, gated: Option<&Gated>, now: &Zoned) -> String {
     let until = match decision.until {
         _ if decision.why == Why::Never => "for good".to_string(),
@@ -721,6 +764,9 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
         }
         if !cause.columns.is_empty() {
             why.push(column_words(&cause.columns, cause.nothing, gated).join(" + "));
+        }
+        if cause.unknown {
+            why.push(UNKNOWN_WHY.into());
         }
     }
     let why = if why.is_empty() { "unknown".to_string() } else { why.join(", ") };
@@ -1660,6 +1706,63 @@ mod tests {
         }
     }
 
+    /// Held apps phase 1, A1: who wrote, as the listener judges them. A
+    /// number none of Sioul's lists knows is a stranger's only once the
+    /// phone's address book was asked and found nothing; not asked, nobody
+    /// can tell (none: judged as a contact); in the phone's address book, a
+    /// contact. A name in no card and nobody named: none. A held or a passed
+    /// message from someone Sioul could not tell says so in the log, never a
+    /// name: decided as the listener does, on a fixed clock, a bare name in a
+    /// chat app at 20:30 passes, and at 23:30 waits for waking.
+    #[test]
+    fn a_stranger_is_a_number_nobody_knows_once_the_phone_s_book_was_asked() {
+        let config = Config::default();
+        let (senders, always) = (Senders::default(), People::default());
+        let number = |contact: bool, asked: bool| Sender::Known { numbers: vec!["+33 1 99 00 12 34".into()], emails: Vec::new(), contact, asked };
+        let who = |sender: &Sender| who_of(sender, &senders, &always, &config).0;
+        assert_eq!(who(&number(false, true)), Some(Who::Stranger), "asked, found nowhere");
+        assert_eq!(who(&number(false, false)), None, "not asked: nobody can tell");
+        assert_eq!(who(&number(true, false)), Some(Who::Neutral), "the phone's contact");
+        assert_eq!(who(&Sender::Named { name: "Noa".into(), book: false }), None);
+        assert_eq!(who(&Sender::Named { name: "Noa".into(), book: true }), None);
+        assert_eq!(who(&Sender::Unknown), None);
+        // The lines, never a name.
+        assert_eq!(pass_line("messages"), "Notes: passed: messages 1; why: sender unknown (judged as a contact).");
+        let now: Zoned = "2026-10-06T23:30:00+02:00[Europe/Paris]".parse().unwrap();
+        let cause = Cause { columns: vec![Column::Sleep], unknown: true, ..Cause::default() };
+        let line = hold_line("held", "messages", &Decision::held(now.timestamp().as_second() + 7 * 3600 + 1800, Why::Waiting), Some(&cause), None, &now);
+        assert_eq!(line, "Notes: held: messages 1 until tomorrow 07:00; why: sleep, sender unknown (judged as a contact).");
+    }
+
+    /// Held apps phase 1, A1, in the listener: a chat app's bare name that no
+    /// card has, on a Tuesday evening after work, decided as a contact's: let
+    /// through (a stranger's would wait), said in the log and in the tab's
+    /// why as someone Sioul could not tell, never named.
+    #[test]
+    fn a_bare_name_is_decided_as_a_contact_s_and_said_so() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let _ = std::fs::remove_file(Choices::default_path());
+        // Work on Tuesdays from 09:00 to 17:00, on this test's thread alone: 20:37 is leisure.
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[window]]\nday = \"tuesday\"\nstart = \"09:00\"\nend = \"17:00\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        const SIGNAL: &str = r#"{"key":"0|org.thoughtcrime.securesms|3|null|10300","package":"org.thoughtcrime.securesms","app":"Signal","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa","shortcut":"7","is_conversation":true,"messages":[{"sender":{"name":"Noa","key":"7"},"text":"Tu dors ?"}]}"#;
+        let evening: Zoned = "2026-10-06T20:37:00+02:00[Europe/Paris]".parse().unwrap();
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(SIGNAL, &evening)).unwrap();
+        assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("allowed")), "{decided}");
+        assert_eq!(decided["line"], "Notes: passed: messages 1; why: sender unknown (judged as a contact).", "{decided}");
+        assert_eq!(Ledger::load(&Ledger::default_path()).apps["org.thoughtcrime.securesms"].why, UNKNOWN);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(Ledger::default_path());
+        crate::everywhere::files_cleared();
+    }
+
     /// A text from a root ARCEP keeps for machines is an automaton's, while
     /// the call screening sends automated callers to voicemail: 01 63, a
     /// root for machines that ARCEP had attributed to no operator yet (so the
@@ -1670,9 +1773,9 @@ mod tests {
     fn a_machine_s_text_is_an_automaton_s() {
         let now: Zoned = "2026-10-20T10:00:00+02:00[Europe/Paris]".parse().unwrap();
         let config: Config = toml::from_str("[contacts]\nregion = \"FR\"\n").unwrap();
-        let machine = Sender::Known { numbers: vec!["01 63 12 34 56".into()], emails: Vec::new(), contact: false };
+        let machine = Sender::Known { numbers: vec!["01 63 12 34 56".into()], emails: Vec::new(), contact: false, asked: false };
         assert!(machine_number(&machine, &config, &now));
-        assert!(!machine_number(&Sender::Known { numbers: vec!["01 99 00 12 34".into()], emails: Vec::new(), contact: false }, &config, &now));
+        assert!(!machine_number(&Sender::Known { numbers: vec!["01 99 00 12 34".into()], emails: Vec::new(), contact: false, asked: false }, &config, &now));
         assert!(!machine_number(&Sender::Named { name: "AMELI".into(), book: true }, &config, &now));
         let as_unknown: Config = toml::from_str("[contacts]\nregion = \"FR\"\n[screening]\nautomated = \"unknown\"\n").unwrap();
         assert!(!machine_number(&machine, &as_unknown, &now), "set as any number nobody knows");

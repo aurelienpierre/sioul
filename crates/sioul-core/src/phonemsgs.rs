@@ -488,7 +488,8 @@ pub fn lines_of(n: &Notice) -> Vec<Line> {
             let kind = if sms { "text" } else if talk.via == Channel::Mail { "mail" } else { "chat" };
             // A text from a sender named in letters that no address book knows: a service's.
             let service = sms && n.who.is_none() && matches!(talk.sender, Sender::Named { .. });
-            let who = if service { "automaton".to_string() } else { n.who.unwrap_or(Who::Stranger).id().to_string() };
+            // Someone the phone could not tell: judged there as a contact (held apps phase 1, A1), said so here.
+            let who = if service { "automaton".to_string() } else { n.who.unwrap_or_else(|| appnotes::unidentified_as(talk.via)).id().to_string() };
             let (talk_key, title, group) = talk.conversation.as_ref().map_or((String::new(), String::new(), false), |c| (c.key.clone(), title_of(c), c.group));
             let line = Line { kind: kind.into(), talk: talk_key, title, group, circle: n.circle && n.who == Some(Who::Safe) && !service, who, always: n.listed && !group, ..base };
             messages_of(n, line, heard)
@@ -1112,6 +1113,19 @@ mod tests {
         assert_eq!(carry_into(&own, &more, NOW).unwrap(), 1, "only the new message");
         assert_eq!(read_file(&own).len(), 3);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Held apps phase 1, A1: a chat whose sender the phone could not tell (a
+    /// bare name, who none) is written as the phone judged it, a contact's,
+    /// never a stranger's; a text named only stays a service's.
+    #[test]
+    fn a_sender_the_phone_could_not_tell_is_written_as_a_contact_s() {
+        let (mut chat, extra) = texted(&person("Noa", ""), &["Salut"]);
+        (chat.package, chat.key, chat.sms_app) = ("org.thoughtcrime.securesms".into(), "0|org.thoughtcrime.securesms|3|null|10300".into(), false);
+        let lines = decided(&chat, &extra, None, now_through(), Send::Words);
+        assert_eq!(lines.iter().map(|l| (l.kind.as_str(), l.who.as_str())).collect::<Vec<_>>(), [("chat", "neutral")]);
+        let (text, extra) = texted(&person("AMELI", ""), &["Votre attestation est disponible."]);
+        assert_eq!(decided(&text, &extra, None, now_through(), Send::Words)[0].who, "automaton");
     }
 
     /// Held until 13:00, then let through at 11:00 (the pause ended, the

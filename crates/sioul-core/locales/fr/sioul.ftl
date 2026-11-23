@@ -6829,7 +6829,7 @@ appnotes-through-never = Jamais
 appnotes-priority-open = La rendre prioritaire dans Android
 appnotes-priority-on = Prioritaire dans Android : elle sonne malgré les modes de Sioul.
 appnotes-priority-warn = Prioritaire dans Android, mais pas Passe toujours ici : Android la fait sonner malgré les modes de Sioul, avant que Sioul puisse la retenir. Réglez-la sur Passe toujours, ou retirez-lui la priorité dans Android.
-appnotes-group = Groupe : comme des inconnus, sauf si vous choisissez.
+appnotes-group = Groupe : sur la ligne Conversations de groupe, qui que ce soit qui y écrive, sauf si vous en choisissez autrement.
 appnotes-sites = Sites, depuis votre navigateur
 appnotes-site-gathered = Regroupées
 appnotes-site-at-once = Tout de suite
@@ -7541,7 +7541,7 @@ attention-person-neutral-help = Toute personne de vos carnets d’adresses, ou l
 attention-person-restricted = Restreints
 attention-person-restricted-help = Des personnes connues, dont vous n’avez de nouvelles qu’aux moments choisis.
 attention-person-stranger = Tous les autres
-attention-person-stranger-help = Dans aucun de vos carnets d’adresses et sur aucune liste ; et les courriels que rien ne prouve être les leurs.
+attention-person-stranger-help = Dans aucun de vos carnets d’adresses et sur aucune liste ; et les courriels que rien ne prouve être les leurs. Sur un téléphone, un message dont Sioul ne peut savoir qui l’a écrit compte comme ceux de Vos contacts.
 attention-person-hidden = Numéros masqués
 attention-person-hidden-help = Les appels qui ne montrent aucun numéro : quelqu’un qui le cache, le standard d’un hôpital.
 attention-person-groups = Conversations de groupe
@@ -8602,6 +8602,8 @@ ui-show-all-mail-help = Toutes les voies et toutes les adresses, à toute heure,
 calls-context-reachable = pendant que vous étiez joignable
 calls-context-busy = pendant que vous étiez indisponible
 appnotes-why-released = Retenu avant que vous demandiez à votre téléphone de laisser passer ce qu’il retenait : laissé passer.
+appnotes-why-unknown = Sioul n’a pas pu savoir qui a écrit : laissée passer comme le serait le message d’un contact.
+appnotes-why-unknown-held = Sioul n’a pas pu savoir qui a écrit : retenue jusqu’à { $when }, comme le serait le message d’un contact.
 
 # Le bouton et la carte « Ce qui vous joint maintenant » (partie 5 de « Ce qui vous joint » ; 3.5 et 3.6 de la proposition).
 reach-button-name = Ce qui vous joint maintenant : { $state }

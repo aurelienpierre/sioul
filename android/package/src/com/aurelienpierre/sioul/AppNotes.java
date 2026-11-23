@@ -1543,6 +1543,9 @@ public final class AppNotes extends NotificationListenerService
         out.put("redacted", redacted(title, body, app));
         out.put("sms_app", sbn.getPackageName().equals(smsApp()));
         boolean contacts = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED;
+        // Whether the phone's address book was asked of who wrote (Rust's `Posted::contacts`): only then is a
+        // number or an address it finds nowhere a stranger's; else nobody can tell, judged as a contact.
+        out.put("contacts", contacts);
         out.put("messages", messages(extras, contacts));
         Object user = extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON);
         if (user instanceof Person) {
@@ -1635,10 +1638,13 @@ public final class AppNotes extends NotificationListenerService
 
     /**
      * A person, with what the phone's address book says of them when Sioul
-     * may read it: a contact's lookup address resolved to its numbers and
-     * addresses; a name alone, the numbers of the one contact of that name
-     * (`by_name`: counted only for apps that name people as the address book
-     * does, Rust decides).
+     * may read it: a contact's lookup address, a number (tel:) or an address
+     * (mailto:) resolved to the contact's numbers and addresses, so that Rust
+     * counts them as someone you know; a name alone, the numbers of the one
+     * contact of that name (`by_name`: counted only for apps that name people
+     * as the address book does, Rust decides). Found nowhere, nothing is
+     * added: Rust then takes the number or the address for a stranger's,
+     * since it knows the address book was asked ("contacts").
      */
     private JSONObject person(CharSequence name, String key, String uri, boolean bot, boolean contacts) throws JSONException
     {
@@ -1650,19 +1656,112 @@ public final class AppNotes extends NotificationListenerService
         out.put("bot", bot);
         if (!contacts)
             return out;
-        long id = -1;
-        String by = "numbers";
-        if (uri != null && uri.startsWith("content://com.android.contacts/")) {
-            id = contactOfLookup(uri);
-        } else if ((uri == null || uri.isEmpty()) && !named.trim().isEmpty()) {
-            id = contactOfName(named.trim());
-            by = "by_name";
+        String[] asked = lookup(uri, named);
+        if (asked == null)
+            return out;
+        long id;
+        switch (asked[0]) {
+            case LOOKUP_LINK:
+                id = contactOfLookup(asked[1]);
+                break;
+            case LOOKUP_NUMBER:
+                id = contactOfNumber(asked[1]);
+                break;
+            case LOOKUP_EMAIL:
+                id = contactOfEmail(asked[1]);
+                break;
+            default:
+                id = contactOfName(asked[1]);
+                break;
         }
         if (id < 0)
             return out;
-        out.put(by, data(id, ContactsContract.CommonDataKinds.Phone.CONTENT_URI, ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.NUMBER));
-        out.put("by_name".equals(by) ? "emails_by_name" : "emails", data(id, ContactsContract.CommonDataKinds.Email.CONTENT_URI, ContactsContract.CommonDataKinds.Email.CONTACT_ID, ContactsContract.CommonDataKinds.Email.ADDRESS));
+        boolean byName = LOOKUP_NAME.equals(asked[0]);
+        out.put(byName ? "by_name" : "numbers", data(id, ContactsContract.CommonDataKinds.Phone.CONTENT_URI, ContactsContract.CommonDataKinds.Phone.CONTACT_ID, ContactsContract.CommonDataKinds.Phone.NUMBER));
+        out.put(byName ? "emails_by_name" : "emails", data(id, ContactsContract.CommonDataKinds.Email.CONTENT_URI, ContactsContract.CommonDataKinds.Email.CONTACT_ID, ContactsContract.CommonDataKinds.Email.ADDRESS));
         return out;
+    }
+
+    /** {@link #lookup}'s kinds: a contact's lookup address, a number, an address, a name alone. */
+    static final String LOOKUP_LINK = "link";
+    static final String LOOKUP_NUMBER = "number";
+    static final String LOOKUP_EMAIL = "email";
+    static final String LOOKUP_NAME = "name";
+
+    /**
+     * What the phone's address book is asked of a person, from what their app
+     * gives ({@link #person}): {@link #LOOKUP_LINK} and a contact's lookup
+     * address; {@link #LOOKUP_NUMBER} and the number of a tel: address,
+     * decoded ("tel:%2B33…" is "+33…"); {@link #LOOKUP_EMAIL} and the address
+     * of a mailto: one, decoded, in lower case, its query left aside;
+     * {@link #LOOKUP_NAME} and the name, when the app gives a name alone;
+     * null when nothing can be asked. Pure: the JVM checks hold it (ModeCheck).
+     *
+     * @param uri the person's address as the app gives it, or null
+     * @param name the person's name as the app gives it, or null
+     * @return the kind and what is asked, or null
+     */
+    static String[] lookup(String uri, String name)
+    {
+        String address = uri == null ? "" : uri.trim();
+        String named = name == null ? "" : name.trim();
+        if (address.startsWith("content://com.android.contacts/"))
+            return new String[] { LOOKUP_LINK, address };
+        if (address.startsWith("tel:")) {
+            String number = decoded(address.substring(4)).trim();
+            return number.isEmpty() ? null : new String[] { LOOKUP_NUMBER, number };
+        }
+        if (address.startsWith("mailto:")) {
+            String email = address.substring(7);
+            int query = email.indexOf('?');
+            email = decoded(query < 0 ? email : email.substring(0, query)).trim().toLowerCase(Locale.ROOT);
+            return email.isEmpty() ? null : new String[] { LOOKUP_EMAIL, email };
+        }
+        if (address.isEmpty() && !named.isEmpty())
+            return new String[] { LOOKUP_NAME, named };
+        return null;
+    }
+
+    /** "%2B262639980101" is "+262639980101": what an address keeps encoded, as UTF-8; a broken escape kept as it is. */
+    static String decoded(String text)
+    {
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(bytes.length);
+        for (int i = 0; i < bytes.length; i++) {
+            if (bytes[i] == '%' && i + 2 < bytes.length) {
+                int high = Character.digit(bytes[i + 1], 16);
+                int low = Character.digit(bytes[i + 2], 16);
+                if (high >= 0 && low >= 0) {
+                    out.write(high * 16 + low);
+                    i += 2;
+                    continue;
+                }
+            }
+            out.write(bytes[i]);
+        }
+        return new String(out.toByteArray(), StandardCharsets.UTF_8);
+    }
+
+    /** The contact holding this number, as the phone's own lookup matches numbers (PhoneLookup); -1 when none. */
+    private long contactOfNumber(String number)
+    {
+        Uri asked = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number));
+        try (Cursor c = getContentResolver().query(asked, new String[] { ContactsContract.PhoneLookup._ID }, null, null, null)) {
+            return c != null && c.moveToFirst() ? c.getLong(0) : -1;
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /** The contact holding this address (the address book's lookup of addresses); -1 when none. */
+    private long contactOfEmail(String email)
+    {
+        Uri asked = Uri.withAppendedPath(ContactsContract.CommonDataKinds.Email.CONTENT_LOOKUP_URI, Uri.encode(email));
+        try (Cursor c = getContentResolver().query(asked, new String[] { ContactsContract.CommonDataKinds.Email.CONTACT_ID }, null, null, null)) {
+            return c != null && c.moveToFirst() ? c.getLong(0) : -1;
+        } catch (RuntimeException e) {
+            return -1;
+        }
     }
 
     /** The contact a lookup address names; -1 when none. */

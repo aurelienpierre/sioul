@@ -6771,7 +6771,7 @@ appnotes-through-never = Never
 appnotes-priority-open = Mark it Priority in Android
 appnotes-priority-on = Priority in Android: it rings through Sioul's modes.
 appnotes-priority-warn = Priority in Android, yet not Always through here: Android rings it through Sioul's modes before Sioul can hold it. Set it to Always through, or take Priority off in Android.
-appnotes-group = Group: as people you do not know, unless you choose.
+appnotes-group = Group: on the row Group conversations, whoever writes in it, unless you choose otherwise for it.
 appnotes-sites = Sites, from your browser
 appnotes-site-gathered = Gathered
 appnotes-site-at-once = At once
@@ -7483,7 +7483,7 @@ attention-person-neutral-help = Everyone in your address books, or let in from t
 attention-person-restricted = Restricted
 attention-person-restricted-help = Known, heard from only at the times you choose.
 attention-person-stranger = Everyone else
-attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs.
+attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs. On a phone, a message whose sender Sioul cannot tell counts as Your contacts'.
 attention-person-hidden = Hidden numbers
 attention-person-hidden-help = Calls that show no number: someone who hides it, a hospital's switchboard.
 attention-person-groups = Group conversations
@@ -8537,6 +8537,8 @@ ui-show-all-mail-help = Every lane and every address, at any hour, on this devic
 calls-context-reachable = while you were reachable
 calls-context-busy = while you were busy
 appnotes-why-released = Held before you asked your phone to let what it held through: let through.
+appnotes-why-unknown = Sioul could not tell who wrote: let through as a contact's message would be.
+appnotes-why-unknown-held = Sioul could not tell who wrote: held until { $when }, as a contact's message would be.
 
 # The button and the card "What reaches you now" (part 5 of "What reaches you"; the proposal's 3.5 and 3.6).
 reach-button-name = What reaches you now: { $state }
