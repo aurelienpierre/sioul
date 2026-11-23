@@ -1031,9 +1031,17 @@ pub struct ExtensionSettings {
     /// is passed over, never the configuration refused.
     #[serde(default, deserialize_with = "extension_busy")]
     pub busy: std::collections::BTreeMap<String, bool>,
+    /// The address book each set of contacts an extension brings goes into
+    /// (`[extensions.addressbooks]`, `"<extension>/<set>" = "<account>/<id>"`):
+    /// one of the person's own that can be written, chosen in Settings ▸
+    /// Extensions as an agenda's calendar is; an ordinary shared setting, so
+    /// that every device that runs the extension writes into the same one.
+    /// Read leniently, as the calendars are.
+    #[serde(default, deserialize_with = "extension_calendars")]
+    pub addressbooks: std::collections::BTreeMap<String, String>,
 }
 
-/// `[extensions.calendars]`, its texts alone.
+/// `[extensions.calendars]` or `[extensions.addressbooks]`, its texts alone.
 fn extension_calendars<'de, D: serde::Deserializer<'de>>(d: D) -> Result<std::collections::BTreeMap<String, String>, D::Error> {
     let found: toml::Value = serde::Deserialize::deserialize(d)?;
     Ok(found.as_table().map(|t| t.iter().filter_map(|(k, v)| Some((k.clone(), v.as_str()?.trim().to_string()))).filter(|(_, v)| !v.is_empty()).collect()).unwrap_or_default())
@@ -1074,13 +1082,38 @@ pub fn set_extension_busy(path: &Path, extension: &str, agenda: &str, counts: bo
     })
 }
 
-/// Everything chosen for an extension's agendas taken out of the shared
-/// settings (Remove, its lessons taken out): both the calendars and the busy
-/// choices. Another device that still runs it then writes nothing until a
-/// calendar is chosen again.
+/// The address book an extension's set of contacts goes into (`place`,
+/// "account/id"), written in the shared settings (`[extensions.addressbooks]`,
+/// keyed as a calendar is); "" takes it out. Under the file's lock.
+pub fn set_extension_book(path: &Path, extension: &str, set: &str, place: &str) -> Result<(), String> {
+    edit_extension_map(path, "addressbooks", |books| {
+        let key = extension_calendar_key(extension, set);
+        if place.trim().is_empty() {
+            books.remove(&key);
+        } else {
+            books.insert(&key, value(place.trim()));
+        }
+    })
+}
+
+/// Everything chosen for an extension taken out of the shared settings
+/// (Remove, its lessons taken out): its calendars, its busy choices and its
+/// address books. Another device that still runs it then writes nothing
+/// until a calendar or an address book is chosen again.
 pub fn forget_extension(path: &Path, extension: &str) -> Result<(), String> {
+    forget_extension_maps(path, extension, &["calendars", "busy", "addressbooks"])
+}
+
+/// The address books chosen for an extension's sets of contacts taken out of
+/// the shared settings alone (Remove, whether or not its lessons stay: its
+/// contacts always stay where they are).
+pub fn forget_extension_books(path: &Path, extension: &str) -> Result<(), String> {
+    forget_extension_maps(path, extension, &["addressbooks"])
+}
+
+fn forget_extension_maps(path: &Path, extension: &str, maps: &[&str]) -> Result<(), String> {
     let prefix = format!("{extension}/");
-    for which in ["calendars", "busy"] {
+    for which in maps {
         edit_extension_map(path, which, |map| {
             let gone: Vec<String> = map.iter().map(|(k, _)| k.to_string()).filter(|k| k.starts_with(&prefix)).collect();
             for key in gone {
@@ -1091,8 +1124,8 @@ pub fn forget_extension(path: &Path, extension: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// One sub-table of `[extensions]` (`calendars` or `busy`) changed in place,
-/// under the file's lock; an empty one taken out.
+/// One sub-table of `[extensions]` (`calendars`, `busy` or `addressbooks`)
+/// changed in place, under the file's lock; an empty one taken out.
 fn edit_extension_map(path: &Path, which: &str, change: impl FnOnce(&mut Table)) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
         let mut doc = read_document(path)?;
@@ -3296,6 +3329,46 @@ mod tests {
         assert!(settings.busy.get(&extension_calendar_key("skolengo", "alex")).is_none(), "its busy choice gone");
         assert!(settings.calendars.get(&extension_calendar_key("skolengo", "alex")).is_none(), "its calendar gone");
         assert_eq!(settings.busy.get(&extension_calendar_key("planity", "me")), Some(&false), "the other extension's choice stays");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A set of contacts' address book (`[extensions.addressbooks]`)
+    /// round-trips beside the calendars; "" takes it out; forgetting an
+    /// extension clears its three maps, the address books alone when only
+    /// they go, another extension's choices left.
+    #[test]
+    fn an_extension_s_address_book_round_trips_and_is_forgotten() {
+        let path = std::env::temp_dir().join(format!("sioul-extension-books-{}.toml", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(&path, "# Kept as written.\nlanguage = \"fr\"\n").unwrap();
+        let read = || toml::from_str::<Config>(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap().extensions;
+        set_extension_book(&path, "bookings", "clients", " cloud/clients ").unwrap();
+        set_extension_book(&path, "bookings", "staff", "local/staff").unwrap();
+        set_extension_book(&path, "other", "clients", "cloud/other").unwrap();
+        set_extension_calendar(&path, "bookings", "me", "cloud/work").unwrap();
+        set_extension_busy(&path, "bookings", "me", true).unwrap();
+        let settings = read();
+        assert_eq!(settings.addressbooks.get(&extension_calendar_key("bookings", "clients")).map(String::as_str), Some("cloud/clients"), "trimmed");
+        assert_eq!(settings.addressbooks.len(), 3);
+        assert!(std::fs::read_to_string(&path).unwrap().starts_with("# Kept as written.\n"), "the file's own lines kept");
+        set_extension_book(&path, "bookings", "staff", "").unwrap();
+        assert!(read().addressbooks.get(&extension_calendar_key("bookings", "staff")).is_none(), "\"\" takes it out");
+        // A value that is no text is passed over, never the configuration refused.
+        let lenient: Config = toml::from_str("[extensions.addressbooks]\n\"a/b\" = 3\n\"a/c\" = \"cloud/c\"\n").unwrap();
+        assert_eq!(lenient.extensions.addressbooks.len(), 1);
+        // Remove with its lessons kept: the address books alone go.
+        forget_extension_books(&path, "bookings").unwrap();
+        let settings = read();
+        assert!(settings.addressbooks.get(&extension_calendar_key("bookings", "clients")).is_none());
+        assert_eq!(settings.calendars.get(&extension_calendar_key("bookings", "me")).map(String::as_str), Some("cloud/work"), "its calendar stays");
+        assert_eq!(settings.busy.get(&extension_calendar_key("bookings", "me")), Some(&true));
+        // Remove with its lessons taken out: all three maps.
+        set_extension_book(&path, "bookings", "clients", "cloud/clients").unwrap();
+        forget_extension(&path, "bookings").unwrap();
+        let settings = read();
+        assert!(settings.addressbooks.get(&extension_calendar_key("bookings", "clients")).is_none());
+        assert!(settings.calendars.is_empty() && settings.busy.is_empty());
+        assert_eq!(settings.addressbooks.get(&extension_calendar_key("other", "clients")).map(String::as_str), Some("cloud/other"), "the other extension's book stays");
         let _ = std::fs::remove_file(&path);
     }
 
