@@ -1039,11 +1039,17 @@ pub struct New {
     /// The id to keep it under (an official calendar's), else one made from its name.
     #[serde(default)]
     pub id: String,
+    /// Its events are your own busy time, ticked in the form as it is added
+    /// (`Subscription::engagements`): a calendar of events alone; unsaid, no.
+    #[serde(default)]
+    pub engagements: Option<bool>,
 }
 
 /// A subscription written into the settings (`[agenda.subscriptions."<id>"]`),
 /// its address checked first; its id, made from its name (or its domain),
-/// one not taken. Fetched by each device by itself.
+/// one not taken; a calendar of events ticked as your own busy time written
+/// so, as its line writes it (`engagements = true`), never one of holidays.
+/// Fetched by each device by itself.
 pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Translator) -> Result<String, String> {
     let url = address(&new.url).map_err(|p| p.said(tr))?;
     // The same address twice would show every event twice.
@@ -1075,6 +1081,8 @@ pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Tran
             if let Some(after) = after_class {
                 entry.insert("after_class", toml_edit::value(after));
             }
+        } else if new.engagements == Some(true) {
+            entry.insert("engagements", toml_edit::value(true));
         }
         table.insert(&id, toml_edit::Item::Table(entry));
         Ok(())

@@ -399,6 +399,35 @@ fn a_subscription_is_written_changed_and_stopped() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The form's tick (23 November 2026): a calendar of events added as your
+/// own busy time is written so, as its line writes it; unticked, nothing is
+/// written (unsaid, none of your time); one of holidays never is, whatever
+/// the form sent: it acts through your days off alone.
+#[test]
+fn a_subscription_from_the_form_is_busy_time_only_when_ticked() {
+    crate::config::stand_ins_only();
+    let dir = std::env::temp_dir().join(format!("sioul-subscribed-busy-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "language = \"en\"\n").unwrap();
+    let tr = crate::i18n::Translator::new("en");
+    let made = |url: &str, holidays: &str, engagements: Option<bool>| {
+        let config = Config::load(&path).unwrap();
+        subscribe(&path, &config, &New { url: url.into(), holidays: holidays.into(), engagements, ..New::default() }, &tr).unwrap()
+    };
+    let mine = made("https://calendar.example.org/appointments.ics", "", Some(true));
+    let classes = made("https://calendar.example.org/classes.ics", "", Some(false));
+    let unsaid = made("https://calendar.example.org/club.ics", "", None);
+    let holidays = made("https://calendar.example.org/holidays.ics", "public", Some(true));
+    let config = Config::load(&path).unwrap();
+    let said = |id: &str| config.agenda.subscriptions.get(id).unwrap().engagements;
+    assert_eq!((said(&mine), takes_no_time(&config, &mine)), (Some(true), false), "your own busy time, by your word");
+    assert_eq!((said(&classes), takes_no_time(&config, &classes)), (None, true), "unticked: nothing written");
+    assert_eq!((said(&unsaid), takes_no_time(&config, &unsaid)), (None, true));
+    assert_eq!((said(&holidays), takes_no_time(&config, &holidays)), (None, true), "holidays: never");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The review's F7: a calendar whose own lines are heavy does not weigh
 /// that much once more per event: each event keeps what it needs (its time
 /// zones, the format's lines), never the calendar's whole head.

@@ -12,7 +12,9 @@
 // whose it is (a child's timetable goes to that child), what it is for, and
 // whether it holds holidays: public ones count as your days off unless you
 // say not, school ones do not unless you say so; the Ministry's school
-// holidays begin after class. The address is a setting like any other,
+// holidays begin after class. A calendar of events may be said your own busy
+// time as it is added, off unless ticked, as its line says it afterwards
+// (`engagements`, F41); a calendar of holidays never shows it. The address is a setting like any other,
 // typed once and carried to your other devices; each device reads it by
 // itself (`subscriptions::subscribe`).
 
@@ -74,6 +76,7 @@ ColumnLayout {
         person.text = ""
         daysOff.checked = true
         afterClass.checked = false
+        busy.checked = false
         address.forceActiveFocus()
     }
 
@@ -106,6 +109,7 @@ ColumnLayout {
             holidays: holidays,
             days_off: holidays === "" ? null : daysOff.checked,
             after_class: holidays === "school" ? afterClass.checked : null,
+            engagements: holidays === "" ? busy.checked : null,
             id: form.official,
             whose: form.whoseChoices[whose.currentIndex],
             person: person.text.trim(),
@@ -301,6 +305,15 @@ ColumnLayout {
         visible: kind.currentIndex > 0
         Layout.fillWidth: true
         text: form.sioul.text("subscribe-days-off")
+    }
+    // Its events your own busy time: a calendar of events alone, off unless ticked (F41).
+    WrapCheckBox {
+        id: busy
+
+        objectName: "subscribeBusy"
+        visible: kind.currentIndex === 0
+        Layout.fillWidth: true
+        text: form.sioul.text("subscribe-engagements")
     }
     WrapCheckBox {
         id: afterClass

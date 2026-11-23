@@ -160,6 +160,7 @@ Item {
             compare(root.one(form, "subscribeName").text, "School holidays · Zone A")
             compare(root.one(form, "subscribeKind").currentIndex, 2, "school holidays")
             verify(root.one(form, "subscribeAfterClass").visible && root.one(form, "subscribeAfterClass").checked, "the Ministry's begin after class")
+            verify(!root.one(form, "subscribeBusy").visible, "holidays are never your busy time")
             verify(!root.one(form, "subscribeDaysOff").checked, "school holidays are no days off unless said")
             root.one(form, "subscribeWhose").currentIndex = 1
             root.one(form, "subscribePerson").text = "Léa"
@@ -170,6 +171,7 @@ Item {
             compare(sent.holidays, "school")
             compare(sent.after_class, true)
             compare(sent.days_off, false)
+            compare(sent.engagements, null, "holidays: never said busy")
             compare(sent.whose, "child", "a child's timetable goes to that child")
             compare(sent.person, "Léa")
             verify(!form.visible, "done: the form folds away")
@@ -262,6 +264,52 @@ Item {
             countries.activated(1)
             compare(root.one(form, "subscribePublic").count, 3)
             compare(root.one(form, "subscribeSchool").count, 2)
+            compare(root.fits(setup).length, 0, "nothing wider than the panel")
+        }
+
+        function test_a_calendar_of_events_may_be_your_busy_time_data() {
+            return [{ tag: "computer", width: 1344 }, { tag: "phone", width: 412 }]
+        }
+
+        // The review's F41, in the form: a calendar of events may be said your own busy time as it
+        // is added, off unless ticked, and sent; one of holidays never shows the tick.
+        function test_a_calendar_of_events_may_be_your_busy_time(data) {
+            root.width = data.width
+            const setup = createTemporaryObject(setupComponent, root)
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            const form = root.one(setup, "subscribeForm")
+            const busy = root.one(form, "subscribeBusy")
+            verify(busy.visible, "a calendar of events, as the form opens")
+            verify(!busy.checked, "off unless ticked")
+            compare(busy.text, "subscribe-engagements")
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/appointments.ics"
+            mouseClick(busy)
+            verify(busy.checked)
+            // Said to hold holidays: the tick goes, and nothing busy is sent.
+            const kind = root.one(form, "subscribeKind")
+            kind.currentIndex = 1
+            kind.activated(1)
+            verify(!busy.visible)
+            mouseClick(root.one(form, "subscribeMake"))
+            compare(mock.calls[mock.calls.length - 1][1].engagements, null)
+            // Opened again, a calendar of events ticked: sent so.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            verify(busy.visible && !busy.checked, "opened again: off")
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/appointments.ics"
+            // Laid out again before the click lands on it.
+            waitForItemPolished(setup)
+            waitForItemPolished(form)
+            mouseClick(busy)
+            verify(busy.checked)
+            mouseClick(root.one(form, "subscribeMake"))
+            const sent = mock.calls[mock.calls.length - 1][1]
+            compare(sent.holidays, "")
+            compare(sent.engagements, true)
+            // Unticked: sent as not busy.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/classes.ics"
+            mouseClick(root.one(form, "subscribeMake"))
+            compare(mock.calls[mock.calls.length - 1][1].engagements, false)
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
 
