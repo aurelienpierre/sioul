@@ -10,8 +10,11 @@
 //! whole, with the period it says it read and the days it could not: its
 //! events are written by the agendas' door alone (`door`), each with the
 //! time zones it needs, through the writer of the subscribed calendars and
-//! the agenda's door for events. Anything that does not read as the
-//! interface says is nonsense: the call ends, nothing is taken in.
+//! the agenda's door for events. Its sets of contacts are read field by
+//! field, each counted and each text cleaned (`contact_sets`): no field
+//! carries a line of a card, which the contacts' door writes itself
+//! (`cards`). Anything that does not read as the interface says is
+//! nonsense: the call ends, nothing is taken in.
 
 use crate::agenda;
 use calcard::icalendar::{ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty, ICalendarValue};
@@ -90,10 +93,44 @@ pub struct AgendaReply {
     pub busy: bool,
 }
 
+/// A person a set of contacts holds, read and cleaned: every text without
+/// control characters nor marks that turn a line around, on one line but the
+/// note; "" (or no value) where the extension gave none.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Person {
+    /// The extension's own stable id for that person: never shown, never
+    /// written as it is (the door writes a hash of it: `extensions::person_mark`).
+    pub id: String,
+    /// The name, as the service writes it ("Marie Exemple", "EXEMPLE Marie").
+    pub name: String,
+    /// The given and family names, when the service keeps them apart: never
+    /// guessed from `name`.
+    pub given: String,
+    pub family: String,
+    pub phones: Vec<String>,
+    /// E-mail addresses.
+    pub emails: Vec<String>,
+    pub org: String,
+    /// The one text that may hold several lines.
+    pub note: String,
+}
+
+/// A set of contacts handed back (a business's clients), its people read:
+/// written by the contacts' door alone (`cards`), into the address book the
+/// person chose for it. Interface stays version 1 (additive).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ContactSet {
+    /// As an agenda's: lower-case letters, digits and `-`, 48 at most, stable.
+    pub id: String,
+    pub name: String,
+    pub people: Vec<Person>,
+}
+
 /// The reply to a `refresh` call.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RefreshReply {
     pub agendas: Vec<AgendaReply>,
+    pub contacts: Vec<ContactSet>,
     pub problem: Option<Problem>,
 }
 
@@ -110,6 +147,16 @@ pub const MOST_LINES: usize = 250_000;
 pub const MOST_ZONE_BYTES: usize = 64 << 10;
 const MOST_CHOICES: usize = 200;
 const MOST_PERIODS: usize = 400;
+/// The most sets of contacts a reply names.
+pub const MOST_SETS: usize = 8;
+/// The most people a set of contacts holds.
+pub const MOST_PEOPLE: usize = 20_000;
+/// The most characters a person's text holds once cleaned (its id, its
+/// names, a number, an address, its organisation), and its note.
+pub const MOST_TEXT: usize = 256;
+pub const MOST_NOTE: usize = 2_000;
+/// The most numbers, and the most e-mail addresses, a person holds.
+pub const MOST_VALUES: usize = 8;
 /// The longest period an agenda says it read: a little more than a year.
 const MOST_READ: i64 = 400 * 86_400;
 
@@ -192,7 +239,7 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
     }
     for agenda in listed {
         let id = agenda["id"].as_str().unwrap_or("");
-        if id.is_empty() || id.len() > 48 || id.starts_with('-') || !id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
+        if !set_id(id) {
             return nonsense("an agenda's id that is not one");
         }
         if agendas.iter().any(|a| a.id == id) {
@@ -233,7 +280,135 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         let busy = agenda["busy"].as_bool().unwrap_or(false);
         agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, read, unread, busy });
     }
-    Ok(RefreshReply { agendas, problem })
+    let contacts = contact_sets(reply.get("contacts"))?;
+    Ok(RefreshReply { agendas, contacts, problem })
+}
+
+/// Whether `id` may name an agenda or a set of contacts: lower-case letters,
+/// digits and `-`, 48 at most, not beginning with `-`.
+fn set_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 48 && !id.starts_with('-') && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// A text of a person: "" when absent, null or empty once cleaned; nonsense
+/// when it is no text, or longer than `most` characters once cleaned (control
+/// characters and marks that turn a line around taken out, a new line kept
+/// in a note alone).
+fn person_text(value: Option<&Value>, most: usize, lines: bool, what: &str) -> Result<String, Nonsense> {
+    match value {
+        None | Some(Value::Null) => Ok(String::new()),
+        Some(Value::String(text)) => {
+            let kept = plain_value(text, lines);
+            let kept = kept.trim();
+            if kept.chars().count() > most {
+                return nonsense(format!("{what} longer than it may be"));
+            }
+            Ok(kept.to_string())
+        }
+        Some(_) => nonsense(format!("{what} that is not a text")),
+    }
+}
+
+/// A person's numbers or addresses: counted before each is read
+/// (`MOST_VALUES`), each a text of one line (`MOST_TEXT`), an empty one
+/// passed over.
+fn person_values(value: Option<&Value>, what: &str) -> Result<Vec<String>, Nonsense> {
+    let listed: &[Value] = match value {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(all)) => all,
+        Some(_) => return nonsense(format!("{what} that are not a list")),
+    };
+    if listed.len() > MOST_VALUES {
+        return nonsense(format!("more {what} than a person holds"));
+    }
+    let mut out = Vec::new();
+    for one in listed {
+        let text = person_text(Some(one), MOST_TEXT, false, what)?;
+        if !text.is_empty() {
+            out.push(text);
+        }
+    }
+    Ok(out)
+}
+
+/// A refresh's sets of contacts (docs/extensions.md, "What it hands back:
+/// contacts"): the sets counted on the reply, the people of each before any
+/// is read, every text of each person cleaned and bounded. A set or a person
+/// handed twice, a person without an id or a name, is nonsense.
+fn contact_sets(value: Option<&Value>) -> Result<Vec<ContactSet>, Nonsense> {
+    let listed: &[Value] = match value {
+        None | Some(Value::Null) => return Ok(Vec::new()),
+        Some(Value::Array(all)) => all,
+        Some(_) => return nonsense("contacts that are not a list"),
+    };
+    if listed.len() > MOST_SETS {
+        return nonsense("more sets of contacts than a reply holds");
+    }
+    let mut sets: Vec<ContactSet> = Vec::new();
+    for set in listed {
+        let id = set["id"].as_str().unwrap_or("");
+        if !set_id(id) {
+            return nonsense("a set of contacts whose id is not one");
+        }
+        if sets.iter().any(|s| s.id == id) {
+            return nonsense("a set of contacts handed twice");
+        }
+        let name = person_text(set.get("name"), MOST_TEXT, false, "a set's name")?;
+        if name.is_empty() {
+            return nonsense("a set of contacts without a name");
+        }
+        let people: &[Value] = match set.get("people") {
+            None | Some(Value::Null) => &[],
+            Some(Value::Array(all)) => all,
+            Some(_) => return nonsense("people that are not a list"),
+        };
+        // Counted before any is read.
+        if people.len() > MOST_PEOPLE {
+            return nonsense("more people than a set of contacts holds");
+        }
+        let mut read: Vec<Person> = Vec::with_capacity(people.len());
+        let mut ids = BTreeSet::new();
+        for person in people {
+            if !person.is_object() {
+                return nonsense("a person that is not one");
+            }
+            let id = person_text(person.get("id"), MOST_TEXT, false, "a person's id")?;
+            let name = person_text(person.get("name"), MOST_TEXT, false, "a person's name")?;
+            if id.is_empty() || name.is_empty() {
+                return nonsense("a person without an id or a name");
+            }
+            if !ids.insert(id.clone()) {
+                return nonsense("a person handed twice");
+            }
+            read.push(Person {
+                id,
+                name,
+                given: person_text(person.get("given"), MOST_TEXT, false, "a given name")?,
+                family: person_text(person.get("family"), MOST_TEXT, false, "a family name")?,
+                phones: person_values(person.get("phones"), "numbers")?,
+                emails: person_values(person.get("emails"), "addresses")?,
+                org: person_text(person.get("org"), MOST_TEXT, false, "an organisation")?,
+                note: person_text(person.get("note"), MOST_NOTE, true, "a note")?,
+            });
+        }
+        sets.push(ContactSet { id: id.to_string(), name, people: read });
+    }
+    Ok(sets)
+}
+
+/// Whether a refresh's reply hands back only the kinds of data its manifest
+/// says it brings (`Offer::brings`): agendas from an extension that brings
+/// none, or contacts from one that brings none, is nonsense, nothing of the
+/// reply taken in. An empty list is no data.
+pub fn check_brought(reply: &RefreshReply, brings: &[String]) -> Result<(), Nonsense> {
+    let brings = |kind: &str| brings.iter().any(|b| b == kind);
+    if !reply.agendas.is_empty() && !brings("agenda") {
+        return nonsense("agendas from an extension that does not bring them");
+    }
+    if !reply.contacts.is_empty() && !brings("contacts") {
+        return nonsense("contacts from an extension that does not bring them");
+    }
+    Ok(())
 }
 
 /// What an extension's event keeps (X3, X4): its identifier, start, end or
@@ -552,6 +727,115 @@ mod tests {
         assert!(refresh_reply(&reply.to_string()).is_err(), "a thousand agendas in one reply");
         let reply = serde_json::json!({ "agendas": (0..MOST_AGENDAS).map(one).collect::<Vec<_>>() });
         assert_eq!(refresh_reply(&reply.to_string()).unwrap().agendas.len(), MOST_AGENDAS);
+    }
+
+    /// A set of contacts as an extension hands it back.
+    fn contacts(people: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({ "contacts": [{ "id": "clients", "name": "Clients of the salon", "people": people }] })
+    }
+
+    /// A set of contacts read: every field, each text cleaned (no control
+    /// character nor mark that turns a line around, one line but the note),
+    /// what was not given empty, an empty number passed over.
+    #[test]
+    fn contacts_are_read_and_cleaned() {
+        let reply = contacts(serde_json::json!([
+            { "id": "c-1", "name": "Marie \u{202E}Exemple", "given": "Marie", "family": "Exemple", "phones": ["+33 1 23 45 67 89", "", "01\n23"], "emails": ["marie@example.org"], "org": "Exemple\u{7} SARL", "note": "Likes tea.\r\nSecond line\u{200F}." },
+            { "id": "c-2", "name": "Jean Exemple", "phones": null, "given": null }
+        ]));
+        let read = refresh_reply(&reply.to_string()).unwrap();
+        assert!(read.agendas.is_empty());
+        assert_eq!(read.contacts.len(), 1);
+        let set = &read.contacts[0];
+        assert_eq!((set.id.as_str(), set.name.as_str(), set.people.len()), ("clients", "Clients of the salon", 2));
+        assert_eq!(
+            set.people[0],
+            Person {
+                id: "c-1".into(),
+                name: "Marie Exemple".into(),
+                given: "Marie".into(),
+                family: "Exemple".into(),
+                phones: vec!["+33 1 23 45 67 89".into(), "0123".into()],
+                emails: vec!["marie@example.org".into()],
+                org: "Exemple SARL".into(),
+                note: "Likes tea.\nSecond line.".into(),
+            }
+        );
+        assert_eq!(set.people[1], Person { id: "c-2".into(), name: "Jean Exemple".into(), ..Person::default() });
+        // No contacts at all, or an empty list: none.
+        assert!(refresh_reply(r#"{"agendas": []}"#).unwrap().contacts.is_empty());
+        assert!(refresh_reply(r#"{"contacts": []}"#).unwrap().contacts.is_empty());
+        // A set with no people yet is a set.
+        assert_eq!(refresh_reply(r#"{"contacts": [{"id": "s", "name": "S"}]}"#).unwrap().contacts[0].people.len(), 0);
+    }
+
+    /// Each bound of the contacts, counted before anything is written: past
+    /// one, the whole reply is refused; at it, taken.
+    #[test]
+    fn contacts_past_a_bound_refuse_the_reply() {
+        let person = |changes: serde_json::Value| {
+            let mut one = serde_json::json!({ "id": "c-1", "name": "Marie Exemple" });
+            for (key, value) in changes.as_object().unwrap() {
+                one[key] = value.clone();
+            }
+            one
+        };
+        let taken = |people: serde_json::Value| refresh_reply(&contacts(people).to_string());
+        let long = "x".repeat(MOST_TEXT);
+        let at_bounds = person(serde_json::json!({ "name": long, "given": long, "family": long, "org": long, "note": "n".repeat(MOST_NOTE), "phones": vec![long.clone(); MOST_VALUES], "emails": vec![long.clone(); MOST_VALUES] }));
+        assert!(taken(serde_json::json!([at_bounds])).is_ok(), "every bound reached, none passed");
+        for (what, changes) in [
+            ("a name too long", serde_json::json!({ "name": "x".repeat(MOST_TEXT + 1) })),
+            ("a given name too long", serde_json::json!({ "given": "x".repeat(MOST_TEXT + 1) })),
+            ("a family name too long", serde_json::json!({ "family": "x".repeat(MOST_TEXT + 1) })),
+            ("an organisation too long", serde_json::json!({ "org": "x".repeat(MOST_TEXT + 1) })),
+            ("an id too long", serde_json::json!({ "id": "x".repeat(MOST_TEXT + 1) })),
+            ("a note too long", serde_json::json!({ "note": "n".repeat(MOST_NOTE + 1) })),
+            ("a number too long", serde_json::json!({ "phones": ["1".repeat(MOST_TEXT + 1)] })),
+            ("too many numbers", serde_json::json!({ "phones": vec!["0123456789"; MOST_VALUES + 1] })),
+            ("too many addresses", serde_json::json!({ "emails": vec!["a@example.org"; MOST_VALUES + 1] })),
+            ("numbers that are not a list", serde_json::json!({ "phones": "0123456789" })),
+            ("a number that is not a text", serde_json::json!({ "phones": [123] })),
+            ("a name that is not a text", serde_json::json!({ "name": 7 })),
+            ("no name", serde_json::json!({ "name": "\u{202E} " })),
+            ("no id", serde_json::json!({ "id": "" })),
+        ] {
+            assert!(taken(serde_json::json!([person(changes)])).is_err(), "{what}");
+        }
+        assert!(taken(serde_json::json!([person(serde_json::json!({})), person(serde_json::json!({ "name": "Other" }))])).is_err(), "a person handed twice");
+        assert!(taken(serde_json::json!(["a person"])).is_err(), "a person that is not one");
+        let many: Vec<serde_json::Value> = (0..=MOST_PEOPLE).map(|i| serde_json::json!({ "id": format!("c{i}"), "name": "A" })).collect();
+        assert!(taken(serde_json::json!(many)).is_err(), "more people than a set holds");
+        let enough: Vec<serde_json::Value> = (0..MOST_PEOPLE).map(|i| serde_json::json!({ "id": format!("c{i}"), "name": "A" })).collect();
+        assert_eq!(taken(serde_json::json!(enough)).unwrap().contacts[0].people.len(), MOST_PEOPLE);
+        // The sets themselves: counted, their ids as an agenda's, once each, named.
+        let set = |id: &str| serde_json::json!({ "id": id, "name": "Clients", "people": [] });
+        let sets = |all: Vec<serde_json::Value>| refresh_reply(&serde_json::json!({ "contacts": all }).to_string());
+        assert_eq!(sets((0..MOST_SETS).map(|i| set(&format!("s{i}"))).collect()).unwrap().contacts.len(), MOST_SETS);
+        assert!(sets((0..=MOST_SETS).map(|i| set(&format!("s{i}"))).collect()).is_err(), "more sets than a reply holds");
+        for id in ["", "Clients", "a b", "-a", "a/b", &"a".repeat(49)] {
+            assert!(sets(vec![set(id)]).is_err(), "{id}");
+        }
+        assert!(sets(vec![set("s"), set("s")]).is_err(), "a set handed twice");
+        assert!(sets(vec![serde_json::json!({ "id": "s", "people": [] })]).is_err(), "a set without a name");
+        assert!(refresh_reply(r#"{"contacts": {"id": "s"}}"#).is_err(), "contacts that are not a list");
+    }
+
+    /// An extension whose manifest does not bring contacts and hands some
+    /// back is answered as nonsense, as one handing agendas it does not bring.
+    #[test]
+    fn contacts_from_an_extension_that_does_not_bring_them_are_nonsense() {
+        let reply = refresh_reply(&contacts(serde_json::json!([{ "id": "c-1", "name": "Marie Exemple" }])).to_string()).unwrap();
+        let brings = |kinds: &[&str]| kinds.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        assert!(check_brought(&reply, &brings(&["contacts"])).is_ok());
+        assert!(check_brought(&reply, &brings(&["agenda", "contacts"])).is_ok());
+        assert!(check_brought(&reply, &brings(&["agenda"])).is_err(), "contacts it does not bring");
+        let agendas = refresh_reply(&one(&calendar(&event("L1", "20261119T080000Z", "")))).unwrap();
+        assert!(check_brought(&agendas, &brings(&["agenda"])).is_ok());
+        assert!(check_brought(&agendas, &brings(&["contacts"])).is_err(), "agendas it does not bring");
+        // Nothing handed back: nothing to refuse.
+        assert!(check_brought(&RefreshReply::default(), &brings(&["agenda"])).is_ok());
+        assert!(check_brought(&refresh_reply(r#"{"contacts": []}"#).unwrap(), &brings(&["agenda"])).is_ok());
     }
 
     /// Bytes and lines are counted on the text before it is parsed; events once parsed, before anything is built.

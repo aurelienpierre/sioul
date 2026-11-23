@@ -38,8 +38,10 @@ pub const LOWEST_SERIAL: u64 = 1;
 /// (Windows' 2560 bytes, less a margin; `sioul_sync::secret::ENTRY_BYTES`).
 pub const SECRET_BYTES: usize = 2400;
 
-/// The kinds of data an extension may bring in this version.
-pub const BRINGS: [&str; 1] = ["agenda"];
+/// The kinds of data an extension may bring in this version: agendas, and
+/// sets of contacts (added in version 1: an extension built before them
+/// never hands any back).
+pub const BRINGS: [&str; 2] = ["agenda", "contacts"];
 
 /// Whether `id` may name an extension: lower-case letters, digits and `-`,
 /// 32 at most, neither beginning nor ending with `-`. It names a keyring
@@ -125,6 +127,17 @@ pub fn category(extension: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Version 1 takes agendas and contacts, nothing else.
+    #[test]
+    fn an_extension_may_bring_agendas_and_contacts() {
+        let offer = |brings: &[&str]| manifest::Offer { brings: brings.iter().map(|b| b.to_string()).collect(), ..manifest::parse(manifest::SAMPLE).unwrap().offers.remove(0) };
+        assert!(offer(&["agenda"]).usable());
+        assert!(offer(&["contacts"]).usable());
+        assert!(offer(&["agenda", "contacts"]).usable());
+        assert!(!offer(&["contacts", "mail"]).usable(), "a kind this Sioul does not take");
+        assert!(!offer(&[]).usable());
+    }
 
     #[test]
     fn ids_name_nothing_else() {
