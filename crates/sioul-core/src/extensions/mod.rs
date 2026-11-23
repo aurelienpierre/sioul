@@ -12,11 +12,15 @@
 //!   what was parsed, through an allow-list;
 //! - [`door`]: an agenda written into a calendar of the person's own, through
 //!   the agenda's door for events, its events marked as the extension's;
+//! - [`cards`]: a set of contacts written into an address book of the
+//!   person's own, through the contacts' door, each card bound to its person
+//!   by a mark, additively, never deleted;
 //! - [`state`]: what this device enabled, accepted and last saw.
 //!
 //! The engine that runs a file, what an extension may ask and the store live
 //! in `sioul-sync` (`extensions`); the window's side in `sioul-app`.
 
+pub mod cards;
 pub mod door;
 pub mod manifest;
 pub mod reply;
@@ -116,6 +120,30 @@ pub fn event_file(uid: &str) -> String {
     format!("{extension}-{lesson}.ics")
 }
 
+/// A set of contacts of an extension, as its cards' marks name it: 16
+/// hexadecimal characters, whatever the set's id holds, never one an agenda
+/// of the same id gives (`agenda_key`).
+pub fn set_key(extension: &str, set: &str) -> String {
+    digest(&["contacts", extension, set])[..16].to_string()
+}
+
+/// The mark Sioul binds a card to a person of an extension's set with
+/// (`cards`), made as an event's UID is (`event_uid`):
+/// `<extension>.<set>.<person>@extensions.sioul`, the set and the person as
+/// hashes of the extension's id, the set's and the person's own id, so that
+/// it is the same at every refresh and on every device and holds nothing of
+/// those ids (the person's id is the service's, never written as it is). It
+/// is the UID of a card the door makes, and `uid_mark` reads it back.
+pub fn person_mark(extension: &str, set: &str, person: &str) -> String {
+    format!("{extension}.{}.{}@{UID_DOMAIN}", set_key(extension, set), &digest(&["person", extension, set, person])[..32])
+}
+
+/// The file name of a card Sioul makes for an extension, from its mark:
+/// `<extension>-<person>.vcf`, letters, digits and dashes, the same on every device.
+pub fn card_file(mark: &str) -> String {
+    event_file(mark).replace(".ics", ".vcf")
+}
+
 /// The category an extension's events carry, and the name the event card
 /// says they come from: its id with a capital ("skolengo" → "Skolengo"),
 /// the same in every language and on every device, readable without its manifest.
@@ -127,6 +155,25 @@ pub fn category(extension: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A person's mark: the same for the same ids, another for any other,
+    /// never an agenda's of the same ids, read back by `uid_mark`, nothing
+    /// of the set's or the person's id in it, its file safe.
+    #[test]
+    fn a_person_s_mark_is_stable_safe_and_read_back() {
+        let mark = person_mark("bookings", "clients", "client-41");
+        assert_eq!(mark, person_mark("bookings", "clients", "client-41"));
+        assert_ne!(mark, person_mark("bookings", "clients", "client-42"));
+        assert_ne!(mark, person_mark("bookings", "staff", "client-41"));
+        assert_ne!(set_key("bookings", "clients"), agenda_key("bookings", "clients"), "a set and an agenda of one id are two");
+        assert_ne!(mark, event_uid("bookings", "clients", "client-41"));
+        assert_eq!(uid_mark(&mark), Some(UidMark { extension: "bookings".into(), agenda: set_key("bookings", "clients") }));
+        assert!(!mark.contains("client") && mark.starts_with("bookings.") && mark.ends_with("@extensions.sioul"));
+        for person in ["../../x", "a/b\\c", "x@y.z", "\r\nBEGIN:VCARD", ""] {
+            let file = card_file(&person_mark("bookings", "clients", person));
+            assert!(file.starts_with("bookings-") && file.ends_with(".vcf") && file.trim_end_matches(".vcf").bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'), "{file}");
+        }
+    }
 
     /// Version 1 takes agendas and contacts, nothing else.
     #[test]

@@ -402,7 +402,7 @@ fn raw_parts(value: &str) -> Vec<String> {
 /// The `N` line with these parts: the card's line kept as it is where a part
 /// reads the same (its parameters, `SORT-AS`; a list of names stays a list),
 /// a part changed written escaped; a card without `N`, a new line.
-fn n_line(card: &[String], wanted: &[String; 5]) -> String {
+pub(crate) fn n_line(card: &[String], wanted: &[String; 5]) -> String {
     let Some(line) = card.iter().find(|l| lines::name(l) == "N") else { return format!("N:{}", lines::structured(wanted)) };
     let value = lines::value(line);
     let head = &line[..line.len() - value.len()];
@@ -868,7 +868,7 @@ pub fn with_value(text: &str, property: &str, value: &str) -> Option<String> {
 }
 
 /// A card's lines as changed, `REV` renewed, what was added before `END:VCARD`.
-fn rewritten(out: Vec<Option<String>>, mut added: Vec<String>) -> String {
+pub(crate) fn rewritten(out: Vec<Option<String>>, mut added: Vec<String>) -> String {
     let mut kept: Vec<String> = out.into_iter().flatten().filter(|l| lines::name(l) != "REV").collect();
     added.push(format!("REV:{}", now_stamp()));
     let end = kept.iter().rposition(|l| lines::name(l) == "END").unwrap_or(kept.len());
