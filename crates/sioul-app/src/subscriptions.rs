@@ -222,15 +222,17 @@ pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_jso
 }
 
 /// The official French calendars offered, with their words (Agenda ⚙ ▸
-/// Subscribe to a calendar…): public holidays by territory, school holidays by zone.
+/// Subscribe to a calendar…): public holidays by territory, school holidays
+/// by zone, from the data file (`subscribed::officials`).
 pub(crate) fn officials() -> String {
     let config = load_config();
     let list: Vec<serde_json::Value> = subscribed::officials()
-        .into_iter()
+        .iter()
+        .filter(|o| o.country == "FR")
         .map(|o| {
             let kind = o.holidays.id();
             let mut args = sioul_core::i18n::args();
-            args.set("name", o.name);
+            args.set("name", o.name.clone());
             serde_json::json!({
                 "id": o.id,
                 "holidays": kind,

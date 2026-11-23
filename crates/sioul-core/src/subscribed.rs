@@ -83,7 +83,7 @@ pub struct Subscription {
     pub days_off: Option<bool>,
     /// School holidays that begin after class: the day an event starts is
     /// still a class day, the day it ends is the morning classes resume
-    /// (the official French files). Unsaid, no.
+    /// (the Ministry of Education's files, `Official::after_class`). Unsaid, no.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub after_class: Option<bool>,
     /// "#rrggbb", its colour in the agenda; unsaid, the agenda's own.
@@ -105,7 +105,7 @@ pub struct Subscription {
 }
 
 /// The kinds of calendars of holidays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Holidays {
     Public,
@@ -222,74 +222,71 @@ pub fn id_of(place: &str) -> Option<&str> {
     place.strip_prefix(ACCOUNT).and_then(|rest| rest.strip_prefix('/')).filter(|id| valid_id(id))
 }
 
-// ---------------------------------------------------------------- the official French calendars
+// ---------------------------------------------------------------- the official calendars, country by country
 
-/// One of the official French calendars offered ready-made (audit-calendars §10).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// The official calendars of holidays offered ready-made, as data
+/// (`data/holiday-calendars.toml`, 23 November 2026): only a state's own
+/// calendar, published under an open licence; `tools/check-holidays.py` asks
+/// every address before each release.
+const HOLIDAY_CALENDARS: &str = include_str!("../data/holiday-calendars.toml");
+
+/// One of the official calendars of holidays offered ready-made
+/// (audit-calendars §10), as the data file says it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Official {
-    /// Its id, the folder it is kept in: "fr-public-metropole".
-    pub id: String,
+    /// ISO 3166-1, the country it is offered under: "FR", "GB".
+    pub country: String,
+    /// Which holidays it holds (the file's `kind`).
+    #[serde(rename = "kind")]
     pub holidays: Holidays,
-    /// The territory's or the zone's name ("Métropole", "Zone A").
-    pub name: &'static str,
-    /// The académies of a zone, said under its name; "" elsewhere.
-    pub hint: &'static str,
+    /// Its id, the folder it is kept in: "fr-public-metropole". Kept for
+    /// good once shipped: a calendar subscribed already is known by it.
+    pub id: String,
+    /// The territory's, the nation's or the zone's name, as its publisher
+    /// writes it ("Métropole", "Scotland", "Zone A").
+    pub name: String,
+    /// Said under its name (a zone's académies); "" nothing.
+    #[serde(default)]
+    pub hint: String,
     pub url: String,
+    /// Who publishes it, and under which licence.
+    pub source: String,
+    pub licence: String,
+    /// Its holidays begin after class, as the Ministry's files are shaped
+    /// (`Subscription::after_class`).
+    #[serde(default)]
+    pub after_class: bool,
 }
 
-/// The public holidays' thirteen territories (Etalab's files, Licence Ouverte):
-/// the file's name, the territory's.
-pub const PUBLIC_TERRITORIES: [(&str, &str); 13] = [
-    ("metropole", "Métropole"),
-    ("alsace-moselle", "Alsace-Moselle"),
-    ("guadeloupe", "Guadeloupe"),
-    ("guyane", "Guyane"),
-    ("martinique", "Martinique"),
-    ("mayotte", "Mayotte"),
-    ("la-reunion", "La Réunion"),
-    ("nouvelle-caledonie", "Nouvelle-Calédonie"),
-    ("polynesie-francaise", "Polynésie française"),
-    ("saint-barthelemy", "Saint-Barthélemy"),
-    ("saint-martin", "Saint-Martin"),
-    ("saint-pierre-et-miquelon", "Saint-Pierre-et-Miquelon"),
-    ("wallis-et-futuna", "Wallis-et-Futuna"),
-];
-
-/// The school holidays' fourteen files (the Ministry of Education's, Licence
-/// Ouverte): the file's name, the zone's, its académies.
-pub const SCHOOL_ZONES: [(&str, &str, &str); 14] = [
-    ("Zone-A", "Zone A", "Besançon, Bordeaux, Clermont-Ferrand, Dijon, Grenoble, Limoges, Lyon, Poitiers"),
-    ("Zone-B", "Zone B", "Aix-Marseille, Amiens, Lille, Nancy-Metz, Nantes, Nice, Normandie, Orléans-Tours, Reims, Rennes, Strasbourg"),
-    ("Zone-C", "Zone C", "Créteil, Montpellier, Paris, Toulouse, Versailles"),
-    ("Corse", "Corse", ""),
-    ("Zone-A-B-C-Corse", "Zones A, B, C et Corse", ""),
-    ("Guadeloupe", "Guadeloupe", ""),
-    ("Guyane", "Guyane", ""),
-    ("Martinique", "Martinique", ""),
-    ("Mayotte", "Mayotte", ""),
-    ("Reunion", "La Réunion", ""),
-    ("Polynesie", "Polynésie française", ""),
-    ("NouvelleCaledonie", "Nouvelle-Calédonie", ""),
-    ("SaintPierreEtMiquelon", "Saint-Pierre-et-Miquelon", ""),
-    ("WallisEtFutuna", "Wallis-et-Futuna", ""),
-];
-
-/// Where the public holidays' files are (Etalab, stable addresses).
-const PUBLIC_BASE: &str = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_";
-/// Where the school holidays' files are (the Ministry's, at its portal's host).
-const SCHOOL_BASE: &str = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/";
-
-/// The official French calendars, public holidays by territory then school holidays by zone.
-pub fn officials() -> Vec<Official> {
-    let public = PUBLIC_TERRITORIES.iter().map(|(file, name)| Official { id: format!("fr-public-{file}"), holidays: Holidays::Public, name, hint: "", url: format!("{PUBLIC_BASE}{file}.ics") });
-    let school = SCHOOL_ZONES.iter().map(|(file, name, hint)| Official { id: format!("fr-school-{}", file.to_ascii_lowercase()), holidays: Holidays::School, name, hint, url: format!("{SCHOOL_BASE}{file}.ics") });
-    public.chain(school).collect()
+/// The data file's shape.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Calendars {
+    #[serde(default)]
+    calendar: Vec<Official>,
 }
 
-/// Whether an address is one of the Ministry's school holidays' files,
-/// whose events begin after class and end the morning classes resume.
-pub fn official_school(url: &str) -> bool {
-    url.trim().starts_with(SCHOOL_BASE)
+/// The official calendars offered, in the file's order (by country, public
+/// holidays then school holidays); none when the file does not read, which
+/// its test forbids (`holiday_calendars_are_well_formed`).
+pub fn officials() -> &'static [Official] {
+    static LIST: std::sync::OnceLock<Vec<Official>> = std::sync::OnceLock::new();
+    LIST.get_or_init(|| match toml::from_str::<Calendars>(HOLIDAY_CALENDARS) {
+        Ok(read) => read.calendar,
+        Err(e) => {
+            eprintln!("holiday-calendars.toml: {e}");
+            Vec::new()
+        }
+    })
+}
+
+/// Whether an address is that of an official calendar whose holidays begin
+/// after class and end the morning classes resume (the Ministry's school
+/// holidays' files).
+pub fn official_after_class(url: &str) -> bool {
+    let url = url.trim();
+    officials().iter().any(|o| o.after_class && o.url == url)
 }
 
 // ---------------------------------------------------------------- the address
@@ -1000,7 +997,7 @@ pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Tran
     let holidays = Holidays::parse(&new.holidays);
     // The Ministry's files begin after class: said so, unless said otherwise.
     let after_class = match holidays {
-        Some(Holidays::School) => new.after_class.or(official_school(&url).then_some(true)),
+        Some(Holidays::School) => new.after_class.or(official_after_class(&url).then_some(true)),
         _ => None,
     };
     crate::agendas::edit_agenda_table(path, "subscriptions", |table| {

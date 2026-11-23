@@ -51,9 +51,102 @@ fn an_address_is_read_as_https_alone() {
     assert_eq!(address("https://me:secret@calendar.example.org/a.ics"), Err(Problem::NotAddress));
     assert_eq!(address("https://calendar.example.org/a b.ics"), Err(Problem::NotAddress));
     assert_eq!(address("hello"), Err(Problem::NotAddress));
-    assert!(official_school(&officials().iter().find(|o| o.id == "fr-school-zone-a").unwrap().url));
-    assert_eq!(officials().iter().filter(|o| o.holidays == Holidays::Public).count(), 13);
-    assert_eq!(officials().iter().filter(|o| o.holidays == Holidays::School).count(), 14);
+}
+
+/// The official calendars' data file (`data/holiday-calendars.toml`): it
+/// reads, whole (a field of no use, or misspelt, refuses it), and each entry
+/// is well formed: a country of the table of countries, a kind, an id a
+/// folder may take and none twice, a name, an `https` address and none
+/// twice, who publishes it and under which licence; only school holidays
+/// begin after class.
+#[test]
+fn holiday_calendars_are_well_formed() {
+    let read: Calendars = toml::from_str(HOLIDAY_CALENDARS).expect("holiday-calendars.toml reads");
+    assert_eq!(read.calendar.len(), officials().len(), "every entry read");
+    assert!(!officials().is_empty());
+    let mut ids = std::collections::BTreeSet::new();
+    let mut urls = std::collections::BTreeSet::new();
+    for o in officials() {
+        let said = format!("{o:?}");
+        assert!(o.country.len() == 2 && o.country.chars().all(|c| c.is_ascii_uppercase()), "{said}");
+        assert_eq!(crate::clients::country(&o.country).map(|c| c.code), Some(o.country.as_str()), "a country of countries.tsv: {said}");
+        assert!(valid_id(&o.id) && o.id.starts_with(&format!("{}-{}-", o.country.to_ascii_lowercase(), o.holidays.id())), "{said}");
+        assert!(ids.insert(o.id.clone()), "an id once: {said}");
+        assert!(!o.name.trim().is_empty() && o.name == o.name.trim(), "{said}");
+        assert_eq!(o.hint, o.hint.trim(), "{said}");
+        assert_eq!(address(&o.url).as_deref(), Ok(o.url.as_str()), "an https address as Sioul keeps it: {said}");
+        assert!(o.url.ends_with(".ics"), "{said}");
+        assert!(urls.insert(o.url.clone()), "an address once: {said}");
+        assert!(!o.source.trim().is_empty() && !o.licence.trim().is_empty(), "who publishes it, under which licence: {said}");
+        assert!(!o.after_class || o.holidays == Holidays::School, "after class, school holidays alone: {said}");
+    }
+    // Each country's calendars together, public holidays before school holidays (the form's order).
+    let mut grouped: Vec<(&str, Holidays)> = officials().iter().map(|o| (o.country.as_str(), o.holidays)).collect();
+    grouped.dedup();
+    let mut seen = std::collections::BTreeSet::new();
+    assert!(grouped.iter().all(|pair| seen.insert(*pair)), "each country's kinds together, once: {grouped:?}");
+    assert!(grouped.windows(2).all(|w| w[0].0 != w[1].0 || w[0].1 < w[1].1), "public holidays first: {grouped:?}");
+}
+
+/// France's calendars moved into the data file unchanged (23 November 2026):
+/// the same ids, a subscription's folder, and the same addresses, in the same
+/// order; the Ministry's school holidays begin after class, Etalab's public
+/// holidays do not. Both under the Licence Ouverte.
+#[test]
+fn holiday_calendars_of_france_keep_their_ids_and_addresses() {
+    let france: Vec<(&str, &str)> = officials().iter().filter(|o| o.country == "FR").map(|o| (o.id.as_str(), o.url.as_str())).collect();
+    let before = [
+        ("fr-public-metropole", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics"),
+        ("fr-public-alsace-moselle", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_alsace-moselle.ics"),
+        ("fr-public-guadeloupe", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guadeloupe.ics"),
+        ("fr-public-guyane", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guyane.ics"),
+        ("fr-public-martinique", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_martinique.ics"),
+        ("fr-public-mayotte", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_mayotte.ics"),
+        ("fr-public-la-reunion", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_la-reunion.ics"),
+        ("fr-public-nouvelle-caledonie", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_nouvelle-caledonie.ics"),
+        ("fr-public-polynesie-francaise", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_polynesie-francaise.ics"),
+        ("fr-public-saint-barthelemy", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-barthelemy.ics"),
+        ("fr-public-saint-martin", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-martin.ics"),
+        ("fr-public-saint-pierre-et-miquelon", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-pierre-et-miquelon.ics"),
+        ("fr-public-wallis-et-futuna", "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_wallis-et-futuna.ics"),
+        ("fr-school-zone-a", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics"),
+        ("fr-school-zone-b", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-B.ics"),
+        ("fr-school-zone-c", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-C.ics"),
+        ("fr-school-corse", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Corse.ics"),
+        ("fr-school-zone-a-b-c-corse", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A-B-C-Corse.ics"),
+        ("fr-school-guadeloupe", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Guadeloupe.ics"),
+        ("fr-school-guyane", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Guyane.ics"),
+        ("fr-school-martinique", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Martinique.ics"),
+        ("fr-school-mayotte", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Mayotte.ics"),
+        ("fr-school-reunion", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Reunion.ics"),
+        ("fr-school-polynesie", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Polynesie.ics"),
+        ("fr-school-nouvellecaledonie", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/NouvelleCaledonie.ics"),
+        ("fr-school-saintpierreetmiquelon", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/SaintPierreEtMiquelon.ics"),
+        ("fr-school-wallisetfutuna", "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/WallisEtFutuna.ics"),
+    ];
+    assert_eq!(france, before);
+    let zone_a = officials().iter().find(|o| o.id == "fr-school-zone-a").unwrap();
+    assert_eq!((zone_a.name.as_str(), zone_a.hint.as_str()), ("Zone A", "Besançon, Bordeaux, Clermont-Ferrand, Dijon, Grenoble, Limoges, Lyon, Poitiers"));
+    assert_eq!(officials().iter().find(|o| o.id == "fr-public-la-reunion").map(|o| o.name.as_str()), Some("La Réunion"));
+    assert!(official_after_class(&zone_a.url) && official_after_class(&format!(" {} ", zone_a.url)));
+    assert!(!official_after_class("https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics"));
+    assert!(officials().iter().filter(|o| o.country == "FR").all(|o| o.licence == "Licence Ouverte" && o.after_class == (o.holidays == Holidays::School)));
+}
+
+/// The United Kingdom's: the Government's bank holidays, one calendar per
+/// nation, public holidays under the Open Government Licence.
+#[test]
+fn holiday_calendars_of_the_united_kingdom_are_its_bank_holidays() {
+    let uk: Vec<(&str, Holidays, &str, &str)> = officials().iter().filter(|o| o.country == "GB").map(|o| (o.id.as_str(), o.holidays, o.name.as_str(), o.url.as_str())).collect();
+    assert_eq!(
+        uk,
+        [
+            ("gb-public-england-and-wales", Holidays::Public, "England and Wales", "https://www.gov.uk/bank-holidays/england-and-wales.ics"),
+            ("gb-public-scotland", Holidays::Public, "Scotland", "https://www.gov.uk/bank-holidays/scotland.ics"),
+            ("gb-public-northern-ireland", Holidays::Public, "Northern Ireland", "https://www.gov.uk/bank-holidays/northern-ireland.ics"),
+        ]
+    );
+    assert!(officials().iter().filter(|o| o.country == "GB").all(|o| o.source == "GOV.UK" && o.licence == "Open Government Licence v3.0" && !o.after_class));
 }
 
 /// What is not a calendar replaces nothing: a web page, a line of text (the
