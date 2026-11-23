@@ -13,6 +13,8 @@ budget = "work"                # invoices expected there until paid
 area = "work"                  # what it is for: work, admin, leisure, joined by "+"
 ```
 
+Its mail comes by its routes (`[[project.route]]`, [notes-folder.md](notes-folder.md#routes)), and a route may make a task of each message it takes, as one of the project's models of task says it (`makes`, `[[project.model]]`: the list, the date asked in business days after the mail came, the first estimate, the title's prefix, the supplies each task plans to use), once per message on every device, the message tied to it and nothing of its text copied ([notes-folder.md](notes-folder.md#routes-that-make-tasks)).
+
 ## What a project is for {#what-a-project-is-for}
 A project is for work, your admin or leisure, any of them together, as an address, a budget, a site or a task is ([areas.md](areas.md)): the three switches used everywhere (`AreaSwitches.qml`) in its form, under "What it is for" (`Project::area_of`, as `mailbox::area_of` and `Budget::area_of` say an address's and a budget's; the record as the switches show it, `projects::form_area`).
 
