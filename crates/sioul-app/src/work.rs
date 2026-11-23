@@ -1674,7 +1674,7 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
 /// A task read again from its own file, its list's marks kept from `known`
 /// (its list, its colour, whether it can be written); None when the file is
 /// gone or holds no task any more.
-fn from_its_file(known: &Task) -> Option<Task> {
+pub(crate) fn from_its_file(known: &Task) -> Option<Task> {
     let text = std::fs::read_to_string(&known.key).ok()?;
     if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
         return None;

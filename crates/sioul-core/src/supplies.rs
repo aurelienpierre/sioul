@@ -769,6 +769,24 @@ pub fn by_hand(supply: &str, kind: Kind, quantity: Qty, now: i64) -> Move {
 
 // ---------------------------------------------------------------- tasks
 
+/// A quantity in words, its unit after it: "12", "200 g".
+pub fn amount(quantity: Qty, unit: &str, tr: &crate::i18n::Translator) -> String {
+    let number = quantity.shown(tr);
+    if unit.trim().is_empty() { number } else { format!("{number} {}", unit.trim()) }
+}
+
+/// What a task to resupply brought, said by the person ("How many came
+/// in?"): its received line, its id from the task, the supply and the
+/// task's completion (`received_id`).
+pub fn arrived(root: &Path, device: &str, task: &Task, quantity: Qty, now: i64) -> Result<(), String> {
+    let stamp = task.completed.ok_or("not done")?;
+    if task.resupply.is_empty() {
+        return Err("not a task to resupply".into());
+    }
+    let line = Move { id: received_id(&task.uid, &task.resupply, stamp), at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity, task: task.uid.clone(), device: String::new() };
+    record(root, device, &[line], &[])
+}
+
 /// One task to resupply to make (`to_resupply`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Resupply {

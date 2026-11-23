@@ -183,6 +183,9 @@ fn main() {
         "qml/JoinPanel.qml",
         "qml/PapersPage.qml",
         "qml/PaperDialog.qml",
+        // Supplies: the page and a supply's card.
+        "qml/SuppliesPage.qml",
+        "qml/SupplyCard.qml",
         "qml/Household.qml",
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",

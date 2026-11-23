@@ -221,6 +221,28 @@ pub mod qobject {
         #[qinvokable]
         fn plan_renewal(self: Pin<&mut Sioul>, id: &QString) -> QString;
 
+        /// The Supplies page, as JSON (`supplies::page`): its calm view, every supply, the archived.
+        #[qinvokable]
+        fn supplies_page(self: &Sioul) -> QString;
+
+        /// A supply's card, as JSON (`supplies::card`); "null" when it is gone.
+        #[qinvokable]
+        fn supply_card(self: &Sioul, id: &QString) -> QString;
+
+        /// A supply saved from its card (new when `id` is empty), with a first
+        /// count for a new one ("" for none); returns {id} or {error}.
+        #[qinvokable]
+        fn save_supply(self: Pin<&mut Sioul>, id: &QString, change: &QString, first: &QString) -> QString;
+
+        /// "Received…" (`kind` "received") or "Count again…" ("count") on a
+        /// supply's card; returns what went wrong, else "".
+        #[qinvokable]
+        fn supply_moved(self: Pin<&mut Sioul>, id: &QString, kind: &QString, quantity: &QString) -> QString;
+
+        /// How many came in, for a task to resupply done; returns what went wrong, else "".
+        #[qinvokable]
+        fn supply_arrived(self: Pin<&mut Sioul>, uid: &QString, quantity: &QString) -> QString;
+
         /// The household, as JSON (`persons::household`): you first, the
         /// others, children's other parents apart, the relations a form offers.
         #[qinvokable]
@@ -5519,6 +5541,26 @@ impl qobject::Sioul {
 
     fn plan_renewal(self: Pin<&mut Self>, id: &QString) -> QString {
         QString::from(&crate::papers::plan_renewal(&self.qt_thread(), &self.shared(), &id.to_string()))
+    }
+
+    fn supplies_page(&self) -> QString {
+        QString::from(&crate::supplies::page(&self.shared()))
+    }
+
+    fn supply_card(&self, id: &QString) -> QString {
+        QString::from(&crate::supplies::card(&self.shared(), &id.to_string()))
+    }
+
+    fn save_supply(self: Pin<&mut Self>, id: &QString, change: &QString, first: &QString) -> QString {
+        QString::from(&crate::supplies::save(&id.to_string(), &change.to_string(), &first.to_string()))
+    }
+
+    fn supply_moved(self: Pin<&mut Self>, id: &QString, kind: &QString, quantity: &QString) -> QString {
+        QString::from(&crate::supplies::moved(&self.qt_thread(), &self.shared(), &id.to_string(), &kind.to_string(), &quantity.to_string()))
+    }
+
+    fn supply_arrived(self: Pin<&mut Self>, uid: &QString, quantity: &QString) -> QString {
+        QString::from(&crate::supplies::arrived(&self.qt_thread(), &self.shared(), &uid.to_string(), &quantity.to_string()))
     }
 
     fn household(&self) -> QString {

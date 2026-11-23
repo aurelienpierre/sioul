@@ -93,6 +93,7 @@ Item {
                 // In the order of their keys, Ctrl+1 to Ctrl+0; the papers'
                 // page came after the others, its place is by the budgets, and
                 // the paper letters' by the papers.
+                // Supplies after Projects (SuppliesPage.qml): what is used or sold.
                 // texts: Texts, on a computer, under Mail (TextsPage.qml),
                 // which says how to turn texts on when they are not read here
                 // yet; a phone has its own SMS app.
@@ -106,6 +107,7 @@ Item {
                     { page: 5, name: "ui-contacts", iconName: "user-properties" },
                     { page: 6, name: "ui-notes", iconName: "view-pim-notes" },
                     { page: 7, name: "ui-projects", iconName: "folder" },
+                    { page: 17, name: "ui-supplies", iconName: "package-x-generic" },
                     { page: 8, name: "ui-time", iconName: "clock" },
                     { page: 9, name: "ui-budgets", iconName: "wallet-open" },
                     { page: 13, name: "ui-papers", iconName: "view-certificate" },
