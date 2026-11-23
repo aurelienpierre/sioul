@@ -32,6 +32,7 @@ pub(super) fn says_every_store(c: &Computer, folder: &Path, key: &[u8; 32]) {
         e.movements = MOVEMENTS_SHARED;
         e.clients = CLIENTS_SHARED;
         e.persons = PERSONS_SHARED;
+        e.supplies = SUPPLIES_SHARED;
     })
     .unwrap();
 }
@@ -53,7 +54,7 @@ struct List {
     third: &'static str,
 }
 
-const ALL: [List; 8] = [
+const ALL: [List; 9] = [
     List { file: "sioul-cases.toml", text: "[[case]]\nid = \"acme\"\ntitle = \"Acme site\"\n\n[[case]]\nid = \"garden\"\ntitle = \"Garden\"\n", marks: ["acme", "garden"], third: "\n[[case]]\nid = \"roof\"\ntitle = \"Roof\"\n" },
     List { file: "sioul-clients.toml", text: "[[client]]\nid = \"lumen\"\nname = \"Studio Lumen\"\n\n[[client]]\nid = \"ferro\"\nname = \"Ferro\"\n", marks: ["lumen", "ferro"], third: "\n[[client]]\nid = \"nord\"\nname = \"Nord\"\n" },
     List { file: "sioul-budgets.toml", text: "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n\n[[budget]]\nid = \"car\"\ntitle = \"Car\"\nperiod = \"month\"\ntarget = 0\n", marks: ["home", "car"], third: "\n[[budget]]\nid = \"cat\"\ntitle = \"Cat\"\n" },
@@ -62,6 +63,7 @@ const ALL: [List; 8] = [
     List { file: "sioul-movements.toml", text: "[[name]]\nbank = \"ACME SA\"\nname = \"Acme\"\n\n[[name]]\nbank = \"FERRO SARL\"\nname = \"Ferro\"\n", marks: ["ACME SA", "FERRO SARL"], third: "\n[[name]]\nbank = \"NORD SAS\"\nname = \"Nord\"\n" },
     List { file: "sioul-papers.toml", text: "[[paper]]\nid = \"passport\"\nkind = \"passport\"\ntitle = \"Passport\"\n\n[[paper]]\nid = \"lease\"\nkind = \"other\"\ntitle = \"Lease\"\n", marks: ["passport", "lease"], third: "\n[[paper]]\nid = \"card\"\nkind = \"identity\"\ntitle = \"Card\"\n" },
     List { file: "letters/letters.toml", text: "[[letter]]\nid = \"caf\"\nfile = \"letters/2026/caf.pdf\"\nstatus = \"new\"\nkind = \"other\"\n\n[[letter]]\nid = \"tax\"\nfile = \"letters/2026/tax.pdf\"\nstatus = \"new\"\nkind = \"other\"\n", marks: ["caf", "tax"], third: "\n[[letter]]\nid = \"bank\"\nfile = \"letters/2026/bank.pdf\"\nstatus = \"new\"\nkind = \"other\"\n" },
+    List { file: "sioul-supplies.toml", text: "[[supply]]\nid = \"stamps\"\nname = \"Stamps\"\n\n[[supply]]\nid = \"envelopes\"\nname = \"Envelopes\"\n", marks: ["stamps", "envelopes"], third: "\n[[supply]]\nid = \"cards\"\nname = \"Gift cards\"\n" },
 ];
 
 /// Two devices that both hold `list`, read and sent.
@@ -168,4 +170,56 @@ fn a_list_blank_for_an_instant_is_looked_at_again() {
     put(&path, &saved);
     exchange_in(&desk, &folder, &key, NOW + 4 * MINUTE, &desk_notes);
     assert_eq!(std::fs::read_to_string(&path).unwrap(), saved, "the editor's save stays as written");
+}
+
+/// The supplies' movements (docs/supplies.md): each device's own file
+/// reaches the other whole, the two read together; nothing of them, nor of
+/// the list, travels while another device's entry does not say its Sioul
+/// has them (an older one would take them for notes).
+#[test]
+fn each_device_s_movements_of_supplies_travel_once_every_device_has_them() {
+    let base = scratch("supply-moves");
+    let folder = base.join("Sync").join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(base.as_path(), "desk"), Computer::new(base.as_path(), "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    std::fs::create_dir_all(&phone_notes).unwrap();
+    let moves = |notes: &Path, device: &str| notes.join(sioul_core::supplies::MOVES).join(sioul_core::supplies::device_file(device));
+    put(&desk_notes.join(sioul_core::supplies::FILE), "[[supply]]\nid = \"stamps\"\nname = \"Stamps\"\n");
+    put(&moves(&desk_notes, "desk"), "[[move]]\nid = \"c1\"\nat = 100\nsupply = \"stamps\"\nkind = \"count\"\nquantity = 12\n");
+    // The phone says nothing of supplies yet (an older Sioul): nothing goes.
+    says_every_store(&desk, &folder, &key);
+    crate::devices::change(&crate::devices::own_path(&phone.roots.state), Some((&folder, &key)), |e| {
+        e.id = "phone".into();
+        e.kind = crate::devices::COMPUTER.into();
+        e.working = true;
+        e.format = FORMAT;
+    })
+    .unwrap();
+    for at in [0, 1, 2] {
+        exchange_in(&desk, &folder, &key, NOW + at * 2 * MINUTE, &desk_notes);
+        exchange_in(&phone, &folder, &key, NOW + (at * 2 + 1) * MINUTE, &phone_notes);
+    }
+    assert!(!phone_notes.join(sioul_core::supplies::FILE).exists() && !moves(&phone_notes, "desk").exists(), "nothing while the phone does not have them");
+    // Every device has them: the list and the desk's movements reach the phone, the phone's reach the desk.
+    says_every_store(&phone, &folder, &key);
+    for at in [10, 11, 12] {
+        exchange_in(&desk, &folder, &key, NOW + at * 2 * MINUTE, &desk_notes);
+        exchange_in(&phone, &folder, &key, NOW + (at * 2 + 1) * MINUTE, &phone_notes);
+    }
+    assert!(std::fs::read_to_string(phone_notes.join(sioul_core::supplies::FILE)).unwrap_or_default().contains("stamps"));
+    assert!(std::fs::read_to_string(moves(&phone_notes, "desk")).unwrap_or_default().contains("c1"), "the desk's file, whole");
+    put(&moves(&phone_notes, "phone"), "[[move]]\nid = \"u1\"\nat = 200\nsupply = \"stamps\"\nkind = \"used\"\nquantity = 1\n");
+    for at in [20, 21, 22] {
+        exchange_in(&phone, &folder, &key, NOW + at * 2 * MINUTE, &phone_notes);
+        exchange_in(&desk, &folder, &key, NOW + (at * 2 + 1) * MINUTE, &desk_notes);
+    }
+    for notes in [&desk_notes, &phone_notes] {
+        let read = sioul_core::supplies::read_moves(notes, "desk");
+        let latest = sioul_core::supplies::latest(&read.lines);
+        assert_eq!(sioul_core::supplies::stock_of(&sioul_core::supplies::lines_of(&latest, "stamps")).text(), "11", "both files read together on {}", notes.display());
+    }
+    // Neither is a note.
+    let notes_records: Vec<String> = stores_of(&Config { notes_root: Some(desk_notes.display().to_string()), ..Config::default() }, &desk.roots, &|_| true).into_iter().filter(|s| s.name == "files/notes/").flat_map(|s| s.skip.iter().map(|n| n.to_string()).collect::<Vec<_>>()).collect();
+    assert!(notes_records.iter().any(|n| n == sioul_core::supplies::FILE) && notes_records.iter().any(|n| n == sioul_core::supplies::MOVES), "{notes_records:?}");
 }

@@ -10619,3 +10619,9 @@ hours-lookup-nobody = Personne ne peut être interrogé pour ce bureau maintenan
 hours-source-name-map-at = le service de recherche de la carte ({ $host })
 hours-task-not-followed = Cette tâche ne suit pas ces horaires : elle est proposée à toute heure.
 hours-task-follow = Les suivre
+
+## Stocks (docs/supplies.md) : ce qui s’use ou se vend, et ce qu’il en reste.
+supplies-unreadable = La liste des stocks n’a pas pu être lue, et rien n’a été écrit par-dessus : { $what }
+supplies-name-needed = Un article a besoin d’un nom.
+supplies-gone = Cet article n’est plus là : { $what }
+supplies-number-unreadable = « { $what } » n’est pas un nombre.

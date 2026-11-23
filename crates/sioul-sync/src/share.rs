@@ -590,6 +590,33 @@ fn clients_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.clients >= CLIENTS_SHARED))
 }
+/// The supplies' list (`sioul_core::supplies`): each `[[supply]]` by its id,
+/// as projects are by theirs.
+static SUPPLIES_RULES: Rules = Rules { keyed: &[keyed("supply", &["id"])], whole: &[], local: &[], next: None };
+
+/// The supplies' list, beside the projects (the notes folder, or `records/` once moved).
+pub const SUPPLIES: &str = "notes/sioul-supplies.toml";
+
+/// The supplies' movements, beside their list: each device's own file
+/// (`<device>.toml`), written by that device alone, travelling whole, every
+/// device's read (`sioul_core::supplies::read_moves`).
+pub const SUPPLY_MOVES: &str = "notes/sioul-supplies-moves/";
+
+/// What a device's entry says once its Sioul has the supplies' stores (`devices::Entry::supplies`).
+pub const SUPPLIES_SHARED: u32 = 1;
+
+/// Whether the supplies' list and movements travel by the log: at least one
+/// other device counts (`present`), and every one of them says in its sealed
+/// entry that its Sioul has the stores (`devices::Entry::supplies`), as the
+/// client profiles wait (`clients_shared`): until then each device keeps its
+/// supplies to itself, and an older Sioul, which would take the list for a
+/// note and the movements' folder for notes, never holds a record it would
+/// keep waiting. A sync app carrying the notes folder carries them itself,
+/// whatever this says.
+fn supplies_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.supplies >= SUPPLIES_SHARED))
+}
 /// The persons your admin is done for (`sioul_core::persons`): each person
 /// a table named by its id (`[person.<id>]`), each of its fields an entry, so
 /// that a name changed on the phone and a birth date added on the computer
@@ -738,6 +765,8 @@ const NOT_NOTES: &[&str] = &[
     sioul_core::projects::OLD_FILE,
     sioul_core::projects::BEFORE_RENAME,
     sioul_core::clients::FILE,
+    sioul_core::supplies::FILE,
+    sioul_core::supplies::MOVES,
     sioul_core::budget::LEDGER,
     sioul_core::bank::MANIFEST,
     sioul_core::contracts::MANIFEST,
@@ -754,6 +783,8 @@ const NOT_NOTES_MOVED: &[&str] = &[
     sioul_core::projects::OLD_FILE,
     sioul_core::projects::BEFORE_RENAME,
     sioul_core::clients::FILE,
+    sioul_core::supplies::FILE,
+    sioul_core::supplies::MOVES,
     sioul_core::budget::LEDGER,
     sioul_core::bank::MANIFEST,
     sioul_core::contracts::MANIFEST,
@@ -1112,11 +1143,16 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         };
         list("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&records), &PROJECTS_RULES, old(sioul_core::projects::OLD_FILE));
         list("projects", CLIENTS, records.join(sioul_core::clients::FILE), &CLIENTS_RULES, old(sioul_core::clients::FILE));
+        list("projects", SUPPLIES, records.join(sioul_core::supplies::FILE), &SUPPLIES_RULES, old(sioul_core::supplies::FILE));
         list("projects", "notes/sioul-budgets.toml", records.join(sioul_core::budget::LEDGER), &LEDGER_RULES, old(sioul_core::budget::LEDGER));
         list("projects", "notes/sioul-bank.toml", records.join(sioul_core::bank::MANIFEST), &BANK_RULES, old(sioul_core::bank::MANIFEST));
         list("projects", "notes/sioul-contracts.toml", records.join(sioul_core::contracts::MANIFEST), &CONTRACTS_RULES, old(sioul_core::contracts::MANIFEST));
         list("projects", MOVEMENTS, records.join(sioul_core::movements::STORE), &MOVEMENTS_RULES, old(sioul_core::movements::STORE));
         list("projects", "notes/sioul-papers.toml", records.join(sioul_core::papers::MANIFEST), &PAPERS_RULES, old(sioul_core::papers::MANIFEST));
+        // The supplies' movements, each device's file whole, beside their list.
+        let mut moves = folder("projects", SUPPLY_MOVES, records.join(sioul_core::supplies::MOVES), Shape::Whole, &[]);
+        moves.was = was(SUPPLY_MOVES, old(sioul_core::supplies::MOVES));
+        stores.push(moves);
         let mut letters = folder("projects", LETTERS_RECORDS, records.join(sioul_core::letters::FOLDER), Shape::Files, &[]);
         letters.flat = true;
         letters.was = was("files/notes/", from.clone());
@@ -1143,6 +1179,9 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         stores.push(file("projects", "notes/sioul-cases.toml", sioul_core::projects::file_in(&notes), Shape::Toml(&PROJECTS_RULES)));
         // The client profiles: travel once every other device says it has the store (`clients_shared`).
         stores.push(file("projects", CLIENTS, notes.join(sioul_core::clients::FILE), Shape::Toml(&CLIENTS_RULES)));
+        // The supplies' list and each device's movements: travel once every other device says it has them (`supplies_shared`).
+        stores.push(file("projects", SUPPLIES, notes.join(sioul_core::supplies::FILE), Shape::Toml(&SUPPLIES_RULES)));
+        stores.push(folder("projects", SUPPLY_MOVES, notes.join(sioul_core::supplies::MOVES), Shape::Whole, &[]));
         stores.push(file("projects", "notes/sioul-budgets.toml", notes.join(sioul_core::budget::LEDGER), Shape::Toml(&LEDGER_RULES)));
         stores.push(file("projects", "notes/sioul-bank.toml", notes.join(sioul_core::bank::MANIFEST), Shape::Toml(&BANK_RULES)));
         stores.push(file("projects", "notes/sioul-contracts.toml", notes.join(sioul_core::contracts::MANIFEST), Shape::Toml(&CONTRACTS_RULES)));
@@ -2021,7 +2060,7 @@ pub const LETTERS_LIST: &str = "files/notes/letters/letters.toml";
 /// no bytes taken as emptied after `EMPTIED_WAIT`, a file gone written again
 /// from the one change that comes next. Until 18 November 2026 the health
 /// file alone was guarded so (docs/database.md, "Sioul's own lists").
-pub const LISTS: &[&str] = &["notes/sioul-cases.toml", CLIENTS, "notes/sioul-budgets.toml", "notes/sioul-bank.toml", "notes/sioul-contracts.toml", MOVEMENTS, "notes/sioul-papers.toml", LETTERS_LIST];
+pub const LISTS: &[&str] = &["notes/sioul-cases.toml", CLIENTS, SUPPLIES, "notes/sioul-budgets.toml", "notes/sioul-bank.toml", "notes/sioul-contracts.toml", MOVEMENTS, "notes/sioul-papers.toml", LETTERS_LIST];
 
 /// How long a list written of no bytes is left to its writer before the
 /// guard takes it for lost (`lists_lost`).
@@ -3232,6 +3271,13 @@ struct Memory {
     /// yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     clients_open: bool,
+    /// The supplies' list and movements (`SUPPLIES`, `SUPPLY_MOVES`)
+    /// travelled from here once every device said it has them
+    /// (`supplies_shared`): from then on they stay in this device's
+    /// exchanges, as `clients_open` keeps the client profiles. Missing: not
+    /// yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    supplies_open: bool,
     /// Your word on topics (`TOPICS`) travelled from here once every device
     /// said it has the store (`topics_shared`): from then on it stays in
     /// this device's exchanges, as `persons_open` keeps the persons. Missing:
@@ -6357,6 +6403,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if clients && !memory.clients_open && clients_shared(sharing, &memory, now_ms) {
         memory.clients_open = true;
     }
+    let supplies = stores.iter().any(|s| s.name == SUPPLIES || s.name == SUPPLY_MOVES);
+    if supplies && !memory.supplies_open && supplies_shared(sharing, &memory, now_ms) {
+        memory.supplies_open = true;
+    }
     let topics = stores.iter().any(|s| s.name == TOPICS);
     if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
         memory.topics_open = true;
@@ -6374,6 +6424,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             || (s.name == NOTICES && !memory.notices_open)
             || (s.name == PERSONS && !memory.persons_open)
             || (s.name == CLIENTS && !memory.clients_open)
+            || ((s.name == SUPPLIES || s.name == SUPPLY_MOVES) && !memory.supplies_open)
             || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open)
     };
     let stores: &[Store] = if stores.iter().any(left_out) {

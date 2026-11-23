@@ -154,6 +154,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.persons = sioul_sync::share::PERSONS_SHARED;
         // It has the client profiles' store: it travels once every device says so.
         entry.clients = sioul_sync::share::CLIENTS_SHARED;
+        // It has the supplies' list and movements: they travel once every device says so.
+        entry.supplies = sioul_sync::share::SUPPLIES_SHARED;
         // Where its lists are (docs/notes-folder.md, "What lives where"): it knows the new
         // places, or it moved; nothing moves anywhere until every device knows them.
         entry.storage = if sioul_core::storage::Storage::here().is_moved() { sioul_sync::devices::STORAGE_MOVED } else { sioul_sync::devices::STORAGE_KNOWS };

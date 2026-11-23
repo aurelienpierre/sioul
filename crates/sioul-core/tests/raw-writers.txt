@@ -243,6 +243,12 @@ sioul-core/src/clients.rs	remove	1	std::fs::rename(&temporary, file)
 sioul-core/src/clients.rs	change	1	std::fs::write(&temporary, doc.to_string())
 sioul-core/src/clients.rs	change	1	std::fs::rename(&temporary, file)
 
+# sioul-core/src/supplies.rs: the supplies' list and this device's file of their movements (docs/supplies.md), beside the projects: no item.
+sioul-core/src/supplies.rs	change	1	write_whole(&file, &written)
+sioul-core/src/supplies.rs	write_whole	1	std::fs::write(&temporary, text)
+sioul-core/src/supplies.rs	write_whole	1	std::fs::rename(&temporary, file)
+sioul-core/src/supplies.rs	record	1	write_whole(&file, &doc.to_string())
+
 # sioul-core/src/own_time.rs: your own time around meetings with others (data), by their UID: no calendar's item.
 sioul-core/src/own_time.rs	set	1	crate::filelock::replace(path, bytes.as_bytes())
 # sioul-core/src/meeting_lines.rs: Sioul's own lines of meetings with others (data), by their UID: no calendar's item. Its one writer, under its lock (`change`, `put_back`: Undo of a take or a kind, entry by entry).

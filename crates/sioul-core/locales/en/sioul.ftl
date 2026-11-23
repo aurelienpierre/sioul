@@ -10231,3 +10231,9 @@ hours-lookup-nobody = Nobody can be asked for this office now.
 hours-source-name-map-at = the map's search service ({ $host })
 hours-task-not-followed = This task does not follow these hours: it is proposed at any time.
 hours-task-follow = Follow them
+
+## Supplies (docs/supplies.md): what is used up or sold, and what is left of it.
+supplies-unreadable = The list of supplies could not be read, and nothing was written over it: { $what }
+supplies-name-needed = A supply needs a name.
+supplies-gone = This supply is no longer there: { $what }
+supplies-number-unreadable = “{ $what }” is not a number.

@@ -469,6 +469,7 @@ fn list_names() -> Vec<&'static str> {
         crate::projects::FILE,
         crate::projects::OLD_FILE,
         crate::clients::FILE,
+        crate::supplies::FILE,
         crate::budget::LEDGER,
         crate::bank::MANIFEST,
         crate::contracts::MANIFEST,
@@ -525,6 +526,12 @@ pub fn survey(folders: &Folders) -> Result<Survey, Fault> {
         let mut kept: Vec<String> = dir.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with(crate::projects::BEFORE_RENAME)).collect();
         kept.sort();
         names.extend(kept);
+    }
+    // The supplies' movements, each device's file in their folder beside the list (`supplies::MOVES`).
+    if let Ok(dir) = std::fs::read_dir(notes.join(crate::supplies::MOVES)) {
+        let mut moves: Vec<String> = dir.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".toml") && !n.starts_with('.')).map(|n| format!("{}/{n}", crate::supplies::MOVES)).collect();
+        moves.sort();
+        names.extend(moves);
     }
     for name in names {
         if regular(&name)? {
@@ -1608,7 +1615,7 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
             let _ = std::fs::remove_file(from.with_file_name(format!(".{name}.lock")));
         }
     }
-    for old in [OLD_PAPERS, OLD_LETTERS] {
+    for old in [OLD_PAPERS, OLD_LETTERS, crate::supplies::MOVES] {
         remove_empty(&notes.join(old));
     }
     if cleaned.whole() {

@@ -3307,6 +3307,10 @@ pub mod qobject {
         #[qsignal]
         fn papers_changed(self: Pin<&mut Sioul>);
 
+        /// The supplies or their movements changed (`changes`): the Supplies page and an open card read them again.
+        #[qsignal]
+        fn supplies_changed(self: Pin<&mut Sioul>);
+
         /// Money changed (budgets, bank accounts and movements, contracts):
         /// the bank's and the contracts' sections and a person's page read it again.
         #[qsignal]

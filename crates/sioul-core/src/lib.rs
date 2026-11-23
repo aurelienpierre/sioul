@@ -347,6 +347,8 @@ pub mod storage;
 pub mod stopped;
 // Calendars subscribed by their web address (docs/client.md, "Calendars by their address").
 pub mod subscribed;
+// Supplies: what is used or sold, their movements, and the tasks that use them (docs/supplies.md).
+pub mod supplies;
 pub mod taskview;
 pub mod thingsearch;
 // texts: SMS phase (b), read and sent through the phone (docs/texts.md).

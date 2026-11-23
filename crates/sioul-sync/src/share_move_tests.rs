@@ -81,6 +81,7 @@ impl Device {
             e.movements = MOVEMENTS_SHARED;
             e.clients = CLIENTS_SHARED;
             e.persons = PERSONS_SHARED;
+            e.supplies = SUPPLIES_SHARED;
             e.storage = storage;
         })
         .unwrap();
