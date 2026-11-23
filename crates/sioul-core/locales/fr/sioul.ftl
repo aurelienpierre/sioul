@@ -6786,6 +6786,8 @@ appnotes-open-info = Infos de l’application Sioul
 appnotes-open-access = Accès aux notifications
 appnotes-hold = Retenir les notifications des autres applications jusqu’à leur heure
 appnotes-hold-help = Décoché, tout vient comme les applications l’envoient ; l’accès reste tel que vous l’avez réglé.
+appnotes-people = Retenir aussi les messages des personnes, selon qui écrit et quand
+appnotes-people-help = Coché, le message d’une personne arrive quand Ce qui vous joint la laisse vous joindre, Sioul sachant qui écrit par vos contacts une fois autorisé à les lire ; décoché, il arrive aussitôt, sauf ceux des personnes bloquées, et ceux des conversations, des personnes et des applications auxquelles vous avez donné leurs propres heures, ou que vous avez réglées sur regroupé ou jamais.
 appnotes-times = Les notifications des automates reviennent à { $times }, jamais pendant le sommeil, une pause, le temps libre ou « Ne pas déranger ».
 appnotes-times-change = Changer les heures
 appnotes-sound = Android joue le son d’une notification avant que Sioul la voie : Sioul peut retenir une notification, pas son premier son. Ce que Sioul regroupe revient sans son. Rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont sonné), ou laissez Sioul le faire. Les discussions et les SMS peuvent garder leur son, pour que sonnent les personnes laissées passer : un message retenu sonne alors une fois, puis attend hors de vue. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos indisponibilités aussi quand Ce qui vous joint ▸ Moments le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.
@@ -7842,6 +7844,7 @@ access-texts-off = SMS : la partie SMS est désactivée sur { device-this }, s
 access-notifications = Notifications des autres applications : Android n’a pas encore donné à Sioul l’accès aux notifications, si bien qu’elles ne sont ni retenues jusqu’à leur heure ni dites à vos ordinateurs. « Autoriser dans Android… » ouvre sa page.
 access-notifications-guarded = Notifications des autres applications : Android n’a pas encore donné à Sioul l’accès aux notifications, si bien qu’elles ne sont ni retenues jusqu’à leur heure ni dites à vos ordinateurs. Une application installée depuis un fichier ne l’obtient qu’une fois ses paramètres restreints autorisés : appuyez sur « Autoriser dans Android… » et touchez une fois Sioul dans Accès aux notifications (Android peut répondre « Paramètre restreint ») ; ouvrez ensuite les infos de l’application Sioul, ⋮ (en haut) ▸ Autoriser les paramètres restreints, confirmez avec votre code, et activez Sioul dans Accès aux notifications.
 access-contacts = Contacts : Android n’a pas autorisé Sioul à les lire, si bien que les appels et les messages montrent des numéros là où vos contacts donneraient des noms. « Autoriser dans Android… » le demande.
+access-contacts-people = Contacts : Android n’a pas autorisé Sioul à les lire, si bien que Sioul ne peut pas toujours savoir qui vous écrit dans les autres applications (le message de quelqu’un qu’il ne peut reconnaître arrive comme celui d’un contact), et que les appels et les messages montrent des numéros là où vos contacts donneraient des noms. « Autoriser dans Android… » le demande.
 access-not-now = Pas maintenant
 restricted-title = Paramètres restreints d’Android
 restricted-intro-notifications = Sioul a été installé depuis un fichier : Android retient donc l’accès aux notifications jusqu’à ce que vous autorisiez ses paramètres restreints. Trois étapes :
@@ -8604,6 +8607,7 @@ calls-context-busy = pendant que vous étiez indisponible
 appnotes-why-released = Retenu avant que vous demandiez à votre téléphone de laisser passer ce qu’il retenait : laissé passer.
 appnotes-why-unknown = Sioul n’a pas pu savoir qui a écrit : laissée passer comme le serait le message d’un contact.
 appnotes-why-unknown-held = Sioul n’a pas pu savoir qui a écrit : retenue jusqu’à { $when }, comme le serait le message d’un contact.
+appnotes-why-people-off = Les messages des personnes ne sont pas retenus sur ce téléphone : laissée passer.
 
 # Le bouton et la carte « Ce qui vous joint maintenant » (partie 5 de « Ce qui vous joint » ; 3.5 et 3.6 de la proposition).
 reach-button-name = Ce qui vous joint maintenant : { $state }

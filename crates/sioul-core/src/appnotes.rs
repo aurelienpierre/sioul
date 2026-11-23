@@ -687,6 +687,16 @@ pub struct Choices {
     /// Holding at all; off, everything comes as the apps send it.
     #[serde(default = "yes")]
     pub hold: bool,
+    /// Hold people's messages too, by who writes and when (held apps phase
+    /// 1, A2); `hold` stays the master switch. Off, a message between people
+    /// comes at once, but from the blocked, a conversation set to gathered or
+    /// never, and a conversation, a person or an app with times of their own
+    /// (`route`). None until worked out, once (`work_out_people`): on where
+    /// anything was ever chosen for other apps on this phone, off where
+    /// nothing was; written then, so that a phone set up by its person keeps
+    /// what it does and a new one holds no one's message by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub people: Option<bool>,
     /// By the app's package.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub app: BTreeMap<String, AppChoice>,
@@ -714,7 +724,7 @@ fn yes() -> bool {
 
 impl Default for Choices {
     fn default() -> Choices {
-        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
+        Choices { hold: true, people: None, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
     }
 }
 
@@ -749,6 +759,33 @@ impl Choices {
 
     pub fn through(&self, conversation: &str) -> Through {
         self.conversation.get(conversation).map_or(Through::Usual, |c| c.through)
+    }
+
+    /// Whether people's messages are held by who writes and when: holding on,
+    /// and `people` on; unset, as before this switch (held), until the app
+    /// works it out at its first read and writes it (`work_out_people`).
+    pub fn holds_people(&self) -> bool {
+        self.hold && self.people != Some(false)
+    }
+
+    /// Whether anything was ever chosen for other apps on this phone (held
+    /// apps phase 1, A2): an app, a conversation or a site here, or an app's
+    /// or a conversation's own row by time in `[attention]`. A person's own
+    /// row is no choice for other apps: it is set from their card, for every
+    /// device.
+    pub fn chose_for_apps(&self, attention: &Attention) -> bool {
+        !self.app.is_empty() || !self.conversation.is_empty() || !self.site.is_empty() || attention.sources().keys().any(|id| id.starts_with(attention::APP_ROW) || id.starts_with(attention::CONVERSATION_ROW))
+    }
+
+    /// `people` worked out when unset: on where anything was ever chosen for
+    /// other apps on this phone (`chose_for_apps`), off otherwise. Whether it
+    /// was worked out now, to be written.
+    pub fn work_out_people(&mut self, attention: &Attention) -> bool {
+        if self.people.is_some() {
+            return false;
+        }
+        self.people = Some(self.chose_for_apps(attention));
+        true
     }
 }
 
@@ -924,6 +961,9 @@ pub enum Why {
     /// Held before a release you asked (Reachable pressed, or "Let what
     /// your phone holds through" on a computer: part 3): let through once.
     Released,
+    /// People's messages are not held on this phone (`Choices::people` off,
+    /// held apps phase 1, A2): a person's message comes at once.
+    PeopleOff,
 }
 
 impl Why {
@@ -942,6 +982,7 @@ impl Why {
             Why::Again => "again",
             Why::Answered => "answered",
             Why::Released => "released",
+            Why::PeopleOff => "people-off",
         }
     }
 }
@@ -1195,7 +1236,13 @@ enum Route<'a> {
 /// The way `decide` takes: what the notification is, then who wrote and
 /// what you chose for its conversation. The blocked never, whatever their
 /// conversation says (blocked beats Always through, docs/attention.md, Q3).
-fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) -> Route<'a> {
+/// People's messages not held on this phone (`Choices::holds_people`, A2):
+/// at once, but the blocked, a conversation set to gathered or never, a text
+/// named only (a business's, gathered with the automatons) and what has rows
+/// of its own by time (`sourced`: its conversation's, its person's, its
+/// app's, which decide as before); a missed call as before (calls are not
+/// touched).
+fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices, sourced: bool) -> Route<'a> {
     match kind {
         Kind::Untouched => Route::Through(Why::Untouched),
         Kind::Code => Route::Through(Why::Code),
@@ -1211,12 +1258,15 @@ fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) 
             let through = talk.conversation.as_ref().map_or(Through::Usual, |c| choices.through(&c.key));
             // Someone Sioul cannot tell: as a contact, never a stranger (A1); a missed call as before.
             let known = who.unwrap_or_else(|| unidentified_as(talk.via));
+            // People's messages not held here (A2), but what has times of its own; a missed call as before.
+            let off = !choices.holds_people() && !sourced && talk.via != Channel::Calls;
             match through {
-                Through::Always => Route::Person { talk, who: known, group, always: true, conversation: true },
                 Through::Gathered => Route::Gathered(Gathering::Conversation),
                 Through::Never => Route::ForGood,
                 // An SMS named only, whom no address book knows: a business's sender id.
                 Through::Usual if talk.sms && who.is_none() && matches!(talk.sender, Sender::Named { .. }) => Route::Gathered(Gathering::Named),
+                _ if off => Route::Through(Why::PeopleOff),
+                Through::Always => Route::Person { talk, who: known, group, always: true, conversation: true },
                 Through::Usual => Route::Person { talk, who: known, group, always: listed && !group, conversation: false },
             }
         }
@@ -1237,7 +1287,7 @@ fn conversation_gathered(ask: &Ask) -> Decision {
 /// holds them. The blocked never, whatever their conversation says (blocked
 /// beats Always through, docs/attention.md, Q3).
 pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, ask: &Ask) -> Decision {
-    match route(kind, who, listed, choices) {
+    match route(kind, who, listed, choices, ask.attention.has_sources(ask.sources)) {
         Route::Through(why) => Decision::through(why),
         Route::AtOnce => at_once(ask),
         Route::Gathered(Gathering::Conversation) => conversation_gathered(ask),
@@ -1312,7 +1362,7 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
     let moment = ask.moment(ask.now, &mode);
     let mut cause = Cause { nothing: moment.nothing, ..Cause::default() };
     let sources = ask.sources.to_vec();
-    let event = match route(kind, who, listed, choices) {
+    let event = match route(kind, who, listed, choices, ask.attention.has_sources(ask.sources)) {
         Route::Through(_) => return None,
         Route::ForGood => {
             cause.for_good = true;
@@ -1732,8 +1782,11 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), to_unsaid: false, sms: false };
     // Kept without a who: Sioul could not tell who wrote, judged as a contact (A1); a missed call as before.
     let known = who.unwrap_or_else(|| unidentified_as(talk.via));
+    // People's messages not held here (A2), but what has times of its own; a missed call as before.
+    let off = !choices.holds_people() && !ask.attention.has_sources(ask.sources) && talk.via != Channel::Calls;
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
+            Through::Always if off => return Decision::through(Why::PeopleOff),
             Through::Always => return always(&talk, known, held.circle, held.group, ask),
             Through::Gathered => return conversation_gathered(ask),
             Through::Never => return Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
@@ -1742,6 +1795,7 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     }
     match held.kind.as_str() {
         _ if app.kind == AppKind::Automaton => gathered(ask),
+        "people" | "never" if off => Decision::through(Why::PeopleOff),
         "people" | "never" => person(&talk, known, held.circle, held.group, held.admitted, ask),
         _ => gathered(ask),
     }
@@ -2271,6 +2325,119 @@ mod tests {
         let kept = Held { app: "com.discord".into(), label: "Discord".into(), kind: "people".into(), via: "messages".into(), since: 0, until: 0, ..Held::default() };
         assert_eq!(again(&kept, &choices, &ask(&evening, &clock, None, None)), Decision::through(Why::Allowed));
         assert!(again(&Held { via: "calls".into(), ..kept }, &choices, &ask(&evening, &clock, None, None)).until.is_some());
+    }
+
+    /// Held apps phase 1, A2: `people` unset is worked out once, from what
+    /// was ever chosen for other apps on this phone: on with an app, a
+    /// conversation or a site chosen, or an app's or a conversation's own row
+    /// by time; off with nothing, a person's own row aside. Unset, it holds
+    /// as before; once worked out it is written, and read back.
+    #[test]
+    fn people_unset_is_worked_out_from_what_was_chosen_on_this_phone() {
+        let usual = Attention::usual();
+        let mut nothing = Choices::default();
+        assert!(nothing.holds_people(), "unset: as before, until worked out");
+        assert!(nothing.work_out_people(&usual) && nothing.people == Some(false) && !nothing.holds_people());
+        assert!(!nothing.work_out_people(&usual), "once");
+        let chose = |mut choices: Choices, attention: &Attention| {
+            choices.work_out_people(attention);
+            choices.people
+        };
+        let mut app = Choices::default();
+        app.app.insert("com.discord".into(), AppChoice { kind: AppKind::Automaton, ..AppChoice::default() });
+        assert_eq!(chose(app, &usual), Some(true), "an app chosen");
+        let mut talk = Choices::default();
+        talk.conversation.insert("c1".into(), TalkChoice { through: Through::Always, ..TalkChoice::default() });
+        assert_eq!(chose(talk, &usual), Some(true), "a conversation chosen");
+        let mut site = Choices::default();
+        site.site.insert("forum.example.net".into(), SiteChoice { at_once: true });
+        assert_eq!(chose(site, &usual), Some(true), "a site chosen");
+        for row in ["app.com.discord", "conversation.8c1f0e5a2b7d4c69"] {
+            let mut rows = usual.clone();
+            rows.set_source(row, Column::Work, Level::Now).unwrap();
+            assert_eq!(chose(Choices::default(), &rows), Some(true), "{row}");
+        }
+        let mut theirs = usual.clone();
+        theirs.set_source("person.contact:card-1", Column::Leisure, Level::Later).unwrap();
+        assert_eq!(chose(Choices::default(), &theirs), Some(false), "a person's own row is set from their card, for every device");
+        assert_eq!(chose(Choices { people: Some(true), ..Choices::default() }, &usual), Some(true), "set: kept");
+        // Holding off: nothing held at all, people's messages neither.
+        assert!(!Choices { hold: false, people: Some(true), ..Choices::default() }.holds_people());
+        // Written once worked out, read back; unset is not written.
+        let text = toml::to_string(&Choices { people: Some(false), ..Choices::default() }).unwrap();
+        assert!(text.contains("people = false"), "{text}");
+        assert_eq!(toml::from_str::<Choices>(&text).unwrap().people, Some(false));
+        assert!(!toml::to_string(&Choices::default()).unwrap().contains("people"));
+        assert_eq!(toml::from_str::<Choices>("hold = true\n").unwrap().people, None);
+    }
+
+    /// Held apps phase 1, A2: people's messages not held on this phone. A
+    /// stranger's text in the evening, a contact's at night and a mail app's
+    /// come at once, said as such, and nothing is said to hold them; the
+    /// blocked stay held for good; a conversation set to gathered waits for
+    /// its gathered time; a conversation, a person or an app with times of
+    /// their own decides as before; a business's text named only, the
+    /// automatons and a missed call as before. Worked out again, what was
+    /// held comes, but the blocked's.
+    #[test]
+    fn with_people_off_a_person_s_message_comes_at_once_but_what_was_set_apart() {
+        let clock = TestClock::new();
+        let off = Choices { people: Some(false), ..Choices::default() };
+        let (morning, evening, night) = (at("2026-10-06T10:00[Europe/Paris]"), at("2026-10-06T20:30[Europe/Paris]"), at("2026-10-06T23:30[Europe/Paris]"));
+        let decided = |json: &str, who: Option<Who>, choices: &Choices, now: &Zoned| decide(&classify(&posted(json), choices), who, false, choices, &ask(now, &clock, None, None));
+        assert_eq!(decided(SMS_NUMBER, Some(Who::Stranger), &off, &evening), Decision::through(Why::PeopleOff));
+        assert_eq!(decided(WHATSAPP_PERSON, Some(Who::Neutral), &off, &night), Decision::through(Why::PeopleOff));
+        assert_eq!(decided(PROTON, Some(Who::Stranger), &off, &night), Decision::through(Why::PeopleOff), "a mail app's alike");
+        assert_eq!(Why::PeopleOff.id(), "people-off");
+        assert!(cause("com.whatsapp", &classify(&posted(WHATSAPP_PERSON), &off), Some(Who::Neutral), false, &off, &ask(&night, &clock, None, None)).is_none(), "nothing holds it");
+        assert_eq!(decided(SMS_CONTACT, Some(Who::Blocked), &off, &evening).why, Why::Never, "the blocked held for good");
+        // A conversation set to gathered: its gathered time.
+        let mut gathered_talk = off.clone();
+        gathered_talk.conversation.insert(talk_key("com.whatsapp", "120363000000000001@g.us"), TalkChoice { through: Through::Gathered, ..TalkChoice::default() });
+        let held = decided(WHATSAPP_GROUP, None, &gathered_talk, &morning);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Gathered, "2026-10-06T13:00:00"));
+        // Its app's own row by time: as before.
+        let dm = classify(&posted(DISCORD_DM), &off);
+        let key = match &dm {
+            Kind::People(t) => t.conversation.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let rows = attention::source_rows("com.discord", &key);
+        let mut work_only = usual().clone();
+        for column in Column::ALL {
+            work_only.set_source("app.com.discord", column, if column == Column::Work { Level::Now } else { Level::Later }).unwrap();
+        }
+        let sourced = Ask { attention: &work_only, sources: &rows, ..ask(&evening, &clock, None, None) };
+        let held = decide(&dm, Some(Who::Stranger), false, &off, &sourced);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Times, "2026-10-07T09:00:00"), "its app's row decides");
+        // A business's text named only and a shop: gathered as before; a missed call nobody knows: as before.
+        assert_eq!(decided(SMS_SENDER_ID, None, &off, &evening).why, Why::Gathered);
+        assert_eq!(decided(SHOP, None, &off, &evening).why, Why::Gathered);
+        let missed = r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+262 6 39 98 01 07"}"#;
+        assert_eq!(decided(missed, Some(Who::Stranger), &off, &evening).why, Why::Waiting);
+        // People on: as before.
+        let on = Choices { people: Some(true), ..Choices::default() };
+        assert_eq!(decided(SMS_NUMBER, Some(Who::Stranger), &on, &evening).why, Why::Waiting);
+        // Worked out again: a message held before comes, the blocked's stays.
+        let kept = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &off, &ask(&evening, &clock, None, None)), Decision::through(Why::PeopleOff));
+        assert_eq!(again(&Held { who: "blocked".into(), ..kept }, &off, &ask(&evening, &clock, None, None)).why, Why::Never);
+    }
+
+    /// Held apps phase 1, A2: a conversation set to never stays held with
+    /// people's messages not held, decided or worked out again.
+    #[test]
+    fn a_conversation_set_to_never_is_still_held_with_people_off() {
+        let clock = TestClock::new();
+        let evening = at("2026-10-06T20:30[Europe/Paris]");
+        let school = talk_key("com.whatsapp", "120363000000000001@g.us");
+        let mut never = Choices { people: Some(false), ..Choices::default() };
+        never.conversation.insert(school.clone(), TalkChoice { through: Through::Never, ..TalkChoice::default() });
+        let group = classify(&posted(WHATSAPP_GROUP), &never);
+        assert_eq!(decide(&group, Some(Who::Safe), false, &never, &ask(&evening, &clock, None, None)).why, Why::Never);
+        assert_eq!(cause("com.whatsapp", &group, Some(Who::Safe), false, &never, &ask(&evening, &clock, None, None)), Some(Cause { for_good: true, ..Cause::default() }));
+        let kept = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "never".into(), via: "messages".into(), who: "safe".into(), group: true, conversation: school, since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &never, &ask(&evening, &clock, None, None)).why, Why::Never);
     }
 
     /// Held apps phase 1, A1: whether the phone's address book could be asked

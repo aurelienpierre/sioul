@@ -237,7 +237,9 @@ fn decide(json: &str) -> String {
 fn decide_at(json: &str, now: &Zoned) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    // What reaches you when (Settings ▸ What reaches you); people's messages worked out once from it (A2).
+    let attention = sioul_core::attention::Attention::of(&config);
+    let choices = settled_choices(&attention, true);
     let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
     let now = now.clone();
     let stamp = now.timestamp().as_second();
@@ -276,8 +278,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     let slots = crate::hours::slots();
     let slot = |at: &Zoned| slots.at(at);
     let also = slots.edges();
-    // What reaches you when (Settings ▸ What reaches you); Free time's "Nothing at all".
-    let attention = sioul_core::attention::Attention::of(&config);
+    // Free time's "Nothing at all".
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     // Its own rows in the matrix, when set: its conversation's, then its app's.
     let conversation = match &kind {
@@ -550,7 +551,8 @@ fn review_at(json: &str, now: &Zoned) -> String {
     // comes then, without a sound (decision 13); an older Java says nothing, read as not silenced.
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    let attention = sioul_core::attention::Attention::of(&config);
+    let choices = settled_choices(&attention, true);
     let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
@@ -559,7 +561,6 @@ fn review_at(json: &str, now: &Zoned) -> String {
     let slots = crate::hours::slots();
     let slot = |at: &Zoned| slots.at(at);
     let also = slots.edges();
-    let attention = sioul_core::attention::Attention::of(&config);
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     // A conversation answered from a computer in the last twenty minutes: what Sioul holds of it comes now, but in a pause (`replies`).
     let paused = live.clock.mode(&now).paused();
@@ -635,6 +636,42 @@ fn review_at(json: &str, now: &Zoned) -> String {
         line.push_str(&format!(" A release asked from {ahead} device(s) more than a day ahead of this phone's clock: passed over."));
     }
     json!({ "snooze": again, "quiet": quiet, "line": line }).to_string()
+}
+
+/// This phone's choices, people's messages worked out once when unset and
+/// written (held apps phase 1, A2: held only where anything was ever chosen
+/// for other apps here, `Choices::work_out_people`), under the choices' lock,
+/// from the file as it is then. A file that does not read is never written
+/// over: it reads as no choice at all, worked out in memory. `write`: the
+/// phone's own (the listener, the tab, the access card on a phone); a
+/// computer works it out in memory, where nothing is held.
+fn settled_choices(attention: &sioul_core::attention::Attention, write: bool) -> Choices {
+    let path = Choices::default_path();
+    let mut choices = Choices::load(&path);
+    if choices.people.is_some() {
+        return choices;
+    }
+    if write {
+        let written = sioul_core::filelock::with_lock(&path, || -> Result<Choices, String> {
+            let mut choices = Choices::read(&path)?;
+            if choices.work_out_people(attention) {
+                choices.save(&path)?;
+            }
+            Ok(choices)
+        });
+        match written {
+            Ok(settled) => return settled,
+            Err(e) => eprintln!("Notes: {e}"),
+        }
+    }
+    choices.work_out_people(attention);
+    choices
+}
+
+/// This phone's choices as the window reads them (`settled_choices`): written
+/// on a phone only.
+pub(crate) fn choices_here() -> Choices {
+    settled_choices(&sioul_core::attention::Attention::of(&load_config()), cfg!(target_os = "android"))
 }
 
 // ---------------------------------------------------------------- the log
@@ -794,6 +831,8 @@ fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> 
         "answered from a computer".to_string()
     } else if released.iter().any(|c| c.why == Why::Released) {
         "released as you asked".to_string()
+    } else if released.iter().any(|c| c.why == Why::PeopleOff) {
+        "people's messages not held".to_string()
     } else if columns.is_empty() {
         "unknown".to_string()
     } else {
@@ -1041,7 +1080,7 @@ fn times_in_words(times: &[String]) -> String {
 pub(crate) fn setup() -> String {
     let android = cfg!(target_os = "android");
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    let choices = choices_here();
     let ledger = Ledger::load(&Ledger::default_path());
     let now = sioul_core::zone::now();
     let tr = tr();
@@ -1134,6 +1173,8 @@ pub(crate) fn setup() -> String {
         "restricted": java("restricted", "{}") == Value::Bool(true),
         "contacts": java("contacts", "{}") == Value::Bool(true),
         "hold": row("hold", "bool", &text("appnotes-hold"), &text("appnotes-hold-help"), json!(choices.hold), Vec::new()),
+        // People's messages held too, by who writes and when (A2): under the switch above, while it is on.
+        "people": row("people", "bool", &text("appnotes-people"), &text("appnotes-people-help"), json!(choices.people.unwrap_or(false)), Vec::new()),
         "times": tr.text("appnotes-times", Some(&times)),
         "heard": heard,
         "rang": rang,
@@ -1157,7 +1198,7 @@ pub(crate) fn setup() -> String {
 }
 
 /// A choice of the tab, or one of Android's pages (`AppNotesSetup.act`): the tab again, as JSON.
-/// "set" {key, value}: "hold", `app.<package>.kind`, `app.<package>.area`,
+/// "set" {key, value}: "hold", "people", `app.<package>.kind`, `app.<package>.area`,
 /// `app.<package>.sound` ("keep": its sound given back, never made silent
 /// by Sioul; "silence": as usual), `conversation.<key>`, `site.<host>`;
 /// "open-access", "open-info", "open-app" {package}, "open-channel"
@@ -1168,6 +1209,8 @@ pub(crate) fn setup() -> String {
 /// channel made silent by Sioul, whatever its app.
 pub(crate) fn change(verb: &str, json: &str) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    // People's messages worked out from what was chosen before this change, never after it (A2).
+    let attention = sioul_core::attention::Attention::of(&load_config());
     match verb {
         "set" => {
             let key = asked["key"].as_str().unwrap_or_default().to_string();
@@ -1175,6 +1218,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             let path = Choices::default_path();
             let result = sioul_core::filelock::with_lock(&path, || {
                 let mut choices = Choices::load(&path);
+                choices.work_out_people(&attention);
                 let ledger = Ledger::load(&Ledger::default_path());
                 set(&mut choices, &ledger, &key, &value);
                 choices.save(&path)
@@ -1194,6 +1238,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             let path = Choices::default_path();
             let result = sioul_core::filelock::with_lock(&path, || {
                 let mut choices = Choices::read(&path)?;
+                choices.work_out_people(&attention);
                 choices.silence = on;
                 choices.stopped = !on;
                 choices.save(&path)
@@ -1213,6 +1258,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
                 let path = Choices::default_path();
                 let result = sioul_core::filelock::with_lock(&path, || {
                     let mut choices = Choices::load(&path);
+                    choices.work_out_people(&attention);
                     let ledger = Ledger::load(&Ledger::default_path());
                     name_silent(&mut choices, &ledger, &package, &channel);
                     choices.save(&path)
@@ -1259,11 +1305,16 @@ fn name_silent(choices: &mut Choices, ledger: &Ledger, package: &str, channel: &
     choices.app.insert(package.to_string(), chosen);
 }
 
-/// One choice written: the app's kind, area or sound, a conversation's way
-/// through, a site at once. What says "as usual" is taken out.
+/// One choice written: holding, people's messages, the app's kind, area or
+/// sound, a conversation's way through, a site at once. What says "as
+/// usual" is taken out.
 fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
     if key == "hold" {
         choices.hold = value.as_bool().unwrap_or(true);
+    } else if key == "people" {
+        if let Some(on) = value.as_bool() {
+            choices.people = Some(on);
+        }
     } else if let Some(rest) = key.strip_prefix("app.") {
         let Some((package, field)) = rest.rsplit_once('.') else { return };
         let mut chosen = choices.app(package);
@@ -1369,6 +1420,8 @@ mod tests {
         const SHOP: &str = r#"{"key":"0|com.shop.example|1|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"offers","title":"-30 % sur les chaussures","text":"Jusqu'à dimanche seulement","alerted":true}"#;
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
+        // People's messages held on this phone (held apps phase 1, A2), as before that switch.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
         let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
         let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), circle: false, admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
@@ -1419,6 +1472,8 @@ mod tests {
         const NOA: &str = r#"{"key":"0|org.example.chat|7|c0ffee12|10100","package":"org.example.chat","app":"Chat","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa Martin","shortcut":"c0ffee12","messages":[{"sender":{"name":"Noa Martin","uri":"tel:%2B33199001234"},"text":"Tu passes ce soir ?"}]}"#;
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
+        // People's messages held on this phone (held apps phase 1, A2), as before that switch.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
         let at = |time: &str| -> Zoned { format!("2026-10-06T{time}+02:00[Europe/Paris]").parse().unwrap() };
         let ms = |time: &str| at(time).timestamp().as_millisecond();
         let second = |time: &str| at(time).timestamp().as_second();
@@ -1494,6 +1549,12 @@ mod tests {
         assert!(choices.site.is_empty());
         set(&mut choices, &ledger, "hold", &json!(false));
         assert!(!choices.hold);
+        // People's messages held too (held apps phase 1, A2): on and off; a value that is no switch leaves it.
+        set(&mut choices, &ledger, "people", &json!(false));
+        assert_eq!(choices.people, Some(false));
+        set(&mut choices, &ledger, "people", &json!(true));
+        set(&mut choices, &ledger, "people", &json!("yes"));
+        assert_eq!(choices.people, Some(true));
         // A channel named to be made silent by Sioul; then its app's sound given back: named no more, kept.
         name_silent(&mut choices, &ledger, "com.discord", "dm");
         name_silent(&mut choices, &ledger, "com.discord", "dm");
@@ -1744,7 +1805,8 @@ mod tests {
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
         let _ = std::fs::remove_file(Ledger::default_path());
-        let _ = std::fs::remove_file(Choices::default_path());
+        // People's messages held on this phone (held apps phase 1, A2): who wrote decides.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
         // Work on Tuesdays from 09:00 to 17:00, on this test's thread alone: 20:37 is leisure.
         let dir = sioul_core::config::data_dir().join(format!("held-apps-a1-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1760,6 +1822,91 @@ mod tests {
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(Ledger::default_path());
+        let _ = std::fs::remove_file(Choices::default_path());
+        crate::everywhere::files_cleared();
+    }
+
+    /// Held apps phase 1, A2: people's messages worked out once and written,
+    /// under the choices' lock: a phone where nothing was ever chosen for
+    /// other apps stops holding them, one where an app was keeps holding
+    /// them, and a choice made later never moves it; the tab shows it and
+    /// sets it; a file that does not read is never written over.
+    #[test]
+    fn people_unset_is_worked_out_once_and_written() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A configuration of this test's own, with no row of its own for any app.
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a2-people-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.toml"), "language = \"en\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(dir.join("config.toml")));
+        let path = Choices::default_path();
+        let usual = sioul_core::attention::Attention::usual();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(settled_choices(&usual, true).people, Some(false), "nothing chosen here");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("people = false"), "written");
+        // An app chosen before this version: held as before, written so.
+        std::fs::write(&path, "[app.\"com.discord\"]\nkind = \"automaton\"\n").unwrap();
+        assert_eq!(settled_choices(&usual, true).people, Some(true));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("people = true"));
+        // Worked out once: an app chosen later never moves it.
+        std::fs::write(&path, "people = false\n").unwrap();
+        change("set", &json!({ "key": "app.com.discord.kind", "value": "automaton" }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(false));
+        // Unset, the first change works it out from what was chosen before it.
+        std::fs::write(&path, "hold = true\n").unwrap();
+        change("set", &json!({ "key": "site.forum.example.net", "value": true }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(false), "the site was chosen after");
+        // Set from the tab, and shown there.
+        change("set", &json!({ "key": "people", "value": true }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(true));
+        let shown: Value = serde_json::from_str(&setup()).unwrap();
+        assert_eq!((shown["people"]["key"].as_str(), shown["people"]["kind"].as_str(), shown["people"]["value"].as_bool()), (Some("people"), Some("bool"), Some(true)));
+        for said in [&shown["people"]["label"], &shown["people"]["help"]] {
+            assert!(!said.as_str().unwrap().starts_with("appnotes-"), "{said}");
+        }
+        // A file that does not read: worked out in memory, never written over.
+        std::fs::write(&path, "hold = [broken").unwrap();
+        assert_eq!(settled_choices(&usual, true).people, Some(false));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hold = [broken");
+        let _ = std::fs::remove_file(&path);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Held apps phase 1, A2, in the listener: people's messages not held on
+    /// this phone. A stranger's text on a Tuesday evening comes at once, said
+    /// "people-off", with no line of a hold; what was held of a person before
+    /// comes at the next review, the log saying "people's messages not held".
+    #[test]
+    fn with_people_off_the_listener_lets_people_through() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let _ = std::fs::remove_file(Ledger::default_path());
+        Choices { people: Some(false), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[window]]\nday = \"tuesday\"\nstart = \"09:00\"\nend = \"17:00\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        const TEXT: &str = r#"{"key":"0|com.google.android.apps.messaging|5|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"+33 1 99 00 12 35","messages":[{"sender":{"name":"+33 1 99 00 12 35"},"text":"Bonsoir"}],"sms_app":true,"contacts":true}"#;
+        const PEOPLE: &str = "0|com.google.android.apps.messaging|2|sms|10001";
+        let evening: Zoned = "2026-10-06T20:41:00+02:00[Europe/Paris]".parse().unwrap();
+        let stamp = evening.timestamp().as_second();
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(TEXT, &evening)).unwrap();
+        assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("people-off")), "{decided}");
+        assert!(decided.get("line").is_none(), "{decided}");
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(PEOPLE), appnotes::Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: stamp - 3600, until: stamp + 12 * 3600, ..Default::default() });
+        ledger.save(&Ledger::default_path()).unwrap();
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&json!({ "snoozed": [PEOPLE], "reason": "files" }).to_string(), &evening)).unwrap();
+        assert_eq!(reviewed["snooze"], json!([{ "key": PEOPLE, "ms": 1000, "quiet": false }]), "{reviewed}");
+        assert!(reviewed["line"].as_str().unwrap().contains("released 1 (messages 1); why: people's messages not held;"), "{reviewed}");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let _ = std::fs::remove_file(Choices::default_path());
         crate::everywhere::files_cleared();
     }
 

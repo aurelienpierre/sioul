@@ -6728,6 +6728,8 @@ appnotes-open-info = Sioul's app info
 appnotes-open-access = Notification access
 appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
+appnotes-people = Hold people's messages too, by who writes and when
+appnotes-people-help = On, a person's message comes when What reaches you lets them reach you, Sioul telling who writes by your contacts once allowed to read them; off, it comes at once, but from the blocked, and from the conversations, people and apps you gave times of their own or set to gathered or never.
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
 appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
@@ -7784,6 +7786,7 @@ access-texts-off = Texts: the part Texts is off on { device-this }, so your comp
 access-notifications = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. Allow in Android… opens its page.
 access-notifications-guarded = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. An app installed from a file gets it only once you allow its restricted settings: press Allow in Android… and tap Sioul once in Notification access (Android may answer “Restricted setting”); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and turn Sioul on in Notification access.
 access-contacts = Contacts: Android has not allowed Sioul to read them, so calls and messages show numbers where your contacts would give names. Allow in Android… asks.
+access-contacts-people = Contacts: Android has not allowed Sioul to read them, so Sioul cannot always tell who writes to you in other apps (a message from someone it cannot tell comes as a contact's would), and calls and messages show numbers where your contacts would give names. Allow in Android… asks.
 access-not-now = Not now
 restricted-title = Android's restricted settings
 restricted-intro-notifications = Sioul was installed from a file, so Android holds back notification access until you allow its restricted settings. Three steps:
@@ -8539,6 +8542,7 @@ calls-context-busy = while you were busy
 appnotes-why-released = Held before you asked your phone to let what it held through: let through.
 appnotes-why-unknown = Sioul could not tell who wrote: let through as a contact's message would be.
 appnotes-why-unknown-held = Sioul could not tell who wrote: held until { $when }, as a contact's message would be.
+appnotes-why-people-off = People's messages are not held on this phone: let through.
 
 # The button and the card "What reaches you now" (part 5 of "What reaches you"; the proposal's 3.5 and 3.6).
 reach-button-name = What reaches you now: { $state }
