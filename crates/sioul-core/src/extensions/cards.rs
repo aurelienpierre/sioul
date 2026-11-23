@@ -926,7 +926,7 @@ mod tests {
         }
         assert_eq!(text.matches("TEL").count(), 1, "its number not written again:\n{text}");
         assert!(!text.contains("CATEGORIES"), "a card of the person's own keeps its groups");
-        // The service renames her: the person's own name stays; nothing else of the card changes.
+        // The service renames the client: the person's own name stays; nothing else of the card changes.
         let renamed = set(json!([{ "id": "c-1", "name": "Marie Exemple-Martin", "phones": ["+33 1 23 45 67 89"], "emails": ["marie@example.org"], "org": "Salon" }]));
         take(EXT, &renamed, &book, fr(), &plain()).unwrap();
         assert!(text_at(&mine).contains("FN:Marie E.\r\n"));
