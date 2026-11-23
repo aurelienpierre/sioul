@@ -18,7 +18,10 @@ import org.json.JSONObject;
  * - PauseMode.passesNow: which modes on let a channel that passes be used;
  * - AppNotes.talkKey against Rust's talk_key (values from Rust's own code,
  *   rustc on a verbatim copy of appnotes.rs's fnv and talk_key);
- * - AppNotes.forgotten, AppNotes.pages.
+ * - AppNotes.forgotten, AppNotes.pages;
+ * - AppNotes.lookup, AppNotes.decoded: what the phone's address book is
+ *   asked of who wrote (held apps phase 1, A1), and, read from the sources,
+ *   that the posted notification says whether it was asked.
  */
 public final class ModeCheck
 {
@@ -126,6 +129,27 @@ public final class ModeCheck
         expect("its own page", Arrays.toString(AppNotes.pages(31, true, true, true)), "[conversation, conversations, app]");
         expect("not changed yet", Arrays.toString(AppNotes.pages(31, true, false, true)), "[conversations, conversation, app]");
         expect("no channel known", Arrays.toString(AppNotes.pages(34, true, true, false)), "[conversations, app]");
+
+        // What the phone's address book is asked of who wrote (held apps phase 1, A1): a contact's
+        // link; a tel: number or a mailto: address, decoded, so that one found nowhere is a stranger's
+        // in Rust (`who_of`); a name alone; nothing to ask (invented numbers and addresses).
+        expect("a contact's link", Arrays.toString(AppNotes.lookup("content://com.android.contacts/contacts/lookup/0r1-ABC/1", "Noa")), "[link, content://com.android.contacts/contacts/lookup/0r1-ABC/1]");
+        expect("a tel: number, decoded", Arrays.toString(AppNotes.lookup("tel:%2B33199001234", "Noa")), "[number, +33199001234]");
+        expect("a tel: number as written", Arrays.toString(AppNotes.lookup(" tel:+33 1 99 00 12 34 ", null)), "[number, +33 1 99 00 12 34]");
+        expect("a mailto: address, its query aside", Arrays.toString(AppNotes.lookup("mailto:Noa.Martin%40example.org?subject=Hi", "")), "[email, noa.martin@example.org]");
+        expect("a name alone", Arrays.toString(AppNotes.lookup("", " Noa Martin ")), "[name, Noa Martin]");
+        expect("an empty tel:", AppNotes.lookup("tel:", "Noa"), null);
+        expect("another address: nothing asked", AppNotes.lookup("https://example.org/noa", "Noa"), null);
+        expect("nobody", AppNotes.lookup(null, null), null);
+        expect("a broken escape kept", AppNotes.decoded("%2+33%"), "%2+33%");
+        expect("UTF-8 escapes", AppNotes.decoded("%C3%A9l%C3%A8ve"), "élève");
+        // Read from the sources (android.jar's ContactsContract is a stub): the posted notification says
+        // whether the address book was asked; a tel: number by PhoneLookup, an address by the email lookup.
+        String listener = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(System.getProperty("sioul.root"), "android", "package", "src", "com", "aurelienpierre", "sioul", "AppNotes.java")), java.nio.charset.StandardCharsets.UTF_8);
+        expect("\"contacts\" posted", listener.contains("out.put(\"contacts\", contacts);"), true);
+        expect("a number by PhoneLookup", listener.contains("ContactsContract.PhoneLookup.CONTENT_FILTER_URI"), true);
+        expect("an address by the email lookup", listener.contains("ContactsContract.CommonDataKinds.Email.CONTENT_LOOKUP_URI"), true);
+        expect("person() asks lookup()", listener.contains("String[] asked = lookup(uri, named);"), true);
 
         System.out.println(failed == 0 ? "all " + checked + " checks agree" : failed + " of " + checked + " failed");
         System.exit(failed == 0 ? 0 : 1);

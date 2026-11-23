@@ -6752,10 +6752,12 @@ appnotes-open-info = Sioul's app info
 appnotes-open-access = Notification access
 appnotes-hold = Hold other apps' notifications until their time
 appnotes-hold-help = Off, everything comes as the apps send it; the access stays as you set it.
+appnotes-people = Hold people's messages too, by who writes and when
+appnotes-people-help = On, a person's message comes when What reaches you lets them reach you, Sioul telling who writes by your contacts once allowed to read them; off, it comes at once, but from the blocked, and from the conversations, people and apps you gave times of their own or set to gathered or never.
 appnotes-times = Notifications from automatons come back at { $times }, never while you sleep, pause, take Free time or have do-not-disturb on.
 appnotes-times-change = Change the times
-appnotes-sound = Android plays a notification's sound before Sioul sees it: Sioul can hold a notification, not its first sound. What Sioul gathers comes back without a sound. Make the apps Sioul holds silent in Android's settings (below, each one that rang), or let Sioul do it. Chats and SMS may keep their sound, so that the people let through ring: one held then rings once, and waits out of sight. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
-appnotes-rang = These rang before Sioul held them:
+appnotes-sound = Android starts a notification's sound before Sioul sees it, and stops it as soon as Sioul holds the notification, a moment later. What Sioul gathers comes back without a sound. To spare even that instant, make the apps Sioul holds silent in Android's settings (below, each one that began to ring), or let Sioul do it. Chats and SMS keep their sound, so that the people let through ring; one Sioul holds is cut as it is held, and comes back at its time. During a pause, free time and do-not-disturb (its switch; your sleep and your busy stretches too when What reaches you ▸ Moments says so), Sioul's own mode lets through only what their rows let come then.
+appnotes-rang = These began to ring before Sioul held them:
 appnotes-rang-line = { $app }: { $channel }
 appnotes-make-silent = Make it silent
 appnotes-link-help = Sioul can make the apps it gathers silent itself, so that they ring neither when they come nor when they come back; chats, texts and mail keep their sound, so that the people let through still ring. Android lets an app change other apps' notifications only once it is linked to one of your devices: Sioul relays this phone's notifications to your computer, so choose that computer, paired by Bluetooth, in Android's list. Each change shows in Android's settings as yours, and Sioul gives each sound back when it stops holding that app. The link does two more things, which Android ties to it: Sioul may open its window from the background, and, from Android 15, Android no longer hides one-time codes from Sioul's listener; Sioul reads them on this phone only, to let them through at once, and never sends their words to your computers.
@@ -6777,7 +6779,7 @@ appnotes-apps-help = An app whose notifications cannot wait (a ride, a delivery 
 # Other apps by time: each app and conversation a row of the matrix of what reaches you.
 appnotes-by-time = Other apps, by time
 appnotes-by-time-help = Each app and conversation comes as usual at each time, or at once, at the gathered times, or is held until a time lets it through. A conversation's choice wins over its app's. Nothing changes for an app until you choose for it.
-appnotes-by-time-limits = What Android allows: a notification's first sound plays before Sioul sees it, so make an app you hold at some times silent (Settings ▸ { device-this-cap }, Make it silent). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what is let through then shows without a sound, unless it is a priority conversation or from a starred contact.
+appnotes-by-time-limits = What Android allows: a notification's sound starts before Sioul sees it and stops once Sioul holds it; to spare even that instant, make an app you hold at some times silent (Settings ▸ { device-this-cap }, Make it silent). During a pause, Free time or do-not-disturb, Sioul's own mode decides what rings: what is let through then shows without a sound, unless it is a priority conversation or from a starred contact.
 appnotes-by-time-computer = Set on your phone, where other apps' notifications are held. Changed here, it reaches your phone with your settings.
 appnotes-by-time-more = The conversations you chose for, and the ten seen last, show here; the others as they come.
 appnotes-kind-usual = Notification by notification
@@ -6795,7 +6797,7 @@ appnotes-through-never = Never
 appnotes-priority-open = Mark it Priority in Android
 appnotes-priority-on = Priority in Android: it rings through Sioul's modes.
 appnotes-priority-warn = Priority in Android, yet not Always through here: Android rings it through Sioul's modes before Sioul can hold it. Set it to Always through, or take Priority off in Android.
-appnotes-group = Group: as people you do not know, unless you choose.
+appnotes-group = Group: on the row Group conversations, whoever writes in it, unless you choose otherwise for it.
 appnotes-sites = Sites, from your browser
 appnotes-site-gathered = Gathered
 appnotes-site-at-once = At once
@@ -7341,6 +7343,8 @@ reach-circle-blocked = Blocked
 reach-circle-blocked-help = Never, on any channel.
 reach-behaviour-always = Always
 reach-behaviour-awake = When awake
+reach-behaviour-work-admin-gathered = Gathered outside work and admin hours
+reach-behaviour-work-admin-gathered-help = At once in work and admin hours; in leisure and meals, at the gathered times; held while you sleep, pause or take Free time, and under do-not-disturb.
 reach-behaviour-work-admin = In work and admin hours
 reach-behaviour-work = In work hours
 reach-behaviour-gathered = At the gathered times
@@ -7414,7 +7418,7 @@ reach-hold-call-sioul = Rings, or goes to voicemail
 reach-hold-call-android = Whether a ringing call sounds
 reach-hold-message = A message, another app's notification
 reach-hold-message-sioul = Shows now, or waits
-reach-hold-message-android = Whether it sounds; its first sound may come before Sioul hears of it
+reach-hold-message-android = Whether it sounds; its sound may start before Sioul hears of it, and stops once Sioul holds it
 reach-hold-dnd = Do not disturb
 reach-hold-dnd-sioul = One switch for every device
 reach-hold-dnd-android = Mirrored as the mode “Do not disturb (Sioul)”
@@ -7507,7 +7511,7 @@ attention-person-neutral-help = Everyone in your address books, or let in from t
 attention-person-restricted = Restricted
 attention-person-restricted-help = Known, heard from only at the times you choose.
 attention-person-stranger = Everyone else
-attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs.
+attention-person-stranger-help = In none of your address books and on no list; and mail nothing proves is theirs. On a phone, a message whose sender Sioul cannot tell counts as Your contacts'.
 attention-person-hidden = Hidden numbers
 attention-person-hidden-help = Calls that show no number: someone who hides it, a hospital's switchboard.
 attention-person-groups = Group conversations
@@ -7808,6 +7812,7 @@ access-texts-off = Texts: the part Texts is off on { device-this }, so your comp
 access-notifications = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. Allow in Android… opens its page.
 access-notifications-guarded = Other apps' notifications: Android has not given Sioul notification access yet, so they are neither held until their time nor told to your computers. An app installed from a file gets it only once you allow its restricted settings: press Allow in Android… and tap Sioul once in Notification access (Android may answer “Restricted setting”); then open Sioul's app info, ⋮ (at the top) ▸ Allow restricted settings, confirm with your PIN, and turn Sioul on in Notification access.
 access-contacts = Contacts: Android has not allowed Sioul to read them, so calls and messages show numbers where your contacts would give names. Allow in Android… asks.
+access-contacts-people = Contacts: Android has not allowed Sioul to read them, so Sioul cannot always tell who writes to you in other apps (a message from someone it cannot tell comes as a contact's would), and calls and messages show numbers where your contacts would give names. Allow in Android… asks.
 access-not-now = Not now
 restricted-title = Android's restricted settings
 restricted-intro-notifications = Sioul was installed from a file, so Android holds back notification access until you allow its restricted settings. Three steps:
@@ -7977,6 +7982,10 @@ attention-sheet-line-messages-never = { $first ->
 attention-sheet-line-messages-quiet = { $first ->
     [yes] Their messages are held { $during }.
    *[other] They are held { $during }.
+}
+attention-sheet-line-messages-gathered = { $first ->
+    [yes] Their messages come at the gathered times { $during }.
+   *[other] They come at the gathered times { $during }.
 }
 attention-always-line-mail-now = { $first ->
     [yes] Mail from your Always through people comes at once { $during }.
@@ -8561,6 +8570,9 @@ ui-show-all-mail-help = Every lane and every address, at any hour, on this devic
 calls-context-reachable = while you were reachable
 calls-context-busy = while you were busy
 appnotes-why-released = Held before you asked your phone to let what it held through: let through.
+appnotes-why-unknown = Sioul could not tell who wrote: let through as a contact's message would be.
+appnotes-why-unknown-held = Sioul could not tell who wrote: held until { $when }, as a contact's message would be.
+appnotes-why-people-off = People's messages are not held on this phone: let through.
 
 # The button and the card "What reaches you now" (part 5 of "What reaches you"; the proposal's 3.5 and 3.6).
 reach-button-name = What reaches you now: { $state }

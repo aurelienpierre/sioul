@@ -8,8 +8,9 @@
 //! migrates and an older Sioul keeps reading every row.
 //!
 //! - **A behaviour** is a named pattern over a row's nine cells (the seven
-//!   times, time for you, do not disturb): Always, When awake, In work and
-//!   admin hours, In work hours, At the gathered times, Never told
+//!   times, time for you, do not disturb): Always, When awake, Gathered
+//!   outside work and admin hours (messages, held apps phase 1, A3), In work
+//!   and admin hours, In work hours, At the gathered times, Never told
 //!   (`Behaviour`, `pattern`). Mail and messages have their own
 //!   patterns, since a phone cannot show what it holds and mail is shown on
 //!   the Porch without a word; the circle changes two things only, as the
@@ -63,6 +64,11 @@ pub enum Behaviour {
     /// In work, admin, leisure and meals; mail shown, messages in the shade,
     /// under the layers.
     Awake,
+    /// Messages only (held apps phase 1, A3): at once in work and admin
+    /// hours, at the gathered times in leisure and meals, held while you
+    /// sleep, pause or take Free time and under do-not-disturb; as Sioul
+    /// ships the row of everyone else, and as Quieter sets your contacts'.
+    WorkAdminGathered,
     /// In work and admin hours.
     WorkAdmin,
     /// In work hours.
@@ -76,12 +82,13 @@ pub enum Behaviour {
 }
 
 impl Behaviour {
-    pub const ALL: [Behaviour; 6] = [Behaviour::Always, Behaviour::Awake, Behaviour::WorkAdmin, Behaviour::Work, Behaviour::Gathered, Behaviour::Never];
+    pub const ALL: [Behaviour; 7] = [Behaviour::Always, Behaviour::Awake, Behaviour::WorkAdminGathered, Behaviour::WorkAdmin, Behaviour::Work, Behaviour::Gathered, Behaviour::Never];
 
     pub fn id(self) -> &'static str {
         match self {
             Behaviour::Always => "always",
             Behaviour::Awake => "awake",
+            Behaviour::WorkAdminGathered => "work-admin-gathered",
             Behaviour::WorkAdmin => "work-admin",
             Behaviour::Work => "work",
             Behaviour::Gathered => "gathered",
@@ -179,15 +186,16 @@ pub fn cells_of(attention: &Attention, row: Row) -> [Level; 9] {
 /// |---|---|
 /// | Always | ● everywhere |
 /// | When awake | ● ● ● ● ○ ○ f ● ◑ |
+/// | Gathered outside work and admin | ● ● ◎ ◎ ○ ○ ○ ● ○ |
 /// | Work and admin | ● ● ○ ○ ○ ○ ○ ● ○ |
 /// | Work | ● ○ ○ ○ ○ ○ ○ ● ○ |
 /// | Never told | ○ everywhere |
 ///
 /// where f is ● for your people and Safe (Free time lets your safe people
-/// through) and ○ for the others. Gathered is no people's row's; a message
-/// cannot be shown.
+/// through) and ○ for the others. At the gathered times alone is no people's
+/// row's, and mail takes no gathered time; a message cannot be shown.
 pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
-    use Level::{Later, Now, Quiet};
+    use Level::{Gathered, Later, Now, Quiet};
     let Row::People(channel, person) = row else { return None };
     if person == Person::Blocked || attention::screened(row) {
         return None;
@@ -201,7 +209,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
                 Behaviour::WorkAdmin => [Now, Now, off, off, off, off, off, Quiet, Quiet],
                 Behaviour::Work => [Now, off, off, off, off, off, off, Quiet, Quiet],
                 Behaviour::Never => [Quiet; 9],
-                Behaviour::Gathered => return None,
+                Behaviour::Gathered | Behaviour::WorkAdminGathered => return None,
             }
         }
         Channel::Messages => {
@@ -209,6 +217,7 @@ pub fn pattern(row: Row, behaviour: Behaviour) -> Option<[Level; 9]> {
             match behaviour {
                 Behaviour::Always => [Now; 9],
                 Behaviour::Awake => [Now, Now, Now, Now, Later, Later, free, Now, Quiet],
+                Behaviour::WorkAdminGathered => [Now, Now, Gathered, Gathered, Later, Later, Later, Now, Later],
                 Behaviour::WorkAdmin => [Now, Now, Later, Later, Later, Later, Later, Now, Later],
                 Behaviour::Work => [Now, Later, Later, Later, Later, Later, Later, Now, Later],
                 Behaviour::Never => [Later; 9],
@@ -412,7 +421,7 @@ mod tests {
     /// is seen here first.
     #[test]
     fn each_pattern_is_exact() {
-        use Level::{Later as L, Now as N, Quiet as Q};
+        use Level::{Gathered as G, Later as L, Now as N, Quiet as Q};
         let mail = |p: Person, b: Behaviour| pattern(Row::People(Channel::Mail, p), b);
         let messages = |p: Person, b: Behaviour| pattern(Row::People(Channel::Messages, p), b);
         assert_eq!(mail(Person::Safe, Behaviour::Always), Some([N, N, N, N, Q, Q, N, N, N]));
@@ -429,6 +438,11 @@ mod tests {
         assert_eq!(messages(Person::Safe, Behaviour::Awake), Some([N, N, N, N, L, L, N, N, Q]));
         assert_eq!(messages(Person::Neutral, Behaviour::Awake), Some([N, N, N, N, L, L, L, N, Q]));
         assert_eq!(messages(Person::Stranger, Behaviour::WorkAdmin), Some([N, N, L, L, L, L, L, N, L]));
+        // Held apps phase 1, A3: at the gathered times in leisure and meals, messages only.
+        assert_eq!(messages(Person::Stranger, Behaviour::WorkAdminGathered), Some([N, N, G, G, L, L, L, N, L]));
+        assert_eq!(messages(Person::Groups, Behaviour::WorkAdminGathered), Some([N, N, G, G, L, L, L, N, L]));
+        assert_eq!(mail(Person::Stranger, Behaviour::WorkAdminGathered), None);
+        assert_eq!(messages(Person::Always, Behaviour::WorkAdminGathered), None);
         assert_eq!(messages(Person::Restricted, Behaviour::Work), Some([N, L, L, L, L, L, L, N, L]));
         assert_eq!(messages(Person::Neutral, Behaviour::Never), Some([L; 9]));
         // What a row cannot hold is no pattern: Always through's messages only Always (they
@@ -458,7 +472,7 @@ mod tests {
         assert_eq!(read(Channel::Messages, Circle::Safe), Some(Behaviour::Awake));
         assert_eq!(read(Channel::Messages, Circle::Contacts), Some(Behaviour::Awake));
         assert_eq!(read(Channel::Messages, Circle::Restricted), Some(Behaviour::Work));
-        assert_eq!(read(Channel::Messages, Circle::Others), Some(Behaviour::WorkAdmin));
+        assert_eq!(read(Channel::Messages, Circle::Others), Some(Behaviour::WorkAdminGathered), "held apps phase 1, A3");
         for group in Group::ALL {
             assert!(group_reading(&usual, group).is_some(), "{group:?}");
         }
@@ -478,7 +492,7 @@ mod tests {
         for channel in CHANNELS {
             assert_eq!(reading(&quieter, channel, Circle::People), reading(&quieter, channel, Circle::Safe), "{channel:?}");
         }
-        assert_eq!(reading(&quieter, Channel::Messages, Circle::Contacts), Some(Behaviour::WorkAdmin));
+        assert_eq!(reading(&quieter, Channel::Messages, Circle::Contacts), Some(Behaviour::WorkAdminGathered), "held apps phase 1, A3");
         assert_eq!(reading(&quieter, Channel::Messages, Circle::Safe), None);
         assert_eq!(group_reading(&quieter, Group::Reminders), None);
         let reachable = Preset::Reachable.matrix();
@@ -633,9 +647,10 @@ mod tests {
         assert_eq!(offered(Channel::Mail, Circle::Always), vec![Always, Awake, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Mail, Circle::Safe), vec![Always, Awake, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Mail, Circle::People), vec![Always, Awake, WorkAdmin, Work, Never]);
-        assert_eq!(offered(Channel::Messages, Circle::People), vec![Always, Awake, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Messages, Circle::People), vec![Always, Awake, WorkAdminGathered, WorkAdmin, Work, Never]);
         assert_eq!(offered(Channel::Messages, Circle::Always), vec![Always]);
-        assert_eq!(offered(Channel::Messages, Circle::Contacts), vec![Always, Awake, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Messages, Circle::Contacts), vec![Always, Awake, WorkAdminGathered, WorkAdmin, Work, Never]);
+        assert_eq!(offered(Channel::Messages, Circle::Others), vec![Always, Awake, WorkAdminGathered, WorkAdmin, Work, Never]);
         // Two rows set apart from each other read as yours, whatever each says.
         let mut split = Attention::usual();
         for (column, level) in Column::ALL.iter().zip(pattern(Row::People(Channel::Messages, Person::Groups), Work).unwrap()) {

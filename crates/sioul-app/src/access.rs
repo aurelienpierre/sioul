@@ -5,8 +5,9 @@
 //! on here (docs/android.md, "What Android withholds"): the texts'
 //! permissions while the part Texts is on; notification access, while other
 //! apps' notifications are held or the phone's messages go to your
-//! computers; the contacts while calls are screened or the phone's messages
-//! go to your computers. Each said in a line, with what Android wants.
+//! computers; the contacts while calls are screened, the phone's messages
+//! go to your computers, or people's messages are held by who writes (held
+//! apps phase 1, A2). Each said in a line, with what Android wants.
 //! Whether Android keeps restricted settings from Sioul installed from a
 //! file (Android 13 and later: notification access; 15 and later: the texts
 //! too) no app can read, so the lines say the steps that hold either way,
@@ -42,9 +43,13 @@ pub(crate) struct Said {
     /// Notification access needed here (other apps' notifications held, or the phone's messages for your computers), and given.
     pub notifications_needed: bool,
     pub notifications_given: bool,
-    /// The contacts needed here (calls screened, the phone's messages for your computers), and READ_CONTACTS given.
+    /// The contacts needed here (calls screened, the phone's messages for your computers, people's
+    /// messages held: held apps phase 1, A2), and READ_CONTACTS given.
     pub contacts_needed: bool,
     pub contacts_given: bool,
+    /// People's messages held by who writes on this phone (`Choices::holds_people`): the contacts'
+    /// line says why it matters then, in a sentence of its own.
+    pub people_held: bool,
 }
 
 /// One line for each thing withheld: {what ("texts", "notifications",
@@ -70,7 +75,8 @@ pub(crate) fn lines(s: &Said, tr: &Translator, join: bool) -> Vec<Value> {
         out.push(json!({ "what": "notifications", "said": tr.text(if guarded { "access-notifications-guarded" } else { "access-notifications" }, None), "info": guarded, "switch": false }));
     }
     if s.contacts_needed && !s.contacts_given {
-        out.push(json!({ "what": "contacts", "said": tr.text("access-contacts", None), "info": false, "switch": false }));
+        let said = if s.people_held { "access-contacts-people" } else { "access-contacts" };
+        out.push(json!({ "what": "contacts", "said": tr.text(said, None), "info": false, "switch": false }));
     }
     out
 }
@@ -82,6 +88,8 @@ fn said_here() -> Option<Said> {
     }
     let state = crate::steps::java("texts-state", "{}");
     let phone_messages = crate::share::shares(sioul_core::phonemsgs::PART);
+    // People's messages worked out once and written, as the listener does (held apps phase 1, A2).
+    let choices = crate::appnotes::choices_here();
     Some(Said {
         api: state["api"].as_i64().unwrap_or(0),
         texts_on: crate::share::shares(sioul_core::texts::PART),
@@ -89,10 +97,11 @@ fn said_here() -> Option<Said> {
         texts_given: state["read"] == true && state["receive"] == true && state["send"] == true,
         asked: state["asked"] == true,
         at_once: state["at_once"] == true,
-        notifications_needed: sioul_core::appnotes::Choices::load(&sioul_core::appnotes::Choices::default_path()).hold || phone_messages,
+        notifications_needed: choices.hold || phone_messages,
         notifications_given: crate::appnotes::access_here() != Some(false),
-        contacts_needed: crate::calls::screens_here() || phone_messages,
+        contacts_needed: crate::calls::screens_here() || phone_messages || choices.holds_people(),
         contacts_given: crate::steps::java("contacts-allowed", "{}") != Value::Bool(false),
+        people_held: choices.holds_people(),
     })
 }
 
@@ -411,7 +420,7 @@ mod tests {
     #[test]
     fn what_android_withholds_is_said_with_what_it_wants() {
         let tr = Translator::new("en");
-        let all = Said { api: 36, texts_on: true, texts_could: true, texts_given: true, asked: true, at_once: false, notifications_needed: true, notifications_given: true, contacts_needed: true, contacts_given: true };
+        let all = Said { api: 36, texts_on: true, texts_could: true, texts_given: true, asked: true, at_once: false, notifications_needed: true, notifications_given: true, contacts_needed: true, contacts_given: true, people_held: false };
         assert!(lines(&all, &tr, true).is_empty(), "all given: nothing said");
         let whats = |s: &Said, join: bool| lines(s, &tr, join).iter().map(|l| (l["what"].as_str().unwrap().to_string(), l["info"] == true)).collect::<Vec<_>>();
         // A new phone: Android 16, Sioul installed from a file, the texts asked and refused.
@@ -439,9 +448,14 @@ mod tests {
         assert!(whats(&Said { texts_could: false, ..off.clone() }, true).is_empty(), "a phone with no texts to read: nothing");
         // Only where they are needed.
         assert!(whats(&Said { notifications_needed: false, notifications_given: false, contacts_needed: false, contacts_given: false, ..all.clone() }, false).is_empty());
+        // People's messages held by who writes (held apps phase 1, A2): the contacts needed, said with why.
+        let people = lines(&Said { contacts_given: false, people_held: true, ..all.clone() }, &tr, false);
+        assert_eq!((people.len(), people[0]["what"].as_str()), (1, Some("contacts")));
+        assert_eq!(people[0]["said"], tr.text("access-contacts-people", None));
+        assert_ne!(people[0]["said"], tr.text("access-contacts", None));
         for language in ["en", "fr"] {
             let tr = Translator::new(language);
-            for line in lines(&refused, &tr, false).into_iter().chain(lines(&off, &tr, true)).chain(lines(&Said { api: 31, texts_given: false, at_once: true, ..all.clone() }, &tr, false)) {
+            for line in lines(&refused, &tr, false).into_iter().chain(lines(&off, &tr, true)).chain(lines(&Said { api: 31, texts_given: false, at_once: true, ..all.clone() }, &tr, false)).chain(lines(&Said { contacts_given: false, people_held: true, ..all.clone() }, &tr, false)) {
                 assert!(!line["said"].as_str().unwrap().starts_with("access-"), "{language}: {line}");
             }
         }

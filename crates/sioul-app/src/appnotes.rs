@@ -109,30 +109,47 @@ fn live(config: &Config, now: &Zoned) -> Live {
 }
 
 /// Who wrote, as your address books and lists say (`porch::Senders`): none
-/// when nobody knows a name; whether their card is one of your people's
-/// (`porch::Judged::circle`: by a number or an address, never by a name,
-/// which anyone can take, an SMS's sender id included: review L1); and
+/// when Sioul cannot tell (nobody named; a name in no card, or one anyone can
+/// take; a number or an address none of Sioul's lists knows while the
+/// phone's address book could not be asked), which `appnotes::decide` judges
+/// as a contact's, never a stranger's (held apps phase 1, A1); a stranger
+/// only for a number or an address that neither Sioul's lists nor the
+/// phone's address book, asked, knows. Whether their card is one of your
+/// people's (`porch::Judged::circle`: by a number or an address, never by a
+/// name, which anyone can take, an SMS's sender id included: review L1); and
 /// whether the Always through list holds them (by a number or an address,
 /// never a name).
 fn who_of(sender: &Sender, senders: &Senders, always: &People, config: &Config) -> (Option<Who>, bool, bool) {
     match sender {
-        Sender::Known { numbers, emails, contact } => {
+        Sender::Known { numbers, emails, contact, asked } => {
             let by_number = numbers.iter().map(|n| senders.judge_number(n)).find(|j| j.by != By::Default);
             let by_address = emails.iter().map(|e| senders.judge(e)).find(|j| j.who != Who::Stranger);
             let region = sioul_core::reach::region(config);
             let admitted = numbers.iter().any(|n| always.admits_number(n, region)) || emails.iter().any(|e| always.admits_address(e));
-            // In the phone's address book though not in Sioul's: someone you know.
-            let unknown = if *contact { Who::Neutral } else { Who::Stranger };
+            // In the phone's address book though not in Sioul's: someone you know. In neither, the phone's
+            // address book asked: a stranger. Not asked: nobody can tell.
+            let unknown = if *contact {
+                Some(Who::Neutral)
+            } else if *asked {
+                Some(Who::Stranger)
+            } else {
+                None
+            };
             match by_number.or(by_address) {
                 Some(judged) => (Some(judged.who), judged.circle, admitted),
-                None => (Some(unknown), false, admitted),
+                None => (unknown, false, admitted),
             }
         }
-        // A name anyone can take may only hold more, and proves no one of your people (L1).
-        Sender::Named { name, book } => (senders.judge_name(name).map(|judged| appnotes::named(Some(judged.who), *book)), false, false),
+        // A name anyone can take may only hold more, and proves no one of your people (L1); any other
+        // name says nothing of who wrote (A1).
+        Sender::Named { name, book } => (appnotes::named(senders.judge_name(name).map(|judged| judged.who), *book), false, false),
         Sender::Unknown => (None, false, false),
     }
 }
+
+/// The why the tab says of a person's message from someone Sioul could not
+/// tell, judged as a contact's (`appnotes::unidentified`; "appnotes-why-unknown").
+const UNKNOWN: &str = "unknown";
 
 /// Reachable's end, for the listener's question (`Ask::reachable`, Unix
 /// seconds): while it lasts, everyone not blocked comes at once (part 3).
@@ -220,7 +237,9 @@ fn decide(json: &str) -> String {
 fn decide_at(json: &str, now: &Zoned) -> String {
     let Ok(posted) = serde_json::from_str::<Posted>(json) else { return "null".into() };
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    // What reaches you when (Settings ▸ What reaches you); people's messages worked out once from it (A2).
+    let attention = sioul_core::attention::Attention::of(&config);
+    let choices = settled_choices(&attention, true);
     let kind = appnotes::classify(&posted, &choices, &sioul_core::words::Words::of(&config));
     let now = now.clone();
     let stamp = now.timestamp().as_second();
@@ -243,9 +262,12 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     // A text from a number nobody knows, from a root ARCEP keeps for machines: an automaton's, gathered
     // with them, as the call screening sends their calls to voicemail (`screening`, unless set otherwise);
     // said so in its why and its line (review of part 2, F11).
-    let machine = matches!(&kind, Kind::People(talk) if talk.sms && who == Some(Who::Stranger) && machine_number(&talk.sender, &config, &now));
+    // Nobody knowing it here (a stranger, or the phone's address book not asked: A1), a number kept for machines is a machine's.
+    let machine = matches!(&kind, Kind::People(talk) if talk.sms && matches!(who, None | Some(Who::Stranger)) && machine_number(&talk.sender, &config, &now));
     let mut kind = if machine { Kind::Automaton { site: String::new() } } else { kind };
     let (who, circle, admitted) = if matches!(kind, Kind::People(_)) { (who, circle, admitted) } else { (None, false, false) };
+    // Sioul cannot tell who wrote: judged as a contact, and said so (A1).
+    let unknown = appnotes::unidentified(&kind, who);
     let (area, unsaid) = area_of(&posted, &kind, &choices, &config);
     if let Kind::People(talk) = &mut kind {
         talk.to_unsaid = unsaid;
@@ -256,8 +278,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     let slots = crate::hours::slots();
     let slot = |at: &Zoned| slots.at(at);
     let also = slots.edges();
-    // What reaches you when (Settings ▸ What reaches you); Free time's "Nothing at all".
-    let attention = sioul_core::attention::Attention::of(&config);
+    // Free time's "Nothing at all".
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     // Its own rows in the matrix, when set: its conversation's, then its app's.
     let conversation = match &kind {
@@ -301,7 +322,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         // Back after its gathering, by Sioul's quiet window moved off one of its own reminders or by
         // Android's safety net minutes later: it comes with the gathering it waited for.
         if returning && let Some(held) = ledger.held.get(&hash) {
-            decision = decision.on_time(held, stamp, appnotes::gathers_now(&ask));
+            decision = decision.on_time(held, stamp, appnotes::gathers_held_now(held, &ask));
         }
         // Back at its time and held again within minutes: not again and again.
         if returning
@@ -333,6 +354,13 @@ fn decide_at(json: &str, now: &Zoned) -> String {
             && let Some(app) = ledger.apps.get_mut(&posted.package)
         {
             app.why = MACHINE.to_string();
+        }
+        // Someone Sioul could not tell, judged as a contact (A1): the tab says so, never as a contact's.
+        if unknown
+            && matches!(decision.why, Why::Allowed | Why::Waiting)
+            && let Some(app) = ledger.apps.get_mut(&posted.package)
+        {
+            app.why = UNKNOWN.to_string();
         }
         // Its return to come without a sound (an automaton's, held for good): Java holds it a few minutes
         // past its time and brings it back itself, in a quiet window (`QuietWindow`).
@@ -366,9 +394,24 @@ fn decide_at(json: &str, now: &Zoned) -> String {
             cause
         });
         answer["line"] = json!(hold_line(if returning { "held again" } else { "held" }, kind_word(&kind), &decision, cause.as_ref(), gate.as_ref(), &now));
+    } else if unknown && decision.why == Why::Allowed {
+        // Let through from someone Sioul could not tell, as a contact's (A1): said, so that it is never taken
+        // for a contact's, without a name.
+        answer["line"] = json!(pass_line(kind_word(&kind)));
     }
     answer.to_string()
 }
+
+/// The listener's line when a person's message from someone Sioul could not
+/// tell comes at once, judged as a contact's (held apps phase 1, A1): "Notes:
+/// passed: messages 1; why: sender unknown (judged as a contact)." Never a
+/// name, a number nor an app.
+fn pass_line(kind: &str) -> String {
+    format!("Notes: passed: {kind} 1; why: {UNKNOWN_WHY}.")
+}
+
+/// The log's words for a sender Sioul could not tell (`appnotes::Cause::unknown`).
+const UNKNOWN_WHY: &str = "sender unknown (judged as a contact)";
 
 /// A notification on a channel Sioul made silent, ringing again
 /// (importance 3 or more): you gave it its sound back in Android's settings,
@@ -508,7 +551,8 @@ fn review_at(json: &str, now: &Zoned) -> String {
     // comes then, without a sound (decision 13); an older Java says nothing, read as not silenced.
     let silenced = asked["silenced"].as_bool().unwrap_or(false);
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    let attention = sioul_core::attention::Attention::of(&config);
+    let choices = settled_choices(&attention, true);
     let now = now.clone();
     let stamp = now.timestamp().as_second();
     let gate = gate();
@@ -517,7 +561,6 @@ fn review_at(json: &str, now: &Zoned) -> String {
     let slots = crate::hours::slots();
     let slot = |at: &Zoned| slots.at(at);
     let also = slots.edges();
-    let attention = sioul_core::attention::Attention::of(&config);
     let nothing = sioul_core::pause::nothing_now(&sioul_core::quiet::Overrides::load(&sioul_core::quiet::Overrides::default_path()), &config.free_time);
     // A conversation answered from a computer in the last twenty minutes: what Sioul holds of it comes now, but in a pause (`replies`).
     let paused = live.clock.mode(&now).paused();
@@ -543,7 +586,7 @@ fn review_at(json: &str, now: &Zoned) -> String {
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced, circle: held.circle };
             // Its gathering come, a little late (the quiet window moved off one of Sioul's own reminders):
             // with it, never until the next.
-            let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_now(&ask));
+            let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_held_now(&held, &ask));
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
             }
@@ -593,6 +636,42 @@ fn review_at(json: &str, now: &Zoned) -> String {
         line.push_str(&format!(" A release asked from {ahead} device(s) more than a day ahead of this phone's clock: passed over."));
     }
     json!({ "snooze": again, "quiet": quiet, "line": line }).to_string()
+}
+
+/// This phone's choices, people's messages worked out once when unset and
+/// written (held apps phase 1, A2: held only where anything was ever chosen
+/// for other apps here, `Choices::work_out_people`), under the choices' lock,
+/// from the file as it is then. A file that does not read is never written
+/// over: it reads as no choice at all, worked out in memory. `write`: the
+/// phone's own (the listener, the tab, the access card on a phone); a
+/// computer works it out in memory, where nothing is held.
+fn settled_choices(attention: &sioul_core::attention::Attention, write: bool) -> Choices {
+    let path = Choices::default_path();
+    let mut choices = Choices::load(&path);
+    if choices.people.is_some() {
+        return choices;
+    }
+    if write {
+        let written = sioul_core::filelock::with_lock(&path, || -> Result<Choices, String> {
+            let mut choices = Choices::read(&path)?;
+            if choices.work_out_people(attention) {
+                choices.save(&path)?;
+            }
+            Ok(choices)
+        });
+        match written {
+            Ok(settled) => return settled,
+            Err(e) => eprintln!("Notes: {e}"),
+        }
+    }
+    choices.work_out_people(attention);
+    choices
+}
+
+/// This phone's choices as the window reads them (`settled_choices`): written
+/// on a phone only.
+pub(crate) fn choices_here() -> Choices {
+    settled_choices(&sioul_core::attention::Attention::of(&load_config()), cfg!(target_os = "android"))
 }
 
 // ---------------------------------------------------------------- the log
@@ -687,10 +766,11 @@ fn kind_word(kind: &Kind) -> &'static str {
 /// the kind of its channel, until when it waits, or for good, and what
 /// decided it (`appnotes::cause`): its conversation's or its app's own row,
 /// a gathering and what gathers it, what it is for, the columns of the
-/// matrix that hold it now (do-not-disturb with what holds it). "Notes:
-/// held: messages 1 until 10:50; why: dnd (busy)." Held again on
-/// its return at its time: "held again". Never a name, a number, an app nor
-/// who wrote.
+/// matrix that hold it now (do-not-disturb with what holds it); and, when
+/// Sioul could not tell who wrote, "sender unknown (judged as a contact)"
+/// (held apps phase 1, A1). "Notes: held: messages 1 until 10:50; why: dnd
+/// (busy)." Held again on its return at its time: "held again". Never a
+/// name, a number, an app nor who wrote.
 fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>, gated: Option<&Gated>, now: &Zoned) -> String {
     let until = match decision.until {
         _ if decision.why == Why::Never => "for good".to_string(),
@@ -714,6 +794,7 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
             Some(Gathering::Conversation) => why.push("gathered (its conversation)".into()),
             Some(Gathering::Named) => why.push("gathered (a sender named only)".into()),
             Some(Gathering::Machine) => why.push("gathered (a number kept for machines)".into()),
+            Some(Gathering::Time) => why.push("gathered (messages by day)".into()),
             None => {}
         }
         if let Some(area) = cause.area {
@@ -721,6 +802,9 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
         }
         if !cause.columns.is_empty() {
             why.push(column_words(&cause.columns, cause.nothing, gated).join(" + "));
+        }
+        if cause.unknown {
+            why.push(UNKNOWN_WHY.into());
         }
     }
     let why = if why.is_empty() { "unknown".to_string() } else { why.join(", ") };
@@ -748,6 +832,8 @@ fn log_line(event: &str, counted: &[Counted], columns: &[&str], now: &Zoned) -> 
         "answered from a computer".to_string()
     } else if released.iter().any(|c| c.why == Why::Released) {
         "released as you asked".to_string()
+    } else if released.iter().any(|c| c.why == Why::PeopleOff) {
+        "people's messages not held".to_string()
     } else if columns.is_empty() {
         "unknown".to_string()
     } else {
@@ -995,7 +1081,7 @@ fn times_in_words(times: &[String]) -> String {
 pub(crate) fn setup() -> String {
     let android = cfg!(target_os = "android");
     let config = load_config();
-    let choices = Choices::load(&Choices::default_path());
+    let choices = choices_here();
     let ledger = Ledger::load(&Ledger::default_path());
     let now = sioul_core::zone::now();
     let tr = tr();
@@ -1088,6 +1174,8 @@ pub(crate) fn setup() -> String {
         "restricted": java("restricted", "{}") == Value::Bool(true),
         "contacts": java("contacts", "{}") == Value::Bool(true),
         "hold": row("hold", "bool", &text("appnotes-hold"), &text("appnotes-hold-help"), json!(choices.hold), Vec::new()),
+        // People's messages held too, by who writes and when (A2): under the switch above, while it is on.
+        "people": row("people", "bool", &text("appnotes-people"), &text("appnotes-people-help"), json!(choices.people.unwrap_or(false)), Vec::new()),
         "times": tr.text("appnotes-times", Some(&times)),
         "heard": heard,
         "rang": rang,
@@ -1111,7 +1199,7 @@ pub(crate) fn setup() -> String {
 }
 
 /// A choice of the tab, or one of Android's pages (`AppNotesSetup.act`): the tab again, as JSON.
-/// "set" {key, value}: "hold", `app.<package>.kind`, `app.<package>.area`,
+/// "set" {key, value}: "hold", "people", `app.<package>.kind`, `app.<package>.area`,
 /// `app.<package>.sound` ("keep": its sound given back, never made silent
 /// by Sioul; "silence": as usual), `conversation.<key>`, `site.<host>`;
 /// "open-access", "open-info", "open-app" {package}, "open-channel"
@@ -1122,6 +1210,8 @@ pub(crate) fn setup() -> String {
 /// channel made silent by Sioul, whatever its app.
 pub(crate) fn change(verb: &str, json: &str) -> String {
     let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    // People's messages worked out from what was chosen before this change, never after it (A2).
+    let attention = sioul_core::attention::Attention::of(&load_config());
     match verb {
         "set" => {
             let key = asked["key"].as_str().unwrap_or_default().to_string();
@@ -1129,6 +1219,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             let path = Choices::default_path();
             let result = sioul_core::filelock::with_lock(&path, || {
                 let mut choices = Choices::load(&path);
+                choices.work_out_people(&attention);
                 let ledger = Ledger::load(&Ledger::default_path());
                 set(&mut choices, &ledger, &key, &value);
                 choices.save(&path)
@@ -1148,6 +1239,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
             let path = Choices::default_path();
             let result = sioul_core::filelock::with_lock(&path, || {
                 let mut choices = Choices::read(&path)?;
+                choices.work_out_people(&attention);
                 choices.silence = on;
                 choices.stopped = !on;
                 choices.save(&path)
@@ -1167,6 +1259,7 @@ pub(crate) fn change(verb: &str, json: &str) -> String {
                 let path = Choices::default_path();
                 let result = sioul_core::filelock::with_lock(&path, || {
                     let mut choices = Choices::load(&path);
+                    choices.work_out_people(&attention);
                     let ledger = Ledger::load(&Ledger::default_path());
                     name_silent(&mut choices, &ledger, &package, &channel);
                     choices.save(&path)
@@ -1213,11 +1306,16 @@ fn name_silent(choices: &mut Choices, ledger: &Ledger, package: &str, channel: &
     choices.app.insert(package.to_string(), chosen);
 }
 
-/// One choice written: the app's kind, area or sound, a conversation's way
-/// through, a site at once. What says "as usual" is taken out.
+/// One choice written: holding, people's messages, the app's kind, area or
+/// sound, a conversation's way through, a site at once. What says "as
+/// usual" is taken out.
 fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
     if key == "hold" {
         choices.hold = value.as_bool().unwrap_or(true);
+    } else if key == "people" {
+        if let Some(on) = value.as_bool() {
+            choices.people = Some(on);
+        }
     } else if let Some(rest) = key.strip_prefix("app.") {
         let Some((package, field)) = rest.rsplit_once('.') else { return };
         let mut chosen = choices.app(package);
@@ -1323,6 +1421,8 @@ mod tests {
         const SHOP: &str = r#"{"key":"0|com.shop.example|1|null|10500","package":"com.shop.example","app":"Shop","category":"promo","channel":"offers","title":"-30 % sur les chaussures","text":"Jusqu'à dimanche seulement","alerted":true}"#;
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
+        // People's messages held on this phone (held apps phase 1, A2), as before that switch.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
         let (stamp, ms) = (jiff::Timestamp::now().as_second(), jiff::Timestamp::now().as_millisecond());
         let held = |app: &str, kind: &str, via: &str, who: &str, since: i64, until: i64| appnotes::Held { app: app.into(), label: app.into(), kind: kind.into(), via: via.into(), who: who.into(), circle: false, admitted: false, group: false, conversation: String::new(), site: String::new(), area: None, since, until, first: 0, again: 0, persons: Vec::new() };
         let mut ledger = Ledger::default();
@@ -1373,6 +1473,8 @@ mod tests {
         const NOA: &str = r#"{"key":"0|org.example.chat|7|c0ffee12|10100","package":"org.example.chat","app":"Chat","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa Martin","shortcut":"c0ffee12","messages":[{"sender":{"name":"Noa Martin","uri":"tel:%2B33199001234"},"text":"Tu passes ce soir ?"}]}"#;
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
+        // People's messages held on this phone (held apps phase 1, A2), as before that switch.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
         let at = |time: &str| -> Zoned { format!("2026-10-06T{time}+02:00[Europe/Paris]").parse().unwrap() };
         let ms = |time: &str| at(time).timestamp().as_millisecond();
         let second = |time: &str| at(time).timestamp().as_second();
@@ -1448,6 +1550,12 @@ mod tests {
         assert!(choices.site.is_empty());
         set(&mut choices, &ledger, "hold", &json!(false));
         assert!(!choices.hold);
+        // People's messages held too (held apps phase 1, A2): on and off; a value that is no switch leaves it.
+        set(&mut choices, &ledger, "people", &json!(false));
+        assert_eq!(choices.people, Some(false));
+        set(&mut choices, &ledger, "people", &json!(true));
+        set(&mut choices, &ledger, "people", &json!("yes"));
+        assert_eq!(choices.people, Some(true));
         // A channel named to be made silent by Sioul; then its app's sound given back: named no more, kept.
         name_silent(&mut choices, &ledger, "com.discord", "dm");
         name_silent(&mut choices, &ledger, "com.discord", "dm");
@@ -1620,6 +1728,8 @@ mod tests {
         assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and busy).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Named), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a sender named only).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Machine), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a number kept for machines).");
+        // A person's message by day at the gathered times (held apps phase 1, A3), with the time's column.
+        assert_eq!(line("held", "messages", in_minutes(100), Why::Waiting, Cause { gathered: Some(Gathering::Time), columns: vec![Column::Leisure], ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (messages by day), leisure.");
         assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::App), columns: vec![Column::Work, Column::Admin], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its app's row, work + admin.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Conversation), gathered: None, columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its conversation's row, work.");
@@ -1660,6 +1770,149 @@ mod tests {
         }
     }
 
+    /// Held apps phase 1, A1: who wrote, as the listener judges them. A
+    /// number none of Sioul's lists knows is a stranger's only once the
+    /// phone's address book was asked and found nothing; not asked, nobody
+    /// can tell (none: judged as a contact); in the phone's address book, a
+    /// contact. A name in no card and nobody named: none. A held or a passed
+    /// message from someone Sioul could not tell says so in the log, never a
+    /// name: decided as the listener does, on a fixed clock, a bare name in a
+    /// chat app at 20:30 passes, and at 23:30 waits for waking.
+    #[test]
+    fn a_stranger_is_a_number_nobody_knows_once_the_phone_s_book_was_asked() {
+        let config = Config::default();
+        let (senders, always) = (Senders::default(), People::default());
+        let number = |contact: bool, asked: bool| Sender::Known { numbers: vec!["+33 1 99 00 12 34".into()], emails: Vec::new(), contact, asked };
+        let who = |sender: &Sender| who_of(sender, &senders, &always, &config).0;
+        assert_eq!(who(&number(false, true)), Some(Who::Stranger), "asked, found nowhere");
+        assert_eq!(who(&number(false, false)), None, "not asked: nobody can tell");
+        assert_eq!(who(&number(true, false)), Some(Who::Neutral), "the phone's contact");
+        assert_eq!(who(&Sender::Named { name: "Noa".into(), book: false }), None);
+        assert_eq!(who(&Sender::Named { name: "Noa".into(), book: true }), None);
+        assert_eq!(who(&Sender::Unknown), None);
+        // The lines, never a name.
+        assert_eq!(pass_line("messages"), "Notes: passed: messages 1; why: sender unknown (judged as a contact).");
+        let now: Zoned = "2026-10-06T23:30:00+02:00[Europe/Paris]".parse().unwrap();
+        let cause = Cause { columns: vec![Column::Sleep], unknown: true, ..Cause::default() };
+        let line = hold_line("held", "messages", &Decision::held(now.timestamp().as_second() + 7 * 3600 + 1800, Why::Waiting), Some(&cause), None, &now);
+        assert_eq!(line, "Notes: held: messages 1 until tomorrow 07:00; why: sleep, sender unknown (judged as a contact).");
+    }
+
+    /// Held apps phase 1, A1, in the listener: a chat app's bare name that no
+    /// card has, on a Tuesday evening after work, decided as a contact's: let
+    /// through (a stranger's would wait), said in the log and in the tab's
+    /// why as someone Sioul could not tell, never named.
+    #[test]
+    fn a_bare_name_is_decided_as_a_contact_s_and_said_so() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let _ = std::fs::remove_file(Ledger::default_path());
+        // People's messages held on this phone (held apps phase 1, A2): who wrote decides.
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        // Work on Tuesdays from 09:00 to 17:00, on this test's thread alone: 20:37 is leisure.
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a1-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[window]]\nday = \"tuesday\"\nstart = \"09:00\"\nend = \"17:00\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        const SIGNAL: &str = r#"{"key":"0|org.thoughtcrime.securesms|3|null|10300","package":"org.thoughtcrime.securesms","app":"Signal","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Noa","shortcut":"7","is_conversation":true,"messages":[{"sender":{"name":"Noa","key":"7"},"text":"Tu dors ?"}]}"#;
+        let evening: Zoned = "2026-10-06T20:37:00+02:00[Europe/Paris]".parse().unwrap();
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(SIGNAL, &evening)).unwrap();
+        assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("allowed")), "{decided}");
+        assert_eq!(decided["line"], "Notes: passed: messages 1; why: sender unknown (judged as a contact).", "{decided}");
+        assert_eq!(Ledger::load(&Ledger::default_path()).apps["org.thoughtcrime.securesms"].why, UNKNOWN);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let _ = std::fs::remove_file(Choices::default_path());
+        crate::everywhere::files_cleared();
+    }
+
+    /// Held apps phase 1, A2: people's messages worked out once and written,
+    /// under the choices' lock: a phone where nothing was ever chosen for
+    /// other apps stops holding them, one where an app was keeps holding
+    /// them, and a choice made later never moves it; the tab shows it and
+    /// sets it; a file that does not read is never written over.
+    #[test]
+    fn people_unset_is_worked_out_once_and_written() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A configuration of this test's own, with no row of its own for any app.
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a2-people-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("config.toml"), "language = \"en\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(dir.join("config.toml")));
+        let path = Choices::default_path();
+        let usual = sioul_core::attention::Attention::usual();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(settled_choices(&usual, true).people, Some(false), "nothing chosen here");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("people = false"), "written");
+        // An app chosen before this version: held as before, written so.
+        std::fs::write(&path, "[app.\"com.discord\"]\nkind = \"automaton\"\n").unwrap();
+        assert_eq!(settled_choices(&usual, true).people, Some(true));
+        assert!(std::fs::read_to_string(&path).unwrap().contains("people = true"));
+        // Worked out once: an app chosen later never moves it.
+        std::fs::write(&path, "people = false\n").unwrap();
+        change("set", &json!({ "key": "app.com.discord.kind", "value": "automaton" }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(false));
+        // Unset, the first change works it out from what was chosen before it.
+        std::fs::write(&path, "hold = true\n").unwrap();
+        change("set", &json!({ "key": "site.forum.example.net", "value": true }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(false), "the site was chosen after");
+        // Set from the tab, and shown there.
+        change("set", &json!({ "key": "people", "value": true }).to_string());
+        assert_eq!(Choices::load(&path).people, Some(true));
+        let shown: Value = serde_json::from_str(&setup()).unwrap();
+        assert_eq!((shown["people"]["key"].as_str(), shown["people"]["kind"].as_str(), shown["people"]["value"].as_bool()), (Some("people"), Some("bool"), Some(true)));
+        for said in [&shown["people"]["label"], &shown["people"]["help"]] {
+            assert!(!said.as_str().unwrap().starts_with("appnotes-"), "{said}");
+        }
+        // A file that does not read: worked out in memory, never written over.
+        std::fs::write(&path, "hold = [broken").unwrap();
+        assert_eq!(settled_choices(&usual, true).people, Some(false));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hold = [broken");
+        let _ = std::fs::remove_file(&path);
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Held apps phase 1, A2, in the listener: people's messages not held on
+    /// this phone. A stranger's text on a Tuesday evening comes at once, said
+    /// "people-off", with no line of a hold; what was held of a person before
+    /// comes at the next review, the log saying "people's messages not held".
+    #[test]
+    fn with_people_off_the_listener_lets_people_through() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let _ = std::fs::remove_file(Ledger::default_path());
+        Choices { people: Some(false), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        let dir = sioul_core::config::data_dir().join(format!("held-apps-a2-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, "language = \"en\"\n\n[[window]]\nday = \"tuesday\"\nstart = \"09:00\"\nend = \"17:00\"\n").unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        const TEXT: &str = r#"{"key":"0|com.google.android.apps.messaging|5|sms|10001","package":"com.google.android.apps.messaging","app":"Messages","category":"msg","template":"android.app.Notification$MessagingStyle","title":"+33 1 99 00 12 35","messages":[{"sender":{"name":"+33 1 99 00 12 35"},"text":"Bonsoir"}],"sms_app":true,"contacts":true}"#;
+        const PEOPLE: &str = "0|com.google.android.apps.messaging|2|sms|10001";
+        let evening: Zoned = "2026-10-06T20:41:00+02:00[Europe/Paris]".parse().unwrap();
+        let stamp = evening.timestamp().as_second();
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(TEXT, &evening)).unwrap();
+        assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("people-off")), "{decided}");
+        assert!(decided.get("line").is_none(), "{decided}");
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(PEOPLE), appnotes::Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: stamp - 3600, until: stamp + 12 * 3600, ..Default::default() });
+        ledger.save(&Ledger::default_path()).unwrap();
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&json!({ "snoozed": [PEOPLE], "reason": "files" }).to_string(), &evening)).unwrap();
+        assert_eq!(reviewed["snooze"], json!([{ "key": PEOPLE, "ms": 1000, "quiet": false }]), "{reviewed}");
+        assert!(reviewed["line"].as_str().unwrap().contains("released 1 (messages 1); why: people's messages not held;"), "{reviewed}");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let _ = std::fs::remove_file(Choices::default_path());
+        crate::everywhere::files_cleared();
+    }
+
     /// A text from a root ARCEP keeps for machines is an automaton's, while
     /// the call screening sends automated callers to voicemail: 01 63, a
     /// root for machines that ARCEP had attributed to no operator yet (so the
@@ -1670,9 +1923,9 @@ mod tests {
     fn a_machine_s_text_is_an_automaton_s() {
         let now: Zoned = "2026-10-20T10:00:00+02:00[Europe/Paris]".parse().unwrap();
         let config: Config = toml::from_str("[contacts]\nregion = \"FR\"\n").unwrap();
-        let machine = Sender::Known { numbers: vec!["01 63 12 34 56".into()], emails: Vec::new(), contact: false };
+        let machine = Sender::Known { numbers: vec!["01 63 12 34 56".into()], emails: Vec::new(), contact: false, asked: false };
         assert!(machine_number(&machine, &config, &now));
-        assert!(!machine_number(&Sender::Known { numbers: vec!["01 99 00 12 34".into()], emails: Vec::new(), contact: false }, &config, &now));
+        assert!(!machine_number(&Sender::Known { numbers: vec!["01 99 00 12 34".into()], emails: Vec::new(), contact: false, asked: false }, &config, &now));
         assert!(!machine_number(&Sender::Named { name: "AMELI".into(), book: true }, &config, &now));
         let as_unknown: Config = toml::from_str("[contacts]\nregion = \"FR\"\n[screening]\nautomated = \"unknown\"\n").unwrap();
         assert!(!machine_number(&machine, &as_unknown, &now), "set as any number nobody knows");

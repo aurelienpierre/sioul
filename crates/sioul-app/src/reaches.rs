@@ -560,7 +560,12 @@ fn people(attention: &Attention, reach: Reach) -> Value {
                 .iter()
                 .map(|channel| {
                     let read = behaviours::reading(attention, *channel, *circle);
-                    let choices: Vec<Value> = behaviours::offered(*channel, *circle).iter().map(|b| json!({ "id": b.id(), "label": behaviour_label(Some(*b)), "help": if *b == Behaviour::Never { text(&format!("reach-behaviour-never-help-{}", channel.id())) } else { String::new() } })).collect();
+                    let help = |b: Behaviour| match b {
+                        Behaviour::Never => text(&format!("reach-behaviour-never-help-{}", channel.id())),
+                        Behaviour::WorkAdminGathered => text("reach-behaviour-work-admin-gathered-help"),
+                        _ => String::new(),
+                    };
+                    let choices: Vec<Value> = behaviours::offered(*channel, *circle).iter().map(|b| json!({ "id": b.id(), "label": behaviour_label(Some(*b)), "help": help(*b) })).collect();
                     json!({
                         "channel": channel.id(),
                         "value": read.map_or("own", Behaviour::id),
@@ -813,6 +818,8 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
                 // A text in the shade without a sound (◑, decision 13).
                 Level::Quiet if channel == Channel::Messages => add(3, Subject::People(channel, person)),
                 Level::Quiet => add(2, Subject::People(channel, person)),
+                // At the gathered times by day (◎, held apps phase 1, A3).
+                Level::Gathered => add(1, Subject::People(channel, person)),
                 Level::Never => {}
                 _ => add(5, Subject::People(channel, person)),
             }
@@ -927,6 +934,8 @@ fn level_word(level: Level) -> &'static str {
         Level::Quiet => "quiet",
         Level::Never => "never",
         Level::As => "as",
+        // A message's at the gathered times by day (held apps phase 1, A3).
+        Level::Gathered => "gathered",
         _ => "later",
     }
 }
@@ -1474,7 +1483,12 @@ mod tests {
         assert_eq!(read("safe"), pair("awake", "When awake", "awake", "When awake"));
         assert_eq!(read("contacts"), pair("work-admin", "In work and admin hours", "awake", "When awake"));
         assert_eq!(read("restricted"), pair("work", "In work hours", "work", "In work hours"));
-        assert_eq!(read("others"), pair("work-admin", "In work and admin hours", "work-admin", "In work and admin hours"));
+        // Held apps phase 1, A3: everyone else's messages at the gathered times in leisure and meals, said with its help.
+        assert_eq!(read("others"), pair("work-admin", "In work and admin hours", "work-admin-gathered", "Gathered outside work and admin hours"));
+        let others = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "others").unwrap();
+        let offered = others["cells"][1]["choices"].as_array().unwrap().iter().find(|c| c["id"] == "work-admin-gathered").unwrap();
+        assert_eq!(offered["help"], text("reach-behaviour-work-admin-gathered-help"));
+        assert!(others["cells"][0]["choices"].as_array().unwrap().iter().all(|c| c["id"] != "work-admin-gathered"), "never for mail");
         let groups = own_groups(&usual, &Config::default(), &table_rows(false));
         let value = |id: &str| groups.as_array().unwrap().iter().find(|g| g["id"] == id).unwrap()["value"].as_str().unwrap().to_string();
         assert_eq!([value("asked"), value("reminders"), value("care"), value("sites")], ["sleep", "awake", "on", "gathered"]);

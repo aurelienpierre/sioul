@@ -42,8 +42,9 @@
 //! `app-notes-channels.toml` in the state). Never what a notification says.
 //!
 //! The sound (docs/android.md; docs/research/android-holding.md): Android
-//! rings a notification before Sioul sees it, and, from Android 13 QPR1,
-//! again when a held one comes back. What Sioul gathers comes back in a
+//! starts a notification's sound before Sioul sees it, and stops it once
+//! Sioul holds it (the snooze's `cancelNotificationLocked` clears it); from
+//! Android 13 QPR1, a held one rings again when it comes back. What Sioul gathers comes back in a
 //! quiet window (`Held::quiet`, AppNotes.java); linked to one of your
 //! devices (a companion-device association), Sioul makes the gathered apps'
 //! channels silent itself (`channels_plan`), and gives each back when the
@@ -187,6 +188,13 @@ pub struct Posted {
     pub redacted: bool,
     /// The phone's default SMS app.
     pub sms_app: bool,
+    /// Sioul may read the phone's address book (Android's `READ_CONTACTS`),
+    /// so that Java asked it of the person who wrote (a contact's link, a
+    /// `tel:` number, a `mailto:` address, a name): a number or an address it
+    /// found nowhere is a stranger's. Absent (an older listener), it could not:
+    /// nobody can tell then, and the sender is judged as a contact (`who_of`,
+    /// held apps phase 1, A1).
+    pub contacts: bool,
 }
 
 fn unknown_importance() -> i32 {
@@ -201,7 +209,10 @@ pub enum Sender {
     /// Numbers and addresses: from the app (tel:, mailto:) or from the phone's
     /// address book. `contact`: the phone's address book has them, so they
     /// are someone you know (neutral) even when Sioul's address books do not.
-    Known { numbers: Vec<String>, emails: Vec<String>, contact: bool },
+    /// `asked`: the phone's address book could be asked (`Posted::contacts`):
+    /// without it, a number none of Sioul's lists knows says nothing of who
+    /// wrote, and is no stranger's (held apps phase 1, A1).
+    Known { numbers: Vec<String>, emails: Vec<String>, contact: bool, asked: bool },
     /// A name only. `book`: the app names people as the phone's address book
     /// does (SMS apps, WhatsApp): a name that says who; else a name anyone
     /// can take, which may only hold more (`named`).
@@ -357,7 +368,8 @@ fn address_in(text: &str) -> Option<String> {
 
 /// What a person is, as the app identifies them: their numbers and
 /// addresses (the app's URI, the phone's address book), else their name.
-fn sender_of(person: &Person, book: bool) -> Sender {
+/// `asked`: the phone's address book could be asked (`Posted::contacts`).
+fn sender_of(person: &Person, book: bool, asked: bool) -> Sender {
     let mut numbers = person.numbers.clone();
     let mut emails = person.emails.clone();
     if book && person.uri.trim().is_empty() {
@@ -374,14 +386,14 @@ fn sender_of(person: &Person, book: bool) -> Sender {
     numbers.retain(|n| !n.trim().is_empty());
     emails.retain(|e| !e.trim().is_empty());
     if !numbers.is_empty() || !emails.is_empty() {
-        return Sender::Known { numbers, emails, contact };
+        return Sender::Known { numbers, emails, contact, asked };
     }
     // An app's name for someone may be their number or their address itself.
     if let Some(number) = number_in(&person.name) {
-        return Sender::Known { numbers: vec![number], emails: Vec::new(), contact: false };
+        return Sender::Known { numbers: vec![number], emails: Vec::new(), contact: false, asked };
     }
     if let Some(address) = address_in(&person.name) {
-        return Sender::Known { numbers: Vec::new(), emails: vec![address], contact: false };
+        return Sender::Known { numbers: Vec::new(), emails: vec![address], contact: false, asked };
     }
     let name = one_line(&person.name);
     if name.is_empty() { Sender::Unknown } else { Sender::Named { name, book } }
@@ -504,13 +516,13 @@ pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> K
         return automaton;
     }
     let sender = match person {
-        Some(person) => sender_of(person, book),
+        Some(person) => sender_of(person, book, p.contacts),
         None => {
             let title = one_line(&p.title);
             if sms && short_code(&title) {
                 return automaton;
             }
-            sender_of(&Person { name: title, ..Person::default() }, book)
+            sender_of(&Person { name: title, ..Person::default() }, book, p.contacts)
         }
     };
     if sms && let Sender::Named { name, .. } = &sender
@@ -526,14 +538,36 @@ pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> K
 /// Who wrote, from what the address books and lists say of a name
 /// (`found`: none when no card has it): an app that names people as the
 /// phone's address book does is taken at its word; a name anyone can take
-/// may only hold more (restricted and blocked kept), never let through more
-/// than someone unknown.
-pub fn named(found: Option<Who>, book: bool) -> Who {
+/// may only hold more (restricted and blocked kept), and otherwise says
+/// nothing of who wrote: none, which `decide` judges as a contact's
+/// (`unidentified_as`), never as one of your people nor a safe sender, and
+/// never as a stranger (held apps phase 1, A1).
+pub fn named(found: Option<Who>, book: bool) -> Option<Who> {
     match found {
-        Some(who) if book => who,
-        Some(who @ (Who::Restricted | Who::Blocked)) => who,
-        _ => Who::Stranger,
+        Some(who) if book => Some(who),
+        Some(who @ (Who::Restricted | Who::Blocked)) => Some(who),
+        _ => None,
     }
+}
+
+/// How a sender Sioul cannot tell is judged (held apps phase 1, A1): a
+/// stranger is someone whose number or address Sioul could read and whom no
+/// address book knows; nobody named, a name anyone can take, a number the
+/// phone's address book could not be asked about, is judged as a contact's
+/// message (`Who::Neutral`): at once when you are awake, held while you
+/// sleep, pause or take Free time. A missed call keeps the call screening's
+/// reading, a stranger's: calls are not touched.
+pub fn unidentified_as(via: Channel) -> Who {
+    if via == Channel::Calls { Who::Stranger } else { Who::Neutral }
+}
+
+/// Whether a person's message comes from someone Sioul could not tell, and
+/// is judged as a contact's (`unidentified_as`): nobody of your lists nor of
+/// your address books knows them and nothing proves they are a stranger.
+/// Never a missed call, nor a text named only, gathered as a business's.
+/// For the log and the tab, which say it without a name.
+pub fn unidentified(kind: &Kind, who: Option<Who>) -> bool {
+    matches!(kind, Kind::People(talk) if who.is_none() && talk.via != Channel::Calls && !(talk.sms && matches!(talk.sender, Sender::Named { .. })))
 }
 
 // ---------------------------------------------------------------- the person's choices
@@ -654,6 +688,16 @@ pub struct Choices {
     /// Holding at all; off, everything comes as the apps send it.
     #[serde(default = "yes")]
     pub hold: bool,
+    /// Hold people's messages too, by who writes and when (held apps phase
+    /// 1, A2); `hold` stays the master switch. Off, a message between people
+    /// comes at once, but from the blocked, a conversation set to gathered or
+    /// never, and a conversation, a person or an app with times of their own
+    /// (`route`). None until worked out, once (`work_out_people`): on where
+    /// anything was ever chosen for other apps on this phone, off where
+    /// nothing was; written then, so that a phone set up by its person keeps
+    /// what it does and a new one holds no one's message by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub people: Option<bool>,
     /// By the app's package.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub app: BTreeMap<String, AppChoice>,
@@ -681,7 +725,7 @@ fn yes() -> bool {
 
 impl Default for Choices {
     fn default() -> Choices {
-        Choices { hold: true, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
+        Choices { hold: true, people: None, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
     }
 }
 
@@ -716,6 +760,33 @@ impl Choices {
 
     pub fn through(&self, conversation: &str) -> Through {
         self.conversation.get(conversation).map_or(Through::Usual, |c| c.through)
+    }
+
+    /// Whether people's messages are held by who writes and when: holding on,
+    /// and `people` on; unset, as before this switch (held), until the app
+    /// works it out at its first read and writes it (`work_out_people`).
+    pub fn holds_people(&self) -> bool {
+        self.hold && self.people != Some(false)
+    }
+
+    /// Whether anything was ever chosen for other apps on this phone (held
+    /// apps phase 1, A2): an app, a conversation or a site here, or an app's
+    /// or a conversation's own row by time in `[attention]`. A person's own
+    /// row is no choice for other apps: it is set from their card, for every
+    /// device.
+    pub fn chose_for_apps(&self, attention: &Attention) -> bool {
+        !self.app.is_empty() || !self.conversation.is_empty() || !self.site.is_empty() || attention.sources().keys().any(|id| id.starts_with(attention::APP_ROW) || id.starts_with(attention::CONVERSATION_ROW))
+    }
+
+    /// `people` worked out when unset: on where anything was ever chosen for
+    /// other apps on this phone (`chose_for_apps`), off otherwise. Whether it
+    /// was worked out now, to be written.
+    pub fn work_out_people(&mut self, attention: &Attention) -> bool {
+        if self.people.is_some() {
+            return false;
+        }
+        self.people = Some(self.chose_for_apps(attention));
+        true
     }
 }
 
@@ -891,6 +962,9 @@ pub enum Why {
     /// Held before a release you asked (Reachable pressed, or "Let what
     /// your phone holds through" on a computer: part 3): let through once.
     Released,
+    /// People's messages are not held on this phone (`Choices::people` off,
+    /// held apps phase 1, A2): a person's message comes at once.
+    PeopleOff,
 }
 
 impl Why {
@@ -909,6 +983,7 @@ impl Why {
             Why::Again => "again",
             Why::Answered => "answered",
             Why::Released => "released",
+            Why::PeopleOff => "people-off",
         }
     }
 }
@@ -955,9 +1030,21 @@ impl Decision {
     /// minute (`GRACE`), but Sioul's quiet window may open later, moved off
     /// Sioul's own reminders, and Android's safety net brings it back
     /// minutes after: either way it is no reason to wait half a day more.
+    /// A person's message held until a gathered time its row gathers it at
+    /// (◎ by day, held apps phase 1, A3), brought back as late, still comes
+    /// with that gathering, as long as its row gathers it now
+    /// (`gathers_held_now`).
     pub fn on_time(self, held: &Held, now: i64, gathers: bool) -> Decision {
-        let gathering = matches!(self.why, Why::Gathered | Why::Times) && held.kind == "gathered";
-        if self.until.is_some() && gathering && gathers && held.until <= now && now - held.until <= LATE { Decision::through(Why::Gathered) } else { self }
+        let automaton = matches!(self.why, Why::Gathered | Why::Times) && held.kind == "gathered";
+        let person = matches!(self.why, Why::Waiting | Why::Times) && held.kind == "people";
+        if self.until.is_none() || !(automaton || person) || !gathers || held.until > now || now - held.until > LATE {
+            return self;
+        }
+        Decision::through(match self.why {
+            _ if automaton => Why::Gathered,
+            Why::Waiting => Why::Allowed,
+            other => other,
+        })
     }
 }
 
@@ -1019,6 +1106,24 @@ pub fn gathers_now(ask: &Ask) -> bool {
     let mode = ask.clock.mode(ask.now);
     let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
     ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(ask.now, &mode)
+}
+
+/// Whether the matrix gathers a held notification at this very moment, for
+/// `Decision::on_time`: an automaton's as `gathers_now` says; a person's
+/// message held until one of the gathered times, when its row (its own rows
+/// read over it) says At the gathered times now (◎, held apps phase 1, A3).
+pub fn gathers_held_now(held: &Held, ask: &Ask) -> bool {
+    if held.kind != "people" {
+        return gathers_now(ask);
+    }
+    let Ok(until) = jiff::Timestamp::from_second(held.until) else { return false };
+    if !times_of(ask.gathered).contains(&until.to_zoned(ask.now.time_zone().clone()).time()) {
+        return false;
+    }
+    let via = Channel::read(&held.via).unwrap_or(Channel::Messages);
+    let who = Who::read(&held.who).unwrap_or_else(|| unidentified_as(via));
+    let event = Event::of(Source::Message { via, who, circle: held.circle, group: held.group, always: held.admitted }).for_area(ask.area).from_sources(ask.sources.to_vec());
+    who != Who::Blocked && ask.attention.decide(&event, &ask.moment(ask.now, &ask.clock.mode(ask.now))).level == Level::Gathered
 }
 
 /// The gathered times from now on, within the coming days, in order; one
@@ -1108,7 +1213,11 @@ fn at_once(ask: &Ask) -> Decision {
 /// row, Always through's, the time, its layers), the notification's area
 /// fitting now for all but Always through and your safe people's chats (a
 /// mail app's, from your safe senders too: as mail to an address for another
-/// time, docs/areas.md); else at their next time.
+/// time, docs/areas.md); else at their next time, by the level the matrix
+/// says at each moment (`first_time`): at once (●) as soon as a moment begins
+/// where it comes, at the gathered times (◎) at the next gathering where it
+/// says so (held apps phase 1, A3: by day, never in sleep, a pause, Free time
+/// nor under do-not-disturb's shade).
 fn person(talk: &Talk, who: Who, circle: bool, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
@@ -1118,15 +1227,15 @@ fn person(talk: &Talk, who: Who, circle: bool, group: bool, always: bool, ask: &
         let event = Event::of(Source::Message { via: talk.via, who, circle, group, always }).from_sources(ask.sources.to_vec());
         return by_matrix(ask, &[event.clone().for_area(ask.area).area_unsaid(talk.to_unsaid), event], Why::Allowed, Why::Waiting);
     }
-    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, circle, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
+    let level = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, circle, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).level;
     // This device for its area at no moment of the coming days: the hours alone, as on a device
     // nothing is said of, so that a device never lets through what the hours hold (review of
     // phase 2, M1); its area and its times never meeting even so, the matrix alone decides:
     // nothing waits for good.
     let by_hours = |mode: &Mode| Mode { here: crate::areas::Here::default(), ..mode.clone() };
-    let next = first_moment(ask, &|at, mode| open(at, mode, ask.area))
-        .or_else(|| first_moment(ask, &|at, mode| open(at, &by_hours(mode), ask.area)))
-        .or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
+    let next = first_time(ask, &|at, mode| level(at, mode, ask.area))
+        .or_else(|| first_time(ask, &|at, mode| level(at, &by_hours(mode), ask.area)))
+        .or_else(|| first_time(ask, &|at, mode| level(at, mode, None)));
     match next {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::Allowed),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::Waiting),
@@ -1162,7 +1271,13 @@ enum Route<'a> {
 /// The way `decide` takes: what the notification is, then who wrote and
 /// what you chose for its conversation. The blocked never, whatever their
 /// conversation says (blocked beats Always through, docs/attention.md, Q3).
-fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) -> Route<'a> {
+/// People's messages not held on this phone (`Choices::holds_people`, A2):
+/// at once, but the blocked, a conversation set to gathered or never, a text
+/// named only (a business's, gathered with the automatons) and what has rows
+/// of its own by time (`sourced`: its conversation's, its person's, its
+/// app's, which decide as before); a missed call as before (calls are not
+/// touched).
+fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices, sourced: bool) -> Route<'a> {
     match kind {
         Kind::Untouched => Route::Through(Why::Untouched),
         Kind::Code => Route::Through(Why::Code),
@@ -1176,13 +1291,17 @@ fn route<'a>(kind: &'a Kind, who: Option<Who>, listed: bool, choices: &Choices) 
             // A group is judged as the conversation, on its own row: anyone in it may write.
             let group = talk.conversation.as_ref().is_some_and(|c| c.group);
             let through = talk.conversation.as_ref().map_or(Through::Usual, |c| choices.through(&c.key));
-            let known = who.unwrap_or(Who::Stranger);
+            // Someone Sioul cannot tell: as a contact, never a stranger (A1); a missed call as before.
+            let known = who.unwrap_or_else(|| unidentified_as(talk.via));
+            // People's messages not held here (A2), but what has times of its own; a missed call as before.
+            let off = !choices.holds_people() && !sourced && talk.via != Channel::Calls;
             match through {
-                Through::Always => Route::Person { talk, who: known, group, always: true, conversation: true },
                 Through::Gathered => Route::Gathered(Gathering::Conversation),
                 Through::Never => Route::ForGood,
                 // An SMS named only, whom no address book knows: a business's sender id.
                 Through::Usual if talk.sms && who.is_none() && matches!(talk.sender, Sender::Named { .. }) => Route::Gathered(Gathering::Named),
+                _ if off => Route::Through(Why::PeopleOff),
+                Through::Always => Route::Person { talk, who: known, group, always: true, conversation: true },
                 Through::Usual => Route::Person { talk, who: known, group, always: listed && !group, conversation: false },
             }
         }
@@ -1198,11 +1317,12 @@ fn conversation_gathered(ask: &Ask) -> Decision {
 
 /// Whether a notification comes now, or until when it waits.
 /// `who`: the sender as the address books and lists judge them (`named` for
-/// a name), none when nobody knows them; `listed`: the Always through list
+/// a name), none when nobody can tell who they are (judged as a contact:
+/// `unidentified_as`); `listed`: the Always through list
 /// holds them. The blocked never, whatever their conversation says (blocked
 /// beats Always through, docs/attention.md, Q3).
 pub fn decide(kind: &Kind, who: Option<Who>, listed: bool, choices: &Choices, ask: &Ask) -> Decision {
-    match route(kind, who, listed, choices) {
+    match route(kind, who, listed, choices, ask.attention.has_sources(ask.sources)) {
         Route::Through(why) => Decision::through(why),
         Route::AtOnce => at_once(ask),
         Route::Gathered(Gathering::Conversation) => conversation_gathered(ask),
@@ -1229,6 +1349,9 @@ pub enum Gathering {
     /// automated systems, while the call screening sends their calls to
     /// voicemail (the app's `machine_number`; review of part 2, F11).
     Machine,
+    /// A person's message whose row says At the gathered times now (◎, held
+    /// apps phase 1, A3): by day, at the next gathering.
+    Time,
 }
 
 /// Which own row decides a notification now (`Cause`).
@@ -1261,6 +1384,10 @@ pub struct Cause {
     pub columns: Vec<attention::Column>,
     /// Free time's "Nothing at all" holds now.
     pub nothing: bool,
+    /// Sioul could not tell who wrote, and judges it as a contact's message
+    /// (`unidentified`; held apps phase 1, A1): said so that it is never
+    /// taken for a real contact's, without a name.
+    pub unknown: bool,
 }
 
 /// What held a notification that `decide` holds, now (`Cause`): the way
@@ -1273,7 +1400,7 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
     let moment = ask.moment(ask.now, &mode);
     let mut cause = Cause { nothing: moment.nothing, ..Cause::default() };
     let sources = ask.sources.to_vec();
-    let event = match route(kind, who, listed, choices) {
+    let event = match route(kind, who, listed, choices, ask.attention.has_sources(ask.sources)) {
         Route::Through(_) => return None,
         Route::ForGood => {
             cause.for_good = true;
@@ -1284,10 +1411,18 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
             Event::own(attention::Kind::AppAutomatons)
         }
         Route::AtOnce => Event::own(attention::Kind::AppAtOnce),
-        Route::Person { talk, who, group, always, .. } => Event::of(Source::Message { via: talk.via, who, circle: ask.circle, group, always }).area_unsaid(talk.to_unsaid),
+        Route::Person { talk, who: judged, group, always, .. } => {
+            cause.unknown = unidentified(kind, who);
+            Event::of(Source::Message { via: talk.via, who: judged, circle: ask.circle, group, always }).area_unsaid(talk.to_unsaid)
+        }
     };
     let event = event.for_area(ask.area).from_sources(sources);
     let out = ask.attention.decide(&event, &moment);
+    // A person's message its row gathers now, by day (◎, A3): at the next gathering, said with the time's column.
+    let by_day = matches!(event.source, Source::Message { .. }) && out.level == Level::Gathered && out.step != attention::Step::Chosen;
+    if by_day {
+        cause.gathered = Some(Gathering::Time);
+    }
     if out.step == attention::Step::Chosen {
         let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
         cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else if attention::is_person(id) { Own::Person } else { Own::App });
@@ -1297,6 +1432,9 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
         cause.device = out.step == attention::Step::Device;
     }
     cause.columns = ask.attention.holding(&event, &moment);
+    if by_day && cause.columns.is_empty() {
+        cause.columns = moment.times.clone();
+    }
     // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
     if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(ask.now, &mode) {
         cause.area = ask.area;
@@ -1688,9 +1826,14 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
         return Decision::held(held.until.max(ask.stamp() + 60), Why::Never);
     }
     let talk = Talk { via: Channel::read(&held.via).unwrap_or(Channel::Messages), sender: Sender::Unknown, conversation: None, to: String::new(), to_unsaid: false, sms: false };
+    // Kept without a who: Sioul could not tell who wrote, judged as a contact (A1); a missed call as before.
+    let known = who.unwrap_or_else(|| unidentified_as(talk.via));
+    // People's messages not held here (A2), but what has times of its own; a missed call as before.
+    let off = !choices.holds_people() && !ask.attention.has_sources(ask.sources) && talk.via != Channel::Calls;
     if !held.conversation.is_empty() {
         match choices.through(&held.conversation) {
-            Through::Always => return always(&talk, who.unwrap_or(Who::Stranger), held.circle, held.group, ask),
+            Through::Always if off => return Decision::through(Why::PeopleOff),
+            Through::Always => return always(&talk, known, held.circle, held.group, ask),
             Through::Gathered => return conversation_gathered(ask),
             Through::Never => return Decision::held(held.until.max(ask.stamp() + 60), Why::Never),
             Through::Usual => {}
@@ -1698,7 +1841,8 @@ pub fn again(held: &Held, choices: &Choices, ask: &Ask) -> Decision {
     }
     match held.kind.as_str() {
         _ if app.kind == AppKind::Automaton => gathered(ask),
-        "people" | "never" => person(&talk, who.unwrap_or(Who::Stranger), held.circle, held.group, held.admitted, ask),
+        "people" | "never" if off => Decision::through(Why::PeopleOff),
+        "people" | "never" => person(&talk, known, held.circle, held.group, held.admitted, ask),
         _ => gathered(ask),
     }
 }
@@ -1956,7 +2100,7 @@ pub fn why_text(tr: &Translator, why: &str, until: i64, now: &Zoned) -> String {
     args.set("when", if until > 0 { when_text(tr, until, now) } else { String::new() });
     let held = until > now.timestamp().as_second();
     let id = match (why, held) {
-        ("waiting", true) | ("gathered", true) | ("machine", true) | ("at-once", true) | ("never", true) | ("times", true) => format!("appnotes-why-{why}-held"),
+        ("waiting", true) | ("gathered", true) | ("machine", true) | ("at-once", true) | ("never", true) | ("times", true) | ("unknown", true) => format!("appnotes-why-{why}-held"),
         _ => format!("appnotes-why-{why}"),
     };
     tr.text(&id, Some(&args))
@@ -2083,14 +2227,14 @@ mod tests {
         // SMS: a number is someone, a contact's tel: URI too; a sender id or a short code is an automaton.
         let sms = talk(SMS_NUMBER);
         assert_eq!((sms.via, sms.sms), (Channel::Messages, true));
-        assert_eq!(sms.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 01".into()], emails: vec![], contact: false });
-        assert_eq!(talk(SMS_CONTACT).sender, Sender::Known { numbers: vec!["+262639980102".into()], emails: vec![], contact: false });
+        assert_eq!(sms.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 01".into()], emails: vec![], contact: false, asked: false });
+        assert_eq!(talk(SMS_CONTACT).sender, Sender::Known { numbers: vec!["+262639980102".into()], emails: vec![], contact: false, asked: false });
         assert_eq!(talk(SMS_SENDER_ID).sender, Sender::Named { name: "AMELI".into(), book: true });
         assert_eq!(classify(&posted(SMS_SHORT), &choices), Kind::Automaton { site: String::new() });
         assert_eq!(classify(&posted(SMS_CODE), &choices), Kind::Code);
         // WhatsApp: a person by the phone's address book; a group by its conversation.
         let jeanne = talk(WHATSAPP_PERSON);
-        assert_eq!(jeanne.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 03".into()], emails: vec![], contact: true }, "the phone's contact");
+        assert_eq!(jeanne.sender, Sender::Known { numbers: vec!["+262 6 39 98 01 03".into()], emails: vec![], contact: true, asked: false }, "the phone's contact");
         let school = talk(WHATSAPP_GROUP);
         let conversation = school.conversation.clone().unwrap();
         assert_eq!((conversation.title.as_str(), conversation.group), ("École Jules Ferry", true));
@@ -2098,7 +2242,7 @@ mod tests {
         assert_eq!(school.sender, Sender::Named { name: "Mme Durand".into(), book: true });
         // A name alone, found in the phone's address book: WhatsApp's counts, Discord's does not.
         let by_name = r#"{"key":"k","package":"com.whatsapp","app":"WhatsApp","category":"msg","template":"android.app.Notification$MessagingStyle","title":"Paul","messages":[{"sender":{"name":"Paul","by_name":["+262 6 39 98 01 04"]},"text":"Salut"}]}"#;
-        assert_eq!(talk(by_name).sender, Sender::Known { numbers: vec!["+262 6 39 98 01 04".into()], emails: vec![], contact: true });
+        assert_eq!(talk(by_name).sender, Sender::Known { numbers: vec!["+262 6 39 98 01 04".into()], emails: vec![], contact: true, asked: false });
         let discord_by_name = by_name.replace("com.whatsapp", "com.discord");
         assert_eq!(talk(discord_by_name.as_str()).sender, Sender::Named { name: "Paul".into(), book: false });
         // A bot says it is one: an automaton. A six-digit short code is no phone number.
@@ -2170,14 +2314,258 @@ mod tests {
         assert!(matches!(old, Kind::People(Talk { sender: Sender::Known { .. }, .. })), "{old:?}");
     }
 
+    /// Held apps phase 1, A1: a name anyone can take may only hold more (a
+    /// restricted or blocked contact's name holds as theirs); any other name,
+    /// a safe contact's included, says nothing of who wrote: none, judged as
+    /// a contact's, never one of your people nor a stranger. An app that
+    /// names people as the address book does is taken at its word.
     #[test]
-    fn names_anyone_can_take_only_hold_more() {
-        assert_eq!(named(Some(Who::Safe), true), Who::Safe, "WhatsApp names people as the address book does");
-        assert_eq!(named(Some(Who::Safe), false), Who::Stranger, "a Discord name is anyone's");
-        assert_eq!(named(Some(Who::Neutral), false), Who::Stranger);
-        assert_eq!(named(Some(Who::Restricted), false), Who::Restricted);
-        assert_eq!(named(Some(Who::Blocked), false), Who::Blocked);
-        assert_eq!(named(None, true), Who::Stranger);
+    fn a_bare_name_is_nobody_known_unless_it_holds_more() {
+        assert_eq!(named(Some(Who::Safe), true), Some(Who::Safe), "WhatsApp names people as the address book does");
+        assert_eq!(named(Some(Who::Safe), false), None, "a safe contact's name in Signal or Discord: anyone's");
+        assert_eq!(named(Some(Who::Neutral), false), None);
+        assert_eq!(named(None, false), None, "a name in no card");
+        assert_eq!(named(Some(Who::Restricted), false), Some(Who::Restricted), "a restricted contact's name holds");
+        assert_eq!(named(Some(Who::Blocked), false), Some(Who::Blocked));
+        assert_eq!(named(None, true), None, "the address book's name, in no card of Sioul's");
+        // Judged as a contact, never a stranger; a missed call keeps the screening's reading.
+        assert_eq!((unidentified_as(Channel::Messages), unidentified_as(Channel::Mail), unidentified_as(Channel::Calls)), (Who::Neutral, Who::Neutral, Who::Stranger));
+    }
+
+    /// Held apps phase 1, A1: who wrote, when Sioul cannot tell (nobody
+    /// named, a name anyone can take, a number the phone's address book could
+    /// not be asked about), is judged as a contact: a bare name in a chat app
+    /// at 20:30 comes at once (a stranger's waited until the next working
+    /// hour), at night it waits for waking, and what held it says so, without
+    /// a name. A business's text named only stays gathered; a missed call
+    /// from someone nobody knows is a stranger's as before.
+    #[test]
+    fn unknown_is_judged_as_a_contact_never_a_stranger() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let evening = at("2026-10-06T20:30[Europe/Paris]");
+        let night = at("2026-10-06T23:30[Europe/Paris]");
+        let decided = |json: &str, who: Option<Who>, now: &Zoned| decide(&classify(&posted(json), &choices), who, false, &choices, &ask(now, &clock, None, None));
+        // A chat app's bare name, a safe contact's or anyone's: as a contact's message.
+        assert_eq!(decided(DISCORD_DM, named(Some(Who::Safe), false), &evening), Decision::through(Why::Allowed));
+        let held = decided(DISCORD_DM, None, &night);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T07:00:00"), "held in sleep, as a contact's");
+        let said = cause("com.discord", &classify(&posted(DISCORD_DM), &choices), None, false, &choices, &ask(&night, &clock, None, None)).unwrap();
+        assert!(said.unknown && said.columns == [Column::Sleep], "{said:?}");
+        assert!(unidentified(&classify(&posted(DISCORD_DM), &choices), None));
+        // A restricted contact's name holds as theirs.
+        assert!(decided(DISCORD_DM, named(Some(Who::Restricted), false), &evening).until.is_some(), "restricted: held");
+        assert!(!unidentified(&classify(&posted(DISCORD_DM), &choices), Some(Who::Restricted)));
+        // Nobody named at all: the same.
+        let nobody = r#"{"key":"u","package":"org.example.chat","category":"msg","template":"android.app.Notification$MessagingStyle","messages":[{"sender":{"name":" "},"text":"Bonjour"}]}"#;
+        assert!(matches!(classify(&posted(nobody), &choices), Kind::People(Talk { sender: Sender::Unknown, .. })));
+        assert_eq!(decided(nobody, None, &evening), Decision::through(Why::Allowed));
+        // A business's text named only ("AMELI") is still gathered; never said unknown.
+        assert_eq!(decided(SMS_SENDER_ID, None, &evening).why, Why::Gathered);
+        assert!(!unidentified(&classify(&posted(SMS_SENDER_ID), &choices), None));
+        // A missed call nobody knows: a stranger's, as the call screening reads it (calls are not touched).
+        let missed = classify(&posted(r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+262 6 39 98 01 07"}"#), &choices);
+        assert_eq!(decide(&missed, None, false, &choices, &ask(&evening, &clock, None, None)).why, Why::Waiting);
+        assert!(!unidentified(&missed, None));
+        // Worked out again, a message kept without a who: as a contact's; a missed call's as a stranger's.
+        let kept = Held { app: "com.discord".into(), label: "Discord".into(), kind: "people".into(), via: "messages".into(), since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &choices, &ask(&evening, &clock, None, None)), Decision::through(Why::Allowed));
+        assert!(again(&Held { via: "calls".into(), ..kept }, &choices, &ask(&evening, &clock, None, None)).until.is_some());
+    }
+
+    /// Held apps phase 1, A2: `people` unset is worked out once, from what
+    /// was ever chosen for other apps on this phone: on with an app, a
+    /// conversation or a site chosen, or an app's or a conversation's own row
+    /// by time; off with nothing, a person's own row aside. Unset, it holds
+    /// as before; once worked out it is written, and read back.
+    #[test]
+    fn people_unset_is_worked_out_from_what_was_chosen_on_this_phone() {
+        let usual = Attention::usual();
+        let mut nothing = Choices::default();
+        assert!(nothing.holds_people(), "unset: as before, until worked out");
+        assert!(nothing.work_out_people(&usual) && nothing.people == Some(false) && !nothing.holds_people());
+        assert!(!nothing.work_out_people(&usual), "once");
+        let chose = |mut choices: Choices, attention: &Attention| {
+            choices.work_out_people(attention);
+            choices.people
+        };
+        let mut app = Choices::default();
+        app.app.insert("com.discord".into(), AppChoice { kind: AppKind::Automaton, ..AppChoice::default() });
+        assert_eq!(chose(app, &usual), Some(true), "an app chosen");
+        let mut talk = Choices::default();
+        talk.conversation.insert("c1".into(), TalkChoice { through: Through::Always, ..TalkChoice::default() });
+        assert_eq!(chose(talk, &usual), Some(true), "a conversation chosen");
+        let mut site = Choices::default();
+        site.site.insert("forum.example.net".into(), SiteChoice { at_once: true });
+        assert_eq!(chose(site, &usual), Some(true), "a site chosen");
+        for row in ["app.com.discord", "conversation.8c1f0e5a2b7d4c69"] {
+            let mut rows = usual.clone();
+            rows.set_source(row, Column::Work, Level::Now).unwrap();
+            assert_eq!(chose(Choices::default(), &rows), Some(true), "{row}");
+        }
+        let mut theirs = usual.clone();
+        theirs.set_source("person.contact:card-1", Column::Leisure, Level::Later).unwrap();
+        assert_eq!(chose(Choices::default(), &theirs), Some(false), "a person's own row is set from their card, for every device");
+        assert_eq!(chose(Choices { people: Some(true), ..Choices::default() }, &usual), Some(true), "set: kept");
+        // Holding off: nothing held at all, people's messages neither.
+        assert!(!Choices { hold: false, people: Some(true), ..Choices::default() }.holds_people());
+        // Written once worked out, read back; unset is not written.
+        let text = toml::to_string(&Choices { people: Some(false), ..Choices::default() }).unwrap();
+        assert!(text.contains("people = false"), "{text}");
+        assert_eq!(toml::from_str::<Choices>(&text).unwrap().people, Some(false));
+        assert!(!toml::to_string(&Choices::default()).unwrap().contains("people"));
+        assert_eq!(toml::from_str::<Choices>("hold = true\n").unwrap().people, None);
+    }
+
+    /// Held apps phase 1, A2: people's messages not held on this phone. A
+    /// stranger's text in the evening, a contact's at night and a mail app's
+    /// come at once, said as such, and nothing is said to hold them; the
+    /// blocked stay held for good; a conversation set to gathered waits for
+    /// its gathered time; a conversation, a person or an app with times of
+    /// their own decides as before; a business's text named only, the
+    /// automatons and a missed call as before. Worked out again, what was
+    /// held comes, but the blocked's.
+    #[test]
+    fn with_people_off_a_person_s_message_comes_at_once_but_what_was_set_apart() {
+        let clock = TestClock::new();
+        let off = Choices { people: Some(false), ..Choices::default() };
+        let (morning, evening, night) = (at("2026-10-06T10:00[Europe/Paris]"), at("2026-10-06T20:30[Europe/Paris]"), at("2026-10-06T23:30[Europe/Paris]"));
+        let decided = |json: &str, who: Option<Who>, choices: &Choices, now: &Zoned| decide(&classify(&posted(json), choices), who, false, choices, &ask(now, &clock, None, None));
+        assert_eq!(decided(SMS_NUMBER, Some(Who::Stranger), &off, &evening), Decision::through(Why::PeopleOff));
+        assert_eq!(decided(WHATSAPP_PERSON, Some(Who::Neutral), &off, &night), Decision::through(Why::PeopleOff));
+        assert_eq!(decided(PROTON, Some(Who::Stranger), &off, &night), Decision::through(Why::PeopleOff), "a mail app's alike");
+        assert_eq!(Why::PeopleOff.id(), "people-off");
+        assert!(cause("com.whatsapp", &classify(&posted(WHATSAPP_PERSON), &off), Some(Who::Neutral), false, &off, &ask(&night, &clock, None, None)).is_none(), "nothing holds it");
+        assert_eq!(decided(SMS_CONTACT, Some(Who::Blocked), &off, &evening).why, Why::Never, "the blocked held for good");
+        // A conversation set to gathered: its gathered time.
+        let mut gathered_talk = off.clone();
+        gathered_talk.conversation.insert(talk_key("com.whatsapp", "120363000000000001@g.us"), TalkChoice { through: Through::Gathered, ..TalkChoice::default() });
+        let held = decided(WHATSAPP_GROUP, None, &gathered_talk, &morning);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Gathered, "2026-10-06T13:00:00"));
+        // Its app's own row by time: as before.
+        let dm = classify(&posted(DISCORD_DM), &off);
+        let key = match &dm {
+            Kind::People(t) => t.conversation.as_ref().map(|c| c.key.clone()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        let rows = attention::source_rows("com.discord", &key);
+        let mut work_only = usual().clone();
+        for column in Column::ALL {
+            work_only.set_source("app.com.discord", column, if column == Column::Work { Level::Now } else { Level::Later }).unwrap();
+        }
+        let sourced = Ask { attention: &work_only, sources: &rows, ..ask(&evening, &clock, None, None) };
+        let held = decide(&dm, Some(Who::Stranger), false, &off, &sourced);
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Times, "2026-10-07T09:00:00"), "its app's row decides");
+        // A business's text named only and a shop: gathered as before; a missed call nobody knows: as before.
+        assert_eq!(decided(SMS_SENDER_ID, None, &off, &evening).why, Why::Gathered);
+        assert_eq!(decided(SHOP, None, &off, &evening).why, Why::Gathered);
+        let missed = r#"{"key":"m","package":"com.android.dialer","category":"missed_call","title":"+262 6 39 98 01 07"}"#;
+        assert_eq!(decided(missed, Some(Who::Stranger), &off, &evening).why, Why::Waiting);
+        // People on: as before.
+        let on = Choices { people: Some(true), ..Choices::default() };
+        assert_eq!(decided(SMS_NUMBER, Some(Who::Stranger), &on, &evening).why, Why::Waiting);
+        // Worked out again: a message held before comes, the blocked's stays.
+        let kept = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &off, &ask(&evening, &clock, None, None)), Decision::through(Why::PeopleOff));
+        assert_eq!(again(&Held { who: "blocked".into(), ..kept }, &off, &ask(&evening, &clock, None, None)).why, Why::Never);
+    }
+
+    /// Held apps phase 1, A2: a conversation set to never stays held with
+    /// people's messages not held, decided or worked out again.
+    #[test]
+    fn a_conversation_set_to_never_is_still_held_with_people_off() {
+        let clock = TestClock::new();
+        let evening = at("2026-10-06T20:30[Europe/Paris]");
+        let school = talk_key("com.whatsapp", "120363000000000001@g.us");
+        let mut never = Choices { people: Some(false), ..Choices::default() };
+        never.conversation.insert(school.clone(), TalkChoice { through: Through::Never, ..TalkChoice::default() });
+        let group = classify(&posted(WHATSAPP_GROUP), &never);
+        assert_eq!(decide(&group, Some(Who::Safe), false, &never, &ask(&evening, &clock, None, None)).why, Why::Never);
+        assert_eq!(cause("com.whatsapp", &group, Some(Who::Safe), false, &never, &ask(&evening, &clock, None, None)), Some(Cause { for_good: true, ..Cause::default() }));
+        let kept = Held { app: "com.whatsapp".into(), label: "WhatsApp".into(), kind: "never".into(), via: "messages".into(), who: "safe".into(), group: true, conversation: school, since: 0, until: 0, ..Held::default() };
+        assert_eq!(again(&kept, &never, &ask(&evening, &clock, None, None)).why, Why::Never);
+    }
+
+    /// Held apps phase 1, A3: a stranger's message in leisure (a Saturday,
+    /// 10:30) comes at the next gathered time, 13:00, never at Monday's first
+    /// working hour as before, and the hold says so; one arriving in the
+    /// minute of a gathering comes with it; at night it waits for waking,
+    /// then for the first gathering; under do-not-disturb (until 14:00) it
+    /// waits for its end, then for the next gathering; a restricted sender's
+    /// row is the person's own restriction, unchanged: Monday; your contacts
+    /// at once, as usual, and at the gathered times with Quieter, groups too.
+    #[test]
+    fn a_stranger_s_message_in_leisure_comes_at_the_next_gathered_time() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_NUMBER), &choices);
+        let saturday = at("2026-10-10T10:30[Europe/Paris]");
+        let decided = |who: Who, ask: &Ask| decide(&sms, Some(who), false, &choices, ask);
+        let held = decided(Who::Stranger, &ask(&saturday, &clock, None, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-10T13:00:00"), "not Monday 09:00");
+        assert_eq!(cause(&posted(SMS_NUMBER).package, &sms, Some(Who::Stranger), false, &choices, &ask(&saturday, &clock, None, None)), Some(Cause { gathered: Some(Gathering::Time), columns: vec![Column::Leisure], ..Cause::default() }));
+        assert_eq!(decided(Who::Stranger, &ask(&at("2026-10-10T13:00:20[Europe/Paris]"), &clock, None, None)), Decision::through(Why::Allowed), "in the minute of a gathering");
+        assert_eq!(until_of(decided(Who::Stranger, &ask(&at("2026-10-10T23:30[Europe/Paris]"), &clock, None, None))), "2026-10-11T09:00:00", "waking, then the first gathering");
+        let gate = Gate { until: Some(at("2026-10-10T14:00[Europe/Paris]").timestamp().as_second()) };
+        assert_eq!(until_of(decided(Who::Stranger, &ask(&saturday, &clock, None, Some(gate)))), "2026-10-10T18:00:00", "do-not-disturb's end, then the next gathering");
+        assert_eq!(until_of(decided(Who::Restricted, &ask(&saturday, &clock, None, None))), "2026-10-12T09:00:00", "restricted: unchanged");
+        assert_eq!(decided(Who::Neutral, &ask(&saturday, &clock, None, None)), Decision::through(Why::Allowed));
+        let quieter = attention::Preset::Quieter.matrix();
+        let quiet = Ask { attention: &quieter, ..ask(&saturday, &clock, None, None) };
+        assert_eq!(until_of(decided(Who::Neutral, &quiet)), "2026-10-10T13:00:00", "Quieter: your contacts at the gathered times");
+        let group = classify(&posted(WHATSAPP_GROUP), &choices);
+        assert_eq!(until_of(decide(&group, Some(Who::Safe), false, &choices, &quiet)), "2026-10-10T13:00:00", "Quieter: groups too");
+    }
+
+    /// Held apps phase 1, A3: a person's message held until a gathered time
+    /// its row gathers it at, brought back a few minutes late (a window moved,
+    /// Android's own timer as the safety net), still comes with that
+    /// gathering, decided or worked out again; past a quarter of an hour it
+    /// waits for the next. One held until waking and brought back late waits
+    /// for the first gathering, as it would have; one whose row no longer
+    /// gathers it now is as decided.
+    #[test]
+    fn a_person_s_message_brought_back_late_still_comes_with_its_gathering() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_NUMBER), &choices);
+        let one = at("2026-10-10T13:00[Europe/Paris]").timestamp().as_second();
+        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: one - 3600, until: one, ..Held::default() };
+        for (late, comes) in [("2026-10-10T13:04:00[Europe/Paris]", true), ("2026-10-10T13:16:00[Europe/Paris]", false)] {
+            let now = at(late);
+            let asked = ask(&now, &clock, None, None);
+            let stamp = now.timestamp().as_second();
+            let decided = decide(&sms, Some(Who::Stranger), false, &choices, &asked).on_time(&held, stamp, gathers_held_now(&held, &asked));
+            assert_eq!(decided.until.is_none(), comes, "{late}: {decided:?}");
+            let again = again(&held, &choices, &asked).on_time(&held, stamp, gathers_held_now(&held, &asked));
+            assert_eq!(again.until.is_none(), comes, "{late}, worked out again: {again:?}");
+            if comes {
+                assert_eq!(decided.why, Why::Allowed);
+            }
+        }
+        let waking = Held { until: at("2026-10-11T07:00[Europe/Paris]").timestamp().as_second(), ..held.clone() };
+        let now = at("2026-10-11T07:05[Europe/Paris]");
+        let asked = ask(&now, &clock, None, None);
+        assert!(!gathers_held_now(&waking, &asked), "07:00 is no gathered time");
+        assert_eq!(until_of(decide(&sms, Some(Who::Stranger), false, &choices, &asked).on_time(&waking, now.timestamp().as_second(), gathers_held_now(&waking, &asked))), "2026-10-11T09:00:00");
+        assert!(!gathers_held_now(&Held { who: "restricted".into(), ..held.clone() }, &ask(&at("2026-10-10T13:04:00[Europe/Paris]"), &clock, None, None)), "a restricted's row holds them now");
+    }
+
+    /// Held apps phase 1, A1: whether the phone's address book could be asked
+    /// travels with each sender (`Posted::contacts`, absent: it could not).
+    #[test]
+    fn whether_the_phone_s_book_was_asked_travels_with_the_sender() {
+        let choices = Choices::default();
+        let sender = |json: &str| match classify(&posted(json), &choices) {
+            Kind::People(talk) => talk.sender,
+            other => panic!("{other:?}"),
+        };
+        let asked = SMS_NUMBER.replacen("\"sms_app\":true", "\"sms_app\":true,\"contacts\":true", 1);
+        assert_eq!(sender(&asked), Sender::Known { numbers: vec!["+262 6 39 98 01 01".into()], emails: vec![], contact: false, asked: true });
+        assert_eq!(sender(SMS_NUMBER), Sender::Known { numbers: vec!["+262 6 39 98 01 01".into()], emails: vec![], contact: false, asked: false }, "an older listener: not asked");
+        // Java found the tel: number in the phone's address book: its numbers, a contact.
+        let found = r#"{"key":"k","package":"org.example.chat","category":"msg","contacts":true,"messages":[{"sender":{"name":"Noa","uri":"tel:%2B33199001234","numbers":["+33 1 99 00 12 34"]},"text":"Salut"}]}"#;
+        assert!(matches!(sender(found), Sender::Known { contact: true, asked: true, .. }));
     }
 
     #[test]
@@ -2250,9 +2638,10 @@ mod tests {
         let proton = classify(&posted(PROTON), &choices);
         let evening = at("2026-10-06T20:30[Europe/Paris]");
         let morning = at("2026-10-06T10:00[Europe/Paris]");
-        // A name only, in Proton Mail: someone unknown; to a work address, in the evening: tomorrow's work.
+        // A name only, in Proton Mail: nobody Sioul can tell, judged as a contact (A1); to a work address,
+        // in the evening: tomorrow's work.
         let who = named(Some(Who::Safe), false);
-        let held = decide(&proton, Some(who), false, &choices, &ask(&evening, &clock, Some(Area::WORK), None));
+        let held = decide(&proton, who, false, &choices, &ask(&evening, &clock, Some(Area::WORK), None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-07T09:00:00"));
         // Someone known writing to a leisure address in work time: held until the evening's leisure.
         let held = decide(&proton, Some(Who::Neutral), false, &choices, &ask(&morning, &clock, Some(Area::LEISURE), None));
@@ -2362,7 +2751,8 @@ mod tests {
         assert_eq!(said(SMS_CONTACT, Some(Who::Neutral), &choices, &focus), Some(columns(&[C::Dnd])));
         // In the night: the night. A stranger's text in the evening under do-not-disturb: both.
         assert_eq!(said(WHATSAPP_PERSON, Some(Who::Neutral), &choices, &ask(&night, &clock, None, None)), Some(columns(&[C::Sleep])));
-        assert_eq!(said(SMS_NUMBER, Some(Who::Stranger), &choices, &ask(&evening, &clock, None, Some(Gate { until: None }))), Some(columns(&[C::Leisure, C::Dnd])));
+        // A stranger's in the evening under do-not-disturb: do-not-disturb holds it (leisure would gather it: A3).
+        assert_eq!(said(SMS_NUMBER, Some(Who::Stranger), &choices, &ask(&evening, &clock, None, Some(Gate { until: None }))), Some(columns(&[C::Dnd])));
         // A text named only that no card has: gathered as a business's, in the evening too; in the night, the night holds the gathering.
         let named = |columns: &[C]| Some(Cause { gathered: Some(Gathering::Named), columns: columns.to_vec(), ..Cause::default() });
         assert_eq!(said(SMS_SENDER_ID, None, &choices, &ask(&morning, &clock, None, None)), named(&[]));
@@ -2602,9 +2992,11 @@ mod tests {
     /// for 13:00, comes back at 13:01:10, its window moved off one of Sioul's
     /// own reminders, or at 13:05, by Android's safety net: past the minute a
     /// gathering counts, it still comes with it, never held until 18:00; a
-    /// quarter of an hour on, it waits for the next. A person's message is
-    /// none of it, and its return is the one that rings; an automaton's and
-    /// one held for good come back quiet.
+    /// quarter of an hour on, it waits for the next. A person's message whose
+    /// row does not gather it then is none of it (one its row gathers by day:
+    /// `a_person_s_message_brought_back_late_still_comes_with_its_gathering`),
+    /// and its return is the one that rings; an automaton's and one held for
+    /// good come back quiet.
     #[test]
     fn a_gathering_brought_back_late_still_comes_with_it() {
         let clock = TestClock::new();
@@ -2634,10 +3026,14 @@ mod tests {
         let in_pause = ask(&late, &paused, None, None);
         assert!(!gathers_now(&in_pause));
         assert!(decide(&shop, None, false, &choices, &in_pause).on_time(&held, late.timestamp().as_second(), gathers_now(&in_pause)).until.is_some());
-        // A person's message held until their time: none of it, whatever the clock.
-        let talk = Held { kind: "people".into(), via: "messages".into(), who: "stranger".into(), ..held.clone() };
+        // A person's message held until their time, whose row does not gather them (a contact's, at once):
+        // none of it, whatever the clock.
+        let talk = Held { kind: "people".into(), via: "messages".into(), who: "neutral".into(), ..held.clone() };
         let waiting = Decision::held(one + 3600, Why::Waiting);
-        assert_eq!(waiting.on_time(&talk, one + 60, true), waiting);
+        let late = at("2026-10-06T13:01[Europe/Paris]");
+        let gathers = gathers_held_now(&talk, &ask(&late, &clock, None, None));
+        assert!(!gathers, "a contact's row lets them through at once: no gathering");
+        assert_eq!(waiting.on_time(&talk, one + 60, gathers), waiting);
         // Held for good stays so.
         let never = Held { kind: "never".into(), ..held.clone() };
         let for_good = Decision::held(one + FOR_GOOD, Why::Never);
@@ -3140,7 +3536,10 @@ mod tests {
         // A text gathered because its number is one ARCEP keeps for machines: said so (review of part 2, F11).
         assert_eq!(why_text(&tr, "machine", at13, &now), "From a number kept for automated systems: held until 13:00, a gathered time.");
         assert_eq!(why_text(&tr, "released", 0, &now), "Held before you asked your phone to let what it held through: let through.");
-        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "machine", "never", "again", "times", "released"] {
+        // Someone Sioul could not tell, judged as a contact (held apps phase 1, A1): never said as a contact's.
+        assert_eq!(why_text(&tr, "unknown", 0, &now), "Sioul could not tell who wrote: let through as a contact's message would be.");
+        assert_eq!(why_text(&tr, "unknown", at13, &now), "Sioul could not tell who wrote: held until 13:00, as a contact's message would be.");
+        for why in ["untouched", "code", "off", "at-once", "allowed", "always", "waiting", "gathered", "machine", "never", "again", "times", "released", "unknown"] {
             for tr in [&tr, &fr] {
                 let said = why_text(tr, why, 0, &now);
                 assert!(!said.starts_with("appnotes-"), "{why}: {said}");

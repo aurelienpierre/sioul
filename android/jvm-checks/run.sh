@@ -27,7 +27,9 @@
 # - ModeCheck: Sioul's modes (PauseMode's policy from Rust's ask, which modes
 #   let a channel through), a conversation's key against Rust's
 #   (AppNotes.talkKey), the conversations forgotten, Android's pages for a
-#   conversation;
+#   conversation, what the phone's address book is asked of who wrote
+#   (AppNotes.lookup: a contact's link, a tel: number, a mailto: address, a
+#   name) and, read from the sources, that the listener says it was asked;
 # - HeardCheck: the phone's own do-not-disturb heard both ways
 #   (DndHeard.decide), a mode's kind, a mode the phone holds;
 # - CardCheck: the full card on the home screen (HomeCardToday.Lines.of):
