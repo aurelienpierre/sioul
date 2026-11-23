@@ -145,7 +145,10 @@
 #   card), its group and summary; read from the sources, its channel at the
 #   minimum importance, never ongoing, Show now the listener's own broadcast,
 #   a release then a review, the line written at each review and after a hold
-#   or a return, gone when the listener is unbound; nothing of it logged.
+#   or a return, gone when the listener is unbound; nothing of it logged. The
+#   notice of people's messages that waited (B2): kept by app, told once, its
+#   channel with a sound, posted anew, gone after ten minutes or at a tap,
+#   told only for what would have rung and came back silent.
 # - SilenceCheck: the channels Sioul makes silent itself (ChannelSilence),
 #   against a stand-in phone and Rust's record: each one's importance written
 #   down before it changes; one silent already or gone left; Rust or Android

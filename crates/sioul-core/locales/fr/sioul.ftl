@@ -6793,6 +6793,13 @@ appnotes-shade-help = Tant que Sioul retient quelque chose qui viendra, une lign
 appnotes-shade-show = Afficher maintenant
 appnotes-shade-channel = Notifications retenues
 appnotes-shade-public = Sioul retient des notifications jusqu’à leur heure.
+appnotes-waited = { $n ->
+    [one] Un message a attendu : { $apps }.
+   *[other] { $Count } messages ont attendu : { $apps }.
+}
+appnotes-waited-many = Beaucoup de messages ont attendu : { $apps }.
+appnotes-waited-public = Des messages ont attendu.
+appnotes-waited-channel = Messages qui ont attendu
 appnotes-times = Les notifications des automates reviennent à { $times }, jamais pendant le sommeil, une pause, le temps libre ou « Ne pas déranger ».
 appnotes-times-change = Changer les heures
 appnotes-sound = Android commence à jouer le son d’une notification avant que Sioul la voie, et l’arrête dès que Sioul la retient, un instant plus tard. Ce que Sioul regroupe revient sans son. Pour épargner même cet instant, rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont commencé à sonner), ou laissez Sioul le faire. Les discussions et les SMS gardent leur son, pour que sonnent les personnes laissées passer ; un message que Sioul retient est coupé dès qu’il est retenu, et revient à son heure. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos indisponibilités aussi quand Ce qui vous joint ▸ Moments le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.

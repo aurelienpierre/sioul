@@ -30,6 +30,12 @@ import java.util.Collections;
  *   names only; Show now, a release of this phone (never offered during a
  *   pause); a tap opens Sioul at this phone's card, at its apps. Updated at
  *   each hold, return and review, taken away when nothing waits.
+ * - One sound at each return (B2): people's messages come back without a
+ *   sound of their own (QuietWindow), and Sioul says it once, on a channel
+ *   of its own at Android's default importance (its sound, no banner):
+ *   "Four messages waited: Signal and WhatsApp.", posted once the window
+ *   closed, gone after ten minutes or at a tap, which opens their app when
+ *   they all came from one.
  *
  * Each in a group of its own, its summary kept on Android 16 as the notices'
  * are ({@link Notices#tidy}). Sioul's own notifications are never held by
@@ -150,5 +156,152 @@ final class HeldNotices
     {
         Intent show = new Intent(context, AppNotes.Asked.class).setAction(AppNotes.SHOW);
         return PendingIntent.getBroadcast(context, Notices.requestCode(LINE, "show"), show, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+    }
+
+    // ---------------------------------------------------------------- B2: one sound at each return
+
+    /** The notice that people's messages waited: Android's default importance, its sound, no banner. */
+    static final String WAITED = "waited";
+    /** Its tag (with {@link Notices#NOTE}): the next takes its place, posted anew so that it rings. */
+    static final String WAITED_TAG = "sioul:waited";
+    /** Its group, alone in it. */
+    static final String GROUP_WAITED = Notices.GROUP + "waited";
+    /** It goes after ten minutes, or at a tap. */
+    static final long WAITED_MS = 10 * 60_000L;
+
+    /**
+     * People's messages come back since Sioul last told it (B2): how many,
+     * and their apps in the order they came, by package. Kept by the
+     * listener on its worker; taken whole when told.
+     */
+    static final class Waited
+    {
+        int count;
+        final java.util.LinkedHashMap<String, String> apps = new java.util.LinkedHashMap<>();
+
+        /** One more, from this app (its package, its name as the phone shows it). */
+        void add(String pkg, String label)
+        {
+            count++;
+            if (pkg != null && !apps.containsKey(pkg))
+                apps.put(pkg, label == null || label.isEmpty() ? pkg : label);
+        }
+
+        /** What was kept, handed whole; this one empty again. */
+        Waited take()
+        {
+            Waited out = new Waited();
+            out.count = count;
+            out.apps.putAll(apps);
+            count = 0;
+            apps.clear();
+            return out;
+        }
+
+        /** The one app they came from, or null for several (a tap then opens none). */
+        String onlyApp()
+        {
+            return apps.size() == 1 ? apps.keySet().iterator().next() : null;
+        }
+
+        /** As Rust reads it ({@code shade}, "waited"): {count, apps}, the apps' names alone. */
+        org.json.JSONObject json() throws org.json.JSONException
+        {
+            org.json.JSONArray names = new org.json.JSONArray();
+            for (String label : apps.values())
+                names.put(label);
+            return new org.json.JSONObject().put("count", count).put("apps", names);
+        }
+    }
+
+    /** A notice's words as Rust says them ({@code shade}, "waited", "lost"): {text, public, channel}. */
+    static final class Told
+    {
+        /** What it says; "" when there is nothing to say. */
+        String text = "";
+        /** What the lock screen shows where the phone hides what notifications say. */
+        String publicText = "";
+        /** Its channel's name (the one that waited's). */
+        String channel = "";
+
+        /**
+         * Rust's answer read whole; null or broken, nothing to say.
+         *
+         * @param said Rust's JSON, or null
+         * @return the words
+         */
+        static Told of(JSONObject said)
+        {
+            Told out = new Told();
+            if (said == null)
+                return out;
+            out.text = said.optString("text").trim();
+            out.publicText = said.optString("public");
+            out.channel = said.optString("channel");
+            return out;
+        }
+    }
+
+    /**
+     * People's messages that waited, told once (B2): on a channel of its own
+     * at Android's default importance (its sound, no banner), posted anew so
+     * that it rings even when the last one still shows; gone after ten
+     * minutes, or at a tap, which opens their app when they all came from one
+     * (`onlyApp`), and only takes it away otherwise. Any thread.
+     *
+     * @param context the listener
+     * @param told Rust's words
+     * @param onlyApp the one app's package, or null for several
+     */
+    static void waited(Context context, Told told, String onlyApp)
+    {
+        NotificationManager notifications = context.getSystemService(NotificationManager.class);
+        NotificationChannel channel = Channels.quiet(WAITED, told.channel.isEmpty() ? "Sioul" : told.channel, NotificationManager.IMPORTANCE_DEFAULT);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        notifications.createNotificationChannel(channel);
+        Notification.Builder note = new Notification.Builder(context, WAITED)
+            .setSmallIcon(R.drawable.sioul_notification)
+            .setColor(context.getColor(R.color.sioul_green))
+            .setContentText(told.text)
+            .setStyle(new Notification.BigTextStyle().bigText(told.text))
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicOf(context, WAITED, told))
+            .setContentIntent(tapped(context, WAITED_TAG, onlyApp))
+            .setDeleteIntent(NoticeReceiver.deleted(context, WAITED_TAG))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(false)
+            .setOngoing(false)
+            .setTimeoutAfter(WAITED_MS)
+            .setGroup(GROUP_WAITED)
+            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN);
+        // Anew, never as an update of the one shown, which Android would keep silent.
+        notifications.cancel(WAITED_TAG, Notices.NOTE);
+        notifications.notify(WAITED_TAG, Notices.NOTE, note.build());
+        Notices.tidy(context, Collections.singletonList(new Notices.Child(Notices.NOTE, WAITED_TAG, GROUP_WAITED, System.currentTimeMillis() + WAITED_MS)), Collections.emptySet());
+    }
+
+    /** As the lock screen shows a notice where the phone hides what notifications say: Rust's words without an app. */
+    private static Notification publicOf(Context context, String channel, Told told)
+    {
+        return new Notification.Builder(context, channel)
+            .setSmallIcon(R.drawable.sioul_notification)
+            .setColor(context.getColor(R.color.sioul_green))
+            .setContentText(told.publicText)
+            .build();
+    }
+
+    /**
+     * A tap on a notice of what waited or was lost: their one app opened by
+     * its launcher (Android resolves it; no list of apps is asked), else the
+     * notice only taken away, its group's summary with it (NoticeReceiver).
+     */
+    private static PendingIntent tapped(Context context, String tag, String onlyApp)
+    {
+        if (onlyApp == null || onlyApp.isEmpty())
+            return NoticeReceiver.deleted(context, tag);
+        Intent app = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(onlyApp)
+                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        return PendingIntent.getActivity(context, Notices.requestCode(tag, onlyApp), app, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 }

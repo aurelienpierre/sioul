@@ -32,7 +32,10 @@ import java.util.regex.Pattern;
  * hint, never one held meanwhile, a summary, an update alerting once, a call;
  * one posted just before the hint went caught too; Android 9 and 10 around
  * the first time, never moved; no window before the safety net, the batch
- * left to ring. Then, read from the sources, the listener's side.
+ * left to ring. People's messages (held apps phase 1, B2): planned on every
+ * version, on 11 to 13.0 alone and without the hint, what came inside a
+ * window told, and outside one only where returns are silent. Then, read
+ * from the sources, the listener's side.
  */
 public final class QuietCheck
 {
@@ -185,9 +188,9 @@ public final class QuietCheck
         // Android 12: nothing changes from before.
         Phone phone = new Phone();
         QuietWindow window = new QuietWindow(phone, false, false);
-        expect("held as asked", window.hold("shop", 120_000), 120_000);
-        expect("a review's new time as asked", window.moved(1_000, true), 1_000);
-        window.follow(Map.of("shop", T));
+        expect("held as asked", window.hold("shop", 120_000, false), 120_000);
+        expect("a review's new time as asked", window.moved(1_000, true, false), 1_000);
+        window.follow(Map.of("shop", T), Set.of());
         expect("no plan", window.planned(), 0);
         expect("no alarm", phone.alarm, -1);
         expect("no window", window.rang(), false);
@@ -197,16 +200,16 @@ public final class QuietCheck
         // Android 14: held five minutes past its time, planned, the alarm at its time.
         phone = new Phone();
         window = new QuietWindow(phone, true, false);
-        expect("held past its time, the safety net", window.hold("shop", 120_000), 120_000 + QuietWindow.SAFETY_MS);
+        expect("held past its time, the safety net", window.hold("shop", 120_000, false), 120_000 + QuietWindow.SAFETY_MS);
         expect("the alarm at its time", phone.alarm, T + 120_000);
         // A review never opens a window: a release asked now sets the alarm now.
-        expect("due now: nothing asked of Android here", window.moved(1_000, true), -1);
-        expect("moved later: past it again", window.moved(60_000, true), 60_000 + QuietWindow.SAFETY_MS);
-        expect("a person's, as asked", window.moved(60_000, false), 60_000);
+        expect("due now: nothing asked of Android here", window.moved(1_000, true, false), -1);
+        expect("moved later: past it again", window.moved(60_000, true, false), 60_000 + QuietWindow.SAFETY_MS);
+        expect("a person's, as asked", window.moved(60_000, false, false), 60_000);
         Map<String, Long> rust = new TreeMap<>();
         rust.put("shop", T + 120_000);
         rust.put("noa", T);
-        window.follow(rust);
+        window.follow(rust, Set.of());
         expect("the release's alarm at once", phone.alarm, T);
         expect("no hint from a review", phone.asked(), "[]");
         expect("both planned", window.planned(), 2);
@@ -241,8 +244,8 @@ public final class QuietCheck
         phone = new Phone();
         window = new QuietWindow(phone, true, false);
         phone.snoozed.addAll(List.of("shop", "news"));
-        window.hold("shop", 0);
-        window.hold("news", 0);
+        window.hold("shop", 0, false);
+        window.hold("news", 0, false);
         window.rang();
         window.posted("shop", true, false, T);
         phone.said.clear();
@@ -254,7 +257,7 @@ public final class QuietCheck
         // A key gone meanwhile (its app took it away): left out; none left, no window.
         phone = new Phone();
         window = new QuietWindow(phone, true, false);
-        window.hold("gone", 0);
+        window.hold("gone", 0, false);
         expect("nothing Android holds: no window", window.rang(), false);
         expect("no hint", phone.asked(), "[]");
         expect("taken out of the plan", window.planned(), 0);
@@ -266,7 +269,7 @@ public final class QuietCheck
         window = new QuietWindow(phone, true, false);
         phone.snoozed.add("shop");
         phone.shade.addAll(List.of("noa", "update", "sioul-mail", "pills", "held-by-rust"));
-        window.hold("shop", 0);
+        window.hold("shop", 0, false);
         window.rang();
         window.posted("noa", QuietWindow.rings(4, true, false, "msg", false, false), false, T);
         window.posted("held-by-rust", QuietWindow.rings(3, true, false, "msg", false, false), false, T);
@@ -293,6 +296,61 @@ public final class QuietCheck
         phone.work();
         expect("the one posted under the hint", phone.asked(), "[hold late 1000]");
 
+        // Held apps phase 1, B2: people's messages planned on every version, told once.
+        // Android 12, where returns are silent: a person's message planned past its time, the alarm at it;
+        // an automaton's as before (exactly its time, not planned).
+        phone = new Phone();
+        window = new QuietWindow(phone, false, false);
+        expect("12: a person's, past its time", window.hold("noa", 120_000, true), 120_000 + QuietWindow.SAFETY_MS);
+        expect("12: its alarm at its time", phone.alarm, T + 120_000);
+        expect("12: an automaton's as asked", window.hold("shop", 120_000, false), 120_000);
+        expect("12: only the person's planned", window.planned(), 1);
+        expect("12: a review's new time for a person's", window.moved(60_000, true, true), 60_000 + QuietWindow.SAFETY_MS);
+        expect("12: due now, for the alarm", window.moved(1_000, true, true), -1);
+        expect("12: an automaton's as asked", window.moved(1_000, true, false), 1_000);
+        Map<String, Long> both = new TreeMap<>();
+        both.put("noa", T + 120_000);
+        both.put("shop", T + 120_000);
+        window.follow(both, Set.of("noa"));
+        expect("12: Rust's list, the people's alone planned", window.planned(), 1);
+        // Its time: the window opens without the hint (nothing to silence), never reading Sioul's own times.
+        phone.snoozed.addAll(List.of("noa", "shop"));
+        phone.clock = T + 120_000;
+        phone.said.clear();
+        expect("12: opened", window.rang(), true);
+        expect("12: no hint, no own times read, held again a second",
+               phone.said.toString(), "[awake " + (QuietWindow.AT_MOST_MS + QuietWindow.MARGIN_MS) + ", hold noa 1000, end in " + QuietWindow.AT_MOST_MS + "]");
+        // Another app's message posted meanwhile is no stranger here: nothing silenced it.
+        window.posted("other", true, false, T + 120_100);
+        expect("12: told, come inside", window.tells(T + 120_500), true);
+        phone.said.clear();
+        phone.clock = T + 121_000;
+        window.posted("noa", true, false, T + 121_000);
+        expect("12: closed without a hint to take off", phone.asked(), "[end dropped, asleep, closed 0]");
+        phone.work();
+        expect("12: no stranger held again", phone.asked(), "[end dropped, asleep, closed 0]");
+        expect("12: came inside the window", window.inside(T + 121_000), true);
+        expect("12: outside it, still told: Android's safety net came back silent", window.inside(T + 600_000) + " " + window.tells(T + 600_000), "false true");
+
+        // Android 16: a person's message and a shop's in one window; the person's told, never rung by itself.
+        phone = new Phone();
+        window = new QuietWindow(phone, true, false);
+        window.hold("noa", 0, true);
+        window.hold("shop", 0, false);
+        expect("16: both planned", window.planned(), 2);
+        phone.snoozed.addAll(List.of("noa", "shop"));
+        expect("16: before any window, nothing came inside", window.inside(T), false);
+        expect("16: opened", window.rang(), true);
+        expect("16: under the hint", phone.said.contains("hint"), true);
+        window.posted("noa", true, false, T + 500);
+        expect("16: the person's came inside, told", window.inside(T + 500) && window.tells(T + 500), true);
+        phone.clock = T + 600;
+        window.posted("shop", true, false, T + 600);
+        expect("16: closed once both came back", window.isOpen(), false);
+        expect("16: inside, the window closed since", window.inside(T + 600), true);
+        expect("16: one posted after it closed rang by itself: not told", window.tells(T + 10_000), false);
+        expect("16: one posted before it opened neither", window.tells(T - 1), false);
+
         // What would have rung.
         expect("a sound", QuietWindow.rings(3, true, false, null, false, false), true);
         expect("a silent channel", QuietWindow.rings(2, true, false, "msg", false, false), false);
@@ -307,7 +365,7 @@ public final class QuietCheck
         // Sioul's reminders then: no window, the batch rings.
         phone = new Phone();
         window = new QuietWindow(phone, true, true);
-        expect("held exactly", window.hold("shop", 120_000), 120_000);
+        expect("held exactly", window.hold("shop", 120_000, false), 120_000);
         expect("the alarm before its time", phone.alarm, T + 120_000 - QuietWindow.LEAD_MS);
         phone.snoozed.add("shop");
         phone.clock = T + 120_000 - QuietWindow.LEAD_MS;
@@ -317,7 +375,7 @@ public final class QuietCheck
         window.posted("shop", true, false, T + 120_000);
         phone = new Phone();
         window = new QuietWindow(phone, true, true);
-        window.hold("shop", 120_000);
+        window.hold("shop", 120_000, false);
         phone.snoozed.add("shop");
         phone.own = new long[] { T + 120_000 };
         phone.clock = T + 120_000 - QuietWindow.LEAD_MS;
@@ -332,7 +390,7 @@ public final class QuietCheck
             wall[i] = T + i * 60_000L;
         phone.own = wall;
         window = new QuietWindow(phone, true, false);
-        window.hold("shop", 0);
+        window.hold("shop", 0, false);
         expect("nothing planned", window.planned(), 0);
         expect("no alarm", phone.alarm, -1);
 
@@ -340,7 +398,7 @@ public final class QuietCheck
         phone = new Phone();
         window = new QuietWindow(phone, true, false);
         phone.snoozed.add("shop");
-        window.hold("shop", 0);
+        window.hold("shop", 0, false);
         window.rang();
         phone.said.clear();
         window.dropped();

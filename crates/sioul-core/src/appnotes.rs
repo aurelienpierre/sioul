@@ -1511,12 +1511,20 @@ impl Held {
     }
 
     /// Whether its return must come without a sound (docs/android.md,
-    /// "The quiet window"): an automaton's, gathered, and one held for good
-    /// (the blocked, a conversation set to never), which comes back weekly
-    /// only to be held again. A person's comes back ringing as its channel
-    /// says, since they may reach you then.
+    /// "The quiet window"): an automaton's, gathered; one held for good (the
+    /// blocked, a conversation set to never), which comes back weekly only
+    /// to be held again; and a person's message (held apps phase 1, B2),
+    /// which comes back in Sioul's window without a sound of its own, Sioul
+    /// telling it once with a notice that rings (`waited`, `waited_line`). An
+    /// app you let through at once rings when it comes back.
     pub fn quiet(&self) -> bool {
-        matches!(self.kind.as_str(), "gathered" | "never")
+        matches!(self.kind.as_str(), "gathered" | "never" | "people")
+    }
+
+    /// Whether it is a message between people (held apps phase 1, B2):
+    /// planned on every Android version, its return told once.
+    pub fn person(&self) -> bool {
+        self.kind == "people"
     }
 }
 
@@ -1818,6 +1826,16 @@ impl Ledger {
     }
 }
 
+/// Whether a held notification that comes now (`decision`) is a person's
+/// message that waited and came at its time, which Sioul tells once (held
+/// apps phase 1, B2: "Four messages waited: …"): never an automaton's, never
+/// one you let through yourself (a release, Reachable, a conversation you
+/// answered from a computer, holding turned off), since you are at a screen
+/// then.
+pub fn waited(held: &Held, decision: &Decision) -> bool {
+    decision.until.is_none() && held.person() && !matches!(decision.why, Why::Released | Why::Answered | Why::Off | Why::PeopleOff)
+}
+
 /// A held notification's time worked out again, as things stand now (a
 /// pause ended, the hours or the choices changed): its new time, none when it
 /// may come now. `who`, `admitted` and the rest as kept when it was held.
@@ -2114,6 +2132,15 @@ pub fn porch_line(tr: &Translator, ledger: &Ledger, now: &Zoned) -> String {
 /// conversation. None when nothing waits: the line goes.
 pub fn held_line(tr: &Translator, ledger: &Ledger, present: &std::collections::BTreeSet<String>, now: &Zoned) -> Option<String> {
     waiting_sentence(tr, ledger.held.iter().filter(|(hash, _)| present.contains(*hash)).map(|(_, held)| held), now)
+}
+
+/// Sioul's notice once people's messages came back (held apps phase 1, B2):
+/// "Four messages waited: Signal and WhatsApp.", the count in words, "Many
+/// messages" past twelve; apps' names only, never who wrote.
+pub fn waited_line(tr: &Translator, count: usize, labels: &[String]) -> String {
+    let mut args = if count > 12 { crate::i18n::args() } else { tr.counted(count) };
+    args.set("apps", apps_in_words(tr, labels));
+    tr.text(if count > 12 { "appnotes-waited-many" } else { "appnotes-waited" }, Some(&args))
 }
 
 /// "13:00", "tomorrow at 09:00", "Monday 12 October at 09:00".
@@ -3024,6 +3051,35 @@ mod tests {
         assert!(!Choices { shade: false, ..Choices::default() }.chose_for_apps(usual()), "the line is no choice for other apps");
     }
 
+    /// One sound at each return (held apps phase 1, B2): a person's message
+    /// come back at its time is told once, never an automaton's nor one you
+    /// let through yourself (a release, a conversation answered from a
+    /// computer, holding or people's messages turned off), nor one still
+    /// held. The notice's words: counted in words, "many" past twelve, apps'
+    /// names only.
+    #[test]
+    fn a_person_s_message_back_at_its_time_is_told_once() {
+        let talk = Held { app: "org.thoughtcrime.securesms".into(), label: "Signal".into(), kind: "people".into(), via: "messages".into(), who: "neutral".into(), ..Held::default() };
+        let shop = Held { kind: "gathered".into(), label: "Shop".into(), ..Held::default() };
+        for why in [Why::Allowed, Why::Times, Why::Always, Why::Again] {
+            assert!(waited(&talk, &Decision::through(why)), "{why:?}");
+        }
+        for why in [Why::Released, Why::Answered, Why::Off, Why::PeopleOff] {
+            assert!(!waited(&talk, &Decision::through(why)), "{why:?}: you are at a screen");
+        }
+        assert!(!waited(&talk, &Decision::held(1, Why::Waiting)), "held again: not come");
+        assert!(!waited(&shop, &Decision::through(Why::Gathered)), "an automaton's gathering stays silent");
+        assert!(!waited(&Held { kind: "never".into(), ..talk.clone() }, &Decision::through(Why::Allowed)));
+        let apps = ["Signal".to_string(), "WhatsApp".to_string()];
+        let tr = Translator::new("en");
+        assert_eq!(waited_line(&tr, 4, &apps), "Four messages waited: Signal and WhatsApp.");
+        assert_eq!(waited_line(&tr, 1, &apps[..1]), "One message waited: Signal.");
+        assert_eq!(waited_line(&tr, 13, &apps), "Many messages waited: Signal and WhatsApp.");
+        let fr = Translator::new("fr");
+        assert_eq!(waited_line(&fr, 4, &apps), "Quatre messages ont attendu\u{202f}: Signal et WhatsApp.");
+        assert_eq!(waited_line(&fr, 1, &apps[..1]), "Un message a attendu\u{202f}: Signal.");
+    }
+
     #[test]
     fn held_ones_worked_out_again() {
         let choices = Choices::default();
@@ -3113,8 +3169,9 @@ mod tests {
         let never = Held { kind: "never".into(), ..held.clone() };
         let for_good = Decision::held(one + FOR_GOOD, Why::Never);
         assert_eq!(for_good.on_time(&never, one + 60, true), for_good);
-        // Whose return comes without a sound: the automaton's and held for good, never a person's.
-        assert!(held.quiet() && never.quiet() && !talk.quiet());
+        // Whose return comes without a sound: the automaton's, held for good, and a person's message, which
+        // Sioul tells once (held apps phase 1, B2).
+        assert!(held.quiet() && never.quiet() && talk.quiet() && talk.person() && !held.person());
         assert!(!Held { kind: "at-once".into(), ..held.clone() }.quiet(), "an app you let through at once rings when it comes back");
     }
 

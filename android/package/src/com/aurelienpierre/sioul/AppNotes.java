@@ -106,8 +106,13 @@ import java.util.concurrent.atomic.AtomicReference;
  * ({@link Asked}), released under Android's hint that silences
  * notifications, a few seconds at most, the phone kept awake meanwhile,
  * moved past any of Sioul's own reminders and doses read again right
- * before. A person's comes back at their time as Android brings it,
- * ringing as its channel says.
+ * before. A person's message comes back so on every version (held apps
+ * phase 1, B2; on 11 to 13.0, where every return is silent already, in a
+ * window without the hint), and Sioul tells the batch once, with a notice
+ * of its own that rings once the window closed (HeldNotices).
+ *
+ * While anything that will come back is held, one line of Sioul's own in
+ * the shade says so, with Show now (B1, HeldNotices).
  *
  * Linked to one of your devices (a companion-device association, asked once
  * by {@link Companion}), Sioul also makes the channels of the apps it
@@ -195,6 +200,12 @@ public final class AppNotes extends NotificationListenerService
     private static final long LINE_SETTLE_MS = 1_000;
     /** The line as last posted (HeldNotices), so that one saying the same is not posted again; null: none known. */
     private HeldNotices.Line shown;
+    /** People's messages come back since Sioul last told it (B2), kept on the worker. */
+    private final HeldNotices.Waited waited = new HeldNotices.Waited();
+    /** Told once: one runnable, so that a window's batch is told once. */
+    private final Runnable tell = this::tell;
+    /** A window closed, or one came back outside it, told this long after: their decisions made, the hint off. */
+    private static final long TELL_SETTLE_MS = 1_500;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
@@ -660,11 +671,11 @@ public final class AppNotes extends NotificationListenerService
         Ranking given = ranked ? ranking : null;
         int kept = Notification.FLAG_ONGOING_EVENT | Notification.FLAG_FOREGROUND_SERVICE | Notification.FLAG_NO_CLEAR;
         boolean runs = n == null || (n.flags & kept) != 0 || !sbn.isClearable();
-        // While a quiet window is open, every notification posted is heard here, at once, on Android's thread.
+        if (!runs && !getPackageName().equals(sbn.getPackageName()))
+            worker.post(() -> decide(sbn, given));
+        // While a quiet window is open, every notification posted is heard here, at once, on Android's thread;
+        // after its decision was queued, so that what the window's close tells counts it (B2).
         heard(sbn, n, given, runs);
-        if (runs || getPackageName().equals(sbn.getPackageName()))
-            return;
-        worker.post(() -> decide(sbn, given));
     }
 
     /**
@@ -677,8 +688,6 @@ public final class AppNotes extends NotificationListenerService
      */
     private void heard(StatusBarNotification sbn, Notification n, Ranking ranking, boolean runs)
     {
-        if (!window.used())
-            return;
         boolean own = getPackageName().equals(sbn.getPackageName());
         String channel = n == null || n.getChannelId() == null ? "" : n.getChannelId();
         boolean dose = own && channel.startsWith("doses");
@@ -736,7 +745,7 @@ public final class AppNotes extends NotificationListenerService
             JSONObject decided = new JSONObject(answer);
             long hold = decided.optLong("hold", 0);
             if (hold > 0 && decided.optBoolean("quiet", false)) {
-                snooze(sbn.getKey(), window.hold(sbn.getKey(), hold));
+                snooze(sbn.getKey(), window.hold(sbn.getKey(), hold, decided.optBoolean("people", false)));
             } else {
                 window.forget(sbn.getKey());
                 if (hold > 0)
@@ -753,6 +762,9 @@ public final class AppNotes extends NotificationListenerService
             // A channel that rang while held, Sioul making the gathered apps silent itself.
             if (decided.optBoolean("channels", false))
                 channels();
+            // A person's message back at its time, which would have rung: told once, with those of its window (B2).
+            if (decided.optBoolean("waited", false))
+                waited(sbn, ranking);
             // Held now, or back from being held: the line of what Sioul holds written again, once a burst settled.
             if (decided.optBoolean("changed", false)) {
                 worker.removeCallbacks(lineSoon);
@@ -1003,6 +1015,8 @@ public final class AppNotes extends NotificationListenerService
             if (left > 0)
                 Log.i(TAG, "Notes: quiet window closed; " + left + " not come back within it.");
             letGo();
+            // People's messages it brought back, told once the hint is off and their decisions are made (B2).
+            tellSoon();
         }
     }
 
@@ -1211,7 +1225,7 @@ public final class AppNotes extends NotificationListenerService
                     continue;
                 // Quiet: a few minutes past its new time, Android's own timer the safety net; due now, nothing
                 // here: Sioul's alarm opens the window (never a review).
-                long ms = window.moved(one.optLong("ms", 1000), one.optBoolean("quiet", false));
+                long ms = window.moved(one.optLong("ms", 1000), one.optBoolean("quiet", false), one.optBoolean("people", false));
                 if (ms > 0)
                     snooze(one.optString("key"), ms);
             }
@@ -1222,12 +1236,16 @@ public final class AppNotes extends NotificationListenerService
             JSONArray quiet = reviewed.optJSONArray("quiet");
             if (quiet != null) {
                 Map<String, Long> times = new HashMap<>();
+                Set<String> people = new HashSet<>();
                 for (int i = 0; i < quiet.length(); i++) {
                     JSONObject one = quiet.optJSONObject(i);
-                    if (one != null && !one.optString("key", "").isEmpty())
+                    if (one != null && !one.optString("key", "").isEmpty()) {
                         times.put(one.optString("key"), one.optLong("at", 0));
+                        if (one.optBoolean("people", false))
+                            people.add(one.optString("key"));
+                    }
                 }
-                window.follow(times);
+                window.follow(times, people);
             }
             // What Sioul holds now, in its line in the shade.
             line(keys);
@@ -1303,6 +1321,64 @@ public final class AppNotes extends NotificationListenerService
             Log.w(TAG, "Notes: Show now: nothing released: " + e.getClass().getSimpleName());
         }
         review("show");
+    }
+
+    /**
+     * A person's message come back at its time (Rust's `waited`), told once
+     * when its channel would have rung (its importance, do-not-disturb's
+     * filter: Sioul's notice never rings for what would not have) and it
+     * came back without a sound of its own: inside a window, or outside one
+     * where returns are silent already ({@link QuietWindow#tells}). Told when
+     * the window closes, or soon when none is open. On the worker thread.
+     */
+    private void waited(StatusBarNotification sbn, Ranking ranking)
+    {
+        Notification n = sbn.getNotification();
+        boolean summary = n != null && (n.flags & Notification.FLAG_GROUP_SUMMARY) != 0;
+        boolean rings = n != null && ranking != null
+            && QuietWindow.rings(ranking.getImportance(), ranking.matchesInterruptionFilter(), n.fullScreenIntent != null, n.category, false, summary);
+        if (!rings || !window.tells(sbn.getPostTime()))
+            return;
+        Bundle extras = n.extras == null ? new Bundle() : n.extras;
+        waited.add(sbn.getPackageName(), label(sbn.getPackageName(), extras));
+        if (!window.isOpen())
+            tellSoon();
+    }
+
+    /** What waited told a moment from now, once: one runnable for a window's batch. Any thread. */
+    private void tellSoon()
+    {
+        worker.removeCallbacks(tell);
+        worker.postDelayed(tell, TELL_SETTLE_MS);
+    }
+
+    /**
+     * People's messages that waited, told once (B2): Rust's words ("Four
+     * messages waited: Signal and WhatsApp."), posted with a sound
+     * (HeldNotices.waited); counts only in the log. Nothing when none came
+     * back. On the worker thread.
+     */
+    private void tell()
+    {
+        if (window.isOpen())
+            return;
+        HeldNotices.Waited batch = waited.take();
+        if (batch.count == 0 || !connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("waited", batch.json().toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            HeldNotices.Told told = HeldNotices.Told.of(new JSONObject(answer));
+            if (told.text.isEmpty())
+                return;
+            HeldNotices.waited(this, told, batch.onlyApp());
+            // How many, never which nor from whom.
+            Log.i(TAG, "Notes: " + batch.count + " message(s) that waited told once.");
+        } catch (Throwable e) {
+            Log.w(TAG, "Notes: the messages that waited were not told: " + e.getClass().getSimpleName());
+        }
     }
 
     // ---------------------------------------------------------------- Sioul's files watched

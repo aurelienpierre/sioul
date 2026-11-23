@@ -23,6 +23,13 @@ import org.json.JSONObject;
  *   tap the card, the line written at each review and after a hold or a
  *   return, taken away when the listener is unbound or ends; Show now a
  *   release then a review; Rust's answer as Java reads it.
+ * - B2, one sound at each return: what waited kept by app and told whole,
+ *   once; Rust's words. Read from the sources: its channel at Android's
+ *   default importance, posted anew so that it rings, gone after ten
+ *   minutes or at a tap (the one app's launcher, else only taken away); a
+ *   decision queued before the window hears its notification; told only
+ *   for what would have rung and came back silent, once the window closed;
+ *   people's messages planned on every version; counts only in the log.
  */
 public final class HeldCheck
 {
@@ -115,6 +122,43 @@ public final class HeldCheck
         expect("and changed at a hold or a return", rust.contains("\"changed\": changed"), true);
         String main = read(Paths.get(System.getProperty("sioul.root"), "android", "main.cpp"));
         expect("the bridge to Rust", main.contains("Java_com_aurelienpierre_sioul_AppNotes_nativeShade") && main.contains("extern \"C\" char *sioul_appnotes_shade(const char *verb, const char *json);"), true);
+
+        // B2: people's messages that waited, kept and told once.
+        HeldNotices.Waited waited = new HeldNotices.Waited();
+        waited.add("org.thoughtcrime.securesms", "Signal");
+        waited.add("com.whatsapp", "WhatsApp");
+        waited.add("org.thoughtcrime.securesms", "Signal");
+        waited.add("com.whatsapp", "WhatsApp");
+        expect("counted, each app once, in the order they came", waited.json().toString(), "{\"count\":4,\"apps\":[\"Signal\",\"WhatsApp\"]}");
+        expect("two apps: a tap opens none", waited.onlyApp(), null);
+        HeldNotices.Waited batch = waited.take();
+        expect("taken whole, the batch empty again", batch.count + " " + waited.count + " " + waited.apps.size(), "4 0 0");
+        waited.add("org.thoughtcrime.securesms", "");
+        expect("one app: a tap opens it", waited.onlyApp(), "org.thoughtcrime.securesms");
+        expect("an app without a name: its package", waited.apps.get("org.thoughtcrime.securesms"), "org.thoughtcrime.securesms");
+        HeldNotices.Told told = HeldNotices.Told.of(new JSONObject("{\"text\":\"Four messages waited: Signal and WhatsApp.\",\"public\":\"Messages waited.\",\"channel\":\"Messages that waited\"}"));
+        expect("Rust's words", told.text + "|" + told.publicText + "|" + told.channel, "Four messages waited: Signal and WhatsApp.|Messages waited.|Messages that waited");
+        expect("nothing said: nothing told", HeldNotices.Told.of(null).text, "");
+        expect("its group, summed on Android 16, on its own channel", java.util.Arrays.asList(Notices.GROUPS).contains(HeldNotices.GROUP_WAITED) + " " + Notices.summaryChannel(HeldNotices.GROUP_WAITED), "true waited");
+        expect("gone after ten minutes", HeldNotices.WAITED_MS, 600_000);
+        String waitedCode = body(held, "static void waited(Context context, Told told, String onlyApp)");
+        expect("its channel: Android's default importance, a sound, no banner", waitedCode.contains("Channels.quiet(WAITED, ") && waitedCode.contains("NotificationManager.IMPORTANCE_DEFAULT"), true);
+        expect("posted anew so that it rings", waitedCode.indexOf("notifications.cancel(WAITED_TAG, Notices.NOTE);") > 0 && waitedCode.indexOf("notifications.cancel(WAITED_TAG, Notices.NOTE);") < waitedCode.indexOf("notifications.notify(WAITED_TAG, Notices.NOTE, note.build());") && waitedCode.contains(".setOnlyAlertOnce(false)"), true);
+        expect("gone at a tap or after its time, never ongoing", waitedCode.contains(".setAutoCancel(true)") && waitedCode.contains(".setTimeoutAfter(WAITED_MS)") && waitedCode.contains(".setOngoing(false)"), true);
+        String tapped = body(held, "private static PendingIntent tapped(Context context, String tag, String onlyApp)");
+        expect("a tap: the one app by its launcher, else only taken away", tapped.contains("return NoticeReceiver.deleted(context, tag);") && tapped.contains("Intent.CATEGORY_LAUNCHER") && tapped.contains(".setPackage(onlyApp)") && tapped.contains("PendingIntent.FLAG_IMMUTABLE"), true);
+        String posted = body(notes, "public void onNotificationPosted(StatusBarNotification sbn, RankingMap rankings)");
+        expect("its decision queued before the window hears it, so that a close tells it", posted.indexOf("worker.post(() -> decide(sbn, given));") > 0 && posted.indexOf("worker.post(() -> decide(sbn, given));") < posted.indexOf("heard(sbn, n, given, runs);"), true);
+        expect("heard on every version", body(notes, "private void heard(StatusBarNotification sbn, Notification n, Ranking ranking, boolean runs)").contains("window.used()"), false);
+        String waitedNotes = body(notes, "private void waited(StatusBarNotification sbn, Ranking ranking)");
+        expect("told only when it would have rung, and came back silent", waitedNotes.contains("QuietWindow.rings(ranking.getImportance(), ranking.matchesInterruptionFilter()") && waitedNotes.contains("!window.tells(sbn.getPostTime())"), true);
+        expect("Rust says which are", notes.contains("if (decided.optBoolean(\"waited\", false))\n                waited(sbn, ranking);"), true);
+        expect("told once the window closed", body(notes, "public void closed(int left)").contains("tellSoon();"), true);
+        String tell = body(notes, "private void tell()");
+        expect("never while a window is open; taken whole", tell.indexOf("if (window.isOpen())") >= 0 && tell.contains("waited.take()"), true);
+        expect("people's messages planned on every version", notes.contains("window.hold(sbn.getKey(), hold, decided.optBoolean(\"people\", false))") && notes.contains("window.follow(times, people);"), true);
+        expect("nothing of what waited logged but a count", logs(tell + waitedNotes), "[]");
+        expect("Rust says people and waited", rust.contains("\"people\": people, \"waited\": waited") && rust.contains("\"people\": person"), true);
 
         System.out.println("HeldCheck: " + (checked - failed) + " of " + checked + " held");
         if (failed > 0)

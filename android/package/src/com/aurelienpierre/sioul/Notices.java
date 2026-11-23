@@ -497,18 +497,20 @@ final class Notices
 
     /**
      * The groups whose summaries Sioul keeps (Android 16): its notices' two,
-     * the background service's card's, the time running's, and the line of
-     * what Sioul holds of other apps' notifications (HeldNotices). The alarm at
+     * the background service's card's, the time running's, the line of what
+     * Sioul holds of other apps' notifications and the notice of people's
+     * messages that waited (HeldNotices). The alarm at
      * waking's is left without one: a full-screen alarm while it rings, its
      * "rings again" line a minute after its time at most.
      */
-    static final String[] GROUPS = { GROUP + INFORMATIVE, GROUP + ACTIONABLE, StepService.GROUP, TimeNote.GROUP, HeldNotices.GROUP_HELD };
+    static final String[] GROUPS = { GROUP + INFORMATIVE, GROUP + ACTIONABLE, StepService.GROUP, TimeNote.GROUP, HeldNotices.GROUP_HELD, HeldNotices.GROUP_WAITED };
 
     /**
      * The channel a group's summary goes to while Android does not show its
      * children yet: "To act on"'s for something to do, the line's own for the
-     * line of what Sioul holds (never a channel that shows more than it),
-     * else "Notices". Pure (NoticesCheck).
+     * line of what Sioul holds (never a channel that shows more than it), the
+     * one of messages that waited for its notice, else "Notices". Pure
+     * (NoticesCheck).
      *
      * @param group the group
      * @return the channel's id
@@ -519,6 +521,8 @@ final class Notices
             return ACT;
         if (HeldNotices.GROUP_HELD.equals(group))
             return HeldNotices.HELD;
+        if (HeldNotices.GROUP_WAITED.equals(group))
+            return HeldNotices.WAITED;
         return NOTICES;
     }
 
