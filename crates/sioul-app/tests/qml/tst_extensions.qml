@@ -257,6 +257,28 @@ Item {
             tryCompare(dialog, "opened", false)
         }
 
+        function test_a_web_address_field_is_labelled_by_sioul_shown_plain_and_handed_back() {
+            const tab = make([offer({ installed: true, enabled: true })])
+            mock.extensionSignInForm = JSON.stringify({ id: "feed", name: "Example Bookings", french: false, fields: [
+                { kind: "email", label: "Email", masked: false },
+                { kind: "password", label: "Password", masked: true },
+                { kind: "web-address", label: "Web address", masked: false }] })
+            const dialog = tab.signInFormDialog
+            tryCompare(dialog, "opened", true)
+            const shown = texts(dialog.contentItem, []).join("\n")
+            verify(shown.indexOf("Web address") >= 0, "Sioul's label for a link: " + shown)
+            // A link is shown as it is pasted, with a keyboard for addresses.
+            const link = find(dialog.contentItem, "extensionCred:web-address").item
+            compare(link.echoMode, TextInput.Normal, "the link plain")
+            verify((link.inputMethodHints & Qt.ImhUrlCharactersOnly) !== 0, "a keyboard for addresses")
+            find(dialog.contentItem, "extensionCred:email").item.text = "alex@example.org"
+            find(dialog.contentItem, "extensionCred:password").item.text = "hunter2"
+            link.text = "https://calendar.example.org/feed?key=k"
+            find(dialog.footer, "extensionSignInDo").clicked()
+            compare(mock.asked, ['creds feed {"email":"alex@example.org","password":"hunter2","web-address":"https://calendar.example.org/feed?key=k"}'])
+            tryCompare(dialog, "opened", false)
+        }
+
         function test_cancelling_the_credentials_form_runs_nothing() {
             const tab = make([offer({ installed: true, enabled: true })])
             mock.extensionSignInForm = JSON.stringify({ id: "planity", name: "Planity", french: false, fields: [

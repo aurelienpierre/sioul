@@ -306,6 +306,44 @@ fn a_credentials_sign_in_carries_the_values_and_hides_them() {
     assert_eq!(out.reply.unwrap(), r#"{"refused":"not-now"}"#, "a credentials offer may not sign in by redirect");
 }
 
+/// A web address beside the email and the password (a calendar's private
+/// feed the person pastes): it reaches the extension under `web-address`, and
+/// neither the link nor the key in its query reaches the log, whatever the
+/// extension writes.
+#[test]
+fn a_web_address_reaches_the_extension_and_is_hidden_with_its_key() {
+    let given = Grants {
+        hosts: ["api.example.org", "calendar.example.org"].iter().map(|h| h.to_string()).collect(),
+        sign_in: None,
+        credentials: vec![CredField::Email, CredField::Password, CredField::WebAddress],
+    };
+    let link = "https://calendar.example.org/feed?calendarId=cal-4821&businessId=biz-7730&key=k7f3a9e2b1c";
+    let asks = [
+        r#"{"line":"reading https://calendar.example.org/feed?calendarId=cal-4821&businessId=biz-7730&key=k7f3a9e2b1c now"}"#,
+        r#"{"line":"the key k7f3a9e2b1c alone"}"#,
+        r#"{"line":"business biz-7730, calendar cal-4821"}"#,
+    ];
+    let body = "(drop (call $log (i32.const $at_0) (i32.const $len_0)))
+    (drop (call $log (i32.const $at_1) (i32.const $len_1)))
+    (drop (call $log (i32.const $at_2) (i32.const $len_2)))
+    (call $reply (local.get 0) (local.get 1))
+    i32.const 0";
+    let file = module(&["log", "reply"], &asks, body);
+    let credentials = [(CredField::Email, "alex@example.org".to_string()), (CredField::Password, "hunter2-secret".to_string()), (CredField::WebAddress, link.to_string())];
+    let call = call_text(Call::SignIn { choice: None, credentials: &credentials }, false);
+    let (outcome, _) = engine::call(&file, &given, &call, Stand::default(), &small(), true);
+    let reached: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
+    assert_eq!(reached["credentials"]["web-address"], link, "the link under its kind's key");
+    assert_eq!(reached["credentials"]["email"], "alex@example.org");
+    let log = outcome.log.join("\n");
+    assert!(log.contains("reading [hidden] now"), "the link hidden whole: {log}");
+    assert!(log.contains("the key [hidden] alone"), "its key hidden alone: {log}");
+    assert!(log.contains("business [hidden], calendar [hidden]"), "each value of its query hidden: {log}");
+    for secret in [link, "k7f3a9e2b1c", "biz-7730", "cal-4821", "calendar.example.org/feed"] {
+        assert!(!log.contains(secret), "{secret} in {log}");
+    }
+}
+
 #[test]
 fn the_secret_kept_never_reaches_the_log() {
     let given = grants(&["sso.example.org"], Some("example-app://cb"));
@@ -492,6 +530,12 @@ fn calls_are_written_as_the_interface_says() {
     // A credentials sign-in carries the fields, keyed by their fixed kind.
     let credentials = [(CredField::Email, "a@example.org".to_string()), (CredField::Password, "p".to_string())];
     assert_eq!(call_text(Call::SignIn { choice: None, credentials: &credentials }, false), r#"{"call":"sign-in","choice":null,"credentials":{"email":"a@example.org","password":"p"},"interface":1,"lang":"en"}"#);
+    // A web address is keyed `web-address`; the interface stays 1.
+    let credentials = [(CredField::Email, "a@example.org".to_string()), (CredField::Password, "p".to_string()), (CredField::WebAddress, "https://calendar.example.org/feed?key=k".to_string())];
+    assert_eq!(
+        call_text(Call::SignIn { choice: None, credentials: &credentials }, false),
+        r#"{"call":"sign-in","choice":null,"credentials":{"email":"a@example.org","password":"p","web-address":"https://calendar.example.org/feed?key=k"},"interface":1,"lang":"en"}"#
+    );
 }
 
 /// The real Skolengo extension's file, built in the extensions' repository

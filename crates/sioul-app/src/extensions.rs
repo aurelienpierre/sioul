@@ -1313,6 +1313,7 @@ fn cred_label(field: CredField) -> &'static str {
         CredField::Password => "extension-cred-password",
         CredField::Server => "extension-cred-server",
         CredField::OneTimeCode => "extension-cred-one-time-code",
+        CredField::WebAddress => "extension-cred-web-address",
     }
 }
 
@@ -1638,5 +1639,35 @@ mod tests {
         assert_eq!(answer.recv().unwrap().as_deref(), Some("app://cb?code=x"));
         returned("app://cb?code=again");
         assert!(PAGE.lock().unwrap().is_none(), "once");
+    }
+
+    /// Every credential kind has Sioul's own label in both languages; a web
+    /// address reads "Web address" / « Adresse web », shown plain, and the
+    /// form hands its value back under its own key.
+    #[test]
+    fn each_credential_kind_has_sioul_s_own_label_and_a_web_address_comes_back() {
+        let kinds = [CredField::Email, CredField::Username, CredField::Password, CredField::Server, CredField::OneTimeCode, CredField::WebAddress];
+        for lang in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(lang);
+            for kind in kinds {
+                assert!(words.own(cred_label(kind)).is_some_and(|l| !l.is_empty()), "{kind:?} in {lang}");
+            }
+        }
+        assert_eq!(sioul_core::i18n::Translator::new("en").own(cred_label(CredField::WebAddress)).as_deref(), Some("Web address"));
+        assert_eq!(sioul_core::i18n::Translator::new("fr").own(cred_label(CredField::WebAddress)).as_deref(), Some("Adresse web"));
+        assert!(!CredField::WebAddress.masked());
+        let (said, answer) = std::sync::mpsc::channel();
+        *CRED_FORM.lock().unwrap() = Some(CredForm { id: "feed".into(), fields: vec![CredField::Email, CredField::Password, CredField::WebAddress], said });
+        credentials_entered("feed", r#"{"email":"alex@example.org","password":"p","web-address":"https://calendar.example.org/feed?key=k","extra":"dropped"}"#);
+        assert_eq!(
+            answer.recv().unwrap(),
+            Some(vec![
+                (CredField::Email, "alex@example.org".to_string()),
+                (CredField::Password, "p".to_string()),
+                (CredField::WebAddress, "https://calendar.example.org/feed?key=k".to_string()),
+            ]),
+            "only the fields asked, in their order"
+        );
+        assert!(CRED_FORM.lock().unwrap().is_none(), "once");
     }
 }

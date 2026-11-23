@@ -27,6 +27,9 @@ pub enum CredField {
     Password,
     Server,
     OneTimeCode,
+    /// A link the person pastes, such as a calendar's private feed: shown
+    /// plain, hidden from the log as every value is.
+    WebAddress,
 }
 
 impl CredField {
@@ -38,6 +41,7 @@ impl CredField {
             Self::Password => "password",
             Self::Server => "server",
             Self::OneTimeCode => "one-time-code",
+            Self::WebAddress => "web-address",
         }
     }
 
@@ -366,11 +370,30 @@ mod tests {
         assert_eq!(offer.grants().credentials, vec![CredField::Email, CredField::Password]);
         assert_eq!(CredField::OneTimeCode.tag(), "one-time-code");
         assert!(CredField::Password.masked() && !CredField::Email.masked());
-        // Each kind reads; all five, within the four-field cap.
+        // A pasted link: its own kind, shown plain.
+        let link = parse(&credentials_sample(r#""email", "password", "web-address""#)).unwrap();
+        assert_eq!(link.offers[0].credentials, vec![CredField::Email, CredField::Password, CredField::WebAddress]);
+        assert_eq!(link.offers[0].grants().credentials, vec![CredField::Email, CredField::Password, CredField::WebAddress]);
+        assert_eq!(CredField::WebAddress.tag(), "web-address");
+        assert!(!CredField::WebAddress.masked(), "a link is shown as it is pasted");
+        // Each tag is the word serde reads and writes (the call's key, the state's row).
+        for field in [CredField::Email, CredField::Username, CredField::Password, CredField::Server, CredField::OneTimeCode, CredField::WebAddress] {
+            assert_eq!(serde_json::to_value(field).unwrap(), field.tag(), "{field:?}");
+        }
+        // Each kind reads; all six, within the four-field cap.
         assert!(parse(&credentials_sample(r#""username", "password", "server", "one-time-code""#)).is_ok());
+        assert!(parse(&credentials_sample(r#""web-address", "password""#)).is_ok());
         // Unknown kind, no password, a field twice, more than four, and both a
-        // redirect sign-in and credentials: each a fault.
-        for credentials in [r#""token", "password""#, r#""email", "username""#, r#""password", "password""#, r#""email", "username", "server", "one-time-code", "password""#] {
+        // redirect sign-in and credentials: each a fault. A link counts in the four.
+        for credentials in [
+            r#""token", "password""#,
+            r#""web_address", "password""#,
+            r#""email", "username""#,
+            r#""password", "password""#,
+            r#""web-address", "web-address", "password""#,
+            r#""email", "username", "server", "one-time-code", "password""#,
+            r#""email", "username", "web-address", "one-time-code", "password""#,
+        ] {
             assert!(parse(&credentials_sample(credentials)).is_err(), "{credentials}");
         }
         // SAMPLE keeps its redirect sign_in; adding credentials beside it is a fault.
@@ -390,6 +413,11 @@ mod tests {
         let mut more = accepted.clone();
         more.credentials.push(CredField::OneTimeCode);
         assert!(more.asks_more_than(&accepted), "a field not accepted before");
+        // A link newly asked for beside the email and the password: more.
+        let mut link = accepted.clone();
+        link.credentials.push(CredField::WebAddress);
+        assert!(link.asks_more_than(&accepted), "a web address not accepted before");
+        assert!(!accepted.asks_more_than(&link), "dropping the link is less");
         // Credentials where there were none.
         let none = Grants::default();
         assert!(accepted.asks_more_than(&none), "credentials where there were none");

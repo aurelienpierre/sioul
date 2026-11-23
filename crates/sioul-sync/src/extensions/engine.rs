@@ -262,14 +262,36 @@ const INTERFACE_FUNCS: [&str; 9] = ["answer", "reply", "now", "log", "hide", "ra
 /// The credential values a `sign-in` call carries (`Call::SignIn`), to hide
 /// from every log line of the call; empty for any other call or shape. Sioul
 /// keeps the values only in the call's JSON and drops them when the call ends.
+/// A web address is hidden whole and each value of its query and fragment
+/// too (`link_values`): its secret is a key in it, which a line may name alone.
 fn credential_values(call: &str) -> Vec<String> {
+    let web_address = sioul_core::extensions::manifest::CredField::WebAddress.tag();
     match serde_json::from_str::<Value>(call) {
         Ok(Value::Object(map)) => match map.get("credentials") {
-            Some(Value::Object(fields)) => fields.values().filter_map(|v| v.as_str().map(str::to_string)).collect(),
+            Some(Value::Object(fields)) => fields
+                .iter()
+                .filter_map(|(kind, v)| v.as_str().map(|v| (kind, v)))
+                .flat_map(|(kind, v)| if kind == web_address { link_values(v) } else { vec![v.to_string()] })
+                .collect(),
             _ => Vec::new(),
         },
         _ => Vec::new(),
     }
+}
+
+/// A link to hide: itself, and each value of its query and of its fragment
+/// (`#access_token=…`), as written and as its common escapes read.
+fn link_values(link: &str) -> Vec<String> {
+    let mut values = vec![link.to_string()];
+    if let Some((_, query)) = link.split_once(['?', '#']) {
+        for pair in query.split(['&', '#']) {
+            if let Some((_, value)) = pair.split_once('=') {
+                values.push(value.to_string());
+                values.push(value.replace('+', " ").replace("%2B", "+").replace("%2F", "/").replace("%3D", "="));
+            }
+        }
+    }
+    values
 }
 
 /// One call's state, the store's data.
@@ -618,15 +640,9 @@ fn sign_in_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     visit.aside += shown.elapsed();
     match outcome {
         Ok(Some(returned)) if sioul_core::extensions::manifest::returns_to(&returned, watch) => {
-            visit.hide(&returned);
-            // The values of its query and of its fragment (`#access_token=…`), each hidden.
-            if let Some((_, query)) = returned.split_once(['?', '#']) {
-                for pair in query.split(['&', '#']) {
-                    if let Some((_, value)) = pair.split_once('=') {
-                        visit.hide(value);
-                        visit.hide(&value.replace('+', " ").replace("%2B", "+").replace("%2F", "/").replace("%3D", "="));
-                    }
-                }
+            // The address, and the values of its query and of its fragment, each hidden.
+            for value in link_values(&returned) {
+                visit.hide(&value);
             }
             visit.said("the sign-in page returned".into());
             json!({ "returned": returned })

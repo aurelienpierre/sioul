@@ -4094,6 +4094,7 @@ extension-cred-username = Nom d’utilisateur
 extension-cred-password = Mot de passe
 extension-cred-server = Serveur
 extension-cred-one-time-code = Code à usage unique
+extension-cred-web-address = Adresse web
 extension-accept = Prendre la mise à jour
 extension-disable = Désactiver
 extension-remove = Retirer…

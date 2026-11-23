@@ -4061,6 +4061,7 @@ extension-cred-username = Username
 extension-cred-password = Password
 extension-cred-server = Server
 extension-cred-one-time-code = One-time code
+extension-cred-web-address = Web address
 extension-accept = Take the update
 extension-disable = Disable
 extension-remove = Remove…

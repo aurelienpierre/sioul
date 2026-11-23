@@ -120,8 +120,9 @@ SafeDialog {
                 Component {
                     id: plain
 
+                    // A phone's keyboard for an email or a link; no correction in any field.
                     TextField {
-                        inputMethodHints: field.modelData.kind === "email" ? (Qt.ImhEmailCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText) : Qt.ImhNoPredictiveText
+                        inputMethodHints: field.modelData.kind === "email" ? (Qt.ImhEmailCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText) : field.modelData.kind === "web-address" ? (Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText) : Qt.ImhNoPredictiveText
                         onTextChanged: form.record(field.modelData.kind, text)
                         Component.onCompleted: form.record(field.modelData.kind, text)
                     }
