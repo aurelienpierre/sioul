@@ -295,7 +295,8 @@ pub fn official_after_class(url: &str) -> bool {
 const FRANCE_OVERSEAS: [&str; 11] = ["GP", "MQ", "GF", "RE", "YT", "PM", "BL", "MF", "WF", "PF", "NC"];
 
 /// The person's country, whose official calendars the form offers first: the
-/// contacts' setting, else the language's (`reach::region`), else the
+/// contacts' setting, else the system's locale, else the language's
+/// (`reach::region`, as the phone numbers read it), else the
 /// setting as written when it names a country the phone numbers' table does
 /// not know (`clients::country`); France's overseas territories are France
 /// (`FRANCE_OVERSEAS`). None when no country is known.

@@ -226,8 +226,8 @@ pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_jso
 /// first (`subscribed::home_country`), then each other country by its name in
 /// the language shown; each country's public holidays, then its school
 /// holidays. As JSON: `home` and `home_name` ("" when no country is known),
-/// `countries` [{code, name}] in that order, `officials` [{id, country,
-/// holidays, name, hint, url, after_class, taken}].
+/// `countries` in that order, each `{code, name}`, and `officials`, each
+/// `{id, country, holidays, name, hint, url, after_class, taken}`.
 pub(crate) fn officials() -> String {
     let config = load_config();
     json(&offered(&config, subscribed::home_country(&config), tr()))

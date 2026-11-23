@@ -180,6 +180,13 @@ sioul mail leave-spam [--go]    # the lists of the mail you called spam: says th
 - **The phone's Java on a computer**: `android/jvm-checks/run.sh` ([android.md](android.md#building-it)).
 - **A notification end to end**: `tools/e2e/notifications/run.sh buttons|quit|elsewhere`, the real window in the runner's sandbox against a stand-in notification server ([A feature, end to end](end-to-end.md#1-the-core-the-rule-and-the-file)).
 
+## The checks before a release
+What asks the network, or a person, runs by hand before each release, beside `tools/final-pass.sh`:
+- **The official calendars of holidays**: `tools/check-holidays.py` asks every address of `crates/sioul-core/data/holiday-calendars.toml` as Sioul asks it (`User-Agent: Sioul`, its `Accept`, nothing compressed, three redirects, ten megabytes) and says, for each: ok (a whole calendar, every event a whole day, something this year and the next; a type other than `text/calendar` is said beside it, as the Ministry of Education's files come as `application/octet-stream`: Sioul reads the content, not the type); moved (from another address: worth updating the file); short (nothing yet in the next year: a publisher not there yet, or a school year of the southern hemisphere; check by hand); blocked and silent (check by hand); broken (not found, no such host, not a whole calendar, an event with a time, nothing this year: fix it, or take the calendar out). It exits with 1 when one is broken; `--only GB`, `--json`. The tests never run it. On 23 November 2026: 28 ok, 2 short (New Caledonia's and Wallis-et-Futuna's school holidays, their 2027 school year not published yet), none broken.
+- **The site presets**: `tools/check-presets.py` ([sites.md](sites.md)).
+- **The emergency numbers and crisis lines**: each checked again at its service's own page, its `checked` changed (`crates/sioul-core/data/crisis-lines.toml`, [pauses.md](pauses.md)).
+- **The word packs**: read for tailored words by someone other than their author ([words.md](words.md)).
+
 ## Testing against a local mail server
 Writing to a server and sending are tested against [GreenMail](https://greenmail-mail-test.github.io/greenmail/), never against real mailboxes. It accepts any login and makes the accounts as mail comes:
 ```
