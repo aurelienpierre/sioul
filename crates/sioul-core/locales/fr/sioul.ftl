@@ -4048,7 +4048,7 @@ settings-about-invoices = Qui émet vos factures, leurs numéros, la TVA, la ban
 settings-about-extensions = Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.
 settings-about-ai = Ce que les agents d’IA peuvent utiliser, projet par projet.
 # Paramètres ▸ Extensions (docs/extensions.md) : des programmes à part de Sioul, isolés, qui apportent un agenda.
-extensions-intro = Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’un élève sur la plateforme d’un établissement. Chacune tourne à part, avec seulement ce que sa liste lui donne, et écrit dans un de vos calendriers, que vous choisissez, ses évènements marqués comme les siens. Sa liste est signée : Sioul refuse une liste qui ne l’est pas.
+extensions-intro = Une extension apporte des données d’un service que Sioul ne parle pas lui-même, comme l’emploi du temps d’un élève sur la plateforme d’un établissement. Chacune tourne à part, avec seulement ce que sa liste lui donne, et écrit dans un de vos calendriers ou carnets d’adresses, que vous choisissez, ce qu’elle écrit marqué comme le sien. Sa liste est signée : Sioul refuse une liste qui ne l’est pas.
 extensions-reading = Lecture de la liste des extensions…
 extensions-none = Aucune extension n’est proposée pour l’instant.
 extensions-where = La liste est lue depuis { $address }, à l’ouverture de cette page et une fois par jour tant qu’une extension est activée.
@@ -4100,6 +4100,7 @@ extension-disable = Désactiver
 extension-remove = Retirer…
 extension-remove-title = Retirer { $name } ?
 extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses cours peuvent rester dans vos calendriers, ou en être retirés ; les calendriers eux-mêmes restent toujours.
+extension-remove-says-alone = Sa connexion est oubliée sur cet appareil et son fichier retiré.
 extension-remove-now = Retirer
 extension-choose-title = Où vous connectez-vous ?
 extension-choose-filter = Chercher
@@ -4155,6 +4156,29 @@ extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calen
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
 # À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
 extension-busy = Compter comme mon temps occupé
+# Les contacts qu’apporte une extension (les clients d’une entreprise), chaque ensemble dans un carnet d’adresses que la personne choisit.
+extension-brings-contacts = Elle apporte des contacts : ils vont dans un de vos carnets d’adresses, que vous choisissez. Un contact que vous avez déjà, reconnu à son numéro ou à son adresse électronique, reçoit seulement ce qui lui manque ; rien n’est jamais retiré d’une fiche.
+extension-contacts-choose = Choisissez le carnet d’adresses où vont ses contacts : un des vôtres, que vous pouvez partager avec qui vous voulez. D’ici là, rien n’est écrit.
+extension-contacts-gone = Le carnet d’adresses choisi pour lui n’existe plus, ou ne peut plus être écrit : rien n’a été écrit. Choisissez-en un autre.
+extension-contacts-too-large = Ses contacts n’ont pas été écrits : l’un d’eux pèse plus que ce que Sioul accepte.
+extension-contacts-refused = Certains de ses contacts n’ont pas pu être écrits dans { $book } ; le journal de l’extension sur cet appareil dit combien.
+extension-contacts-read = Dans { $book } : { $contacts ->
+        [one] un contact
+       *[other] { $contacts } contacts
+    }, lus { $when }.
+extension-contacts-recognised = { $count ->
+        [one] L’un d’eux a été reconnu et laissé tel quel
+       *[other] { $count } d’entre eux ont été reconnus et laissés tels quels
+    } : Sioul n’ajoute rien de lui-même aux fiches des personnes qui vous joignent d’une façon particulière.
+extension-contacts-next = Ses contacts vont dans { $book } au prochain passage.
+extension-contacts-wait = { $name } a apporté ses contacts : choisissez, sur sa ligne dans Réglages ▸ Extensions, le carnet d’adresses où va chaque ensemble.
+extension-book-choose = Choisir un carnet d’adresses…
+extension-book-new = Un nouveau carnet d’adresses sur { $account }
+extension-book-new-here = Un nouveau carnet d’adresses sur cet appareil seulement
+extension-book-for = Le carnet d’adresses pour { $name }
+extension-book-chosen = Les contacts de { $name } vont désormais dans ce carnet d’adresses.
+extension-book-not-kept = Le carnet d’adresses choisi n’a pas pu être gardé dans vos réglages.
+extension-remove-contacts-stay = Ses contacts restent dans vos carnets d’adresses, tels qu’ils sont : Sioul ne supprime jamais une fiche.
 # La page de connexion d’une extension, sur un ordinateur : le nom du site toujours visible au-dessus.
 sign-in-window-title = Connexion sur { $host }
 sign-in-site = Vous vous connectez sur : { $host }

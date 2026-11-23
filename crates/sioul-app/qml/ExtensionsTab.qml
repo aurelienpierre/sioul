@@ -6,8 +6,11 @@
 // sign-in, said before anything is enabled; then Enable, Sign in…, its state
 // and its last problem in one sentence, each agenda it brought (a pupil's
 // timetable) with the calendar of yours its lessons go into, chosen here
-// (`extensionCalendar`), Disable, Remove (which asks whether to take its
-// lessons out of your calendars), and the yes an update asks when it wants more.
+// (`extensionCalendar`), each set of contacts it brought (a business's
+// clients) with the address book of yours they go into (`extensionBook`),
+// Disable, Remove (which asks whether to take its lessons out of your
+// calendars, and says its contacts stay), and the yes an update asks when it
+// wants more.
 // Opening it reads the list (`extensionsPage`); the view comes back as
 // `sioul.extensions` (extensions.rs). A sign-in that needs a choice first (a
 // platform) asks it here (`extensionChoices`).
@@ -41,6 +44,12 @@ Item {
     function choose(id, agenda, choice) {
         if (choice !== "" && choice !== "place:" + agenda.place)
             tab.sioul.extensionCalendar(id, agenda.id, choice)
+    }
+
+    // An address book chosen for a set of contacts: the same.
+    function chooseBook(id, contactSet, choice) {
+        if (choice !== "" && choice !== "place:" + contactSet.place)
+            tab.sioul.extensionBook(id, contactSet.id, choice)
     }
 
     ColumnLayout {
@@ -192,6 +201,50 @@ Item {
                         }
                     }
                 }
+                // Each set of contacts it brought: its name as the extension gave it (plain text,
+                // never Sioul's voice), where its contacts go and how it went, and the address book chosen.
+                Repeater {
+                    model: offer.modelData.sets || []
+
+                    delegate: ColumnLayout {
+                        id: contactSet
+
+                        required property var modelData
+                        // "Choose…", then a new address book on each account, then the address books of yours that may be written.
+                        readonly property var choices: [{ choice: "", label: tab.sioul.text("extension-book-choose") }].concat(tab.view.books || [])
+
+                        objectName: "extensionSet:" + contactSet.modelData.id
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 2
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: contactSet.modelData.name
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            font.bold: true
+                            color: tab.theme.text
+                        }
+                        Label {
+                            objectName: "extensionSetLine:" + contactSet.modelData.id
+                            Layout.fillWidth: true
+                            text: contactSet.modelData.line
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: contactSet.modelData.warn ? tab.theme.warm : tab.theme.muted
+                        }
+                        ComboBox {
+                            objectName: "extensionBook:" + contactSet.modelData.id
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 460
+                            model: contactSet.choices.map(c => tab.theme.plain(c.label))
+                            currentIndex: Math.max(0, contactSet.choices.findIndex(c => c.choice === "place:" + contactSet.modelData.place))
+                            Accessible.name: tab.sioul.textWith("extension-book-for", "name", contactSet.modelData.name)
+                            onActivated: index => tab.chooseBook(offer.modelData.id, contactSet.modelData, contactSet.choices[index].choice)
+                        }
+                    }
+                }
 
                 Flow {
                     Layout.fillWidth: true
@@ -255,15 +308,21 @@ Item {
         }
     }
 
-    // Remove: its sign-in forgotten, its file taken out; its lessons left in your calendars, or taken out.
+    // Remove: its sign-in forgotten, its file taken out; its lessons left in your calendars, or taken out;
+    // its contacts always left in your address books.
     SafeDialog {
         id: removing
 
         property string id: ""
+        property bool contacts: false
+        // Whether it brings agendas: only then is there a question of its lessons.
+        property bool lessons: true
 
         function ask(offer) {
             removing.id = offer.id
             removing.title = tab.theme.plain(tab.sioul.textWith("extension-remove-title", "name", offer.name))
+            removing.contacts = (offer.sets || []).length > 0
+            removing.lessons = offer.bringsAgenda !== false
             keep.checked = true
             removing.open()
         }
@@ -279,7 +338,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
-                text: tab.sioul.text("extension-remove-says")
+                text: tab.sioul.text(removing.lessons ? "extension-remove-says" : "extension-remove-says-alone")
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: tab.theme.text
@@ -289,8 +348,18 @@ Item {
 
                 objectName: "extensionKeepAgendas"
                 Layout.fillWidth: true
+                visible: removing.lessons
                 checked: true
                 text: tab.sioul.text("extension-leave-lessons")
+            }
+            Label {
+                objectName: "extensionContactsStay"
+                Layout.fillWidth: true
+                visible: removing.contacts
+                text: tab.sioul.text("extension-remove-contacts-stay")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: tab.theme.muted
             }
         }
 

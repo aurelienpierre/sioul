@@ -4015,7 +4015,7 @@ settings-about-invoices = Who issues your invoices, their numbers, VAT, bank and
 settings-about-extensions = Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.
 settings-about-ai = What AI agents may use, project by project.
 # Settings ▸ Extensions (docs/extensions.md): programs apart from Sioul, run in a sandbox, that bring an agenda.
-extensions-intro = An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable from a school's platform. Each runs apart, given only what its list says, and writes into a calendar of yours that you choose, its events marked as its own. Its list is signed: Sioul refuses one that is not.
+extensions-intro = An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable from a school's platform. Each runs apart, given only what its list says, and writes into a calendar or an address book of yours that you choose, what it writes marked as its own. Its list is signed: Sioul refuses one that is not.
 extensions-reading = Reading the list of extensions…
 extensions-none = No extension is offered yet.
 extensions-where = The list is read from { $address }, when this page opens and once a day while an extension is enabled.
@@ -4067,6 +4067,7 @@ extension-disable = Disable
 extension-remove = Remove…
 extension-remove-title = Remove { $name }?
 extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its lessons can stay in your calendars, or be taken out of them; the calendars themselves always stay.
+extension-remove-says-alone = Its sign-in is forgotten on this device and its file taken out.
 extension-remove-now = Remove
 extension-choose-title = Where do you sign in?
 extension-choose-filter = Search
@@ -4122,6 +4123,29 @@ extension-calendar-chosen = The lessons of { $name } go into this calendar from 
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
 # Beside the calendar: whether these events are the person's own busy time (OPAQUE) or free (TRANSPARENT).
 extension-busy = Count these as my busy time
+# The contacts an extension brings (a business's clients), each set into an address book the person chooses.
+extension-brings-contacts = It brings contacts: they go into an address book of yours that you choose. A contact you already have, found by its number or its e-mail address, gets only what it lacks; nothing is ever taken off a card.
+extension-contacts-choose = Choose the address book its contacts go into: one of yours, which you can share with whom you like. Until then nothing is written.
+extension-contacts-gone = The address book chosen for it is gone, or can no longer be written: nothing was written. Choose another.
+extension-contacts-too-large = Its contacts were not written: one of them weighs more than Sioul takes.
+extension-contacts-refused = Some of its contacts could not be written into { $book }; the extension's log on this device says how many.
+extension-contacts-read = In { $book }: { $contacts ->
+        [one] one contact
+       *[other] { $contacts } contacts
+    }, read { $when }.
+extension-contacts-recognised = { $count ->
+        [one] One of them was recognised and left as it is
+       *[other] { $count } of them were recognised and left as they are
+    }: Sioul adds nothing by itself to the cards of people who reach you in a special way.
+extension-contacts-next = Its contacts go into { $book } at the next refresh.
+extension-contacts-wait = { $name } brought its contacts: choose, on its line in Settings ▸ Extensions, the address book each set goes into.
+extension-book-choose = Choose an address book…
+extension-book-new = A new address book on { $account }
+extension-book-new-here = A new address book on this device only
+extension-book-for = The address book for { $name }
+extension-book-chosen = The contacts of { $name } go into this address book from now on.
+extension-book-not-kept = The address book chosen could not be kept in your settings.
+extension-remove-contacts-stay = Its contacts stay in your address books, as they are: Sioul never deletes a card.
 # An extension's sign-in page, on a computer: the site's name always in sight above the page.
 sign-in-window-title = Sign in on { $host }
 sign-in-site = You sign in on: { $host }

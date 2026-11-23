@@ -62,7 +62,40 @@ fn is_zero(n: &i64) -> bool {
     *n == 0
 }
 
-/// The most agendas the record keeps of one extension.
+/// A set of contacts an extension brought, as last seen here: every set it
+/// ever named is kept, with where its contacts went.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BroughtSet {
+    pub id: String,
+    pub name: String,
+    /// The people its last answer held.
+    #[serde(default)]
+    pub people: usize,
+    /// The address book its contacts go into, by its place ("account/id"),
+    /// as this device last wrote them; the shared setting
+    /// (`[extensions.addressbooks]`) says it for every device. "" none yet.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub book: String,
+    /// When its contacts were last read and written here (seconds since 1970); 0 never.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub read: i64,
+    /// Why its contacts were not written at the last refresh: one word
+    /// (`cards::Problem::word`, "choose" when no address book is chosen,
+    /// "refused" when some card was not); none when they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+    /// Its people whose cards were recognised as those of people who reach
+    /// the person in a special way, and left as they are but for the mark
+    /// (`cards::Done::recognised`), at the last refresh that wrote here.
+    #[serde(default, skip_serializing_if = "is_zero_count")]
+    pub recognised: usize,
+}
+
+fn is_zero_count(n: &usize) -> bool {
+    *n == 0
+}
+
+/// The most agendas, and the most sets of contacts, the record keeps of one extension.
 pub const MOST_KEPT: usize = 64;
 
 /// An extension this device enabled once.
@@ -85,6 +118,9 @@ pub struct Installed {
     pub last_brought: i64,
     #[serde(default)]
     pub agendas: Vec<Brought>,
+    /// The sets of contacts it brought (`MOST_KEPT` at most).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contacts: Vec<BroughtSet>,
     /// Its last problem, one word Sioul says in a sentence ("sign-in",
     /// "unreachable", "refused", "changed", "stopped-time", …); none when the last run went well.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -97,7 +133,7 @@ pub struct Installed {
 
 impl Installed {
     pub fn new(offer: Offer) -> Self {
-        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), problem: None, leaving: false }
+        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), contacts: Vec::new(), problem: None, leaving: false }
     }
 }
 
@@ -228,14 +264,18 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("sioul-extensions-state-{}", std::process::id()));
         let path = folder.join("extensions.toml");
         let offer = crate::extensions::manifest::parse(crate::extensions::manifest::SAMPLE).unwrap().offers.remove(0);
+        let clients = BroughtSet { id: "clients".into(), name: "Clients".into(), people: 128, book: "cloud/clients".into(), read: 1_795_000_000, problem: None, recognised: 3 };
         change(&path, |state| {
             state.accept(7, "a7").unwrap();
-            state.extensions.push(Installed::new(offer.clone()));
+            let mut installed = Installed::new(offer.clone());
+            installed.contacts.push(clients.clone());
+            state.extensions.push(installed);
         })
         .unwrap();
         let mut state = load(&path);
         assert_eq!((state.serial, state.manifest.as_str()), (7, "a7"));
         assert!(state.get("timetable").unwrap().enabled);
+        assert_eq!(state.get("timetable").unwrap().contacts, vec![clients], "a set of contacts kept as brought");
         assert!(state.accept(6, "a6").is_err(), "an older manifest");
         assert!(state.accept(7, "a7").is_ok(), "the same one again");
         assert!(state.accept(7, "b7").is_err(), "another manifest under the same serial");

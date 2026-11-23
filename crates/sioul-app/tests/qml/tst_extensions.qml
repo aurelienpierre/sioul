@@ -6,9 +6,11 @@
 // whether it keeps a sign-in are said before anything is enabled; each
 // button shows only where it does something; each agenda it brought says
 // where its lessons go, its name as plain text, and a calendar chosen goes
-// back to Sioul; Remove asks whether to leave its lessons in your calendars
-// (left unless you say otherwise); a choice the extension asks before its
-// sign-in is searchable, and the one chosen goes back to it.
+// back to Sioul; each set of contacts says where its contacts go, and an
+// address book chosen goes back to Sioul; Remove asks whether to leave its
+// lessons in your calendars (left unless you say otherwise) and says its
+// contacts stay; a choice the extension asks before its sign-in is
+// searchable, and the one chosen goes back to it.
 // Run by tools/qml-test.sh.
 
 import QtQuick
@@ -72,6 +74,9 @@ Item {
         function extensionBusy(id, agenda, counts) {
             mock.asked = mock.asked.concat(["busy " + id + " " + agenda + " " + counts])
         }
+        function extensionBook(id, contactSet, choice) {
+            mock.asked = mock.asked.concat(["book " + id + " " + contactSet + " " + choice])
+        }
     }
 
     function offer(changes) {
@@ -87,7 +92,9 @@ Item {
     }
 
     function view(offers) {
-        return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers, calendars: [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }] })
+        return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers,
+            calendars: [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }],
+            books: [{ choice: "new:cloud", label: "A new address book on cloud.example.org" }, { choice: "place:cloud/clients", label: "Clients · example.org" }, { choice: "new:local", label: "A new address book on this device" }] })
     }
 
     Component {
@@ -209,6 +216,64 @@ Item {
             find(tab, "extensionBusy:p-1").toggle()
             find(tab, "extensionBusy:p-1").toggled()
             compare(mock.asked[mock.asked.length - 1], "busy timetable p-1 true", "the flip goes back to Sioul")
+        }
+
+        function test_each_set_says_where_its_contacts_go_and_a_book_is_chosen() {
+            const tab = make([offer({ installed: true, enabled: true, signedIn: true, brings: "It brings contacts.", sets: [
+                { id: "clients", name: "Clients: <b>the salon</b>", line: "Choose the address book.", warn: true, place: "" },
+                { id: "staff", name: "Staff", line: "In Clients: 128 contacts.", warn: false, place: "cloud/clients" }
+            ] })])
+            const shown = texts(tab, []).join("\n")
+            verify(shown.indexOf("Clients: <b>the salon</b>") >= 0, "a name the extension gave, as plain text: " + shown)
+            verify(shown.indexOf("In Clients: 128 contacts.") >= 0 && shown.indexOf("Choose the address book.") >= 0, shown)
+            const none = find(tab, "extensionBook:clients")
+            const chosen = find(tab, "extensionBook:staff")
+            compare(none.currentIndex, 0, "Choose…, while none is chosen")
+            compare(chosen.currentIndex, 2, "the address book chosen")
+            compare(none.model.length, 4, "Choose…, a new one on the account, the person's own, a new one here")
+            none.activated(1)
+            chosen.activated(2)
+            chosen.activated(0)
+            none.activated(3)
+            compare(mock.asked, ["book timetable clients new:cloud", "book timetable clients new:local"], "the one already chosen, and Choose…, ask nothing")
+        }
+
+        function test_remove_says_its_contacts_stay() {
+            const tab = make([offer({ installed: true, enabled: true, sets: [{ id: "clients", name: "Clients", line: "", warn: false, place: "cloud/clients" }] })])
+            find(tab, "extensionRemove:timetable").clicked()
+            const dialog = tab.removeDialog
+            tryCompare(dialog, "opened", true)
+            verify(find(dialog, "extensionContactsStay").visible, "its contacts stay, said")
+            dialog.reject()
+            tryCompare(dialog, "opened", false)
+            // One that brought no contacts says nothing of them.
+            mock.extensions = view([offer({ installed: true, enabled: true })])
+            waitForRendering(tab)
+            find(tab, "extensionRemove:timetable").clicked()
+            tryCompare(dialog, "opened", true)
+            verify(!find(dialog, "extensionContactsStay").visible)
+            dialog.accept()
+            compare(mock.asked, ["remove timetable true"])
+        }
+
+        function test_remove_asks_of_lessons_only_for_one_that_brings_agendas() {
+            const tab = make([offer({ installed: true, enabled: true, bringsAgenda: false, sets: [{ id: "clients", name: "Clients", line: "", warn: false, place: "cloud/clients" }] })])
+            find(tab, "extensionRemove:timetable").clicked()
+            const dialog = tab.removeDialog
+            tryCompare(dialog, "opened", true)
+            verify(!find(dialog, "extensionKeepAgendas").visible, "no lessons to ask about")
+            verify(find(dialog, "extensionContactsStay").visible)
+            verify(texts(dialog.contentItem, []).indexOf("extension-remove-says-alone") >= 0, "its own sentence, without lessons")
+            dialog.accept()
+            compare(mock.asked, ["remove timetable true"], "nothing taken out")
+            // One that brings agendas asks, as before.
+            mock.extensions = view([offer({ installed: true, enabled: true, bringsAgenda: true })])
+            waitForRendering(tab)
+            find(tab, "extensionRemove:timetable").clicked()
+            tryCompare(dialog, "opened", true)
+            verify(find(dialog, "extensionKeepAgendas").visible)
+            verify(texts(dialog.contentItem, []).indexOf("extension-remove-says") >= 0)
+            dialog.reject()
         }
 
         function test_a_choice_before_the_sign_in_goes_back_to_the_extension() {
