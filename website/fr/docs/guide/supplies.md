@@ -48,8 +48,8 @@ Une pression sur un article ouvre sa fiche :
 ## Les tâches qui utilisent des stocks {#tasks-that-use-supplies}
 
 - **Dans le formulaire de la tâche**, la section **Stocks** (dès que vous en gardez) : un article et combien, une ligne chacun, **Ajouter un article**. C’est ce qu’elle prévoit d’utiliser : la page le compte aussitôt comme prévu, si bien que dix ventes arrivant avec huit cartes en stock rendent les cartes « épuisé » à leur arrivée, pas quand la huitième carte part.
-- **Cochée faite**, où que vous la cochiez (une liste, Maintenant, sa fiche, la fenêtre de concentration, un agent, la ligne de commande, votre téléphone, un autre programme), ce qu’elle prévoyait est retiré du stock, sans question. La ligne d’état le dit : « C’est fait. Utilisé : 1 Timbres, 1 Enveloppes, 1 Cartes cadeaux. », avec **Changer…** à côté de **Comment c’était ?**, pour une deuxième enveloppe ou un article que personne n’avait prévu ; pour une tâche qui ne prévoyait rien, **Stocks utilisés…**.
-- **Sur une tâche faite**, sa fiche garde la section **Stocks utilisés**, chaque ligne modifiable, **Ajouter un article** : à remettre juste des jours plus tard si vous voulez.
+- **Cochée faite**, où que vous la cochiez (une liste, Maintenant, sa fiche, la fenêtre de concentration, un agent, la ligne de commande, votre téléphone, un autre programme), ce qu’elle prévoyait est retiré du stock, sans question. La ligne d’état le dit : « C’est fait. Utilisé : 1 Timbres, 1 Enveloppes, 1 Cartes cadeaux. », avec **Changer…** à côté de **Comment c’était ?**, pour une deuxième enveloppe ou un article que personne n’avait prévu ; pour une tâche qui ne prévoyait rien, **Articles utilisés…**.
+- **Sur une tâche faite**, sa fiche garde la section **Articles utilisés**, chaque ligne modifiable, **Ajouter un article** : à remettre juste des jours plus tard si vous voulez.
 - **Rouverte**, ses stocks reviennent.
 - **Une tâche qui revient** (chaque semaine) prend ce qu’elle prévoit à chaque tour fait ; **Changer…** remet ce tour juste.
 
