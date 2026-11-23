@@ -5,9 +5,11 @@
 // 18 November 2026) on a stand-in for Sioul, at a computer's width and at a
 // phone's (412): Agenda ⚙ ▸ Your agendas offers "Subscribe to a calendar…",
 // whose form says where Moodle and PRONOTE show their address, offers the
-// official French calendars (one chosen fills the address, the name and the
-// kind; the Ministry's school holidays begin after class), sends what was
-// said, and shows the server's refusal. A subscribed agenda's line says when
+// official calendars of holidays, the person's country's first and another
+// country's on asking, or says their country has none and offers the others
+// (one chosen fills the address, the name and the kind; the Ministry's school
+// holidays begin after class), sends what was said, and shows the server's
+// refusal. A subscribed agenda's line says when
 // it was read, and offers Refresh now, Change the address and Stop (asked
 // once), its name and whether it holds holidays; nothing of a server's.
 // Fiction only. Run by tools/qml-test.sh.
@@ -37,18 +39,29 @@ Item {
         property var calls: []
         // What the next subscription answers.
         property string refusal: ""
+        // The person's country, as the settings say it: "FR"; "DE", one with no official calendar here.
+        property string home: "FR"
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
         function agendasSetup() { return JSON.stringify(root.view) }
         function setAgendaField(id, field, value) { return "" }
         function readAgendaSharing(id) { mock.calls = mock.calls.concat([["sharing", id]]) }
+        // As `subscriptions::officials` orders them: the person's country first, when it has some.
         function subscribeOfficials() {
-            return JSON.stringify({ officials: [
-                { id: "fr-public-metropole", holidays: "public", name: "Public holidays · Métropole", hint: "", url: "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics", taken: false },
-                { id: "fr-public-guyane", holidays: "public", name: "Public holidays · Guyane", hint: "", url: "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guyane.ics", taken: false },
-                { id: "fr-school-zone-a", holidays: "school", name: "School holidays · Zone A", hint: "Besançon, Bordeaux", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", taken: false }
-            ] })
+            const france = { code: "FR", name: "France" }
+            const uk = { code: "GB", name: "United Kingdom" }
+            return JSON.stringify({
+                home: mock.home,
+                home_name: mock.home === "FR" ? "France" : mock.home === "GB" ? "United Kingdom" : "Germany",
+                countries: mock.home === "GB" ? [uk, france] : [france, uk],
+                officials: [
+                    { id: "fr-public-metropole", country: "FR", holidays: "public", name: "Public holidays · Métropole", hint: "", url: "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics", after_class: false, taken: false },
+                    { id: "fr-public-guyane", country: "FR", holidays: "public", name: "Public holidays · Guyane", hint: "", url: "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guyane.ics", after_class: false, taken: false },
+                    { id: "fr-school-zone-a", country: "FR", holidays: "school", name: "School holidays · Zone A", hint: "Besançon, Bordeaux", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", after_class: true, taken: false },
+                    { id: "gb-public-scotland", country: "GB", holidays: "public", name: "Public holidays · Scotland", hint: "", url: "https://www.gov.uk/bank-holidays/scotland.ics", after_class: false, taken: false }
+                ]
+            })
         }
         function subscribeCalendar(text) {
             mock.calls = mock.calls.concat([["subscribe", JSON.parse(text)]])
@@ -115,6 +128,7 @@ Item {
         function init() {
             mock.calls = []
             mock.refusal = ""
+            mock.home = "FR"
             root.width = 1344
         }
 
@@ -133,7 +147,9 @@ Item {
             verify(!root.one(setup, "agendaSubscribe").visible, "the button folds away while the form is open")
             compare(root.one(form, "subscribeWhereMoodle").text, "subscribe-where-moodle")
             compare(root.one(form, "subscribeWherePronote").text, "subscribe-where-pronote")
-            // The official calendars: public holidays by territory, school holidays by zone.
+            // The person's country's official calendars: public holidays by territory, school holidays by zone.
+            compare(root.one(form, "subscribeOfficial").text, "subscribe-official:France")
+            verify(!root.one(form, "subscribeCountry").visible, "the person's country first, no list of countries")
             const publics = root.one(form, "subscribePublic")
             const schools = root.one(form, "subscribeSchool")
             compare(publics.count, 3, "a line to choose, then two territories")
@@ -144,6 +160,7 @@ Item {
             compare(root.one(form, "subscribeName").text, "School holidays · Zone A")
             compare(root.one(form, "subscribeKind").currentIndex, 2, "school holidays")
             verify(root.one(form, "subscribeAfterClass").visible && root.one(form, "subscribeAfterClass").checked, "the Ministry's begin after class")
+            verify(!root.one(form, "subscribeBusy").visible, "holidays are never your busy time")
             verify(!root.one(form, "subscribeDaysOff").checked, "school holidays are no days off unless said")
             root.one(form, "subscribeWhose").currentIndex = 1
             root.one(form, "subscribePerson").text = "Léa"
@@ -154,9 +171,147 @@ Item {
             compare(sent.holidays, "school")
             compare(sent.after_class, true)
             compare(sent.days_off, false)
+            compare(sent.engagements, null, "holidays: never said busy")
             compare(sent.whose, "child", "a child's timetable goes to that child")
             compare(sent.person, "Léa")
             verify(!form.visible, "done: the form folds away")
+            compare(root.fits(setup).length, 0, "nothing wider than the panel")
+        }
+
+        function test_another_country_s_calendars_data() {
+            return [{ tag: "computer", width: 1344 }, { tag: "phone", width: 412 }]
+        }
+
+        // "Another country…": the countries by name, one chosen shows its calendars alone, one of
+        // them chosen fills the form; a country with no school holidays here offers none.
+        function test_another_country_s_calendars(data) {
+            root.width = data.width
+            const setup = createTemporaryObject(setupComponent, root)
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            const form = root.one(setup, "subscribeForm")
+            const another = root.one(form, "subscribeAnotherCountry")
+            verify(another.visible)
+            mouseClick(another)
+            verify(!another.visible)
+            compare(root.one(form, "subscribeOfficial").text, "subscribe-official-by-country")
+            const countries = root.one(form, "subscribeCountry")
+            verify(countries.visible)
+            compare(countries.count, 3, "a line to choose, then each country by its name")
+            compare(countries.textAt(2), "United Kingdom")
+            verify(!root.one(form, "subscribePublic").visible && !root.one(form, "subscribeSchool").visible, "no country chosen yet")
+            countries.currentIndex = 2
+            countries.activated(2)
+            const publics = root.one(form, "subscribePublic")
+            verify(publics.visible)
+            compare(publics.count, 2, "the United Kingdom's alone")
+            verify(!root.one(form, "subscribeSchool").visible, "no school holidays offered there")
+            publics.currentIndex = 1
+            publics.activated(1)
+            compare(root.one(form, "subscribeAddress").text, "https://www.gov.uk/bank-holidays/scotland.ics")
+            compare(root.one(form, "subscribeName").text, "Public holidays · Scotland")
+            compare(root.one(form, "subscribeKind").currentIndex, 1)
+            verify(root.one(form, "subscribeDaysOff").checked, "public holidays count as days off by default")
+            // Back to the person's own country, among the others.
+            countries.currentIndex = 1
+            countries.activated(1)
+            compare(root.one(form, "subscribePublic").count, 3)
+            verify(root.one(form, "subscribeSchool").visible)
+            countries.currentIndex = 2
+            countries.activated(2)
+            root.one(form, "subscribePublic").currentIndex = 1
+            root.one(form, "subscribePublic").activated(1)
+            mouseClick(root.one(form, "subscribeMake"))
+            const sent = mock.calls.find(c => c[0] === "subscribe")[1]
+            compare(sent.id, "gb-public-scotland")
+            compare(sent.holidays, "public")
+            compare(sent.days_off, true)
+            compare(root.fits(setup).length, 0, "nothing wider than the panel")
+            // Opened again: the person's country first once more.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            verify(!root.one(form, "subscribeCountry").visible && root.one(form, "subscribeAnotherCountry").visible)
+            compare(root.one(form, "subscribePublic").count, 3)
+        }
+
+        // The person's country first, whichever it is: the United Kingdom's own, France's on asking.
+        function test_the_person_s_country_comes_first() {
+            mock.home = "GB"
+            const setup = createTemporaryObject(setupComponent, root)
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            const form = root.one(setup, "subscribeForm")
+            compare(root.one(form, "subscribeOfficial").text, "subscribe-official:United Kingdom")
+            compare(root.one(form, "subscribePublic").count, 2)
+            compare(root.one(form, "subscribePublic").textAt(1), "Public holidays · Scotland")
+            verify(!root.one(form, "subscribeSchool").visible)
+            mouseClick(root.one(form, "subscribeAnotherCountry"))
+            compare(root.one(form, "subscribeCountry").textAt(1), "United Kingdom", "the person's own first among the countries")
+        }
+
+        // A country with no official calendar here: one sentence says so, the others offered at once.
+        function test_a_country_with_none_is_said_and_the_others_offered() {
+            root.width = 412
+            mock.home = "DE"
+            const setup = createTemporaryObject(setupComponent, root)
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            const form = root.one(setup, "subscribeForm")
+            compare(root.one(form, "subscribeOfficial").text, "subscribe-official-none:Germany")
+            verify(!root.one(form, "subscribeAnotherCountry").visible, "the countries are offered already")
+            const countries = root.one(form, "subscribeCountry")
+            verify(countries.visible)
+            compare(countries.count, 3)
+            compare(countries.textAt(1), "France")
+            verify(!root.one(form, "subscribePublic").visible)
+            countries.currentIndex = 1
+            countries.activated(1)
+            compare(root.one(form, "subscribePublic").count, 3)
+            compare(root.one(form, "subscribeSchool").count, 2)
+            compare(root.fits(setup).length, 0, "nothing wider than the panel")
+        }
+
+        function test_a_calendar_of_events_may_be_your_busy_time_data() {
+            return [{ tag: "computer", width: 1344 }, { tag: "phone", width: 412 }]
+        }
+
+        // The review's F41, in the form: a calendar of events may be said your own busy time as it
+        // is added, off unless ticked, and sent; one of holidays never shows the tick.
+        function test_a_calendar_of_events_may_be_your_busy_time(data) {
+            root.width = data.width
+            const setup = createTemporaryObject(setupComponent, root)
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            const form = root.one(setup, "subscribeForm")
+            const busy = root.one(form, "subscribeBusy")
+            verify(busy.visible, "a calendar of events, as the form opens")
+            verify(!busy.checked, "off unless ticked")
+            compare(busy.text, "agenda-busy-time", "one sentence, the extension's switch's too")
+            verify(root.one(form, "subscribeBusyHelp").visible)
+            compare(root.one(form, "subscribeBusyHelp").text, "agenda-busy-time-help")
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/appointments.ics"
+            mouseClick(busy)
+            verify(busy.checked)
+            // Said to hold holidays: the tick goes, and nothing busy is sent.
+            const kind = root.one(form, "subscribeKind")
+            kind.currentIndex = 1
+            kind.activated(1)
+            verify(!busy.visible)
+            mouseClick(root.one(form, "subscribeMake"))
+            compare(mock.calls[mock.calls.length - 1][1].engagements, null)
+            // Opened again, a calendar of events ticked: sent so.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            verify(busy.visible && !busy.checked, "opened again: off")
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/appointments.ics"
+            // Laid out again before the click lands on it.
+            waitForItemPolished(setup)
+            waitForItemPolished(form)
+            mouseClick(busy)
+            verify(busy.checked)
+            mouseClick(root.one(form, "subscribeMake"))
+            const sent = mock.calls[mock.calls.length - 1][1]
+            compare(sent.holidays, "")
+            compare(sent.engagements, true)
+            // Unticked: sent as not busy.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/classes.ics"
+            mouseClick(root.one(form, "subscribeMake"))
+            compare(mock.calls[mock.calls.length - 1][1].engagements, false)
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
 
@@ -231,7 +386,7 @@ Item {
             compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
         }
 
-        // The review's F41: "These are my own engagements" offered on a calendar of events,
+        // The review's F41: "Count these as my busy time" offered on a calendar of events,
         // never on one of holidays, off until ticked, then sent; its colour chosen here.
         function test_own_engagements_and_its_colour() {
             const setup = createTemporaryObject(setupComponent, root)
@@ -239,6 +394,8 @@ Item {
             const boxes = root.named(setup, "subscriptionEngagements").filter(b => b.visible)
             compare(boxes.length, 1, "on the calendar of events alone")
             verify(!boxes[0].checked, "off unless ticked")
+            compare(boxes[0].text, "agenda-busy-time", "the form's and the extension's words")
+            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).map(l => l.text), ["agenda-busy-time-help"])
             mouseClick(boxes[0])
             verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "engagements" && c[3] === "true"), JSON.stringify(mock.calls))
             const dots = root.named(setup, "subscriptionColour").filter(d => d.visible)
@@ -248,6 +405,7 @@ Item {
             setup.toggle("subscribed/timetable")
             setup.toggle("subscribed/zone-a")
             compare(root.named(setup, "subscriptionEngagements").filter(b => b.visible).length, 0, "holidays act through the days off alone")
+            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).length, 0)
         }
 
         // The review's F19 and F20: settings that do not read: the line says so, and Stop alone is offered.

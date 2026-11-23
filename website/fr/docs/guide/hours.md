@@ -53,7 +53,7 @@ Dans [Paramètres ▸ Heures](settings.md#hours), deux semaines : **Heures de 
 
 - **Vos vacances** : d’un jour à un autre, chacun tapé comme 2026-12-24, avec un mot dessus et un type : des vacances, un arrêt maladie, ou autre chose. **Ajouter** garde la période ; **×**, sur sa ligne, l’enlève. Ce que vous aviez déjà saisi reste tel quel.
 - **Agendas de vacances et de jours fériés** : chaque agenda de jours fériés ou de vacances scolaires auquel vous êtes abonné ([Les agendas par leur adresse](agenda.md#calendars-by-their-address)), avec une case à cocher, **ses jours comptent comme mes jours sans travail**. Les jours fériés comptent, sauf si vous la décochez ; les vacances scolaires non, sauf si vous la cochez (un parent qui reste avec les enfants, un enseignant).
-- **S’abonner à un agenda de vacances…** ouvre les réglages de l’Agenda sur le formulaire, avec les agendas officiels français prêts : les jours fériés par territoire, les vacances scolaires par zone.
+- **S’abonner à un agenda de vacances…** ouvre les réglages de l’Agenda sur le formulaire, avec les agendas officiels de jours fériés et de vacances prêts, ceux de votre pays d’abord : pour la France, les jours fériés par territoire et les vacances scolaires par zone ; pour le Royaume-Uni, les jours fériés de chaque nation.
 
 Un jour qui compte comme jour sans travail l’est partout : loisirs toute la journée, rien de prévu dedans, « deux jours ouvrés avant » le saute, les rappels du travail attendent son retour, et l’agenda le grise. Chaque appareil connaît les jours fériés par sa propre copie de l’agenda : celui qui ne l’a pas encore lu ne les connaît pas, et sa ligne le dit.
 

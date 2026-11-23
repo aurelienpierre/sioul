@@ -1,0 +1,320 @@
+# The official calendars of holidays Sioul offers ready-made, country by
+# country (Agenda ⚙ ▸ Your agendas ▸ Subscribe to a calendar…; docs/client.md,
+# "Calendars by their address"; docs/areas.md, "Vacations and holidays").
+#
+# Only a state's own calendar, published under an open licence, is offered:
+# files built from a commercial provider's data, without a licence, or mixing
+# regional days and plain observances with the holidays, are not. A country
+# without such a calendar has none here until one is found.
+#
+# `tools/check-holidays.py` asks every address before each release (each
+# answers a calendar, holds whole days, and covers this year and the next);
+# `cargo test -p sioul-core holiday_calendars` checks that this file is well
+# formed, and that no id or address of before has changed.
+#
+# country:     ISO 3166-1, the country it is offered under ("FR", "GB")
+# kind:        "public" (public holidays) or "school" (school holidays)
+# id:          the subscription's id and its copy's folder, kept for good once
+#              shipped: a calendar subscribed already is known by it
+# name:        the territory's, the nation's or the zone's, as its publisher
+#              writes it; shown after the kind ("Public holidays · Scotland")
+# hint:        said under its name, when there is something to say (a zone's
+#              académies); optional
+# url:         its address (https)
+# source:      who publishes it
+# licence:     under which licence
+# after_class: its holidays begin after class (the event's first day is still
+#              a class day, its last the morning classes resume), as the
+#              Ministry's files are shaped; optional, school holidays alone
+
+# France: public holidays by territory (Etalab's files), school holidays by
+# zone (the Ministry of Education's).
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-metropole"
+name = "Métropole"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_metropole.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-alsace-moselle"
+name = "Alsace-Moselle"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_alsace-moselle.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-guadeloupe"
+name = "Guadeloupe"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guadeloupe.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-guyane"
+name = "Guyane"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_guyane.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-martinique"
+name = "Martinique"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_martinique.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-mayotte"
+name = "Mayotte"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_mayotte.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-la-reunion"
+name = "La Réunion"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_la-reunion.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-nouvelle-caledonie"
+name = "Nouvelle-Calédonie"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_nouvelle-caledonie.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-polynesie-francaise"
+name = "Polynésie française"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_polynesie-francaise.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-saint-barthelemy"
+name = "Saint-Barthélemy"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-barthelemy.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-saint-martin"
+name = "Saint-Martin"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-martin.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-saint-pierre-et-miquelon"
+name = "Saint-Pierre-et-Miquelon"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_saint-pierre-et-miquelon.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "public"
+id = "fr-public-wallis-et-futuna"
+name = "Wallis-et-Futuna"
+url = "https://etalab.github.io/jours-feries-france-data/ics/jours_feries_wallis-et-futuna.ics"
+source = "Etalab"
+licence = "Licence Ouverte"
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-zone-a"
+name = "Zone A"
+hint = "Besançon, Bordeaux, Clermont-Ferrand, Dijon, Grenoble, Limoges, Lyon, Poitiers"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-zone-b"
+name = "Zone B"
+hint = "Aix-Marseille, Amiens, Lille, Nancy-Metz, Nantes, Nice, Normandie, Orléans-Tours, Reims, Rennes, Strasbourg"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-B.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-zone-c"
+name = "Zone C"
+hint = "Créteil, Montpellier, Paris, Toulouse, Versailles"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-C.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-corse"
+name = "Corse"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Corse.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-zone-a-b-c-corse"
+name = "Zones A, B, C et Corse"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A-B-C-Corse.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-guadeloupe"
+name = "Guadeloupe"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Guadeloupe.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-guyane"
+name = "Guyane"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Guyane.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-martinique"
+name = "Martinique"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Martinique.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-mayotte"
+name = "Mayotte"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Mayotte.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-reunion"
+name = "La Réunion"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Reunion.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-polynesie"
+name = "Polynésie française"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Polynesie.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-nouvellecaledonie"
+name = "Nouvelle-Calédonie"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/NouvelleCaledonie.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-saintpierreetmiquelon"
+name = "Saint-Pierre-et-Miquelon"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/SaintPierreEtMiquelon.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+[[calendar]]
+country = "FR"
+kind = "school"
+id = "fr-school-wallisetfutuna"
+name = "Wallis-et-Futuna"
+url = "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/WallisEtFutuna.ics"
+source = "Ministère de l’Éducation nationale"
+licence = "Licence Ouverte"
+after_class = true
+
+# The United Kingdom: the Government's bank holidays, one calendar per nation.
+
+[[calendar]]
+country = "GB"
+kind = "public"
+id = "gb-public-england-and-wales"
+name = "England and Wales"
+url = "https://www.gov.uk/bank-holidays/england-and-wales.ics"
+source = "GOV.UK"
+licence = "Open Government Licence v3.0"
+
+[[calendar]]
+country = "GB"
+kind = "public"
+id = "gb-public-scotland"
+name = "Scotland"
+url = "https://www.gov.uk/bank-holidays/scotland.ics"
+source = "GOV.UK"
+licence = "Open Government Licence v3.0"
+
+[[calendar]]
+country = "GB"
+kind = "public"
+id = "gb-public-northern-ireland"
+name = "Northern Ireland"
+url = "https://www.gov.uk/bank-holidays/northern-ireland.ics"
+source = "GOV.UK"
+licence = "Open Government Licence v3.0"

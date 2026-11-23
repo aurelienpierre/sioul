@@ -4,12 +4,17 @@
 // Agenda ⚙ ▸ Your agendas ▸ "Subscribe to a calendar…" (calendars by their
 // address, 18 November 2026): a field for the address (https:// or
 // webcal://), two lines saying where Moodle and PRONOTE show theirs, in the
-// words of their own screens; or one of the official French calendars,
-// public holidays by territory, school holidays by zone. Then its name,
+// words of their own screens; or one of the official calendars of holidays
+// (23 November 2026, `subscribed::offer`): the person's country's first, its
+// public holidays then its school holidays; "Another country…" for the
+// others, chosen by their names; where the person's country has none here,
+// one sentence says so and the others are offered at once. Then its name,
 // whose it is (a child's timetable goes to that child), what it is for, and
 // whether it holds holidays: public ones count as your days off unless you
 // say not, school ones do not unless you say so; the Ministry's school
-// holidays begin after class. The address is a setting like any other,
+// holidays begin after class. A calendar of events may be said your own busy
+// time as it is added, off unless ticked, as its line says it afterwards
+// (`engagements`, F41); a calendar of holidays never shows it. The address is a setting like any other,
 // typed once and carried to your other devices; each device reads it by
 // itself (`subscriptions::subscribe`).
 
@@ -24,27 +29,42 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // `subscriptions::officials`: [{id, holidays, name, hint, url, taken}].
+    // `subscriptions::officials`: {home, home_name, countries: [{code, name}],
+    // officials: [{id, country, holidays, name, hint, url, after_class, taken}]}, the person's country first.
+    property var offer: ({})
     property var officials: []
     property string problem: ""
     // The official calendar chosen, its id; "" an address typed.
     property string official: ""
+    // The country whose official calendars show; "" none chosen yet.
+    property string country: ""
+    // The countries offered to choose from: "Another country…" pressed, or the person's own has none here.
+    property bool elsewhere: false
     readonly property var whoseChoices: ["yours", "child", "parent", "partner", "shared"]
     readonly property var kinds: ["", "public", "school"]
-    readonly property var publics: form.officials.filter(o => o.holidays === "public")
-    readonly property var schools: form.officials.filter(o => o.holidays === "school")
+    readonly property var countries: form.offer.countries || []
+    readonly property string home: form.offer.home || ""
+    // The person's country has official calendars here: offered first.
+    readonly property bool homeHas: form.home !== "" && form.countries.length > 0 && form.countries[0].code === form.home
+    readonly property var shown: form.officials.filter(o => o.country === form.country)
+    readonly property var publics: form.shown.filter(o => o.holidays === "public")
+    readonly property var schools: form.shown.filter(o => o.holidays === "school")
 
     // Subscribed: its id; or put away.
     signal done(string id)
     signal cancelled
 
-    // Opened again: the official calendars read, every field emptied.
+    // Opened again: the official calendars read, the person's country's shown, every field emptied.
     function begin() {
         try {
-            form.officials = JSON.parse(form.sioul.subscribeOfficials() || "{}").officials || []
+            form.offer = JSON.parse(form.sioul.subscribeOfficials() || "{}")
         } catch (e) {
-            form.officials = []
+            form.offer = {}
         }
+        form.officials = form.offer.officials || []
+        form.elsewhere = !form.homeHas
+        form.country = form.homeHas ? form.home : ""
+        countryChoice.currentIndex = 0
         form.problem = ""
         form.official = ""
         address.text = ""
@@ -56,7 +76,15 @@ ColumnLayout {
         person.text = ""
         daysOff.checked = true
         afterClass.checked = false
+        busy.checked = false
         address.forceActiveFocus()
+    }
+
+    // Another country's calendars: none chosen until one is, the person's own among the countries.
+    function showCountry(code) {
+        form.country = code
+        publicChoice.currentIndex = 0
+        schoolChoice.currentIndex = 0
     }
 
     // An official calendar chosen: its address, its name and its kind filled in.
@@ -68,7 +96,8 @@ ColumnLayout {
         name.text = item.name
         kind.currentIndex = form.kinds.indexOf(item.holidays)
         daysOff.checked = item.holidays === "public"
-        afterClass.checked = item.holidays === "school"
+        // As its publisher shapes them: the Ministry's school holidays begin after class.
+        afterClass.checked = item.holidays === "school" && item.after_class === true
     }
 
     function make() {
@@ -80,6 +109,7 @@ ColumnLayout {
             holidays: holidays,
             days_off: holidays === "" ? null : daysOff.checked,
             after_class: holidays === "school" ? afterClass.checked : null,
+            engagements: holidays === "" ? busy.checked : null,
             id: form.official,
             whose: form.whoseChoices[whose.currentIndex],
             person: person.text.trim(),
@@ -134,17 +164,32 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: form.theme.muted
     }
+    // The official calendars: for the person's country ("France"), by country, or none for theirs.
     Label {
+        objectName: "subscribeOfficial"
+        visible: form.countries.length > 0
         Layout.fillWidth: true
         Layout.topMargin: 4
-        text: form.sioul.text("subscribe-official")
+        text: !form.elsewhere ? form.sioul.textWith("subscribe-official", "country", form.offer.home_name || "") : form.home !== "" && !form.homeHas ? form.sioul.textWith("subscribe-official-none", "country", form.offer.home_name || "") : form.sioul.text("subscribe-official-by-country")
+        textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: form.theme.text
+    }
+    PlainComboBox {
+        id: countryChoice
+
+        objectName: "subscribeCountry"
+        visible: form.elsewhere && form.countries.length > 0
+        Layout.fillWidth: true
+        model: [form.sioul.text("subscribe-choose-country")].concat(form.countries.map(c => form.theme.plain(c.name)))
+        Accessible.name: form.sioul.text("subscribe-choose-country")
+        onActivated: index => form.showCountry(index > 0 ? form.countries[index - 1].code : "")
     }
     PlainComboBox {
         id: publicChoice
 
         objectName: "subscribePublic"
+        visible: form.publics.length > 0
         Layout.fillWidth: true
         model: [form.sioul.text("subscribe-choose-public")].concat(form.publics.map(o => form.theme.plain(o.name)))
         Accessible.name: form.sioul.text("subscribe-choose-public")
@@ -159,6 +204,7 @@ ColumnLayout {
         id: schoolChoice
 
         objectName: "subscribeSchool"
+        visible: form.schools.length > 0
         Layout.fillWidth: true
         model: [form.sioul.text("subscribe-choose-school")].concat(form.schools.map(o => form.theme.plain(o.name)))
         Accessible.name: form.sioul.text("subscribe-choose-school")
@@ -179,6 +225,17 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: form.theme.muted
+    }
+    Button {
+        objectName: "subscribeAnotherCountry"
+        visible: !form.elsewhere && form.countries.length > 1
+        flat: true
+        text: form.sioul.text("subscribe-another-country")
+        onClicked: {
+            form.elsewhere = true
+            countryChoice.currentIndex = 0
+            form.showCountry("")
+        }
     }
     TextField {
         id: name
@@ -237,7 +294,8 @@ ColumnLayout {
         Accessible.name: form.sioul.text("subscribe-holidays")
         onActivated: index => {
             daysOff.checked = form.kinds[index] === "public"
-            afterClass.checked = form.kinds[index] === "school" && form.official !== ""
+            const chosen = form.officials.find(o => o.id === form.official)
+            afterClass.checked = form.kinds[index] === "school" && chosen !== undefined && chosen.after_class === true
         }
     }
     WrapCheckBox {
@@ -247,6 +305,24 @@ ColumnLayout {
         visible: kind.currentIndex > 0
         Layout.fillWidth: true
         text: form.sioul.text("subscribe-days-off")
+    }
+    // Its events your own busy time: a calendar of events alone, off unless ticked (F41).
+    WrapCheckBox {
+        id: busy
+
+        objectName: "subscribeBusy"
+        visible: kind.currentIndex === 0
+        Layout.fillWidth: true
+        text: form.sioul.text("agenda-busy-time")
+    }
+    // What it does, under it: the same line as on its line in Your agendas and an extension's switch.
+    Label {
+        objectName: "subscribeBusyHelp"
+        visible: busy.visible
+        Layout.fillWidth: true
+        text: form.sioul.text("agenda-busy-time-help")
+        wrapMode: Text.Wrap
+        color: form.theme.muted
     }
     WrapCheckBox {
         id: afterClass

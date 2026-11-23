@@ -4155,7 +4155,8 @@ extension-calendar-for = Le calendrier pour { $name }
 extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
 # À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
-extension-busy = Compter comme mon temps occupé
+agenda-busy-time = Compter comme mon temps occupé
+agenda-busy-time-help = Indisponible pendant eux : « Pendant une indisponibilité » de Ne pas déranger s’applique, la disponibilité que vous partagez les montre et le plan garde leur temps.
 # Les contacts qu’apporte une extension (les clients d’une entreprise), chaque ensemble dans un carnet d’adresses que la personne choisit.
 extension-brings-contacts = Elle apporte des contacts : ils vont dans un de vos carnets d’adresses, que vous choisissez. Un contact que vous avez déjà, reconnu à son numéro ou à son adresse électronique, reçoit seulement ce qui lui manque ; rien n’est jamais retiré d’une fiche.
 extension-contacts-choose = Choisissez le carnet d’adresses où vont ses contacts : un des vôtres, que vous pouvez partager avec qui vous voulez. D’ici là, rien n’est écrit.
@@ -5091,18 +5092,22 @@ subscribe-address = L’adresse de l’agenda
 subscribe-address-hint = https://…, ou une adresse webcal
 subscribe-where-moodle = Moodle : dans le calendrier, « Import or export calendars », puis « Export calendar », puis « Get calendar URL », et « Copy URL » (les mots de Moodle en anglais).
 subscribe-where-pronote = PRONOTE : « Communication > Agenda », puis « Exporter l’agenda au format iCal » en haut à droite, là où l’établissement le permet. Pas encore essayé avec une vraie adresse.
-subscribe-official = Ou un agenda officiel français :
+# Les agendas officiels de jours fériés et de vacances (23 novembre 2026), ceux du pays de la personne d’abord : son nom dans la langue de la personne.
+subscribe-official = Ou un agenda officiel de jours fériés ou de vacances, pour votre pays ({ $country }) :
+subscribe-official-by-country = Ou un agenda officiel de jours fériés ou de vacances, par pays :
+subscribe-official-none = Aucun agenda officiel de jours fériés ou de vacances n’est encore proposé pour votre pays ({ $country }), seulement ceux d’autres pays :
+subscribe-another-country = Un autre pays…
+subscribe-choose-country = Choisir un pays…
 subscribe-official-public = Jours fériés · { $name }
 subscribe-official-school = Vacances scolaires · { $name }
-subscribe-choose-public = Les jours fériés d’un territoire…
-subscribe-choose-school = Les vacances scolaires d’une zone…
+subscribe-choose-public = Jours fériés…
+subscribe-choose-school = Vacances scolaires…
 subscribe-name = Son nom
 subscribe-holidays = Ce qu’il tient
 subscribe-holidays-none = Des événements
 subscribe-holidays-public = Des jours fériés
 subscribe-holidays-school = Des vacances scolaires
 subscribe-days-off = Ses jours comptent comme mes jours sans travail
-subscribe-engagements = Ce sont mes propres engagements : indisponible pendant eux, et ils prennent mon temps
 subscribe-after-class = Les vacances commencent après la classe : leur premier jour est encore un jour de classe, et le jour de la reprise n’en fait pas partie
 subscribe-make = S’abonner
 subscribe-taken = Cet agenda est déjà parmi vos abonnements.

@@ -67,7 +67,7 @@ The rules of the code ([Architecture](architecture.md#code-style)): one task per
 | `docs/` | the design notes, shown in this section; `docs/research/`, the research behind them |
 | `examples/` | a configuration, projects and budgets, and `demo.toml` for trying the command line on invented mail |
 | `presets/sites.json` | the usual sites; `tools/check-presets.py` checks every address |
-| `tools/` | the QML linter, the messages' and the presets' checkers, the icon bundler, the API stand-ins, and `demo/`, the invented profile and this website's pictures |
+| `tools/` | the QML linter, the messages', the presets' and the holiday calendars' checkers, the icon bundler, the API stand-ins, and `demo/`, the invented profile and this website's pictures |
 | `packaging/` | the Flatpak manifest, the Windows installer's script, the macOS files, used by `.github/workflows/release.yml` for each version |
 | `data/` | the desktop entry (`com.aurelienpierre.Sioul.desktop`), the AppStream file, the icon's drawings |
 | `website/` | this website |

@@ -221,28 +221,44 @@ pub(crate) fn row(config: &sioul_core::config::Config, place: &str) -> serde_jso
     })
 }
 
-/// The official French calendars offered, with their words (Agenda ⚙ ▸
-/// Subscribe to a calendar…): public holidays by territory, school holidays by zone.
+/// The official calendars of holidays offered, with their words (Agenda ⚙ ▸
+/// Subscribe to a calendar…; `subscribed::offer`): the person's country
+/// first (`subscribed::home_country`), then each other country by its name in
+/// the language shown; each country's public holidays, then its school
+/// holidays. As JSON: `home` and `home_name` ("" when no country is known),
+/// `countries` in that order, each `{code, name}`, and `officials`, each
+/// `{id, country, holidays, name, hint, url, after_class, taken}`.
 pub(crate) fn officials() -> String {
     let config = load_config();
-    let list: Vec<serde_json::Value> = subscribed::officials()
-        .into_iter()
-        .map(|o| {
+    json(&offered(&config, subscribed::home_country(&config), tr()))
+}
+
+/// The offer as the form reads it, for a person of `home`.
+fn offered(config: &sioul_core::config::Config, home: Option<&str>, tr: &sioul_core::i18n::Translator) -> serde_json::Value {
+    let offer = subscribed::offer(home, tr.language());
+    let mut countries = Vec::new();
+    let mut list = Vec::new();
+    for (code, name, calendars) in &offer.countries {
+        countries.push(serde_json::json!({ "code": code, "name": name }));
+        for o in calendars {
             let kind = o.holidays.id();
             let mut args = sioul_core::i18n::args();
-            args.set("name", o.name);
-            serde_json::json!({
+            args.set("name", o.name.clone());
+            list.push(serde_json::json!({
                 "id": o.id,
+                "country": o.country,
                 "holidays": kind,
-                "name": tr().text(&format!("subscribe-official-{kind}"), Some(&args)),
+                "name": tr.text(&format!("subscribe-official-{kind}"), Some(&args)),
                 "hint": o.hint,
                 "url": o.url,
+                // Its holidays begin after class (the Ministry's): the form's box ticked for it.
+                "after_class": o.after_class,
                 // Subscribed already: offered, said so.
                 "taken": config.agenda.subscriptions.values().any(|s| s.url == o.url),
-            })
-        })
-        .collect();
-    json(&serde_json::json!({ "officials": list }))
+            }));
+        }
+    }
+    serde_json::json!({ "home": offer.home, "home_name": offer.home_name, "countries": countries, "officials": list })
 }
 
 /// A new subscription from the window ({url, name, holidays, days_off,
@@ -375,6 +391,32 @@ mod tests {
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         sioul_core::vdir::remove_subscribed(id).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The form's offer by country (23 November 2026): the person's country
+    /// first, every name in the language shown, each calendar with its
+    /// country, its words and whether it is subscribed already.
+    #[test]
+    fn the_official_calendars_come_by_country() {
+        let config: sioul_core::config::Config = toml::from_str("[agenda.subscriptions.scotland]\nurl = \"https://www.gov.uk/bank-holidays/scotland.ics\"\nholidays = \"public\"\n").unwrap();
+        let fr = sioul_core::i18n::Translator::new("fr");
+        let offer = offered(&config, Some("GB"), &fr);
+        assert_eq!((offer["home"].as_str(), offer["home_name"].as_str()), (Some("GB"), Some("Royaume-Uni")));
+        assert_eq!(offer["countries"], serde_json::json!([{ "code": "GB", "name": "Royaume-Uni" }, { "code": "FR", "name": "France" }]));
+        let list = offer["officials"].as_array().unwrap();
+        assert_eq!(list.len(), sioul_core::subscribed::officials().len());
+        let said = |i: usize, field: &str| list[i][field].as_str().unwrap_or_default().to_string();
+        assert_eq!((said(0, "id"), said(0, "country"), said(0, "holidays"), said(0, "name")), ("gb-public-england-and-wales".into(), "GB".into(), "public".into(), "Jours fériés · England and Wales".into()));
+        assert_eq!((list[0]["taken"].as_bool(), list[1]["taken"].as_bool()), (Some(false), Some(true)), "Scotland's, subscribed already");
+        assert_eq!(said(3, "country"), "FR", "then France's");
+        let zone_a = list.iter().find(|o| o["id"] == "fr-school-zone-a").unwrap();
+        assert_eq!((zone_a["name"].as_str(), zone_a["hint"].as_str().map(|h| h.starts_with("Besançon"))), (Some("Vacances scolaires · Zone A"), Some(true)));
+        assert_eq!((zone_a["after_class"].as_bool(), list[0]["after_class"].as_bool()), (Some(true), Some(false)), "the Ministry's begin after class");
+        // A country with none here: its name said, every country offered.
+        let en = sioul_core::i18n::Translator::new("en");
+        let offer = offered(&config, Some("DE"), &en);
+        assert_eq!(offer["home_name"].as_str(), Some("Germany"));
+        assert_eq!(offer["countries"], serde_json::json!([{ "code": "FR", "name": "France" }, { "code": "GB", "name": "United Kingdom" }]));
     }
 
     /// The review's F5: a round that panics sets its mark back, so that the

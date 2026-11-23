@@ -212,6 +212,8 @@ Item {
             compare(mock.asked, ["calendar timetable p-1 new:cloud"], "the one already chosen, and Choose…, ask nothing")
             // The busy toggle shows the choice (or the extension's suggestion), and sends the flip.
             compare(find(tab, "extensionBusy:p-1").checked, false, "a pupil's lessons are not your busy time by default")
+            compare(find(tab, "extensionBusy:p-1").text, "agenda-busy-time", "the words of a subscribed calendar's tick")
+            compare(find(tab, "extensionBusyHelp:p-1").text, "agenda-busy-time-help", "and the line under them")
             compare(find(tab, "extensionBusy:p-2").checked, true, "chosen to count as busy")
             find(tab, "extensionBusy:p-1").toggle()
             find(tab, "extensionBusy:p-1").toggled()

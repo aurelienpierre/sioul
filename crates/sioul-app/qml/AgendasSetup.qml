@@ -567,14 +567,25 @@ ColumnLayout {
                         checked: feed.sub !== null && feed.sub.days_off === true
                         onToggled: setup.saveSubscription(feed.sub.id, "days_off", checked ? "true" : "false")
                     }
-                    // Its events mark you busy and hold your time only when you say they are yours (F41).
+                    // Its events mark you busy and hold your time only when you say they are yours (F41):
+                    // the same words, and the same line under them, as an extension agenda's switch.
                     WrapCheckBox {
+                        id: engagements
+
                         objectName: "subscriptionEngagements"
                         visible: !feed.unread && feed.sub !== null && feed.sub.holidays === ""
                         Layout.fillWidth: true
-                        text: setup.sioul.text("subscribe-engagements")
+                        text: setup.sioul.text("agenda-busy-time")
                         checked: feed.sub !== null && feed.sub.engagements === true
                         onToggled: setup.saveSubscription(feed.sub.id, "engagements", checked ? "true" : "false")
+                    }
+                    Label {
+                        objectName: "subscriptionEngagementsHelp"
+                        visible: engagements.visible
+                        Layout.fillWidth: true
+                        text: setup.sioul.text("agenda-busy-time-help")
+                        wrapMode: Text.Wrap
+                        color: setup.theme.muted
                     }
                     WrapCheckBox {
                         objectName: "subscriptionAfterClass"

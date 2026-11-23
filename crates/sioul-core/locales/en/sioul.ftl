@@ -4121,8 +4121,11 @@ extension-calendar-new-here = A new calendar on this device only
 extension-calendar-for = The calendar for { $name }
 extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
-# Beside the calendar: whether these events are the person's own busy time (OPAQUE) or free (TRANSPARENT).
-extension-busy = Count these as my busy time
+# Whether an agenda's events are the person's own busy time, one sentence for one idea (23 November 2026): an
+# extension agenda's switch, beside its calendar (OPAQUE or TRANSPARENT, `[extensions.busy]`), and a subscribed
+# calendar's tick, in the form and on its line (`engagements`); the line under each says what it does.
+agenda-busy-time = Count these as my busy time
+agenda-busy-time-help = Busy during them: do-not-disturb “While busy” holds, the availability you share shows them, and the plan keeps their time.
 # The contacts an extension brings (a business's clients), each set into an address book the person chooses.
 extension-brings-contacts = It brings contacts: they go into an address book of yours that you choose. A contact you already have, found by its number or its e-mail address, gets only what it lacks; nothing is ever taken off a card.
 extension-contacts-choose = Choose the address book its contacts go into: one of yours, which you can share with whom you like. Until then nothing is written.
@@ -5058,18 +5061,22 @@ subscribe-address = The calendar's address
 subscribe-address-hint = https://… or webcal://…
 subscribe-where-moodle = Moodle: in the calendar, “Import or export calendars”, then “Export calendar”, then “Get calendar URL”, and “Copy URL”.
 subscribe-where-pronote = PRONOTE: “Communication > Agenda”, then “Exporter l'agenda au format iCal” at the top right, where the school allows it (its French screens' words). Not tried with a real address yet.
-subscribe-official = Or an official French calendar:
+# The official calendars of holidays (23 November 2026), the person's country's first: its name in the person's language.
+subscribe-official = Or an official calendar of holidays, for your country ({ $country }):
+subscribe-official-by-country = Or an official calendar of holidays, by country:
+subscribe-official-none = No official calendar of holidays is offered for your country ({ $country }) yet, only those of other countries:
+subscribe-another-country = Another country…
+subscribe-choose-country = Choose a country…
 subscribe-official-public = Public holidays · { $name }
 subscribe-official-school = School holidays · { $name }
-subscribe-choose-public = Public holidays of a territory…
-subscribe-choose-school = School holidays of a zone…
+subscribe-choose-public = Public holidays…
+subscribe-choose-school = School holidays…
 subscribe-name = Its name
 subscribe-holidays = What it holds
 subscribe-holidays-none = Events
 subscribe-holidays-public = Public holidays
 subscribe-holidays-school = School holidays
 subscribe-days-off = Its days count as my days off
-subscribe-engagements = These are my own engagements: busy during them, and they take my time
 subscribe-after-class = The holidays begin after class: their first day is still a class day, and the day classes resume is none of them
 subscribe-make = Subscribe
 subscribe-taken = This calendar is subscribed already.

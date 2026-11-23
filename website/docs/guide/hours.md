@@ -53,7 +53,7 @@ In [Settings ▸ Hours](settings.md#hours), two weeks: **Working hours** and **H
 
 - **Your vacations**: from a day to another, each typed as 2026-12-24, with a word on them and a kind: a vacation, sick leave, or something else. **Add** keeps the period; **×** on its line takes it away. What you typed before stays as it was.
 - **Calendars of holidays**: each calendar of public or school holidays you subscribed to ([Calendars by their address](agenda.md#calendars-by-their-address)), with one box to tick, **its days count as my days off**. Public holidays count unless you untick it; school holidays do not, unless you tick it (a parent who stays home with the children, a teacher).
-- **Subscribe to a calendar of holidays…** opens the Agenda's settings at the form, with the official French calendars ready: public holidays by territory, school holidays by zone.
+- **Subscribe to a calendar of holidays…** opens the Agenda's settings at the form, with the official calendars of holidays ready, your country's first: for France, public holidays by territory and school holidays by zone; for the United Kingdom, the bank holidays of each nation.
 
 A day that counts as a day off is one everywhere: leisure all day, nothing planned in it, "two working days before" skips it, work's reminders wait until work comes back, and the agenda shades it. Each device knows the holidays from its own copy of the calendar: one that has not read it yet does not know them, and its line says so.
 
