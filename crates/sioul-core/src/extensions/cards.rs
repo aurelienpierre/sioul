@@ -19,19 +19,35 @@
 //!    address equal case aside. One card: it is bound (the mark written on
 //!    it). Several: the one whose name has the same words whatever their
 //!    order (`name_words`), else the first by file name. **A name alone never
-//!    binds**: two people share a name.
+//!    binds**: two people share a name. A number or an address several
+//!    people of the set share (a parent and a child, one landline) binds only
+//!    the one whose name has the same words as the card's; the others get
+//!    cards of their own (`pick`, `Sharing`).
 //! 3. **Else a new card** in the chosen book (`new_card`): its UID the mark,
 //!    its file named from it (`super::card_file`), `FN` the name as given,
 //!    `N` only from the given and family names the extension keeps apart
 //!    (never guessed from one string), the numbers, the addresses, `ORG`,
 //!    `NOTE`, the extension's name as its category, the mark and the hash.
-//! 4. **Additive only**, on every card, bound or made (`completed`): a number
-//!    or an address the card lacks (by the same keys) is added; `ORG` and
-//!    `NOTE` only where the card has none; `FN` follows the extension's name
-//!    only while it is still the one the door wrote last, and `N` likewise
-//!    (hashes of them in this device's notes: a card the person renamed keeps
-//!    its name). **Nothing is ever removed or replaced**: a number the
-//!    service dropped stays on the card until the person takes it off.
+//! 4. **A card of someone who reaches the person in a special way is bound
+//!    and left as it is** (`Trust`): a service's records are typed by others
+//!    (a client booking with someone else's address and a number of their
+//!    own), and a number added to a trusted card would make its caller that
+//!    person, on every device. So on a card the door did not make, nothing
+//!    but the mark is written (`with_mark_alone`) while Sioul's lists judge
+//!    it anything but a plain contact: safe, one of the person's people,
+//!    admitted through do-not-disturb (Always through), restricted or
+//!    blocked, by the card itself and by the numbers and addresses it holds.
+//!    Such cards are counted (`Done::recognised`). Made plain later, the card
+//!    is completed at a later refresh; one completed before it became
+//!    trusted keeps what it has.
+//! 5. **Additive only**, on the others, a card the door made or a plain
+//!    contact it bound (`completed`): a number or an address the card lacks
+//!    (by the same keys) is added; `ORG` and `NOTE` only where the card has
+//!    none; `FN` follows the extension's name only while it is still the one
+//!    the door wrote last, and `N` likewise (hashes of them in this device's
+//!    notes: a card the person renamed keeps its name). **Nothing is ever
+//!    removed or replaced**: a number the service dropped stays on the card
+//!    until the person takes it off.
 //!
 //! - **The door never deletes a card**: someone gone from the reply keeps
 //!   theirs as it is; Remove leaves every card (`forget`: this device's notes
@@ -111,6 +127,62 @@ pub struct Done {
     pub refused: usize,
     /// A person whose card's file name is taken by a card that is not theirs: left out.
     pub clash: usize,
+    /// Cards of people who reach the person in a special way, bound and left
+    /// as they are but for the mark (the module's step 4).
+    pub recognised: usize,
+}
+
+/// What Sioul's lists say of the person's cards, for the trust guard (the
+/// module's step 4): the lists of who may reach the person with their
+/// address books and their people (`porch::Senders`), and do-not-disturb's
+/// Always through (`everywhere::People`), as they stand on this device.
+#[derive(Debug, Clone, Default)]
+pub struct Trust {
+    senders: crate::porch::Senders,
+    always: crate::everywhere::People,
+    /// Each card of the address books' index by its file, and by its UID, the first of each.
+    by_file: std::collections::HashMap<String, usize>,
+    by_uid: std::collections::HashMap<String, usize>,
+}
+
+impl Trust {
+    pub fn new(senders: crate::porch::Senders, always: crate::everywhere::People) -> Trust {
+        let (mut by_file, mut by_uid) = (std::collections::HashMap::new(), std::collections::HashMap::new());
+        for index in 0..senders.contacts.len() {
+            let Some(card) = senders.contacts.card(index) else { continue };
+            by_file.entry(card.key.clone()).or_insert(index);
+            if !card.uid.is_empty() {
+                by_uid.entry(card.uid.clone()).or_insert(index);
+            }
+        }
+        Trust { senders, always, by_file, by_uid }
+    }
+
+    /// As this device's lists and address books stand now.
+    pub fn load(config: &crate::config::Config) -> Trust {
+        Trust::new(crate::porch::Senders::load(config), crate::everywhere::People::load(&crate::everywhere::People::default_path()))
+    }
+
+    /// Whether the card at `path` (its lines `card`) is anything but a plain
+    /// contact: by the card itself (its own entry on a list, its groups, one
+    /// of the person's people: `Senders::judge_card_at`), by each of its
+    /// numbers and addresses (`judge_number`, `judge`), safe, restricted or
+    /// blocked; or admitted through do-not-disturb, by one of its numbers,
+    /// one of its addresses or the card itself.
+    pub fn special(&self, path: &Path, card: &[String]) -> bool {
+        use crate::reach::Who;
+        let marked = |judged: &crate::porch::Judged| judged.circle || matches!(judged.who, Who::Safe | Who::Restricted | Who::Blocked);
+        let uid = uid_of(card);
+        let place = self.by_file.get(&path.display().to_string()).or_else(|| self.by_uid.get(&uid));
+        if place.and_then(|at| self.senders.judge_card_at(*at)).is_some_and(|judged| marked(&judged)) {
+            return true;
+        }
+        let region = self.senders.region();
+        let shown = |property: &'static str| card.iter().filter(move |l| lines::name(l) == property).map(|l| contacts::shown(l)).filter(|v| !v.is_empty());
+        shown("TEL").any(|number| marked(&self.senders.judge_number(&number)) || self.always.admits_number(&number, region))
+            || shown("EMAIL").any(|address| marked(&self.senders.judge(&address)) || self.always.admits_address(&address))
+            || (!uid.is_empty() && self.always.people.iter().any(|p| p.contact.trim() == uid))
+    }
 }
 
 /// Whether an address book may receive an extension's contacts: one of the
@@ -190,6 +262,10 @@ struct Held {
     writable: bool,
     /// The hash it keeps for its mark.
     hash: Option<String>,
+    /// The door made it: its UID is the mark.
+    made: bool,
+    /// Sioul's lists judge it anything but a plain contact (`Trust::special`).
+    special: bool,
 }
 
 /// A card of the chosen book that no person of the set holds yet: what a
@@ -198,6 +274,8 @@ struct Held {
 struct Candidate {
     path: PathBuf,
     words: Vec<String>,
+    /// Sioul's lists judge it anything but a plain contact (`Trust::special`).
+    special: bool,
 }
 
 /// What the address books hold for a set: its cards by mark, in any book
@@ -212,7 +290,7 @@ struct Found {
     by_email: BTreeMap<String, Vec<usize>>,
 }
 
-fn scan(extension: &str, set: &str, chosen: &vdir::Collection, region: Option<&Region>) -> Found {
+fn scan(extension: &str, set: &str, chosen: &vdir::Collection, region: Option<&Region>, trust: &Trust) -> Found {
     let key = super::set_key(extension, set);
     let ours = |mark: &str| super::uid_mark(mark).is_some_and(|m| m.extension == extension && m.agenda == key);
     let mut books = vdir::collections(vdir::Kind::Contacts);
@@ -224,12 +302,15 @@ fn scan(extension: &str, set: &str, chosen: &vdir::Collection, region: Option<&R
         for path in book.items() {
             let Some(card) = read_card(&path) else { continue };
             let uid = uid_of(&card);
-            let mut marks: Vec<String> = card.iter().filter(|l| lines::raw_name(l) == MARK_LINE).map(|l| lines::value(l).trim().to_string()).chain(std::iter::once(uid)).filter(|m| ours(m)).collect();
+            let mut marks: Vec<String> = card.iter().filter(|l| lines::raw_name(l) == MARK_LINE).map(|l| lines::value(l).trim().to_string()).chain(std::iter::once(uid.clone())).filter(|m| ours(m)).collect();
             marks.dedup();
             if !marks.is_empty() {
+                // Judged once, and only for a card the door did not make: the guard is for the person's own.
+                let special = marks.iter().any(|m| *m != uid) && trust.special(&path, &card);
                 for mark in marks {
                     let hash = hash_on(&card, &mark);
-                    found.held.entry(mark).or_insert_with(|| Held { path: path.clone(), writable: can_write, hash });
+                    let made = mark == uid;
+                    found.held.entry(mark).or_insert_with(|| Held { path: path.clone(), writable: can_write, hash, made, special });
                 }
             } else if is_chosen {
                 let at = found.candidates.len();
@@ -245,29 +326,75 @@ fn scan(extension: &str, set: &str, chosen: &vdir::Collection, region: Option<&R
                         list.push(at);
                     }
                 }
-                found.candidates.push(Candidate { path, words: name_words(&contacts::display_name(&card)) });
+                let special = trust.special(&path, &card);
+                found.candidates.push(Candidate { path, words: name_words(&contacts::display_name(&card)), special });
             }
         }
     }
     found
 }
 
-/// The card of the chosen book that is this person, by proof alone (the
-/// module's step 2), among those no other person took in this refresh.
-fn pick(found: &Found, taken: &BTreeSet<usize>, person: &Person, region: Option<&Region>) -> Option<usize> {
-    let gather = |index: &BTreeMap<String, Vec<usize>>, keys: Vec<String>| {
-        let mut all: Vec<usize> = keys.iter().filter_map(|k| index.get(k)).flatten().copied().filter(|i| !taken.contains(i)).collect();
-        all.sort_unstable();
-        all.dedup();
-        all
-    };
-    let phones = person.phones.iter().map(|p| crate::phones::key(p, region)).filter(|k| crate::phones::is_whole(k)).collect();
-    let mut matched = gather(&found.by_phone, phones);
-    if matched.is_empty() {
-        matched = gather(&found.by_email, person.emails.iter().map(|e| crate::duplicates::email_key(e)).filter(|e| !e.is_empty()).collect());
+/// A person's numbers that prove who they are (whole ones, keyed), each once.
+fn proving_phones(person: &Person, region: Option<&Region>) -> Vec<String> {
+    let mut keys: Vec<String> = person.phones.iter().map(|p| crate::phones::key(p, region)).filter(|k| crate::phones::is_whole(k)).collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// A person's e-mail addresses, case aside, each once.
+fn proving_emails(person: &Person) -> Vec<String> {
+    let mut keys: Vec<String> = person.emails.iter().map(|e| crate::duplicates::email_key(e)).filter(|e| !e.is_empty()).collect();
+    keys.sort();
+    keys.dedup();
+    keys
+}
+
+/// How many people of a set hold each number and each address (keyed): one
+/// several of them share proves none of them alone (a parent and a child,
+/// one landline).
+#[derive(Debug, Default)]
+struct Sharing {
+    phones: BTreeMap<String, usize>,
+    emails: BTreeMap<String, usize>,
+}
+
+impl Sharing {
+    fn of(people: &[Person], region: Option<&Region>) -> Sharing {
+        let mut sharing = Sharing::default();
+        for person in people {
+            for key in proving_phones(person, region) {
+                *sharing.phones.entry(key).or_default() += 1;
+            }
+            for key in proving_emails(person) {
+                *sharing.emails.entry(key).or_default() += 1;
+            }
+        }
+        sharing
     }
+}
+
+/// The card of the chosen book that is this person, by proof alone (the
+/// module's step 2), among those no other person took in this refresh: by
+/// their numbers, else by their addresses. Of the cards a key reaches, the
+/// one whose name has the same words as theirs; else the first by file name
+/// that a key of theirs alone reaches (one no other person of the set
+/// holds); a card reached only by a key several of them share is theirs only
+/// by its name.
+fn pick(found: &Found, taken: &BTreeSet<usize>, person: &Person, region: Option<&Region>, sharing: &Sharing) -> Option<usize> {
     let words = name_words(&person.name);
-    matched.iter().copied().find(|i| found.candidates[*i].words == words).or_else(|| matched.first().copied())
+    let by = |index: &BTreeMap<String, Vec<usize>>, keys: Vec<String>, shared: &BTreeMap<String, usize>| {
+        // Each card reached, in file order, and whether a key of this person's alone reached it.
+        let mut reached: BTreeMap<usize, bool> = BTreeMap::new();
+        for key in &keys {
+            let alone = shared.get(key).copied().unwrap_or(0) < 2;
+            for &at in index.get(key).into_iter().flatten().filter(|at| !taken.contains(at)) {
+                *reached.entry(at).or_insert(false) |= alone;
+            }
+        }
+        reached.keys().copied().find(|at| found.candidates[*at].words == words).or_else(|| reached.iter().find(|(_, alone)| **alone).map(|(at, _)| *at))
+    };
+    by(&found.by_phone, proving_phones(person, region), &sharing.phones).or_else(|| by(&found.by_email, proving_emails(person), &sharing.emails))
 }
 
 /// What this device keeps of one person's card: the hash of the person as
@@ -467,6 +594,17 @@ fn completed(text: &str, person: &Person, mark: &str, hash: &str, note: Option<&
     (Some(contacts::rewritten(out, added)), kept)
 }
 
+/// A card of someone who reaches the person in a special way, bound (the
+/// module's step 4): the mark written before its end, every other byte as it
+/// was, its own line endings kept. None when the card has no end.
+fn with_mark_alone(text: &str, mark: &str) -> Option<String> {
+    let upper = text.to_ascii_uppercase();
+    let end = upper.rmatch_indices("END:VCARD").map(|(at, _)| at).find(|&at| at == 0 || text.as_bytes()[at - 1] == b'\n')?;
+    let line = lines::fold(&[format!("{MARK_LINE}:{mark}")]);
+    let line = if text.contains("\r\n") { line } else { line.replace("\r\n", "\n") };
+    Some(format!("{}{line}{}", &text[..end], &text[end..]))
+}
+
 /// What a refresh does for one person, planned before anything is written.
 enum Act {
     /// Their card is as the service last gave them.
@@ -477,6 +615,12 @@ enum Act {
     Update(PathBuf),
     /// A card of the chosen book found to be them (an index of `Found::candidates`).
     Bind(usize),
+    /// Their card is someone's who reaches the person in a special way
+    /// (`Trust::special`), bound already: left as it is.
+    Recognised,
+    /// A card of the chosen book found to be them, someone's who reaches the
+    /// person in a special way: bound, its mark alone written (an index of `Found::candidates`).
+    MarkAlone(usize),
     /// A new card, its file, its text and what this device notes of it.
     Make(PathBuf, String, Note),
     /// The file their new card would take holds another card.
@@ -485,15 +629,18 @@ enum Act {
 
 /// A set of contacts written through the contacts' door (the module's
 /// rules) into `book`, numbers keyed in `region` (the Contacts settings'
-/// country, `reach::region`). The book is checked and every card the door
-/// would make weighed before anything is written; past a bound, nothing is.
-/// Nothing at all is written, this device's notes included, when nothing differs.
-pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: Option<&Region>) -> Result<Done, Problem> {
+/// country, `reach::region`), the person's cards judged by `trust` (the
+/// lists as they stand: `Trust::load`). The book is checked and every card
+/// the door would make weighed before anything is written; past a bound,
+/// nothing is. Nothing at all is written, this device's notes included,
+/// when nothing differs.
+pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: Option<&Region>, trust: &Trust) -> Result<Done, Problem> {
     if !writable(book) {
         return Err(Problem::BookGone);
     }
     let category = super::category(extension);
-    let found = scan(extension, &set.id, book, region);
+    let found = scan(extension, &set.id, book, region, trust);
+    let sharing = Sharing::of(&set.people, region);
     let mut noted = load_noted(extension);
     let mut taken = BTreeSet::new();
     let mut acts: Vec<(String, String, Act)> = Vec::with_capacity(set.people.len());
@@ -502,16 +649,19 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
         let hash = person_hash(person);
         let act = if let Some(there) = found.held.get(&mark) {
             let known = there.hash.as_deref() == Some(hash.as_str()) || noted.cards.get(&mark).is_some_and(|n| n.hash == hash);
-            if known {
+            // The person's own card of someone who reaches them in a special way: its mark is there, nothing more.
+            if !there.made && there.special {
+                Act::Recognised
+            } else if known {
                 Act::Unchanged
             } else if !there.writable {
                 Act::Left
             } else {
                 Act::Update(there.path.clone())
             }
-        } else if let Some(at) = pick(&found, &taken, person, region) {
+        } else if let Some(at) = pick(&found, &taken, person, region, &sharing) {
             taken.insert(at);
-            Act::Bind(at)
+            if found.candidates[at].special { Act::MarkAlone(at) } else { Act::Bind(at) }
         } else {
             let path = book.dir.join(super::card_file(&mark));
             if path.exists() {
@@ -540,6 +690,23 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
             }
             Act::Clash => {
                 done.clash += 1;
+                continue;
+            }
+            Act::Recognised => {
+                done.recognised += 1;
+                continue;
+            }
+            // The mark alone, every other byte as it was; nothing noted, so that a card
+            // made plain later is completed at a later refresh.
+            Act::MarkAlone(at) => {
+                let path = &found.candidates[at].path;
+                match std::fs::read_to_string(path).ok().and_then(|text| with_mark_alone(&text, &mark)).ok_or_else(|| "a card that does not read".to_string()).and_then(|text| vdir::write_item(path, &text)) {
+                    Ok(()) => done.recognised += 1,
+                    Err(why) => {
+                        eprintln!("sioul: extensions: {extension}: a card not bound: {why}");
+                        done.refused += 1;
+                    }
+                }
                 continue;
             }
             Act::Make(path, text, note) => {
@@ -678,6 +845,16 @@ mod tests {
         path
     }
 
+    /// The lists of no one: every card a plain contact.
+    fn plain() -> Trust {
+        Trust::default()
+    }
+
+    /// The contacts of one address book, as Sioul reads them.
+    fn contacts_in(book: &vdir::Collection) -> Vec<contacts::Contact> {
+        book.items().iter().filter_map(|p| contacts::read(p, book)).collect()
+    }
+
     /// The file of the card the door made for a person.
     fn made_at(book: &vdir::Collection, extension: &str, id: &str) -> PathBuf {
         book.dir.join(card_file(&person_mark(extension, "clients", id)))
@@ -695,7 +872,7 @@ mod tests {
             { "id": "client-41", "name": "Marie Exemple", "given": "Marie", "family": "Exemple", "phones": ["+33 1 23 45 67 89", "01 23 45 67 89"], "emails": ["marie@example.org"], "org": "Exemple; SARL", "note": "Likes tea.\nAnd cake." },
             { "id": "client-42", "name": "EXEMPLE Jean" }
         ]));
-        let done = take(EXT, &reply, &book, fr()).unwrap();
+        let done = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((done.people, done.made, done.bound, done.refused), (2, 2, 0, 0));
         let mark = person_mark(EXT, "clients", "client-41");
         let path = made_at(&book, EXT, "client-41");
@@ -719,11 +896,11 @@ mod tests {
         let contact = contacts::read(&path, &book).unwrap();
         assert_eq!((contact.name.as_str(), contact.org.as_str(), contact.notes.as_str(), contact.given.as_str(), contact.family.as_str()), ("Marie Exemple", "Exemple; SARL", "Likes tea.\nAnd cake.", "Marie", "Exemple"));
         assert_eq!(contact.categories, vec!["Cards-new".to_string()]);
-        let plain = text_at(&made_at(&book, EXT, "client-42"));
-        assert!(plain.contains("FN:EXEMPLE Jean\r\n") && !plain.contains("\r\nN:"), "no name guessed from one string:\n{plain}");
+        let bare = text_at(&made_at(&book, EXT, "client-42"));
+        assert!(bare.contains("FN:EXEMPLE Jean\r\n") && !bare.contains("\r\nN:"), "no name guessed from one string:\n{bare}");
         // The same reply again: nothing written, not even this device's notes.
         let (before, notes) = (files(&book.dir), std::fs::read(noted_path(EXT)).unwrap());
-        let again = take(EXT, &reply, &book, fr()).unwrap();
+        let again = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((again.made, again.updated, again.unchanged), (0, 0, 2));
         assert_eq!(files(&book.dir), before);
         assert_eq!(std::fs::read(noted_path(EXT)).unwrap(), notes);
@@ -739,7 +916,7 @@ mod tests {
         let book = book("Cards bind");
         let mine = own(&book, "own-1.vcf", &["UID:own-1@example.org", "FN:Marie E.", "TEL;TYPE=CELL:01.23.45.67.89", "X-OTHER-APP:kept"]);
         let reply = set(json!([{ "id": "c-1", "name": "Marie Exemple", "given": "Marie", "family": "Exemple", "phones": ["+33 1 23 45 67 89"], "emails": ["marie@example.org"], "org": "Salon" }]));
-        let done = take(EXT, &reply, &book, fr()).unwrap();
+        let done = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((done.bound, done.made), (1, 0));
         assert_eq!(cards(&book.dir), vec!["own-1.vcf".to_string()], "no card made beside it");
         let text = text_at(&mine);
@@ -751,7 +928,7 @@ mod tests {
         assert!(!text.contains("CATEGORIES"), "a card of the person's own keeps its groups");
         // The service renames her: the person's own name stays; nothing else of the card changes.
         let renamed = set(json!([{ "id": "c-1", "name": "Marie Exemple-Martin", "phones": ["+33 1 23 45 67 89"], "emails": ["marie@example.org"], "org": "Salon" }]));
-        take(EXT, &renamed, &book, fr()).unwrap();
+        take(EXT, &renamed, &book, fr(), &plain()).unwrap();
         assert!(text_at(&mine).contains("FN:Marie E.\r\n"));
     }
 
@@ -766,7 +943,7 @@ mod tests {
         let short = own(&book, "own-2.vcf", &["UID:own-2@example.org", "FN:Help line", "TEL:3631"]);
         let (first, second) = (std::fs::read(&same_name).unwrap(), std::fs::read(&short).unwrap());
         let reply = set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["07 22 22 22 22", "3631"], "emails": ["marie@example.org"] }]));
-        let done = take(EXT, &reply, &book, fr()).unwrap();
+        let done = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((done.made, done.bound), (1, 0));
         assert_eq!((std::fs::read(&same_name).unwrap(), std::fs::read(&short).unwrap()), (first, second));
         assert!(made_at(&book, EXT, "c-1").exists());
@@ -786,19 +963,119 @@ mod tests {
             { "id": "c-1", "name": "Marie Exemple", "phones": ["0123456789"] },
             { "id": "c-2", "name": "Jean Exemple", "phones": ["0033 1 23 45 67 89"] }
         ]));
-        let done = take(EXT, &reply, &book, fr()).unwrap();
+        let done = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((done.bound, done.made), (2, 0));
         assert!(text_at(&marie).contains(&format!("{MARK_LINE}:{}", person_mark(EXT, "clients", "c-1"))));
         assert!(text_at(&jean).contains(&format!("{MARK_LINE}:{}", person_mark(EXT, "clients", "c-2"))));
         // Another extension's person of that number, whose name neither card has: the first by file name.
         let other = set(json!([{ "id": "p-9", "name": "Paul Exemple", "phones": ["01 23 45 67 89"] }]));
-        assert_eq!(take("cards-words-other", &other, &book, fr()).unwrap().bound, 1);
+        assert_eq!(take("cards-words-other", &other, &book, fr(), &plain()).unwrap().bound, 1);
         let text = text_at(&jean);
         assert!(text.contains(&format!("{MARK_LINE}:{}", person_mark("cards-words-other", "clients", "p-9"))), "{text}");
         assert_eq!(text.matches(&format!("{HASH_LINE}:")).count(), 2, "a hash for each mark:\n{text}");
         // Each refresh again finds its own card, changes nothing.
-        assert_eq!(take(EXT, &reply, &book, fr()).unwrap().unchanged, 2);
-        assert_eq!(take("cards-words-other", &other, &book, fr()).unwrap().unchanged, 1);
+        assert_eq!(take(EXT, &reply, &book, fr(), &plain()).unwrap().unchanged, 2);
+        assert_eq!(take("cards-words-other", &other, &book, fr(), &plain()).unwrap().unchanged, 1);
+    }
+
+    /// The trust guard (step 4): a card of the person's own that Sioul's
+    /// lists judge anything but a plain contact (safe by its own entry, one
+    /// of the person's people, admitted through do-not-disturb, restricted
+    /// by its group, blocked by its number) is bound, its mark alone written,
+    /// every other byte as it was; a plain contact gains what it lacks. Each
+    /// refresh counts them again and writes nothing; made plain, they are
+    /// completed at a later refresh; one completed before it became trusted
+    /// keeps what it has and gains nothing more.
+    #[test]
+    fn a_card_of_someone_who_reaches_the_person_in_a_special_way_gets_its_mark_alone() {
+        use crate::persons::{Circle, Person as Someone, Persons};
+        use crate::porch::{Book, SenderList, Senders};
+        const EXT: &str = "cards-trust";
+        let book = book("Cards trust");
+        let card = |file: &str, uid: &str, name: &str, number: &str, group: &str| {
+            let mut lines = vec![format!("UID:{uid}"), format!("FN:{name}"), format!("TEL:{number}"), "REV:20200101T000000Z".to_string()];
+            if !group.is_empty() {
+                lines.push(format!("CATEGORIES:{group}"));
+            }
+            own(&book, file, &lines.iter().map(String::as_str).collect::<Vec<_>>())
+        };
+        let special = [
+            card("1-safe.vcf", "safe-1@example.org", "Sam Exemple", "01 23 45 60 01", ""),
+            card("2-circle.vcf", "circle-1@example.org", "Lou Exemple", "01 23 45 60 02", ""),
+            card("3-always.vcf", "always-1@example.org", "Ana Exemple", "01 23 45 60 03", ""),
+            card("4-restricted.vcf", "restricted-1@example.org", "Rita Exemple", "01 23 45 60 04", "Clients"),
+            card("5-blocked.vcf", "blocked-1@example.org", "Bob Exemple", "01 23 45 60 05", ""),
+        ];
+        let ordinary = card("6-plain.vcf", "plain-1@example.org", "Paula Exemple", "01 23 45 60 06", "");
+        let before: Vec<String> = special.iter().map(|p| std::fs::read_to_string(p).unwrap()).collect();
+        let mut persons = Persons::default();
+        persons.put(Someone { name: "Lou".into(), relation: "child".into(), cards: vec!["circle-1@example.org".into()], ..Someone::default() });
+        let always = crate::everywhere::People { people: vec![crate::everywhere::Person { name: "Ana".into(), phones: vec!["+33 1 23 45 60 03".into()], ..crate::everywhere::Person::default() }], ..crate::everywhere::People::default() };
+        let lists = |safe: &str| {
+            let senders = Senders {
+                safe: SenderList::parse(safe),
+                restricted: SenderList::parse("category:Clients"),
+                blocked: SenderList::parse("tel:+33123456005"),
+                contacts: std::sync::Arc::new(Book::of(&contacts_in(&book), fr())),
+                circle: std::sync::Arc::new(Circle::of(&persons, jiff::civil::date(2026, 11, 23))),
+                ..Senders::default()
+            };
+            Trust::new(senders, always.clone())
+        };
+        let people = |phone: &str| json!((1..=6).map(|n| json!({ "id": format!("c-{n}"), "name": format!("Client {n}"), "phones": [format!("+33 1 23 45 60 0{n}"), phone], "emails": [format!("client{n}@example.org")], "org": "Salon" })).collect::<Vec<_>>());
+        let reply = set(people(""));
+        let done = take(EXT, &reply, &book, fr(), &lists("contact:safe-1@example.org")).unwrap();
+        assert_eq!((done.recognised, done.bound, done.made, done.refused), (5, 1, 0, 0), "{done:?}");
+        for (n, (path, was)) in special.iter().zip(&before).enumerate() {
+            let mark = lines::fold(&[format!("{MARK_LINE}:{}", person_mark(EXT, "clients", &format!("c-{}", n + 1)))]);
+            assert_eq!(std::fs::read_to_string(path).unwrap(), was.replace("END:VCARD\r\n", &format!("{mark}END:VCARD\r\n")), "the mark alone, every other byte as it was: {}", path.display());
+        }
+        let text = text_at(&ordinary);
+        assert!(text.contains("EMAIL;TYPE=INTERNET:client6@example.org\r\n") && text.contains("ORG:Salon\r\n"), "a plain contact gains what it lacks:\n{text}");
+        // Again: counted again, nothing written.
+        let files_before = files(&book.dir);
+        let again = take(EXT, &reply, &book, fr(), &lists("contact:safe-1@example.org")).unwrap();
+        assert_eq!((again.recognised, again.unchanged, again.updated), (5, 1, 0));
+        assert_eq!(files(&book.dir), files_before);
+        // The plain card becomes trusted (its number now safe) and the service adds a number: it keeps what it has, gains nothing.
+        let added = set(people("07 00 00 00 99"));
+        let trusted = take(EXT, &added, &book, fr(), &lists("contact:safe-1@example.org\ntel:+33123456006")).unwrap();
+        assert_eq!((trusted.recognised, trusted.updated), (6, 0));
+        assert_eq!(text_at(&ordinary), text, "nothing removed, nothing added");
+        // Lists that judge no one any more: each card is completed at the next refresh.
+        let plain_now = take(EXT, &added, &book, fr(), &plain()).unwrap();
+        assert_eq!((plain_now.recognised, plain_now.updated), (0, 6));
+        let safe = text_at(&special[0]);
+        assert!(safe.contains("EMAIL;TYPE=INTERNET:client1@example.org\r\n") && safe.contains("TEL:07 00 00 00 99\r\n") && safe.contains("FN:Sam Exemple\r\n"), "{safe}");
+    }
+
+    /// A number several people of the set share (one landline) binds only
+    /// the one whose name has the same words as the card's, wherever they
+    /// come in the reply; the others get cards of their own; neither name
+    /// fitting, each gets a card of their own and the card stays as it is.
+    #[test]
+    fn a_number_several_people_share_binds_the_namesake_alone() {
+        // Each round its own book: a card one round made would be another's to find.
+        let home_in = |name: &str| {
+            let book = book(name);
+            let home = own(&book, "home.vcf", &["UID:home-1@example.org", "FN:Exemple Marie", "TEL:01 23 45 67 00"]);
+            (book, home)
+        };
+        let jean = json!({ "id": "c-1", "name": "Jean Exemple", "phones": ["01 23 45 67 00"] });
+        let marie = json!({ "id": "c-2", "name": "Marie Exemple", "phones": ["+33 1 23 45 67 00"] });
+        for (ext, people) in [("cards-shared-last", json!([jean, marie])), ("cards-shared-first", json!([marie, jean]))] {
+            let (book, home) = home_in(&format!("Cards {ext}"));
+            let done = take(ext, &set(people), &book, fr(), &plain()).unwrap();
+            assert_eq!((done.bound, done.made), (1, 1), "{ext}");
+            assert!(text_at(&home).contains(&format!("{MARK_LINE}:{}", person_mark(ext, "clients", "c-2"))), "{ext}: the namesake binds");
+            assert!(made_at(&book, ext, "c-1").exists() && !made_at(&book, ext, "c-2").exists(), "{ext}: the other has a card of their own");
+        }
+        let (book, home) = home_in("Cards shared none");
+        let was = std::fs::read(&home).unwrap();
+        let others = set(json!([{ "id": "c-1", "name": "Paul Exemple", "phones": ["01 23 45 67 00"] }, { "id": "c-2", "name": "Lou Exemple", "phones": ["01 23 45 67 00"] }]));
+        let done = take("cards-shared-none", &others, &book, fr(), &plain()).unwrap();
+        assert_eq!((done.bound, done.made), (0, 2));
+        assert_eq!(std::fs::read(&home).unwrap(), was, "neither name fits: the card stays as it is");
     }
 
     /// Additive only: a number the service dropped stays on the card; one it
@@ -808,12 +1085,12 @@ mod tests {
         const EXT: &str = "cards-dropped";
         let book = book("Cards dropped");
         let path = made_at(&book, EXT, "c-1");
-        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89", "06 12 34 56 78"], "note": "First note." }])), &book, fr()).unwrap();
-        let dropped = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89"], "note": "Another note." }])), &book, fr()).unwrap();
+        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89", "06 12 34 56 78"], "note": "First note." }])), &book, fr(), &plain()).unwrap();
+        let dropped = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89"], "note": "Another note." }])), &book, fr(), &plain()).unwrap();
         assert_eq!((dropped.updated, dropped.unchanged), (0, 1), "nothing to add: nothing written");
         let text = text_at(&path);
         assert!(text.contains("TEL:06 12 34 56 78\r\n") && text.contains("NOTE:First note.\r\n") && !text.contains("Another note"), "{text}");
-        let added = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89", "07 98 76 54 32"] }])), &book, fr()).unwrap();
+        let added = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89", "07 98 76 54 32"] }])), &book, fr(), &plain()).unwrap();
         assert_eq!(added.updated, 1);
         let text = text_at(&path);
         assert!(text.contains("TEL:06 12 34 56 78\r\n") && text.contains("TEL:07 98 76 54 32\r\n") && text.contains("TEL:01 23 45 67 89\r\n"), "{text}");
@@ -825,17 +1102,17 @@ mod tests {
     fn a_name_changed_by_the_service_follows_on_a_made_card_alone() {
         const EXT: &str = "cards-renamed";
         let book = book("Cards renamed");
-        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "given": "Marie", "family": "Exemple" }, { "id": "c-2", "name": "Jean Exemple" }])), &book, fr()).unwrap();
+        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple", "given": "Marie", "family": "Exemple" }, { "id": "c-2", "name": "Jean Exemple" }])), &book, fr(), &plain()).unwrap();
         let (marie, jean) = (made_at(&book, EXT, "c-1"), made_at(&book, EXT, "c-2"));
         let by_hand = std::fs::read_to_string(&jean).unwrap().replace("FN:Jean Exemple", "FN:Jean-Pierre Exemple");
         std::fs::write(&jean, by_hand).unwrap();
-        let done = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple-Martin", "given": "Marie", "family": "Exemple-Martin" }, { "id": "c-2", "name": "Jean Exemple-Martin" }])), &book, fr()).unwrap();
+        let done = take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple-Martin", "given": "Marie", "family": "Exemple-Martin" }, { "id": "c-2", "name": "Jean Exemple-Martin" }])), &book, fr(), &plain()).unwrap();
         assert_eq!(done.updated, 1, "the card renamed by hand has nothing to gain");
         let text = text_at(&marie);
         assert!(text.contains("FN:Marie Exemple-Martin\r\n") && text.contains("N:Exemple-Martin;Marie;;;\r\n") && !text.contains("FN:Marie Exemple\r\n"), "{text}");
         assert!(text_at(&jean).contains("FN:Jean-Pierre Exemple\r\n"), "the person's name stays");
         // Renamed again at the service: it follows again, the door's name being the last it wrote.
-        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Martin", "given": "Marie", "family": "Martin" }])), &book, fr()).unwrap();
+        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Martin", "given": "Marie", "family": "Martin" }])), &book, fr(), &plain()).unwrap();
         let text = text_at(&marie);
         assert!(text.contains("FN:Marie Martin\r\n") && text.contains("N:Martin;Marie;;;\r\n"), "{text}");
         assert_eq!(text.matches("FN:").count(), 1, "replaced in its place, never added beside:\n{text}");
@@ -847,10 +1124,10 @@ mod tests {
     fn someone_gone_from_the_reply_keeps_their_card() {
         const EXT: &str = "cards-gone";
         let book = book("Cards gone");
-        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple" }, { "id": "c-2", "name": "Jean Exemple" }])), &book, fr()).unwrap();
+        take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple" }, { "id": "c-2", "name": "Jean Exemple" }])), &book, fr(), &plain()).unwrap();
         let before = files(&book.dir);
-        assert_eq!(take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple" }])), &book, fr()).unwrap().people, 1);
-        assert_eq!(take(EXT, &set(json!([])), &book, fr()).unwrap(), Done::default());
+        assert_eq!(take(EXT, &set(json!([{ "id": "c-1", "name": "Marie Exemple" }])), &book, fr(), &plain()).unwrap().people, 1);
+        assert_eq!(take(EXT, &set(json!([])), &book, fr(), &plain()).unwrap(), Done::default());
         assert_eq!(files(&book.dir), before);
     }
 
@@ -864,17 +1141,17 @@ mod tests {
         let first = book("Cards moved one");
         let bound = own(&first, "own-1.vcf", &["UID:own-1@example.org", "FN:Marie Exemple", "TEL:01 23 45 67 89"]);
         let reply = set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89"] }, { "id": "c-2", "name": "Jean Exemple" }]));
-        let done = take(EXT, &reply, &first, fr()).unwrap();
+        let done = take(EXT, &reply, &first, fr(), &plain()).unwrap();
         assert_eq!((done.bound, done.made), (1, 1));
         let staff = ContactSet { id: "staff".into(), name: "Staff".into(), people: set(json!([{ "id": "s-1", "name": "Sam Exemple" }])).people };
-        take(EXT, &staff, &first, fr()).unwrap();
+        take(EXT, &staff, &first, fr(), &plain()).unwrap();
         let second = book("Cards moved two");
         assert_eq!(move_made(&first, &second, EXT, "clients"), (1, 0));
         assert_eq!(cards(&second.dir), vec![card_file(&person_mark(EXT, "clients", "c-2"))]);
         assert!(bound.exists() && text_at(&bound).contains(MARK_LINE), "the bound card stays, still bound");
         assert!(first.dir.join(card_file(&person_mark(EXT, "staff", "s-1"))).exists(), "another set's card stays");
         let (one, two) = (files(&first.dir), files(&second.dir));
-        let again = take(EXT, &reply, &second, fr()).unwrap();
+        let again = take(EXT, &reply, &second, fr(), &plain()).unwrap();
         assert_eq!((again.made, again.bound, again.unchanged), (0, 0, 2), "each found where it is");
         assert_eq!((files(&first.dir), files(&second.dir)), (one.clone(), two.clone()));
         // Remove: this device's notes go; every card stays as it is.
@@ -892,7 +1169,7 @@ mod tests {
         let book = book("Cards bounds");
         let mut heavy = set(json!([{ "id": "c-1", "name": "Marie Exemple" }, { "id": "c-2", "name": "Jean Exemple" }]));
         heavy.people[1].note = "n".repeat(MOST_FILE_BYTES);
-        assert_eq!(take(EXT, &heavy, &book, fr()), Err(Problem::TooLarge));
+        assert_eq!(take(EXT, &heavy, &book, fr(), &plain()), Err(Problem::TooLarge));
         assert!(cards(&book.dir).is_empty() && !noted_path(EXT).exists());
     }
 
@@ -905,13 +1182,13 @@ mod tests {
         let read_only = book("Cards read only");
         vdir::State { read_only: true, ..vdir::State::default() }.save(&read_only.state_path()).unwrap();
         let read_only = book_at(&format!("{LOCAL}/{}", read_only.id)).unwrap();
-        assert_eq!(take(EXT, &reply, &read_only, fr()), Err(Problem::BookGone));
+        assert_eq!(take(EXT, &reply, &read_only, fr(), &plain()), Err(Problem::BookGone));
         let refused = book("Cards refused");
         vdir::State { refused: true, ..vdir::State::default() }.save(&refused.state_path()).unwrap();
-        assert_eq!(take(EXT, &reply, &refused, fr()), Err(Problem::BookGone));
+        assert_eq!(take(EXT, &reply, &refused, fr(), &plain()), Err(Problem::BookGone));
         let gone = book("Cards gone away");
         std::fs::remove_dir_all(&gone.dir).unwrap();
-        assert_eq!(take(EXT, &reply, &gone, fr()), Err(Problem::BookGone));
+        assert_eq!(take(EXT, &reply, &gone, fr(), &plain()), Err(Problem::BookGone));
         assert!(cards(&read_only.dir).is_empty() && cards(&refused.dir).is_empty());
     }
 
@@ -923,15 +1200,15 @@ mod tests {
         const EXT: &str = "cards-stripped";
         let book = book("Cards stripped");
         let reply = set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89"] }]));
-        take(EXT, &reply, &book, fr()).unwrap();
+        take(EXT, &reply, &book, fr(), &plain()).unwrap();
         let path = made_at(&book, EXT, "c-1");
         let stripped = lines::fold(&lines::unfold(&std::fs::read_to_string(&path).unwrap()).into_iter().filter(|l| !l.starts_with("X-SIOUL")).collect::<Vec<_>>());
         std::fs::write(&path, &stripped).unwrap();
-        let done = take(EXT, &reply, &book, fr()).unwrap();
+        let done = take(EXT, &reply, &book, fr(), &plain()).unwrap();
         assert_eq!((done.unchanged, done.made, done.bound), (1, 0, 0));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), stripped);
         forget(EXT);
-        assert_eq!(take(EXT, &reply, &book, fr()).unwrap().updated, 1, "another device writes the mark back");
+        assert_eq!(take(EXT, &reply, &book, fr(), &plain()).unwrap().updated, 1, "another device writes the mark back");
         assert_eq!(cards(&book.dir).len(), 1);
         assert!(text_at(&path).contains(MARK_LINE));
     }
@@ -944,7 +1221,7 @@ mod tests {
         let book = book("Cards ids");
         let ids = ["../../contacts", "a/b\\c.vcf", "..\\..\\x", "-dash", "x@y.z\r\nBEGIN:VCARD"];
         let reply = set(json!(ids.iter().map(|id| json!({ "id": id, "name": "Someone" })).collect::<Vec<_>>()));
-        assert_eq!(take(EXT, &reply, &book, fr()).unwrap().made, ids.len());
+        assert_eq!(take(EXT, &reply, &book, fr(), &plain()).unwrap().made, ids.len());
         for name in cards(&book.dir) {
             assert!(name.starts_with("cards-ids-") && name.trim_end_matches(".vcf").bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-'), "{name}");
         }

@@ -1168,7 +1168,14 @@ impl Senders {
     /// Who a card is, by its UID or its file: its own entry, else its
     /// categories, else neutral. None for a card no address book holds.
     pub fn judge_card(&self, id: &str) -> Option<Judged> {
-        let index = [self.contacts.find(id)?];
+        self.judge_card_at(self.contacts.find(id)?)
+    }
+
+    /// Who the card at this place of the address books is (`Book::card`), as
+    /// `judge_card` judges it: for a caller that found its place once for many cards.
+    pub fn judge_card_at(&self, index: usize) -> Option<Judged> {
+        self.contacts.card(index)?;
+        let index = [index];
         self.by_card(&index).or_else(|| self.by_category(&index)).or_else(|| self.by_book(&index)).map(|judged| self.circled(judged, &index, self.blocks(&index, None, None)))
     }
 

@@ -4100,6 +4100,7 @@ extension-disable = Désactiver
 extension-remove = Retirer…
 extension-remove-title = Retirer { $name } ?
 extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses cours peuvent rester dans vos calendriers, ou en être retirés ; les calendriers eux-mêmes restent toujours.
+extension-remove-says-alone = Sa connexion est oubliée sur cet appareil et son fichier retiré.
 extension-remove-now = Retirer
 extension-choose-title = Où vous connectez-vous ?
 extension-choose-filter = Chercher
@@ -4165,6 +4166,10 @@ extension-contacts-read = Dans { $book } : { $contacts ->
         [one] un contact
        *[other] { $contacts } contacts
     }, lus { $when }.
+extension-contacts-recognised = { $count ->
+        [one] L’un d’eux a été reconnu et laissé tel quel
+       *[other] { $count } d’entre eux ont été reconnus et laissés tels quels
+    } : Sioul n’ajoute rien de lui-même aux fiches des personnes qui vous joignent d’une façon particulière.
 extension-contacts-next = Ses contacts vont dans { $book } au prochain passage.
 extension-contacts-wait = { $name } a apporté ses contacts : choisissez, sur sa ligne dans Réglages ▸ Extensions, le carnet d’adresses où va chaque ensemble.
 extension-book-choose = Choisir un carnet d’adresses…

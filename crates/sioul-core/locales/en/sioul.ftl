@@ -4067,6 +4067,7 @@ extension-disable = Disable
 extension-remove = Remove…
 extension-remove-title = Remove { $name }?
 extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its lessons can stay in your calendars, or be taken out of them; the calendars themselves always stay.
+extension-remove-says-alone = Its sign-in is forgotten on this device and its file taken out.
 extension-remove-now = Remove
 extension-choose-title = Where do you sign in?
 extension-choose-filter = Search
@@ -4132,6 +4133,10 @@ extension-contacts-read = In { $book }: { $contacts ->
         [one] one contact
        *[other] { $contacts } contacts
     }, read { $when }.
+extension-contacts-recognised = { $count ->
+        [one] One of them was recognised and left as it is
+       *[other] { $count } of them were recognised and left as they are
+    }: Sioul adds nothing by itself to the cards of people who reach you in a special way.
 extension-contacts-next = Its contacts go into { $book } at the next refresh.
 extension-contacts-wait = { $name } brought its contacts: choose, on its line in Settings ▸ Extensions, the address book each set goes into.
 extension-book-choose = Choose an address book…

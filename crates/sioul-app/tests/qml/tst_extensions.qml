@@ -256,6 +256,26 @@ Item {
             compare(mock.asked, ["remove timetable true"])
         }
 
+        function test_remove_asks_of_lessons_only_for_one_that_brings_agendas() {
+            const tab = make([offer({ installed: true, enabled: true, bringsAgenda: false, sets: [{ id: "clients", name: "Clients", line: "", warn: false, place: "cloud/clients" }] })])
+            find(tab, "extensionRemove:timetable").clicked()
+            const dialog = tab.removeDialog
+            tryCompare(dialog, "opened", true)
+            verify(!find(dialog, "extensionKeepAgendas").visible, "no lessons to ask about")
+            verify(find(dialog, "extensionContactsStay").visible)
+            verify(texts(dialog.contentItem, []).indexOf("extension-remove-says-alone") >= 0, "its own sentence, without lessons")
+            dialog.accept()
+            compare(mock.asked, ["remove timetable true"], "nothing taken out")
+            // One that brings agendas asks, as before.
+            mock.extensions = view([offer({ installed: true, enabled: true, bringsAgenda: true })])
+            waitForRendering(tab)
+            find(tab, "extensionRemove:timetable").clicked()
+            tryCompare(dialog, "opened", true)
+            verify(find(dialog, "extensionKeepAgendas").visible)
+            verify(texts(dialog.contentItem, []).indexOf("extension-remove-says") >= 0)
+            dialog.reject()
+        }
+
         function test_a_choice_before_the_sign_in_goes_back_to_the_extension() {
             const tab = make([offer({ installed: true, enabled: true })])
             mock.extensionChoices("timetable", JSON.stringify([{ id: "north", name: "North Platform" }, { id: "south", name: "South Platform" }]))

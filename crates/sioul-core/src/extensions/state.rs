@@ -84,6 +84,15 @@ pub struct BroughtSet {
     /// "refused" when some card was not); none when they were.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// Its people whose cards were recognised as those of people who reach
+    /// the person in a special way, and left as they are but for the mark
+    /// (`cards::Done::recognised`), at the last refresh that wrote here.
+    #[serde(default, skip_serializing_if = "is_zero_count")]
+    pub recognised: usize,
+}
+
+fn is_zero_count(n: &usize) -> bool {
+    *n == 0
 }
 
 /// The most agendas, and the most sets of contacts, the record keeps of one extension.
@@ -255,7 +264,7 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("sioul-extensions-state-{}", std::process::id()));
         let path = folder.join("extensions.toml");
         let offer = crate::extensions::manifest::parse(crate::extensions::manifest::SAMPLE).unwrap().offers.remove(0);
-        let clients = BroughtSet { id: "clients".into(), name: "Clients".into(), people: 128, book: "cloud/clients".into(), read: 1_795_000_000, problem: None };
+        let clients = BroughtSet { id: "clients".into(), name: "Clients".into(), people: 128, book: "cloud/clients".into(), read: 1_795_000_000, problem: None, recognised: 3 };
         change(&path, |state| {
             state.accept(7, "a7").unwrap();
             let mut installed = Installed::new(offer.clone());

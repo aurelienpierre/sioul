@@ -238,8 +238,10 @@ pub(crate) trait ContactsDoor {
 impl ContactsDoor for Door {
     fn take_contacts(&self, extension: &str, set: &ContactSet, place: &str) -> Result<cards::Done, cards::Problem> {
         let Some(book) = cards::book_at(place) else { return Err(cards::Problem::BookGone) };
-        // Numbers without their country read as the Contacts settings say.
-        cards::take(extension, set, &book, sioul_core::reach::region(&load_config()))
+        // Numbers without their country read as the Contacts settings say; the
+        // person's cards judged by the lists of who may reach them, as they stand.
+        let config = load_config();
+        cards::take(extension, set, &book, sioul_core::reach::region(&config), &cards::Trust::load(&config))
     }
 }
 
@@ -263,12 +265,13 @@ pub(crate) fn take_in_contacts(door: &dyn ContactsDoor, extension: &str, reply: 
                 match door.take_contacts(extension, set, &place) {
                     Ok(done) => {
                         now.read = fetched;
+                        now.recognised = done.recognised;
                         if done.refused > 0 || done.clash > 0 {
                             now.problem = Some("refused".into());
                         }
                         log.push(format!(
-                            "contacts {}: {} people; {} made, {} found and bound, {} completed, {} unchanged, {} in a book read only, {} refused, {} names taken",
-                            set.id, done.people, done.made, done.bound, done.updated, done.unchanged, done.left, done.refused, done.clash
+                            "contacts {}: {} people; {} made, {} found and bound, {} completed, {} unchanged, {} recognised and left as they are, {} in a book read only, {} refused, {} names taken",
+                            set.id, done.people, done.made, done.bound, done.updated, done.unchanged, done.recognised, done.left, done.refused, done.clash
                         ));
                     }
                     Err(problem) => {
@@ -295,6 +298,7 @@ fn merged_sets(before: &[BroughtSet], now: Vec<BroughtSet>) -> Vec<BroughtSet> {
             if let Some(old) = before.iter().find(|b| b.id == set.id) {
                 if set.read == 0 {
                     set.read = old.read;
+                    set.recognised = old.recognised;
                 }
                 if set.book.is_empty() && set.problem.as_deref() != Some("choose") {
                     set.book = old.book.clone();
@@ -403,6 +407,8 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool, calen
         "waiting": waiting.unwrap_or_default(),
         "agendas": agendas,
         "sets": sets,
+        // Remove asks of its lessons only when it brings agendas.
+        "bringsAgenda": offer.brings.iter().any(|b| b == "agenda"),
     })
 }
 
@@ -558,13 +564,22 @@ fn set_json(extension: &str, set: &BroughtSet, books: &Books) -> Value {
         (true, ..) => (say("extension-contacts-choose", &[]), true),
         (false, None, _) | (false, _, Some("book-gone")) => (say("extension-contacts-gone", &[]), true),
         (false, _, Some("too-large")) => (say("extension-contacts-too-large", &[]), true),
-        (false, Some(label), Some("refused")) => (say("extension-contacts-refused", &[("book", label.clone())]), true),
+        (false, Some(label), Some("refused")) => (recognised(say("extension-contacts-refused", &[("book", label.clone())]), set), true),
         (false, Some(label), _) if set.read > 0 && set.book == place => {
-            (say("extension-contacts-read", &[("book", label.clone()), ("contacts", set.people.to_string()), ("when", when(set.read))]), false)
+            (recognised(say("extension-contacts-read", &[("book", label.clone()), ("contacts", set.people.to_string()), ("when", when(set.read))]), set), false)
         }
         (false, Some(label), _) => (say("extension-contacts-next", &[("book", label.clone())]), false),
     };
     json!({ "id": set.id, "name": set.name, "line": line, "warn": warn, "place": place })
+}
+
+/// A set's line, and how many of its people's cards were recognised and left
+/// as they are, with why, when some were (`cards::Done::recognised`).
+fn recognised(line: String, set: &BroughtSet) -> String {
+    if set.recognised == 0 {
+        return line;
+    }
+    format!("{line} {}", say("extension-contacts-recognised", &[("count", set.recognised.to_string())]))
 }
 
 /// The page's view set on the window's thread.
@@ -1729,6 +1744,7 @@ mod tests {
             match place {
                 "gone/book" => Err(cards::Problem::BookGone),
                 "local/closed" => Ok(cards::Done { people: set.people.len(), refused: 1, ..cards::Done::default() }),
+                "local/trusted" => Ok(cards::Done { people: set.people.len(), recognised: 2, bound: 2, made: set.people.len() - 2, ..cards::Done::default() }),
                 _ => {
                     self.0.borrow_mut().insert(set.id.clone(), (place.to_string(), set.clone()));
                     Ok(cards::Done { people: set.people.len(), made: set.people.len(), ..cards::Done::default() })
@@ -1756,7 +1772,7 @@ mod tests {
         assert!(door.0.borrow().is_empty(), "no address book chosen: nothing written");
         let salon = |set: &str| (set == "clients").then(|| "cloud/clients".to_string());
         let (brought, log_written) = take_in_contacts(&door, "bookings", &reply, true, &salon, 100);
-        assert_eq!(brought, vec![BroughtSet { id: "clients".into(), name: "Clients of the salon".into(), people: 3, book: "cloud/clients".into(), read: 100, problem: None }]);
+        assert_eq!(brought, vec![BroughtSet { id: "clients".into(), name: "Clients of the salon".into(), people: 3, book: "cloud/clients".into(), read: 100, problem: None, recognised: 0 }]);
         let (place, handed) = door.0.borrow()["clients"].clone();
         assert_eq!((place.as_str(), handed.people.len()), ("cloud/clients", 3));
         // The address book chosen is gone: said, nothing written.
@@ -1765,18 +1781,54 @@ mod tests {
         // A card the contacts' door refused: said, the others written.
         let (refused, _) = take_in_contacts(&door, "bookings", &reply, true, &|_| Some("local/closed".into()), 250);
         assert_eq!((refused[0].problem.as_deref(), refused[0].read), (Some("refused"), 250));
+        // Cards recognised as those of people who reach the person in a special way: counted, and said.
+        let (trusted, log_trusted) = take_in_contacts(&door, "bookings", &reply, true, &|_| Some("local/trusted".into()), 260);
+        assert_eq!((trusted[0].recognised, trusted[0].problem.as_deref()), (2, None));
+        assert!(log_trusted[0].contains("2 recognised and left as they are"), "{}", log_trusted[0]);
+        let kept = merged_sets(&trusted, take_in_contacts(&door, "bookings", &reply, false, &salon, 270).0);
+        assert_eq!((kept[0].recognised, kept[0].read), (2, 260), "not written here: the count of the last write stays");
         // Another device's fetch is the fresher: nothing handed to the door, nothing said read.
         door.0.borrow_mut().clear();
         let (later, _) = take_in_contacts(&door, "bookings", &reply, false, &salon, 300);
         assert!(door.0.borrow().is_empty());
         assert_eq!((later[0].read, later[0].book.as_str()), (0, "cloud/clients"));
         // The record: when each was read kept, a set no longer named kept with where its contacts went.
-        let before = vec![BroughtSet { id: "staff".into(), name: "Staff".into(), people: 2, book: "cloud/staff".into(), read: 50, problem: None }, brought[0].clone()];
+        let before = vec![BroughtSet { id: "staff".into(), name: "Staff".into(), people: 2, book: "cloud/staff".into(), read: 50, problem: None, recognised: 0 }, brought[0].clone()];
         let after = merged_sets(&before, later);
         assert_eq!(after.iter().map(|s| (s.id.as_str(), s.read)).collect::<Vec<_>>(), vec![("clients", 100), ("staff", 50)]);
         for line in log_choose.iter().chain(&log_written).chain(&log_gone) {
             assert!(!line.contains("salon") && !line.contains("Marie") && line.starts_with("contacts clients: "), "{line}");
         }
+    }
+
+    /// A set's line says where its contacts went and, when some cards were
+    /// recognised as those of people who reach the person in a special way,
+    /// how many were left as they are, and why.
+    #[test]
+    fn a_set_s_line_says_how_many_cards_were_recognised() {
+        let books = Books {
+            choices: Vec::new(),
+            labels: [("cloud/clients".to_string(), "Clients · example.org".to_string())].into(),
+            chosen: Some([("bookings/clients".to_string(), "cloud/clients".to_string())].into()),
+        };
+        let set = BroughtSet { id: "clients".into(), name: "Clients".into(), people: 128, book: "cloud/clients".into(), read: 1_795_000_000, problem: None, recognised: 3 };
+        let said = say("extension-contacts-recognised", &[("count", "3".to_string())]);
+        let line = set_json("bookings", &set, &books)["line"].as_str().unwrap().to_string();
+        assert!(line.ends_with(&format!(" {said}")) && line.contains("Clients · example.org"), "{line}");
+        let none = set_json("bookings", &BroughtSet { recognised: 0, ..set.clone() }, &books)["line"].as_str().unwrap().to_string();
+        assert!(!none.contains(&said), "{none}");
+        for lang in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(lang);
+            let mut args = sioul_core::i18n::args();
+            args.set("count", 3_i64);
+            assert!(words.own("extension-contacts-recognised").is_some(), "{lang}");
+            assert!(words.text("extension-contacts-recognised", Some(&args)).contains('3'), "{lang}");
+        }
+        assert_eq!(sioul_core::i18n::Translator::new("en").text("extension-contacts-recognised", Some(&{
+            let mut args = sioul_core::i18n::args();
+            args.set("count", 1_i64);
+            args
+        })), "One of them was recognised and left as it is: Sioul adds nothing by itself to the cards of people who reach you in a special way.");
     }
 
     /// What an offer brings is said for each kind its list names; Sioul's

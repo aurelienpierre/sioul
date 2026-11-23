@@ -315,11 +315,14 @@ Item {
 
         property string id: ""
         property bool contacts: false
+        // Whether it brings agendas: only then is there a question of its lessons.
+        property bool lessons: true
 
         function ask(offer) {
             removing.id = offer.id
             removing.title = tab.theme.plain(tab.sioul.textWith("extension-remove-title", "name", offer.name))
             removing.contacts = (offer.sets || []).length > 0
+            removing.lessons = offer.bringsAgenda !== false
             keep.checked = true
             removing.open()
         }
@@ -335,7 +338,7 @@ Item {
 
             Label {
                 Layout.fillWidth: true
-                text: tab.sioul.text("extension-remove-says")
+                text: tab.sioul.text(removing.lessons ? "extension-remove-says" : "extension-remove-says-alone")
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 color: tab.theme.text
@@ -345,6 +348,7 @@ Item {
 
                 objectName: "extensionKeepAgendas"
                 Layout.fillWidth: true
+                visible: removing.lessons
                 checked: true
                 text: tab.sioul.text("extension-leave-lessons")
             }
