@@ -4738,6 +4738,8 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         if !report.elsewhere.is_empty() {
             tie_to_projects(&report.elsewhere);
         }
+        // The tasks the projects' routes make of it, each once (never at an address's first fetch).
+        crate::routetasks::arrived(qt, shared, &report.new.iter().chain(&report.elsewhere).cloned().collect::<Vec<_>>(), report.first);
         // Proven mail your provider put in Spam, as it arrives there: brought back as the
         // matrix's row says, with Undo (`mail::bring_back`); never at an address's first fetch.
         if !report.first && !report.elsewhere.is_empty() {

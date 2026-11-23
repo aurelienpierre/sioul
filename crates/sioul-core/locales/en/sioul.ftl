@@ -10315,3 +10315,6 @@ set-supplies-list = Tasks to resupply go to
 set-supplies-list-help = The task list a task to resupply is made in, when a supply runs low; a supply's project, when it has one, gets it too. Unsaid, as Health's errands choose theirs: their list, else your usual one.
 set-supplies-list-usual = As Health's errands
 loss-supplies = the supplies it uses
+## Routes that make a task of each message (docs/notes-folder.md, "Routes that make tasks").
+routetasks-made = “{ $title }” is in { $list }, made from a message, asked for { $day }.
+routetasks-made-many = { $Count } tasks were made from messages, in { $list }.

@@ -10703,3 +10703,6 @@ set-supplies-list = Les tâches pour réapprovisionner vont dans
 set-supplies-list-help = La liste où une tâche pour réapprovisionner est créée, quand un article baisse ; le projet de l’article, s’il en a un, la reçoit aussi. Si rien n’est dit, comme les démarches de Santé choisissent la leur : leur liste, sinon votre liste habituelle.
 set-supplies-list-usual = Comme les démarches de Santé
 loss-supplies = les stocks qu’elle utilise
+## Les règles qui font une tâche de chaque courriel (docs/notes-folder.md, « Routes that make tasks »).
+routetasks-made = « { $title } » est dans { $list }, faite d’un courriel, demandée pour { $day }.
+routetasks-made-many = { $Countf } tâches ont été faites de courriels, dans { $list }.
