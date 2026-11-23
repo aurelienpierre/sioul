@@ -719,7 +719,9 @@ pub fn reaches_now(attention: &Attention, line: &Line, who: Option<(Who, bool)>,
     }
     let via = if line.kind == "mail" { Channel::Mail } else { Channel::Messages };
     let always = always && !line.group;
-    if attention.decide(&Event::of(Source::Message { via, who, circle, group: line.group, always }).from_sources(sources.clone()), now).level == Level::Now {
+    // At the gathered times by day (◎, held apps phase 1, A3): shown, as an automaton's is; the phone
+    // let it through at a gathering, and no device shows a line before it did (`Line::shows`).
+    if matches!(attention.decide(&Event::of(Source::Message { via, who, circle, group: line.group, always }).from_sources(sources.clone()), now).level, Level::Now | Level::Gathered) {
         return true;
     }
     let person = if line.group { attention::Person::Groups } else { attention::Person::of(who, circle) };
@@ -1291,7 +1293,9 @@ mod tests {
         let attention = Attention::usual();
         let line = |who: &str| Line { at: NOW, id: "x".into(), app: "foundation.e.message".into(), kind: "text".into(), who: who.into(), text: "Bonjour".into(), shows: NOW, ..Line::default() };
         let at = |column: Column| attention::Now::time(column);
-        assert!(!reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Leisure)));
+        // In leisure, a stranger's text is let through at the gathered times (held apps phase 1, A3): shown.
+        assert!(reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Leisure)));
+        assert!(!reaches_now(&attention, &line("restricted"), None, false, &[], &at(Column::Leisure)));
         assert!(!reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Sleep)));
         assert!(reaches_now(&attention, &line("stranger"), None, false, &[], &at(Column::Work)));
         assert!(reaches_now(&attention, &line("safe"), None, false, &[], &at(Column::Leisure)));

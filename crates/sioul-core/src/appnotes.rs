@@ -1029,9 +1029,21 @@ impl Decision {
     /// minute (`GRACE`), but Sioul's quiet window may open later, moved off
     /// Sioul's own reminders, and Android's safety net brings it back
     /// minutes after: either way it is no reason to wait half a day more.
+    /// A person's message held until a gathered time its row gathers it at
+    /// (◎ by day, held apps phase 1, A3), brought back as late, still comes
+    /// with that gathering, as long as its row gathers it now
+    /// (`gathers_held_now`).
     pub fn on_time(self, held: &Held, now: i64, gathers: bool) -> Decision {
-        let gathering = matches!(self.why, Why::Gathered | Why::Times) && held.kind == "gathered";
-        if self.until.is_some() && gathering && gathers && held.until <= now && now - held.until <= LATE { Decision::through(Why::Gathered) } else { self }
+        let automaton = matches!(self.why, Why::Gathered | Why::Times) && held.kind == "gathered";
+        let person = matches!(self.why, Why::Waiting | Why::Times) && held.kind == "people";
+        if self.until.is_none() || !(automaton || person) || !gathers || held.until > now || now - held.until > LATE {
+            return self;
+        }
+        Decision::through(match self.why {
+            _ if automaton => Why::Gathered,
+            Why::Waiting => Why::Allowed,
+            other => other,
+        })
     }
 }
 
@@ -1093,6 +1105,24 @@ pub fn gathers_now(ask: &Ask) -> bool {
     let mode = ask.clock.mode(ask.now);
     let event = Event::own(attention::Kind::AppAutomatons).for_area(ask.area).from_sources(ask.sources.to_vec());
     ask.attention.decide(&event, &ask.moment(ask.now, &mode)).level == Level::Gathered && ask.area_fits(ask.now, &mode)
+}
+
+/// Whether the matrix gathers a held notification at this very moment, for
+/// `Decision::on_time`: an automaton's as `gathers_now` says; a person's
+/// message held until one of the gathered times, when its row (its own rows
+/// read over it) says At the gathered times now (◎, held apps phase 1, A3).
+pub fn gathers_held_now(held: &Held, ask: &Ask) -> bool {
+    if held.kind != "people" {
+        return gathers_now(ask);
+    }
+    let Ok(until) = jiff::Timestamp::from_second(held.until) else { return false };
+    if !times_of(ask.gathered).contains(&until.to_zoned(ask.now.time_zone().clone()).time()) {
+        return false;
+    }
+    let via = Channel::read(&held.via).unwrap_or(Channel::Messages);
+    let who = Who::read(&held.who).unwrap_or_else(|| unidentified_as(via));
+    let event = Event::of(Source::Message { via, who, circle: held.circle, group: held.group, always: held.admitted }).for_area(ask.area).from_sources(ask.sources.to_vec());
+    who != Who::Blocked && ask.attention.decide(&event, &ask.moment(ask.now, &ask.clock.mode(ask.now))).level == Level::Gathered
 }
 
 /// The gathered times from now on, within the coming days, in order; one
@@ -1182,7 +1212,11 @@ fn at_once(ask: &Ask) -> Decision {
 /// row, Always through's, the time, its layers), the notification's area
 /// fitting now for all but Always through and your safe people's chats (a
 /// mail app's, from your safe senders too: as mail to an address for another
-/// time, docs/areas.md); else at their next time.
+/// time, docs/areas.md); else at their next time, by the level the matrix
+/// says at each moment (`first_time`): at once (●) as soon as a moment begins
+/// where it comes, at the gathered times (◎) at the next gathering where it
+/// says so (held apps phase 1, A3: by day, never in sleep, a pause, Free time
+/// nor under do-not-disturb's shade).
 fn person(talk: &Talk, who: Who, circle: bool, group: bool, always: bool, ask: &Ask) -> Decision {
     if who == Who::Blocked {
         return Decision::held(ask.stamp() + FOR_GOOD, Why::Never);
@@ -1192,15 +1226,15 @@ fn person(talk: &Talk, who: Who, circle: bool, group: bool, always: bool, ask: &
         let event = Event::of(Source::Message { via: talk.via, who, circle, group, always }).from_sources(ask.sources.to_vec());
         return by_matrix(ask, &[event.clone().for_area(ask.area).area_unsaid(talk.to_unsaid), event], Why::Allowed, Why::Waiting);
     }
-    let open = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, circle, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).told;
+    let level = |at: &Zoned, mode: &Mode, area: Option<Area>| ask.attention.decide(&Event::of(Source::Message { via: talk.via, who, circle, group, always }).for_area(area).area_unsaid(talk.to_unsaid && area.is_some()), &ask.moment(at, mode)).level;
     // This device for its area at no moment of the coming days: the hours alone, as on a device
     // nothing is said of, so that a device never lets through what the hours hold (review of
     // phase 2, M1); its area and its times never meeting even so, the matrix alone decides:
     // nothing waits for good.
     let by_hours = |mode: &Mode| Mode { here: crate::areas::Here::default(), ..mode.clone() };
-    let next = first_moment(ask, &|at, mode| open(at, mode, ask.area))
-        .or_else(|| first_moment(ask, &|at, mode| open(at, &by_hours(mode), ask.area)))
-        .or_else(|| first_moment(ask, &|at, mode| open(at, mode, None)));
+    let next = first_time(ask, &|at, mode| level(at, mode, ask.area))
+        .or_else(|| first_time(ask, &|at, mode| level(at, &by_hours(mode), ask.area)))
+        .or_else(|| first_time(ask, &|at, mode| level(at, mode, None)));
     match next {
         Some(at) if at.timestamp().as_second() <= ask.stamp() => Decision::through(Why::Allowed),
         Some(at) => Decision::held(at.timestamp().as_second(), Why::Waiting),
@@ -1314,6 +1348,9 @@ pub enum Gathering {
     /// automated systems, while the call screening sends their calls to
     /// voicemail (the app's `machine_number`; review of part 2, F11).
     Machine,
+    /// A person's message whose row says At the gathered times now (◎, held
+    /// apps phase 1, A3): by day, at the next gathering.
+    Time,
 }
 
 /// Which own row decides a notification now (`Cause`).
@@ -1380,6 +1417,11 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
     };
     let event = event.for_area(ask.area).from_sources(sources);
     let out = ask.attention.decide(&event, &moment);
+    // A person's message its row gathers now, by day (◎, A3): at the next gathering, said with the time's column.
+    let by_day = matches!(event.source, Source::Message { .. }) && out.level == Level::Gathered && out.step != attention::Step::Chosen;
+    if by_day {
+        cause.gathered = Some(Gathering::Time);
+    }
     if out.step == attention::Step::Chosen {
         let rows = if matches!(event.source, Source::Message { always: true, .. }) { event.sources.iter().filter(|id| id.starts_with(attention::CONVERSATION_ROW)).cloned().collect() } else { event.sources.clone() };
         cause.own = ask.attention.chosen_source(&rows, &moment).map(|id| if id.starts_with(attention::CONVERSATION_ROW) { Own::Conversation } else if attention::is_person(id) { Own::Person } else { Own::App });
@@ -1389,6 +1431,9 @@ pub fn cause(package: &str, kind: &Kind, who: Option<Who>, listed: bool, choices
         cause.device = out.step == attention::Step::Device;
     }
     cause.columns = ask.attention.holding(&event, &moment);
+    if by_day && cause.columns.is_empty() {
+        cause.columns = moment.times.clone();
+    }
     // An app at once held at a rest by what it is for (`at_once`), which the matrix leaves to the hours.
     if cause.gathered.is_none() && cause.own.is_none() && cause.area.is_none() && cause.columns.is_empty() && !ask.area_fits(ask.now, &mode) {
         cause.area = ask.area;
@@ -2440,6 +2485,71 @@ mod tests {
         assert_eq!(again(&kept, &never, &ask(&evening, &clock, None, None)).why, Why::Never);
     }
 
+    /// Held apps phase 1, A3: a stranger's message in leisure (a Saturday,
+    /// 10:30) comes at the next gathered time, 13:00, never at Monday's first
+    /// working hour as before, and the hold says so; one arriving in the
+    /// minute of a gathering comes with it; at night it waits for waking,
+    /// then for the first gathering; under do-not-disturb (until 14:00) it
+    /// waits for its end, then for the next gathering; a restricted sender's
+    /// row is the person's own restriction, unchanged: Monday; your contacts
+    /// at once, as usual, and at the gathered times with Quieter, groups too.
+    #[test]
+    fn a_stranger_s_message_in_leisure_comes_at_the_next_gathered_time() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_NUMBER), &choices);
+        let saturday = at("2026-10-10T10:30[Europe/Paris]");
+        let decided = |who: Who, ask: &Ask| decide(&sms, Some(who), false, &choices, ask);
+        let held = decided(Who::Stranger, &ask(&saturday, &clock, None, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Waiting, "2026-10-10T13:00:00"), "not Monday 09:00");
+        assert_eq!(cause(&posted(SMS_NUMBER).package, &sms, Some(Who::Stranger), false, &choices, &ask(&saturday, &clock, None, None)), Some(Cause { gathered: Some(Gathering::Time), columns: vec![Column::Leisure], ..Cause::default() }));
+        assert_eq!(decided(Who::Stranger, &ask(&at("2026-10-10T13:00:20[Europe/Paris]"), &clock, None, None)), Decision::through(Why::Allowed), "in the minute of a gathering");
+        assert_eq!(until_of(decided(Who::Stranger, &ask(&at("2026-10-10T23:30[Europe/Paris]"), &clock, None, None))), "2026-10-11T09:00:00", "waking, then the first gathering");
+        let gate = Gate { until: Some(at("2026-10-10T14:00[Europe/Paris]").timestamp().as_second()) };
+        assert_eq!(until_of(decided(Who::Stranger, &ask(&saturday, &clock, None, Some(gate)))), "2026-10-10T18:00:00", "do-not-disturb's end, then the next gathering");
+        assert_eq!(until_of(decided(Who::Restricted, &ask(&saturday, &clock, None, None))), "2026-10-12T09:00:00", "restricted: unchanged");
+        assert_eq!(decided(Who::Neutral, &ask(&saturday, &clock, None, None)), Decision::through(Why::Allowed));
+        let quieter = attention::Preset::Quieter.matrix();
+        let quiet = Ask { attention: &quieter, ..ask(&saturday, &clock, None, None) };
+        assert_eq!(until_of(decided(Who::Neutral, &quiet)), "2026-10-10T13:00:00", "Quieter: your contacts at the gathered times");
+        let group = classify(&posted(WHATSAPP_GROUP), &choices);
+        assert_eq!(until_of(decide(&group, Some(Who::Safe), false, &choices, &quiet)), "2026-10-10T13:00:00", "Quieter: groups too");
+    }
+
+    /// Held apps phase 1, A3: a person's message held until a gathered time
+    /// its row gathers it at, brought back a few minutes late (a window moved,
+    /// Android's own timer as the safety net), still comes with that
+    /// gathering, decided or worked out again; past a quarter of an hour it
+    /// waits for the next. One held until waking and brought back late waits
+    /// for the first gathering, as it would have; one whose row no longer
+    /// gathers it now is as decided.
+    #[test]
+    fn a_person_s_message_brought_back_late_still_comes_with_its_gathering() {
+        let clock = TestClock::new();
+        let choices = Choices::default();
+        let sms = classify(&posted(SMS_NUMBER), &choices);
+        let one = at("2026-10-10T13:00[Europe/Paris]").timestamp().as_second();
+        let held = Held { app: "com.google.android.apps.messaging".into(), label: "Messages".into(), kind: "people".into(), via: "messages".into(), who: "stranger".into(), since: one - 3600, until: one, ..Held::default() };
+        for (late, comes) in [("2026-10-10T13:04:00[Europe/Paris]", true), ("2026-10-10T13:16:00[Europe/Paris]", false)] {
+            let now = at(late);
+            let asked = ask(&now, &clock, None, None);
+            let stamp = now.timestamp().as_second();
+            let decided = decide(&sms, Some(Who::Stranger), false, &choices, &asked).on_time(&held, stamp, gathers_held_now(&held, &asked));
+            assert_eq!(decided.until.is_none(), comes, "{late}: {decided:?}");
+            let again = again(&held, &choices, &asked).on_time(&held, stamp, gathers_held_now(&held, &asked));
+            assert_eq!(again.until.is_none(), comes, "{late}, worked out again: {again:?}");
+            if comes {
+                assert_eq!(decided.why, Why::Allowed);
+            }
+        }
+        let waking = Held { until: at("2026-10-11T07:00[Europe/Paris]").timestamp().as_second(), ..held.clone() };
+        let now = at("2026-10-11T07:05[Europe/Paris]");
+        let asked = ask(&now, &clock, None, None);
+        assert!(!gathers_held_now(&waking, &asked), "07:00 is no gathered time");
+        assert_eq!(until_of(decide(&sms, Some(Who::Stranger), false, &choices, &asked).on_time(&waking, now.timestamp().as_second(), gathers_held_now(&waking, &asked))), "2026-10-11T09:00:00");
+        assert!(!gathers_held_now(&Held { who: "restricted".into(), ..held.clone() }, &ask(&at("2026-10-10T13:04:00[Europe/Paris]"), &clock, None, None)), "a restricted's row holds them now");
+    }
+
     /// Held apps phase 1, A1: whether the phone's address book could be asked
     /// travels with each sender (`Posted::contacts`, absent: it could not).
     #[test]
@@ -2640,7 +2750,8 @@ mod tests {
         assert_eq!(said(SMS_CONTACT, Some(Who::Neutral), &choices, &focus), Some(columns(&[C::Dnd])));
         // In the night: the night. A stranger's text in the evening under do-not-disturb: both.
         assert_eq!(said(WHATSAPP_PERSON, Some(Who::Neutral), &choices, &ask(&night, &clock, None, None)), Some(columns(&[C::Sleep])));
-        assert_eq!(said(SMS_NUMBER, Some(Who::Stranger), &choices, &ask(&evening, &clock, None, Some(Gate { until: None }))), Some(columns(&[C::Leisure, C::Dnd])));
+        // A stranger's in the evening under do-not-disturb: do-not-disturb holds it (leisure would gather it: A3).
+        assert_eq!(said(SMS_NUMBER, Some(Who::Stranger), &choices, &ask(&evening, &clock, None, Some(Gate { until: None }))), Some(columns(&[C::Dnd])));
         // A text named only that no card has: gathered as a business's, in the evening too; in the night, the night holds the gathering.
         let named = |columns: &[C]| Some(Cause { gathered: Some(Gathering::Named), columns: columns.to_vec(), ..Cause::default() });
         assert_eq!(said(SMS_SENDER_ID, None, &choices, &ask(&morning, &clock, None, None)), named(&[]));
@@ -2880,9 +2991,11 @@ mod tests {
     /// for 13:00, comes back at 13:01:10, its window moved off one of Sioul's
     /// own reminders, or at 13:05, by Android's safety net: past the minute a
     /// gathering counts, it still comes with it, never held until 18:00; a
-    /// quarter of an hour on, it waits for the next. A person's message is
-    /// none of it, and its return is the one that rings; an automaton's and
-    /// one held for good come back quiet.
+    /// quarter of an hour on, it waits for the next. A person's message whose
+    /// row does not gather it then is none of it (one its row gathers by day:
+    /// `a_person_s_message_brought_back_late_still_comes_with_its_gathering`),
+    /// and its return is the one that rings; an automaton's and one held for
+    /// good come back quiet.
     #[test]
     fn a_gathering_brought_back_late_still_comes_with_it() {
         let clock = TestClock::new();
@@ -2912,10 +3025,14 @@ mod tests {
         let in_pause = ask(&late, &paused, None, None);
         assert!(!gathers_now(&in_pause));
         assert!(decide(&shop, None, false, &choices, &in_pause).on_time(&held, late.timestamp().as_second(), gathers_now(&in_pause)).until.is_some());
-        // A person's message held until their time: none of it, whatever the clock.
-        let talk = Held { kind: "people".into(), via: "messages".into(), who: "stranger".into(), ..held.clone() };
+        // A person's message held until their time, whose row does not gather them (a contact's, at once):
+        // none of it, whatever the clock.
+        let talk = Held { kind: "people".into(), via: "messages".into(), who: "neutral".into(), ..held.clone() };
         let waiting = Decision::held(one + 3600, Why::Waiting);
-        assert_eq!(waiting.on_time(&talk, one + 60, true), waiting);
+        let late = at("2026-10-06T13:01[Europe/Paris]");
+        let gathers = gathers_held_now(&talk, &ask(&late, &clock, None, None));
+        assert!(!gathers, "a contact's row lets them through at once: no gathering");
+        assert_eq!(waiting.on_time(&talk, one + 60, gathers), waiting);
         // Held for good stays so.
         let never = Held { kind: "never".into(), ..held.clone() };
         let for_good = Decision::held(one + FOR_GOOD, Why::Never);

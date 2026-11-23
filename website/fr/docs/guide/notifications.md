@@ -39,7 +39,7 @@ Un choix pour chaque cercle de personnes, pour les **courriels** et pour les **m
 | Sûrs | Quand vous ne dormez pas | Quand vous ne dormez pas |
 | Vos contacts | Aux heures de travail et de démarches | Quand vous ne dormez pas |
 | Restreints | Aux heures de travail | Aux heures de travail |
-| Tous les autres | Aux heures de travail et de démarches | Aux heures de travail et de démarches |
+| Tous les autres | Aux heures de travail et de démarches | Regroupés hors des heures de travail et de démarches |
 | Bloqués | Jamais | Jamais |
 
 C’est ce que fait Sioul sauf si vous le changez. **Vos proches** n’a de ligne qu’une fois que vous avez ajouté quelqu’un dans Contacts ▸ [Proches](contacts.md#household) : toutes les personnes ajoutées là, un enfant, une personne que vous aidez, un conjoint, la famille, quoi qu’elles soient pour vous, sauf l’autre parent d’un enfant et une personne dont la relation a pris fin. Rien à remplir : ce qu’elles sont pour vous les met sur la ligne, sur chaque appareil, dès que vous les ajoutez ou leur liez un contact. D’ici là, une phrase sous le tableau dit que la ligne vient dès que vous ajoutez quelqu’un, avec **Ouvrir Contacts ▸ Proches**. Leurs courriels et leurs messages viennent comme ceux de vos expéditeurs sûrs tant que vous ne les changez pas ; leurs **appels sonnent à tout moment**, la nuit, en pause et sous « Ne pas déranger » aussi : quelqu’un de chez vous qui appelle ne peut d’ordinaire pas attendre, alors qu’un SMS peut attendre le matin. Sur un téléphone qui filtre les appels, la carte de chaque téléphone dans Paramètres ▸ Appareils montre leur ligne, la même sur chaque téléphone ; les cases de leurs appels se changent dans Ce qui vient quand.
@@ -48,6 +48,7 @@ Les choix, les mêmes sur chaque ligne, sauf pour les messages de Passent toujou
 
 - **Toujours** : à tout moment, la nuit, une pause et « Ne pas déranger » compris. Les courriels s’affichent sur le Porche sans bruit la nuit et en pause.
 - **Quand vous ne dormez pas** : au travail, aux démarches, aux loisirs et aux repas ; retenus pendant le sommeil et une pause ; sous « Ne pas déranger », un courriel s’affiche sans bruit et un SMS arrive dans le volet, en silence. Pendant le temps libre, les messages de vos personnes sûres viennent quand même.
+- **Regroupés hors des heures de travail et de démarches** (messages) : tout de suite aux heures de travail et de démarches ; en loisirs et aux repas, à l’heure de regroupement suivante (09:00, 13:00 et 18:00 sauf si vous en mettez d’autres), avec les notifications automatiques des autres applications ; retenus pendant le sommeil, une pause ou le temps libre, et sous « Ne pas déranger ». Le SMS d’un inconnu un samedi matin arrive à 13:00, pas le lundi.
 - **Aux heures de travail et de démarches**, **Aux heures de travail**.
 - **Jamais notifié** : le courriel reste sur le Porche sans un mot ; un message est retenu à tout moment, sur votre téléphone, dans son application, et la fiche Ce qui vous joint maintenant compte ce que le téléphone retient.
 
@@ -78,7 +79,7 @@ Hors des moments d’une ligne, le courriel de vos expéditeurs sûrs attend sur
 ## D’où vous partez {#presets}
 
 - **Comme Sioul le fait maintenant** : ce que décrit cette page.
-- **Plus calme** : les courriels de vos expéditeurs sûrs affichés, sans notification, aux loisirs et aux repas ; les messages de vos contacts et des groupes retenus aux loisirs et aux repas ; ceux de vos expéditeurs sûrs retenus pendant le temps libre ; sous « Ne pas déranger », tout SMS retenu ; les rappels de dates, et les sites en temps réel, attendent aux loisirs et aux repas.
+- **Plus calme** : les courriels de vos expéditeurs sûrs affichés, sans notification, aux loisirs et aux repas ; les messages de vos contacts et des groupes aux heures de regroupement aux loisirs et aux repas ; ceux de vos expéditeurs sûrs retenus pendant le temps libre ; sous « Ne pas déranger », tout SMS retenu ; les rappels de dates, et les sites en temps réel, attendent aux loisirs et aux repas.
 - **Plus joignable** : les courriels de vos contacts tout de suite aux loisirs et aux repas ; ceux de tous les autres affichés aux loisirs ; les automates des autres applications tout de suite au travail et aux démarches.
 
 En choisir un pendant que vous avez des changements à vous le demande d’abord : « Plus calme remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont. » Une ligne qu’un préréglage règle case par case se lit **À votre façon**. Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils, et le compte de vos changements ne compte que ce que montre cette page.

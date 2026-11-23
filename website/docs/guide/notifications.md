@@ -39,7 +39,7 @@ One choice for each circle of people, for **mail** and for **messages** (texts a
 | Safe | When awake | When awake |
 | Your contacts | In work and admin hours | When awake |
 | Restricted | In work hours | In work hours |
-| Everyone else | In work and admin hours | In work and admin hours |
+| Everyone else | In work and admin hours | Gathered outside work and admin hours |
 | Blocked | Never | Never |
 
 That is what Sioul does unless you change it. **Your people** has a line only once you have added someone in Contacts ▸ [Your people](contacts.md#household): everyone you added there, a child, someone you help, a partner, family, whoever they are to you, but a child's other parent and someone whose relation has ended. Nothing to fill in: who they are to you puts them on the line, on every device, as soon as you add them or link a card to them. Until then a sentence under the table says that the line comes once you add someone, with **Open Contacts ▸ Your people**. Their mail and messages come as your safe senders' until you change them; their **calls ring at every time**, at night, in a pause and under do-not-disturb too: someone of your home who calls usually cannot wait, while a text can wait for the morning. On a phone that screens calls, the card of each phone in Settings ▸ Devices shows their row, the same on every phone; their calls' cells are changed in What comes when.
@@ -48,6 +48,7 @@ The choices, the same on every line but Always through's messages, which offer *
 
 - **Always**: at every time, the night, a pause and do-not-disturb included. Mail is shown on the Porch without a sound at night and in a pause.
 - **When awake**: in work, admin, leisure and meals; held while you sleep or pause; under do-not-disturb, mail is shown without a sound and a text comes in the shade, silent. In Free time, your safe people's messages still come.
+- **Gathered outside work and admin hours** (messages): at once in work and admin hours; in leisure and meals, at the next gathered time (09:00, 13:00 and 18:00 unless you set others), with other apps' automatic notifications; held while you sleep, pause or take Free time, and under do-not-disturb. A stranger's text on a Saturday morning comes at 13:00, not on Monday.
 - **In work and admin hours**, **In work hours**.
 - **Never told**: mail stays on the Porch without a word; a message is held at every time, on your phone, in its own app, and the card What reaches you now counts what the phone holds.
 
@@ -78,7 +79,7 @@ Outside a line's times, your safe senders' mail waits on the Porch, shown; every
 ## Where you start from {#presets}
 
 - **As Sioul does now**: what this page describes.
-- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; your contacts' and groups' messages held in leisure and meals; your safe senders' messages held in Free time; under do-not-disturb, every text held; reminders of dates, and sites in real time, wait in leisure and meals.
+- **Quieter**: your safe senders' mail shown, not told, in leisure and meals; your contacts' and groups' messages at the gathered times in leisure and meals; your safe senders' messages held in Free time; under do-not-disturb, every text held; reminders of dates, and sites in real time, wait in leisure and meals.
 - **More reachable**: your contacts' mail at once in leisure and meals; everyone else's mail shown in leisure; other apps' automatons at once in work and admin.
 
 Choosing one while you have changes of your own asks first: "Quieter replaces your own changes, on every row; the fixed cells stay as they are." A line a preset sets cell by cell reads **Your own**. A preset leaves calls as they are: they are set for each phone, in Settings ▸ Devices, and the count of your changes counts only what this page shows.

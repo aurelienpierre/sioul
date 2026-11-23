@@ -7319,6 +7319,8 @@ reach-circle-blocked = Blocked
 reach-circle-blocked-help = Never, on any channel.
 reach-behaviour-always = Always
 reach-behaviour-awake = When awake
+reach-behaviour-work-admin-gathered = Gathered outside work and admin hours
+reach-behaviour-work-admin-gathered-help = At once in work and admin hours; in leisure and meals, at the gathered times; held while you sleep, pause or take Free time, and under do-not-disturb.
 reach-behaviour-work-admin = In work and admin hours
 reach-behaviour-work = In work hours
 reach-behaviour-gathered = At the gathered times
@@ -7956,6 +7958,10 @@ attention-sheet-line-messages-never = { $first ->
 attention-sheet-line-messages-quiet = { $first ->
     [yes] Their messages are held { $during }.
    *[other] They are held { $during }.
+}
+attention-sheet-line-messages-gathered = { $first ->
+    [yes] Their messages come at the gathered times { $during }.
+   *[other] They come at the gathered times { $during }.
 }
 attention-always-line-mail-now = { $first ->
     [yes] Mail from your Always through people comes at once { $during }.

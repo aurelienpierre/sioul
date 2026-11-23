@@ -7377,6 +7377,8 @@ reach-circle-blocked = Bloqués
 reach-circle-blocked-help = Jamais, sur aucun canal.
 reach-behaviour-always = Toujours
 reach-behaviour-awake = Quand vous ne dormez pas
+reach-behaviour-work-admin-gathered = Regroupés hors des heures de travail et de démarches
+reach-behaviour-work-admin-gathered-help = Aussitôt aux heures de travail et de démarches ; en loisirs et aux repas, aux heures de regroupement ; retenus pendant le sommeil, une pause ou le temps libre, et sous « Ne pas déranger ».
 reach-behaviour-work-admin = Aux heures de travail et de démarches
 reach-behaviour-work = Aux heures de travail
 reach-behaviour-gathered = Aux heures de regroupement
@@ -8014,6 +8016,10 @@ attention-sheet-line-messages-never = { $first ->
 attention-sheet-line-messages-quiet = { $first ->
     [yes] Ses messages sont retenus { $during }.
    *[other] Ils sont retenus { $during }.
+}
+attention-sheet-line-messages-gathered = { $first ->
+    [yes] Ses messages arrivent aux heures de regroupement { $during }.
+   *[other] Ils arrivent aux heures de regroupement { $during }.
 }
 attention-always-line-mail-now = { $first ->
     [yes] Les courriels des personnes qui passent toujours arrivent tout de suite { $during }.

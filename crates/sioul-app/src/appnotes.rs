@@ -322,7 +322,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         // Back after its gathering, by Sioul's quiet window moved off one of its own reminders or by
         // Android's safety net minutes later: it comes with the gathering it waited for.
         if returning && let Some(held) = ledger.held.get(&hash) {
-            decision = decision.on_time(held, stamp, appnotes::gathers_now(&ask));
+            decision = decision.on_time(held, stamp, appnotes::gathers_held_now(held, &ask));
         }
         // Back at its time and held again within minutes: not again and again.
         if returning
@@ -586,7 +586,7 @@ fn review_at(json: &str, now: &Zoned) -> String {
             let ask = Ask { now: &now, clock: &live, attention: &attention, gathered: &gathered, area: held.area, gate: gate.map(|g| Gate { until: g.until }), slot_at: &slot, nothing, also: &also, sources: &sources, reachable, silenced, circle: held.circle };
             // Its gathering come, a little late (the quiet window moved off one of Sioul's own reminders):
             // with it, never until the next.
-            let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_now(&ask));
+            let mut decided = appnotes::again(&held, &choices, &ask).on_time(&held, stamp, appnotes::gathers_held_now(&held, &ask));
             if !paused && crate::replies::answered_lately(&held.conversation) {
                 decided = decided.answered();
             }
@@ -794,6 +794,7 @@ fn hold_line(event: &str, kind: &str, decision: &Decision, cause: Option<&Cause>
             Some(Gathering::Conversation) => why.push("gathered (its conversation)".into()),
             Some(Gathering::Named) => why.push("gathered (a sender named only)".into()),
             Some(Gathering::Machine) => why.push("gathered (a number kept for machines)".into()),
+            Some(Gathering::Time) => why.push("gathered (messages by day)".into()),
             None => {}
         }
         if let Some(area) = cause.area {
@@ -1727,6 +1728,8 @@ mod tests {
         assert_eq!(line("held", "calls", in_minutes(30), Why::Waiting, columns(&[Column::Dnd]), Some(&both)), "Notes: held: calls 1 until 10:50; why: dnd (switch and busy).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Named), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a sender named only).");
         assert_eq!(line("held", "messages", in_minutes(100), Why::Gathered, Cause { gathered: Some(Gathering::Machine), ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (a number kept for machines).");
+        // A person's message by day at the gathered times (held apps phase 1, A3), with the time's column.
+        assert_eq!(line("held", "messages", in_minutes(100), Why::Waiting, Cause { gathered: Some(Gathering::Time), columns: vec![Column::Leisure], ..Cause::default() }, None), "Notes: held: messages 1 until 12:00; why: gathered (messages by day), leisure.");
         assert_eq!(line("held", "other apps", Some(stamp + 22 * 3600 + 40 * 60), Why::Gathered, Cause { gathered: Some(Gathering::Automaton), columns: vec![Column::Sleep], ..Cause::default() }, None), "Notes: held: other apps 1 until tomorrow 09:00; why: gathered, sleep.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::App), columns: vec![Column::Work, Column::Admin], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its app's row, work + admin.");
         assert_eq!(line("held", "messages", in_minutes(400), Why::Times, Cause { own: Some(Own::Conversation), gathered: None, columns: vec![Column::Work], ..Cause::default() }, None), "Notes: held: messages 1 until 17:00; why: its conversation's row, work.");
