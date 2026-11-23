@@ -289,6 +289,67 @@ pub fn official_after_class(url: &str) -> bool {
     officials().iter().any(|o| o.after_class && o.url == url)
 }
 
+/// France's overseas departments and collectivities, which ISO 3166-1 names
+/// apart: their official calendars are France's, by territory.
+const FRANCE_OVERSEAS: [&str; 11] = ["GP", "MQ", "GF", "RE", "YT", "PM", "BL", "MF", "WF", "PF", "NC"];
+
+/// The person's country, whose official calendars the form offers first: the
+/// contacts' setting, else the language's (`reach::region`), else the
+/// setting as written when it names a country the phone numbers' table does
+/// not know (`clients::country`); France's overseas territories are France
+/// (`FRANCE_OVERSEAS`). None when no country is known.
+pub fn home_country(config: &Config) -> Option<&'static str> {
+    let code = crate::reach::region(config).map(|r| r.code).or_else(|| config.contacts.region.as_deref().and_then(crate::clients::country).map(|c| c.code))?;
+    Some(if FRANCE_OVERSEAS.contains(&code) { "FR" } else { code })
+}
+
+/// The official calendars as the form offers them (`offer`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offer {
+    /// The person's country (`home_country`), and its name in the language
+    /// shown; "" when none is known.
+    pub home: String,
+    pub home_name: String,
+    /// Each country that has official calendars here: its code, its name in
+    /// the language shown, and its calendars, public holidays first, then
+    /// school holidays, each in the file's order. The person's country
+    /// first; the others by their names.
+    pub countries: Vec<(String, String, Vec<&'static Official>)>,
+}
+
+impl Offer {
+    /// Whether the person's country has official calendars here.
+    pub fn home_has(&self) -> bool {
+        self.countries.first().is_some_and(|(code, ..)| *code == self.home)
+    }
+}
+
+/// A country's name in `language`, from the one table of countries
+/// (`clients::country`, `data/countries.tsv`); its code when not known.
+pub fn country_name(code: &str, language: &str) -> String {
+    crate::clients::country(code).map_or_else(|| code.to_string(), |c| c.name(language).to_string())
+}
+
+/// The official calendars offered to a person of `home` (`home_country`),
+/// in `language`: their country's first, then each other country's, by its
+/// name in that language (folded: "États-Unis" among the E).
+pub fn offer(home: Option<&str>, language: &str) -> Offer {
+    let mut countries: Vec<(String, String, Vec<&'static Official>)> = Vec::new();
+    for official in officials() {
+        match countries.iter_mut().find(|(code, ..)| *code == official.country) {
+            Some((.., list)) => list.push(official),
+            None => countries.push((official.country.clone(), country_name(&official.country, language), vec![official])),
+        }
+    }
+    for (.., list) in &mut countries {
+        list.sort_by_key(|o| o.holidays);
+    }
+    let folded = |name: &str| crate::text::fold(name).into_iter().collect::<String>();
+    countries.sort_by(|a, b| (Some(a.0.as_str()) != home).cmp(&(Some(b.0.as_str()) != home)).then_with(|| folded(&a.1).cmp(&folded(&b.1))));
+    let home = home.unwrap_or_default();
+    Offer { home: home.to_string(), home_name: if home.is_empty() { String::new() } else { country_name(home, language) }, countries }
+}
+
 // ---------------------------------------------------------------- the address
 
 /// Why a calendar was not read, or not taken: each with its sentence (`said`).

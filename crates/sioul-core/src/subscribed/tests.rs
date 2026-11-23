@@ -149,6 +149,56 @@ fn holiday_calendars_of_the_united_kingdom_are_its_bank_holidays() {
     assert!(officials().iter().filter(|o| o.country == "GB").all(|o| o.source == "GOV.UK" && o.licence == "Open Government Licence v3.0" && !o.after_class));
 }
 
+/// The official calendars as the form offers them (23 November 2026): the
+/// person's country first, its public holidays then its school holidays,
+/// each in the file's order; the other countries by their names in the
+/// language shown; a country with none here, its name said, offers the
+/// others; no country known, all of them.
+#[test]
+fn the_official_calendars_come_by_country() {
+    let names = |offer: &Offer| offer.countries.iter().map(|(code, name, _)| (code.clone(), name.clone())).collect::<Vec<_>>();
+    let pair = |code: &str, name: &str| (code.to_string(), name.to_string());
+    let france = offer(Some("FR"), "fr");
+    assert!(france.home_has());
+    assert_eq!((france.home.as_str(), france.home_name.as_str()), ("FR", "France"));
+    assert_eq!(names(&france), [pair("FR", "France"), pair("GB", "Royaume-Uni")]);
+    let own: Vec<(&str, Holidays)> = france.countries[0].2.iter().map(|o| (o.id.as_str(), o.holidays)).collect();
+    assert_eq!(own.len(), 27);
+    assert_eq!((own[0], own[13]), (("fr-public-metropole", Holidays::Public), ("fr-school-zone-a", Holidays::School)), "public holidays first, each in the file's order");
+    assert!(own.windows(2).all(|w| w[0].1 <= w[1].1));
+    let uk = offer(Some("GB"), "en");
+    assert!(uk.home_has());
+    assert_eq!(names(&uk), [pair("GB", "United Kingdom"), pair("FR", "France")], "the person's country first, whatever its name");
+    assert_eq!(uk.countries[0].2.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["England and Wales", "Scotland", "Northern Ireland"]);
+    let germany = offer(Some("DE"), "fr");
+    assert!(!germany.home_has(), "no official calendar for Germany here");
+    assert_eq!((germany.home.as_str(), germany.home_name.as_str()), ("DE", "Allemagne"));
+    assert_eq!(names(&germany), [pair("FR", "France"), pair("GB", "Royaume-Uni")], "the others, by their names");
+    let unknown = offer(None, "en");
+    assert!(!unknown.home_has());
+    assert_eq!((unknown.home.as_str(), unknown.home_name.as_str()), ("", ""));
+    assert_eq!(names(&unknown), [pair("FR", "France"), pair("GB", "United Kingdom")]);
+    assert_eq!(unknown.countries.iter().map(|(.., list)| list.len()).sum::<usize>(), officials().len(), "every calendar offered once");
+}
+
+/// The person's country: the contacts' setting, else the language's (as the
+/// phone numbers read it, `reach::region`); a country the phone numbers'
+/// table does not know, as written; France's overseas territories, which
+/// ISO 3166-1 names apart, are France, whose calendars hold theirs.
+#[test]
+fn the_official_calendars_follow_the_person_s_country() {
+    let with = |region: &str| -> Config { toml::from_str(&format!("[contacts]\nregion = \"{region}\"\n")).unwrap() };
+    assert_eq!(home_country(&with("GB")), Some("GB"));
+    assert_eq!(home_country(&with("fr")), Some("FR"));
+    assert_eq!(home_country(&with("RE")), Some("FR"), "La Réunion's calendars are France's");
+    assert_eq!(home_country(&with("NC")), Some("FR"), "a territory the phone numbers' table does not know");
+    assert_eq!(home_country(&with("IS")), Some("IS"), "a country the phone numbers' table does not know");
+    assert_eq!(home_country(&with("ZZ")), None, "no country");
+    let unsaid = Config::default();
+    let language = crate::reach::region(&unsaid).map(|r| if FRANCE_OVERSEAS.contains(&r.code) { "FR" } else { r.code });
+    assert_eq!(home_country(&unsaid), language, "unsaid: the language's, as the phone numbers read it");
+}
+
 /// What is not a calendar replaces nothing: a web page, a line of text (the
 /// server's own words kept), an empty answer, something else; too large once
 /// unpacked, or too many events, neither. A calendar without events is one.
