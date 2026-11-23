@@ -118,7 +118,9 @@ public final class NoticesCheck
         expect("a code copied: its group empty though Android still shows it, its summary gone", Notices.summaryEnd(Notices.children(Notices.GROUP + Notices.ACTIONABLE, shown, java.util.Collections.emptyList(), copied)), -1);
         expect("a code that stays: its summary stays", Notices.summaryEnd(Notices.children(Notices.GROUP + Notices.ACTIONABLE, shown, java.util.Collections.emptyList(), java.util.Collections.emptySet())), 0);
         expect("the background card: its own group, its summary while it shows", Notices.summaryEnd(Notices.children(StepService.GROUP, java.util.Collections.emptyList(), java.util.Collections.singletonList(new Notices.Child(0x5137, null, StepService.GROUP, 0)), java.util.Collections.emptySet())), 0);
-        expect("the groups summed: the notices', the card's, the time running's", Arrays.toString(Notices.GROUPS), "[sioul.informative, sioul.actionable, sioul.steps, sioul.time]");
+        expect("the groups summed: the notices', the card's, the time running's, the held line's", Arrays.toString(Notices.GROUPS), "[sioul.informative, sioul.actionable, sioul.steps, sioul.time, sioul.held]");
+        expect("a summary shown before its children: the line's own channel for the held line's, never one that shows more",
+               Notices.summaryChannel(HeldNotices.GROUP_HELD) + " " + Notices.summaryChannel(Notices.GROUP + Notices.ACTIONABLE) + " " + Notices.summaryChannel(StepService.GROUP), "held to-act notices");
 
 
         // The channels.

@@ -585,6 +585,8 @@ pub(crate) fn opened() -> Vec<(String, String, String)> {
 /// ("mail") by its address alone (`mid:…`, `sioul:mail/…`), never a file
 /// (new mail's notification of one message: the unified mailbox's part 2);
 /// an event, the Porch, the mailbox, a block's question, a closing sheet.
+/// And one door: this phone's card at its apps ("settings:devices.apps"),
+/// from the line of what Sioul holds (held apps phase 1, B1).
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
 fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
     let key = said["key"].as_str().unwrap_or_default();
@@ -592,6 +594,9 @@ fn opened_of(said: &serde_json::Value) -> Option<(String, String)> {
         "notice" => is_notice_address(key),
         // "mailbox": new mail's notification of several on a phone (the unified mailbox's part 5).
         "event" | "porch" | "need" | "mailbox" => true,
+        // This phone's card in Settings ▸ Devices, at its apps: the line of what Sioul holds, tapped (held
+        // apps phase 1, B1). That one door alone: no other setting opens from a notification.
+        "settings:devices.apps" => true,
         "mail" => is_mail_address(key),
         "review" => {
             let (sheet, day) = key.split_once(':').map_or((key, None), |(sheet, day)| (sheet, Some(day)));
@@ -882,6 +887,8 @@ mod tests {
         assert_eq!(of(r#"{"kind":"review","key":"work:yesterday"}"#), None);
         assert_eq!(of(r#"{"kind":"review","key":"settings"}"#), None);
         assert_eq!(of(r#"{"kind":"settings:words","key":""}"#), None);
+        assert_eq!(of(r#"{"kind":"settings:devices.apps","key":""}"#), Some(("settings:devices.apps".into(), String::new())), "the line of what Sioul holds, its one door");
+        assert_eq!(of(r#"{"kind":"settings:devices.calls","key":""}"#), None);
         assert_eq!(of(r#"{"key":"work"}"#), None);
         let notice = |key: &str| of(&serde_json::json!({ "kind": "notice", "key": key }).to_string());
         for taken in ["sioul:event/yoga-1@example.org#1793520000", "mid:code-1@example.org", "sioul:mail/home/0123456789abcdef", "sioul:mailbox", "sioul:porch", "sioul:need/meal:0", "sioul:need/sleep", "sioul:day/work:2026-11-14", "sioul:day/night:2026-11-14", "sioul:task/a%2Fb", "sioul:budget/#rent", "sioul:paper/passport", "sioul:site/chat#1", "sioul:site/team-chat", "sioul:site/team-chat#room%2F1"] {

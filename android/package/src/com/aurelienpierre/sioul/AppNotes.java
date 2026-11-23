@@ -154,6 +154,8 @@ public final class AppNotes extends NotificationListenerService
     static final String LINKED = "com.aurelienpierre.sioul.action.LINKED";
     /** The quiet window's end, by an alarm that counts sleep: the hint never outlives it. */
     static final String CLOSE = "com.aurelienpierre.sioul.action.QUIET_CLOSE";
+    /** Show now, pressed on the line of what Sioul holds (HeldNotices): a release of this phone, then a review. */
+    static final String SHOW = "com.aurelienpierre.sioul.action.HELD_SHOW";
     /** Sioul's doses' alarms, as DoseAlarms keeps them (its RECORD, read here, never written): no window on their times. */
     private static final String DOSE_RECORD = "dose-alarms.json";
 
@@ -187,12 +189,26 @@ public final class AppNotes extends NotificationListenerService
     private final Runnable answer = this::answer;
     /** The SMS app's notifications taken away after the step named them: one runnable for a burst of changes. */
     private final Runnable withdraw = this::withdraw;
+    /** The line of what Sioul holds written again after a hold or a return: one runnable for a burst of them. */
+    private final Runnable lineSoon = this::lineNow;
+    /** A hold or a return settles this long before the line is written again (Android holds what it was asked by then). */
+    private static final long LINE_SETTLE_MS = 1_000;
+    /** The line as last posted (HeldNotices), so that one saying the same is not posted again; null: none known. */
+    private HeldNotices.Line shown;
 
     /** Rust's answer for one notification: {"hold": milliseconds, 0 to let it come, "why", "line"}. */
     static native String nativeDecide(String json);
 
     /** What is held, worked out again: {"snooze": [{"key", "ms"}]}, for the keys Android holds now. */
     static native String nativeReview(String json);
+
+    /**
+     * What Sioul says in the shade of what it holds (crates/sioul-app/src/
+     * appnotes.rs, `shade`): "line" ({snoozed}: the standing line's words,
+     * {text, public, show, channel}), "show" (Show now: a release of this
+     * phone, {released}).
+     */
+    static native String nativeShade(String verb, String json);
 
     /**
      * Replies from your computers (crates/sioul-app/src/replies.rs): "due"
@@ -570,6 +586,8 @@ public final class AppNotes extends NotificationListenerService
         window.dropped();
         letGo();
         unwatch();
+        // Nothing can be shown again nor kept true from here: the line goes with the listener.
+        HeldNotices.cancelLine(this);
         thread.quitSafely();
         super.onDestroy();
     }
@@ -618,6 +636,11 @@ public final class AppNotes extends NotificationListenerService
         // Its hint went with it (NotificationManagerService, onServiceRemovedLocked): the window forgotten.
         window.dropped();
         worker.post(this::unwatch);
+        // The line of what Sioul holds goes until Android binds the listener again: none could keep it true.
+        worker.post(() -> {
+            shown = null;
+            HeldNotices.cancelLine(this);
+        });
     }
 
     /**
@@ -730,6 +753,11 @@ public final class AppNotes extends NotificationListenerService
             // A channel that rang while held, Sioul making the gathered apps silent itself.
             if (decided.optBoolean("channels", false))
                 channels();
+            // Held now, or back from being held: the line of what Sioul holds written again, once a burst settled.
+            if (decided.optBoolean("changed", false)) {
+                worker.removeCallbacks(lineSoon);
+                worker.postDelayed(lineSoon, LINE_SETTLE_MS);
+            }
         } catch (Throwable e) {
             // Sioul's library that does not load, Rust that fails: the notification stays as it came.
             Log.e(TAG, "Notes: a notification was not decided; it comes as sent.", e);
@@ -1003,6 +1031,8 @@ public final class AppNotes extends NotificationListenerService
                     pending.finish();
             } else if (CLOSE.equals(action)) {
                 listener.window.close();
+            } else if (SHOW.equals(action)) {
+                listener.worker.post(listener::show);
             } else if (LINKED.equals(action)) {
                 listener.worker.post(listener::channels);
             }
@@ -1199,11 +1229,80 @@ public final class AppNotes extends NotificationListenerService
                 }
                 window.follow(times);
             }
+            // What Sioul holds now, in its line in the shade.
+            line(keys);
         } catch (Throwable e) {
             Log.e(TAG, "Notes: review (" + reason + "): what is held could not be worked out again; each notification keeps the time it had.", e);
         }
         // The choices may have changed (an app's sound given back, Stop): the channels worked out again.
         channels();
+    }
+
+    // ---------------------------------------------------------------- what Sioul says in the shade
+
+    /**
+     * The line of what Sioul holds (HeldNotices), of what Android holds now
+     * (`keys`), as Rust says it: posted, updated, or taken away when nothing
+     * waits; never posted again when it says the same. On the worker thread.
+     */
+    private void line(JSONArray keys)
+    {
+        if (!connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("line", new JSONObject().put("snoozed", keys).toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            HeldNotices.Line line = HeldNotices.Line.of(new JSONObject(answer));
+            if (line.same(shown))
+                return;
+            HeldNotices.line(this, line);
+            shown = line;
+        } catch (Throwable e) {
+            // Rust that fails, Android's service gone a moment: the line stays as it was, until the next change.
+            Log.w(TAG, "Notes: the line of what Sioul holds not written: " + e.getClass().getSimpleName());
+        }
+    }
+
+    /** The line written again, of what Android holds now (after a hold or a return settled). On the worker thread. */
+    private void lineNow()
+    {
+        if (!connected)
+            return;
+        JSONArray keys = new JSONArray();
+        try {
+            StatusBarNotification[] held = getSnoozedNotifications();
+            if (held != null)
+                for (StatusBarNotification sbn : held)
+                    keys.put(sbn.getKey());
+        } catch (RuntimeException e) {
+            // Unbound meanwhile: the line goes as the listener does.
+            return;
+        }
+        line(keys);
+    }
+
+    /**
+     * Show now, on the line of what Sioul holds: a release of this phone, as
+     * "Let what your phone holds through" (Rust's `shade`, "show": never
+     * during a pause), then a review, which lets through what was held before
+     * it, but the blocked and a conversation set to never, and writes the
+     * line again. On the worker thread.
+     */
+    private void show()
+    {
+        if (!connected)
+            return;
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("show", "{}");
+            boolean released = answer != null && !answer.isEmpty() && !"null".equals(answer) && new JSONObject(answer).optBoolean("released", false);
+            Log.i(TAG, released ? "Notes: Show now: what was held comes now." : "Notes: Show now: nothing released (a pause, or the switch's file not written).");
+        } catch (Throwable e) {
+            Log.w(TAG, "Notes: Show now: nothing released: " + e.getClass().getSimpleName());
+        }
+        review("show");
     }
 
     // ---------------------------------------------------------------- Sioul's files watched

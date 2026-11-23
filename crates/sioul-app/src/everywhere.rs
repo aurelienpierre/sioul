@@ -674,13 +674,7 @@ pub(crate) fn press_state(state: rules::State, until: Option<i64>, open: bool) -
 /// release stamp in this device's table; the phone lets through what it held
 /// before it, once, and the computer never learns what it was. Sent at once.
 pub(crate) fn let_through(mut sioul: Pin<&mut Sioul>) {
-    let here = here_id();
-    let now = jiff::Timestamp::now().as_millisecond();
-    let written = rules::change_own(&Switch::default_path(), &here, |switch| {
-        switch.release(&here, now);
-        true
-    });
-    if let Err(e) = written {
+    if let Err(e) = release_here(jiff::Timestamp::now().as_millisecond()) {
         eprintln!("sioul: do-not-disturb: {e}");
         sioul.as_mut().set_status(QString::from(&e));
         return;
@@ -688,6 +682,20 @@ pub(crate) fn let_through(mut sioul: Pin<&mut Sioul>) {
     sioul.as_mut().set_status(QString::from(&tr().text("reach-let-through-done", None)));
     let (qt, shared) = (sioul.qt_thread(), sioul.shared());
     crate::share::exchange(&qt, &shared);
+}
+
+/// "Let what your phone holds through" asked on this device, at `now_ms`: a
+/// release stamp in its own table of the switch (`rules::Switch::release`),
+/// which the phone's listener applies at its next review. From a computer
+/// (`let_through`), or from the phone's own line in its shade, Show now
+/// (held apps phase 1, B1: `appnotes::shade`, in the listener's process).
+pub(crate) fn release_here(now_ms: i64) -> Result<(), String> {
+    let here = here_id();
+    rules::change_own(&Switch::default_path(), &here, |switch| {
+        switch.release(&here, now_ms);
+        true
+    })
+    .map(|_| ())
 }
 
 /// A press here, saying where it came from (`rules::VIA_SYSTEM`: this

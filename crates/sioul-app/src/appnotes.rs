@@ -222,9 +222,10 @@ fn gate() -> Option<Gated> {
 }
 
 /// One notification decided (`AppNotes.decide`): {"hold": milliseconds (0:
-/// it comes now), "why", "quiet"}: `quiet`, held, its return comes without a
+/// it comes now), "why", "quiet", "changed"}: `quiet`, held, its return comes without a
 /// sound, in Sioul's quiet window (`appnotes::Held::quiet`: an automaton's,
-/// held for good; docs/android.md). What it says is read here and dropped; the ledger
+/// held for good; docs/android.md); `changed`, held now or back from being
+/// held, the line of what Sioul holds to write again (`shade`). What it says is read here and dropped; the ledger
 /// keeps its key hashed, its app's and conversation's names, and its time.
 /// Only for the apps you send to your computers, while that part of the
 /// sharing is on, its messages also go, sealed (`phonemsgs::note`; "shared":
@@ -381,7 +382,9 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     let why = if machine && decision.why == Why::Gathered { MACHINE } else { decision.why.id() };
     // A channel that rang while held, Sioul making the gathered apps silent itself: Java asks what to change now.
     let channels = choices.silence && decision.until.is_some() && posted.alerted && !posted.intercepted && !posted.channel.is_empty();
-    let mut answer = json!({ "hold": hold, "why": why, "shared": shared, "quiet": quiet, "channels": channels });
+    // Held now, or back from being held: Java writes the line of what Sioul holds again (held apps phase 1, B1).
+    let changed = returning || decision.until.is_some();
+    let mut answer = json!({ "hold": hold, "why": why, "shared": shared, "quiet": quiet, "channels": channels, "changed": changed });
     if let Some(counted) = released {
         let columns = column_words(&columns_now(&live, &now, slot(&now), gate.is_some()), nothing && live.clock.mode(&now).free(), gate.as_ref());
         answer["line"] = json!(log_line("release", &counted, &columns.iter().map(String::as_str).collect::<Vec<_>>(), &now));
@@ -522,6 +525,53 @@ fn channels(verb: &str, json: &str) -> String {
                 }
             }
             "{}".to_string()
+        }
+        _ => "null".to_string(),
+    }
+}
+
+/// The hashes of the keys Java names (`appnotes::key_hash`), as the ledger keeps them.
+fn hashes(keys: &Value) -> std::collections::BTreeSet<String> {
+    keys.as_array().map(|keys| keys.iter().filter_map(Value::as_str).map(appnotes::key_hash).collect()).unwrap_or_default()
+}
+
+/// What Sioul says in the phone's shade of what it holds (held apps phase 1;
+/// AppNotes.java and HeldNotices.java post it), the listener's questions on
+/// its worker. Apps' names only, never who wrote nor a conversation:
+/// - "line" `{snoozed: [keys]}` → `{text, public, show, channel}`: the standing
+///   line (B1, `appnotes::held_line`) of what Android holds now, without a
+///   sound; `text` "" when nothing will come back, holding is off or the line
+///   is turned off (`Choices::shade`), and the line goes; `show` the words of
+///   Show now, "" during a pause, when a release would wait for its end.
+/// - "show" `{}` → `{released}`: Show now pressed, a release of this device as
+///   "Let what your phone holds through" (`everywhere::release_here`), never
+///   during a pause; the review Java runs then lets through what was held
+///   before it, never the blocked nor a conversation set to never.
+fn shade(verb: &str, json: &str) -> String {
+    shade_at(verb, json, &sioul_core::zone::now())
+}
+
+/// `shade` at `now` (the tests' fixed clock).
+fn shade_at(verb: &str, json: &str, now: &Zoned) -> String {
+    let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    let tr = tr();
+    match verb {
+        "line" => {
+            let choices = Choices::load(&Choices::default_path());
+            let text = if choices.hold && choices.shade { appnotes::held_line(tr, &Ledger::load(&Ledger::default_path()), &hashes(&asked["snoozed"]), now).unwrap_or_default() } else { String::new() };
+            let paused = live(&load_config(), now).clock.mode(now).paused();
+            json!({
+                "text": text,
+                "public": tr.text("appnotes-shade-public", None),
+                "show": if paused { String::new() } else { tr.text("appnotes-shade-show", None) },
+                "channel": tr.text("appnotes-shade-channel", None),
+            })
+            .to_string()
+        }
+        "show" => {
+            // Never during a pause, when everything Sioul shows is held (review of part 3, F5): none offered then.
+            let released = !live(&load_config(), now).clock.mode(now).paused() && crate::everywhere::release_here(now.timestamp().as_millisecond()).map_err(|e| eprintln!("Notes: {e}")).is_ok();
+            json!({ "released": released }).to_string()
         }
         _ => "null".to_string(),
     }
@@ -885,6 +935,20 @@ pub unsafe extern "C" fn sioul_appnotes_channels(verb: *const c_char, json: *con
     crate::alarms::handed(answer)
 }
 
+/// `shade`, for Java: a verb and its JSON; "null" when it fails, and the
+/// shade stays as it is.
+///
+/// # Safety
+/// `verb` and `json` are null, or zero-terminated texts valid for the call.
+// SAFETY: no other symbol of the program has this name.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sioul_appnotes_shade(verb: *const c_char, json: *const c_char) -> *mut c_char {
+    // SAFETY: `verb` and `json` are null or C strings valid for the call, as this function's contract says.
+    let (verb, json) = unsafe { (crate::alarms::key_of(verb), crate::alarms::key_of(json)) };
+    let answer = std::panic::catch_unwind(|| shade(&verb, &json)).unwrap_or_else(|_| "null".to_string());
+    crate::alarms::handed(answer)
+}
+
 // ---------------------------------------------------------------- the window
 
 /// The conversations let through now from the card (`release_talk`), by
@@ -1176,6 +1240,8 @@ pub(crate) fn setup() -> String {
         "hold": row("hold", "bool", &text("appnotes-hold"), &text("appnotes-hold-help"), json!(choices.hold), Vec::new()),
         // People's messages held too, by who writes and when (A2): under the switch above, while it is on.
         "people": row("people", "bool", &text("appnotes-people"), &text("appnotes-people-help"), json!(choices.people.unwrap_or(false)), Vec::new()),
+        // A line in the phone's shade while something is held, without a sound (B1): on unless turned off.
+        "shade": row("shade", "bool", &text("appnotes-shade"), &text("appnotes-shade-help"), json!(choices.shade), Vec::new()),
         "times": tr.text("appnotes-times", Some(&times)),
         "heard": heard,
         "rang": rang,
@@ -1199,7 +1265,7 @@ pub(crate) fn setup() -> String {
 }
 
 /// A choice of the tab, or one of Android's pages (`AppNotesSetup.act`): the tab again, as JSON.
-/// "set" {key, value}: "hold", "people", `app.<package>.kind`, `app.<package>.area`,
+/// "set" {key, value}: "hold", "people", "shade", `app.<package>.kind`, `app.<package>.area`,
 /// `app.<package>.sound` ("keep": its sound given back, never made silent
 /// by Sioul; "silence": as usual), `conversation.<key>`, `site.<host>`;
 /// "open-access", "open-info", "open-app" {package}, "open-channel"
@@ -1306,7 +1372,7 @@ fn name_silent(choices: &mut Choices, ledger: &Ledger, package: &str, channel: &
     choices.app.insert(package.to_string(), chosen);
 }
 
-/// One choice written: holding, people's messages, the app's kind, area or
+/// One choice written: holding, people's messages, the line in the shade, the app's kind, area or
 /// sound, a conversation's way through, a site at once. What says "as
 /// usual" is taken out.
 fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
@@ -1315,6 +1381,10 @@ fn set(choices: &mut Choices, ledger: &Ledger, key: &str, value: &Value) {
     } else if key == "people" {
         if let Some(on) = value.as_bool() {
             choices.people = Some(on);
+        }
+    } else if key == "shade" {
+        if let Some(on) = value.as_bool() {
+            choices.shade = on;
         }
     } else if let Some(rest) = key.strip_prefix("app.") {
         let Some((package, field)) = rest.rsplit_once('.') else { return };
@@ -1528,6 +1598,76 @@ mod tests {
         crate::everywhere::files_cleared();
     }
 
+    /// The line in the phone's shade (held apps phase 1, B1): of what Android
+    /// holds now, apps' names only, held for good never; gone with the
+    /// switch or holding off. Show now: a release of this phone, which the
+    /// review then applies, quiet, never to the blocked; during a pause none
+    /// is offered nor written.
+    #[test]
+    fn the_line_in_the_shade_and_show_now() {
+        sioul_core::config::stand_ins_only();
+        const SIGNAL: &str = "0|org.thoughtcrime.securesms|3|null|10300";
+        const SHOP_KEY: &str = "0|com.shop.example|1|null|10500";
+        const BLOCKED: &str = "0|com.whatsapp|9|null|10400";
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        let now = sioul_core::zone::now();
+        let stamp = now.timestamp().as_second();
+        let held = |app: &str, label: &str, kind: &str, who: &str, until: i64| appnotes::Held { app: app.into(), label: label.into(), kind: kind.into(), via: if kind == "gathered" { String::new() } else { "messages".into() }, who: who.into(), conversation: "talk-noa".into(), since: stamp - 3600, until, ..Default::default() };
+        let mut ledger = Ledger::default();
+        ledger.held.insert(appnotes::key_hash(SIGNAL), held("org.thoughtcrime.securesms", "Signal", "people", "neutral", stamp + 7200));
+        ledger.held.insert(appnotes::key_hash(SHOP_KEY), held("com.shop.example", "Shop", "gathered", "", stamp + 7200));
+        ledger.held.insert(appnotes::key_hash(BLOCKED), held("com.whatsapp", "WhatsApp", "never", "blocked", stamp + appnotes::FOR_GOOD));
+        ledger.conversations.insert("talk-noa".into(), appnotes::SeenTalk { app: "org.thoughtcrime.securesms".into(), label: "Signal".into(), title: "Noa Martin".into(), group: false, seen: stamp });
+        ledger.save(&Ledger::default_path()).unwrap();
+        let line = |keys: &[&str]| -> serde_json::Value { serde_json::from_str(&shade_at("line", &json!({ "snoozed": keys }).to_string(), &now)).unwrap() };
+        let said = line(&[SIGNAL, SHOP_KEY, BLOCKED]);
+        let text = said["text"].as_str().unwrap();
+        assert!(text.contains("Shop") && text.contains("Signal"), "{said}");
+        for never in ["WhatsApp", "Noa", "Martin", "neutral", "blocked"] {
+            assert!(!text.contains(never), "{never}: {said}");
+        }
+        assert_eq!(said["show"], tr().text("appnotes-shade-show", None), "{said}");
+        assert_eq!(said["channel"], tr().text("appnotes-shade-channel", None));
+        assert!(!said["public"].as_str().unwrap().contains("Shop"), "no app on the lock screen: {said}");
+        // Only what Android holds: the shop's taken away by its app, only Signal named.
+        let text = line(&[SIGNAL, BLOCKED])["text"].as_str().unwrap().to_string();
+        assert!(text.contains("Signal") && !text.contains("Shop"), "{text}");
+        assert_eq!(line(&[BLOCKED])["text"], "", "held for good alone: no line");
+        // The switch off, or holding off: no line.
+        Choices { people: Some(true), shade: false, ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        assert_eq!(line(&[SIGNAL, SHOP_KEY])["text"], "");
+        Choices { people: Some(true), hold: false, ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        assert_eq!(line(&[SIGNAL, SHOP_KEY])["text"], "");
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        // Show now: this phone's release written; the review lets through, quiet, what was held before it, never the blocked.
+        let shown: serde_json::Value = serde_json::from_str(&shade_at("show", "{}", &now)).unwrap();
+        assert_eq!(shown["released"], true, "{shown}");
+        assert!(sioul_core::everywhere::Switch::read(&sioul_core::everywhere::Switch::default_path()).unwrap().release_stamps().iter().any(|(_, at)| *at >= now.timestamp().as_millisecond()));
+        let reviewed: serde_json::Value = serde_json::from_str(&review_at(&json!({ "snoozed": [SIGNAL, SHOP_KEY, BLOCKED], "reason": "show" }).to_string(), &now)).unwrap();
+        let now_ms = stamp * 1000;
+        let quiet: Vec<(String, i64)> = reviewed["quiet"].as_array().unwrap().iter().map(|q| (q["key"].as_str().unwrap().to_string(), q["at"].as_i64().unwrap())).collect();
+        let now_too: Vec<&str> = reviewed["snooze"].as_array().unwrap().iter().filter(|s| s["ms"].as_i64() == Some(1000)).filter_map(|s| s["key"].as_str()).collect();
+        // The shop's released, quiet; the person's comes now as well (no hours set here: they may reach you now).
+        assert!(quiet.contains(&(SHOP_KEY.to_string(), now_ms)) && now_too.contains(&SHOP_KEY) && now_too.contains(&SIGNAL), "{reviewed}");
+        assert!(!now_too.contains(&BLOCKED) && !quiet.iter().any(|(key, at)| key == BLOCKED && *at <= now_ms), "never the blocked: {reviewed}");
+        assert!(reviewed["line"].as_str().unwrap().contains("released as you asked"), "{reviewed}");
+        // Then nothing left to come back: the line goes.
+        assert_eq!(line(&[SIGNAL, SHOP_KEY, BLOCKED])["text"], "");
+        // During a pause: no Show now offered, and one pressed (a line shown before) writes nothing.
+        crate::everywhere::files_cleared();
+        Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
+        ledger.save(&Ledger::default_path()).unwrap();
+        sioul_core::quiet::Overrides { paused_since: Some(stamp - 300), ..Default::default() }.save(&sioul_core::quiet::Overrides::default_path()).unwrap();
+        let in_pause = line(&[SIGNAL, SHOP_KEY]);
+        assert!(!in_pause["text"].as_str().unwrap().is_empty() && in_pause["show"] == "", "{in_pause}");
+        let pressed: serde_json::Value = serde_json::from_str(&shade_at("show", "{}", &now)).unwrap();
+        assert_eq!(pressed["released"], false);
+        assert!(sioul_core::everywhere::Switch::read(&sioul_core::everywhere::Switch::default_path()).unwrap().release_stamps().is_empty(), "nothing written during a pause");
+        crate::everywhere::files_cleared();
+    }
+
     #[test]
     fn choices_set_from_the_tab() {
         let mut choices = Choices::default();
@@ -1556,6 +1696,13 @@ mod tests {
         set(&mut choices, &ledger, "people", &json!(true));
         set(&mut choices, &ledger, "people", &json!("yes"));
         assert_eq!(choices.people, Some(true));
+        // The line in the shade (B1): on unless turned off; a value that is no switch leaves it.
+        assert!(choices.shade);
+        set(&mut choices, &ledger, "shade", &json!(false));
+        set(&mut choices, &ledger, "shade", &json!("on"));
+        assert!(!choices.shade);
+        set(&mut choices, &ledger, "shade", &json!(true));
+        assert!(choices.shade);
         // A channel named to be made silent by Sioul; then its app's sound given back: named no more, kept.
         name_silent(&mut choices, &ledger, "com.discord", "dm");
         name_silent(&mut choices, &ledger, "com.discord", "dm");

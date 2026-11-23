@@ -38,7 +38,9 @@ public final class ReminderOpener extends Activity
      * question ("need"), a closing sheet ("review") of the work day ("work")
      * or of the whole day ("night"), with the day it is for
      * ("work:2026-10-14"), or a message ("mail") by its address alone, never
-     * a file. Rust reads the same (eventalarms.rs, `opened_of`). Pure,
+     * a file; and this phone's card at its apps ("settings:devices.apps",
+     * the one setting a notification opens: the line of what Sioul holds).
+     * Rust reads the same (eventalarms.rs, `opened_of`). Pure,
      * checked on a JVM (android/jvm-checks/: DayNotesCheck, MailOpenCheck,
      * EventOpenCheck).
      *
@@ -50,6 +52,9 @@ public final class ReminderOpener extends Activity
     {
         if (NOTICE.equals(kind))
             return isNoticeAddress(key);
+        // One door, from the line of what Sioul holds of other apps' notifications (HeldNotices): this phone's card.
+        if (HeldNotices.CARD.equals(kind))
+            return true;
         if ("event".equals(kind) || "porch".equals(kind) || "need".equals(kind) || "mailbox".equals(kind))
             return true;
         if ("mail".equals(kind))

@@ -96,6 +96,9 @@ extern "C" char *sioul_appnotes_review(const char *json);
 // The channels of other apps Sioul makes silent itself (the same file): a
 // verb and its JSON; JSON, given back to sioul_string_free.
 extern "C" char *sioul_appnotes_channels(const char *verb, const char *json);
+// What Sioul says in the phone's shade of what it holds (the same file): a
+// verb and its JSON; JSON, given back to sioul_string_free.
+extern "C" char *sioul_appnotes_shade(const char *verb, const char *json);
 // Replies from your computers (crates/sioul-app/src/replies.rs): the
 // listener's questions, a verb and its JSON; JSON, given back to sioul_string_free.
 extern "C" char *sioul_replies_listener(const char *verb, const char *json);
@@ -1255,6 +1258,13 @@ extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nati
 extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeChannels(JNIEnv *env, jclass, jstring verb, jstring json)
 {
     return answered(env, sioul_appnotes_channels(utf8(env, verb).constData(), utf8(env, json).constData()));
+}
+
+// What Sioul says in the shade of what it holds, on the listener's thread:
+// the line's words, Show now. Apps' names pass here, never a notification's words.
+extern "C" JNIEXPORT jstring JNICALL Java_com_aurelienpierre_sioul_AppNotes_nativeShade(JNIEnv *env, jclass, jstring verb, jstring json)
+{
+    return answered(env, sioul_appnotes_shade(utf8(env, verb).constData(), utf8(env, json).constData()));
 }
 
 // Replies from your computers, on the listener's thread: what is due, one

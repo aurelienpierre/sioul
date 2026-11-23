@@ -717,15 +717,24 @@ pub struct Choices {
     /// the tab says so until nothing is left, then that it is done.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stopped: bool,
+    /// A line of Sioul's own in the phone's shade while it holds anything
+    /// that will come back (held apps phase 1, B1: `held_line`), without a
+    /// sound, with Show now; on unless turned off, so only `false` is written.
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub shade: bool,
 }
 
 fn yes() -> bool {
     true
 }
 
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
 impl Default for Choices {
     fn default() -> Choices {
-        Choices { hold: true, people: None, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false }
+        Choices { hold: true, people: None, app: BTreeMap::new(), conversation: BTreeMap::new(), site: BTreeMap::new(), silence: false, stopped: false, shade: true }
     }
 }
 
@@ -2057,25 +2066,36 @@ pub fn apps_in_words(tr: &Translator, labels: &[String]) -> String {
     }
 }
 
+/// What waits, in one sentence: "Notifications held until 13:00: Discord, Le
+/// Monde and two other apps.", or, at several times, "Notifications held:
+/// …; the first at 13:00." Of `held`, those still to come back (their time
+/// to come; held for good never counts), apps' names only, never a count
+/// past twelve; none when nothing waits.
+fn waiting_sentence<'a>(tr: &Translator, held: impl Iterator<Item = &'a Held>, now: &Zoned) -> Option<String> {
+    let stamp = now.timestamp().as_second();
+    let mut waiting: Vec<&Held> = held.filter(|h| h.kind != "never" && h.until > stamp).collect();
+    waiting.sort_by_key(|h| (h.until, h.label.clone()));
+    let first = waiting.first()?;
+    let mut labels: Vec<String> = Vec::new();
+    for h in &waiting {
+        if !labels.contains(&h.label) {
+            labels.push(h.label.clone());
+        }
+    }
+    let mut args = crate::i18n::args();
+    args.set("apps", apps_in_words(tr, &labels));
+    args.set("when", when_text(tr, first.until, now));
+    let one_time = waiting.iter().all(|h| h.until == first.until);
+    Some(tr.text(if one_time { "appnotes-porch-held" } else { "appnotes-porch-held-first" }, Some(&args)))
+}
+
 /// The Porch's line on other apps (docs/porch.md): what waits and until
 /// when, what came back lately. Names and words, never a count past twelve.
 pub fn porch_line(tr: &Translator, ledger: &Ledger, now: &Zoned) -> String {
     let stamp = now.timestamp().as_second();
     let mut sentences = Vec::new();
-    let mut waiting: Vec<&Held> = ledger.held.values().filter(|h| h.kind != "never" && h.until > stamp).collect();
-    waiting.sort_by_key(|h| (h.until, h.label.clone()));
-    if let Some(first) = waiting.first() {
-        let mut labels: Vec<String> = Vec::new();
-        for h in &waiting {
-            if !labels.contains(&h.label) {
-                labels.push(h.label.clone());
-            }
-        }
-        let mut args = crate::i18n::args();
-        args.set("apps", apps_in_words(tr, &labels));
-        args.set("when", when_text(tr, first.until, now));
-        let one_time = waiting.iter().all(|h| h.until == first.until);
-        sentences.push(tr.text(if one_time { "appnotes-porch-held" } else { "appnotes-porch-held-first" }, Some(&args)));
+    if let Some(waiting) = waiting_sentence(tr, ledger.held.values(), now) {
+        sentences.push(waiting);
     }
     if let Some(back) = ledger.back.iter().rev().find(|b| stamp - b.at < BACK_SAID && !b.apps.is_empty()) {
         let mut args = crate::i18n::args();
@@ -2084,6 +2104,16 @@ pub fn porch_line(tr: &Translator, ledger: &Ledger, now: &Zoned) -> String {
         sentences.push(tr.text("appnotes-porch-back", Some(&args)));
     }
     sentences.join(" ")
+}
+
+/// The standing line in the phone's shade (held apps phase 1, B1;
+/// AppNotes.java, `HeldNotices`): the Porch's sentence on what waits, of the
+/// notifications Android holds now (`present`: the hashes of its keys,
+/// `key_hash`), so that one its app took away while held is never counted.
+/// Held for good never counts; apps' names only, never who wrote nor a
+/// conversation. None when nothing waits: the line goes.
+pub fn held_line(tr: &Translator, ledger: &Ledger, present: &std::collections::BTreeSet<String>, now: &Zoned) -> Option<String> {
+    waiting_sentence(tr, ledger.held.iter().filter(|(hash, _)| present.contains(*hash)).map(|(_, held)| held), now)
 }
 
 /// "13:00", "tomorrow at 09:00", "Monday 12 October at 09:00".
@@ -2947,6 +2977,51 @@ mod tests {
         ledger.forget_old(stamp + 8 * 86_400, &chosen);
         assert!(ledger.back.is_empty());
         assert_eq!(ledger.conversations.keys().collect::<Vec<_>>(), [&school]);
+    }
+
+    /// The standing line in the shade (held apps phase 1, B1): the Porch's
+    /// sentence, of what Android holds now alone, what will come back only
+    /// (held for good never counts), apps' names, never who wrote nor a
+    /// conversation; none when nothing waits. The switch is on unless turned
+    /// off, and only "off" is written.
+    #[test]
+    fn the_standing_line_says_what_android_holds_by_app_only() {
+        let now = at("2026-10-06T10:00[Europe/Paris]");
+        let stamp = now.timestamp().as_second();
+        let one = at("2026-10-06T13:00[Europe/Paris]").timestamp().as_second();
+        let mut ledger = Ledger::default();
+        let held = |label: &str, kind: &str, until: i64| Held { app: format!("org.example.{}", label.to_lowercase()), label: label.into(), kind: kind.into(), via: "messages".into(), who: "neutral".into(), conversation: "c-noa".into(), since: stamp - 60, until, ..Held::default() };
+        ledger.held.insert("a".into(), held("Signal", "people", one));
+        ledger.held.insert("b".into(), held("Shop", "gathered", one));
+        ledger.held.insert("c".into(), held("WhatsApp", "never", stamp + FOR_GOOD));
+        ledger.held.insert("d".into(), held("Discord", "people", one));
+        ledger.conversations.insert("c-noa".into(), SeenTalk { app: "org.example.signal".into(), label: "Signal".into(), title: "Noa Martin".into(), group: false, seen: stamp });
+        let tr = Translator::new("en");
+        let all: std::collections::BTreeSet<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(held_line(&tr, &ledger, &all, &now).as_deref(), Some("Notifications held until 13:00: Discord, Shop and Signal."), "held for good never counts");
+        // Discord's taken away by its app while held: Android no longer holds it, the line no longer names it.
+        let some: std::collections::BTreeSet<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+        let line = held_line(&tr, &ledger, &some, &now).unwrap();
+        assert_eq!(line, "Notifications held until 13:00: Shop and Signal.");
+        for never in ["Noa", "Martin", "WhatsApp", "c-noa", "neutral"] {
+            assert!(!line.contains(never), "{never} in {line}");
+        }
+        let fr = Translator::new("fr");
+        assert_eq!(held_line(&fr, &ledger, &some, &now).as_deref(), Some("Notifications retenues jusqu’à 13:00\u{202f}: Shop et Signal."));
+        // Only what is held for good, or nothing Android holds: no line.
+        let never: std::collections::BTreeSet<String> = ["c".to_string()].into();
+        assert_eq!(held_line(&tr, &ledger, &never, &now), None);
+        assert_eq!(held_line(&tr, &ledger, &std::collections::BTreeSet::new(), &now), None);
+        // Its time past (coming back now): no longer said as waiting.
+        assert_eq!(held_line(&tr, &ledger, &some, &at("2026-10-06T13:00:30[Europe/Paris]")), None);
+        // The Porch says the same sentence.
+        assert!(porch_line(&tr, &ledger, &now).starts_with("Notifications held until 13:00: Discord, Shop and Signal."));
+        // On unless turned off; only "off" written; a file of an older Sioul reads as on.
+        assert!(Choices::default().shade);
+        assert!(!toml::to_string(&Choices::default()).unwrap().contains("shade"));
+        assert!(toml::to_string(&Choices { shade: false, ..Choices::default() }).unwrap().contains("shade = false"));
+        assert!(toml::from_str::<Choices>("hold = true\npeople = false\n").unwrap().shade);
+        assert!(!Choices { shade: false, ..Choices::default() }.chose_for_apps(usual()), "the line is no choice for other apps");
     }
 
     #[test]

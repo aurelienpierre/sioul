@@ -5,6 +5,8 @@
 // part, on a stand-in for Sioul: under "Hold other apps' notifications until
 // their time", the switch "Hold people's messages too" (held apps phase 1,
 // A2), shown while holding is on and set from there; holding off, it goes.
+// Under it, the line in the phone's shade (B1), on unless turned off, set
+// from there, gone with holding.
 // What the switch decides is tested in the app (appnotes.rs). Run by
 // tools/qml-test.sh.
 
@@ -30,6 +32,7 @@ Item {
         property var asked: []
         property bool hold: true
         property bool people: false
+        property bool shade: true
 
         function text(key) {
             return key
@@ -42,6 +45,7 @@ Item {
                 android: true, access: true, restricted: false, contacts: true,
                 hold: { key: "hold", kind: "bool", label: "Hold other apps' notifications until their time", help: "", value: mock.hold, choices: [] },
                 people: { key: "people", kind: "bool", label: "Hold people's messages too, by who writes and when", help: "Off, they come at once.", value: mock.people, choices: [] },
+                shade: { key: "shade", kind: "bool", label: "Say in the phone's notifications what Sioul holds", help: "One line without a sound.", value: mock.shade, choices: [] },
                 times: "", heard: "", rang: [],
                 link: { available: false, linked: false, on: false, giving_back: false, given_back: false },
                 silenced: [], apps: [], conversations: [], sites: [], grid: { columns: [], marks: [], rows: [] }, more: false
@@ -57,6 +61,8 @@ Item {
                 mock.hold = args.value
             if (verb === "set" && args.key === "people")
                 mock.people = args.value
+            if (verb === "set" && args.key === "shade")
+                mock.shade = args.value
             return mock.setup()
         }
         function reminderOpened(door, a, b) {
@@ -104,11 +110,15 @@ Item {
         function peopleRow() {
             return walk(tab, i => i.objectName === "appNotesPeople", [])[0]
         }
+        function shadeRow() {
+            return walk(tab, i => i.objectName === "appNotesShade", [])[0]
+        }
 
         function init() {
             mock.asked = []
             mock.hold = true
             mock.people = false
+            mock.shade = true
             tab.reload()
         }
 
@@ -141,6 +151,21 @@ Item {
             hold.toggled()
             compare(mock.asked, ["set hold=false"])
             verify(!seen(peopleRow()), "gone while nothing is held")
+            verify(!seen(shadeRow()), "and the line's switch with it")
+        }
+
+        // The line in the shade (B1): under people's, on as Sioul ships it, turned off from the tab.
+        function test_the_line_in_the_shade_is_on_unless_turned_off() {
+            const row = shadeRow()
+            verify(row && seen(row), "shown while holding is on")
+            const shade = switchOf("Say in the phone's notifications what Sioul holds")
+            verify(shade && shade.checked, "on unless turned off")
+            const people = switchOf("Hold people's messages too, by who writes and when")
+            verify(people.mapToItem(tab, 0, 0).y < shade.mapToItem(tab, 0, 0).y, "under people's")
+            shade.toggle()
+            shade.toggled()
+            compare(mock.asked, ["set shade=false"])
+            verify(!switchOf("Say in the phone's notifications what Sioul holds").checked, "off, as the backend says")
         }
     }
 }
