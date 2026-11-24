@@ -2064,8 +2064,9 @@ ColumnLayout {
                         // Every card says its title: meals, naps and the night by their names (the night
                         // right of the doses' lane, which runs through it); time for you, quiet words.
                         // Never its times, which a click shows over it (`timesKey`).
-                        // A card with no room for a line says it by its name to screen readers alone.
-                        visible: words.room >= planning.titleLine
+                        // A card with no room for a line under its top margin says it by its name to
+                        // screen readers alone.
+                        visible: words.room - words.anchors.topMargin >= planning.titleLine
                         anchors.fill: parent
                         anchors.leftMargin: card.isNight ? planning.lane + 4 : 6
                         anchors.rightMargin: 2 + (card.pinned || card.kind === "block" ? 14 : 0)
@@ -2079,7 +2080,7 @@ ColumnLayout {
                             elide: Text.ElideRight
                             // At words when each fits, else one line and "…": never inside a word.
                             wrapMode: planning.wordsFit(text, width) ? Text.WordWrap : Text.NoWrap
-                            maximumLineCount: Math.max(1, Math.floor((words.room - planning.cardPadding) / planning.titleLine))
+                            maximumLineCount: Math.max(1, Math.floor((words.room - Math.max(planning.cardPadding, words.anchors.topMargin)) / planning.titleLine))
                             font.pixelSize: card.isLeg ? 11 : 12
                             font.italic: card.isQuiet || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled

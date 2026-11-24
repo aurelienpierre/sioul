@@ -810,28 +810,48 @@ Item {
         function test_short_cards_never_write_over_each_other() {
             const page = makePage()
             page.mode = "day"
+            // A five-minute snack, the next thing two minutes after it: no room for a line.
             const monday = day(0, { timed: [placed("Snack", "event", root.monday, 960, 965, { when: "16:00 – 16:05" }), placed("Write to the landlord", "event", root.monday, 967, 1027, { when: "16:07 – 17:07" })] })
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
             wait(50)
             const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
             const next = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0))
             const snack = planning.boxOf(planning.rowOf(monday.timed[0], monday, 0))
-            verify(next.y < snack.y + snack.height, "the next card starts within the first one's box")
-            const card = root.all(page, o => o.box !== undefined && o.itemId === "Snack")[0]
-            verify(card !== undefined, "the first card")
-            for (const w of root.all(card, o => o.text === "Snack" && o.visible)) {
-                const bottom = w.mapToItem(card, 0, w.height).y
-                verify(bottom <= next.y - card.y + 0.5, "the first one's words stop at the next: " + bottom + " > " + (next.y - card.y))
-            }
+            verify(next.y - snack.y < planning.titleLine, "the next card starts within the first one's line: " + (next.y - snack.y))
+            verify(next.y < snack.y + snack.height, "and within its box")
+            compare(root.all(page, o => o.text === "Snack" && o.visible).length, 0, "no room for a line: its words left out, never under the next")
             verify(root.all(page, o => o.text === "Write to the landlord" && o.visible).length === 1, "the next one's words")
+            // An appointment with time kept after it (getting back), the next thing inside that
+            // time: its words show, and stop above the next card.
+            const span = { type: "span", start: root.monday + 840 * 60, at: root.monday + 840 * 60, until: root.monday + 870 * 60, end: root.monday + 960 * 60 }
+            const tuesday = day(0, { timed: [placed("Dentist", "event", root.monday, 840, 870, { when: "14:00 – 14:30" }, { time: span }), placed("Call the bank", "event", root.monday, 880, 910, { when: "14:40 – 15:10" })] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [tuesday] })
+            wait(50)
+            const dentist = planning.boxOf(planning.rowOf(tuesday.timed[0], tuesday, 0))
+            const after = planning.boxOf(planning.rowOf(tuesday.timed[1], tuesday, 0))
+            verify(after.y < dentist.y + dentist.height, "the next card starts within the first one's kept time")
+            const card = root.all(page, o => o.box !== undefined && o.itemId === "Dentist")[0]
+            const words = root.all(card, o => o.text === "Dentist" && o.visible)
+            compare(words.length, 1, "its words shown")
+            const bottom = words[0].mapToItem(card, 0, words[0].height).y
+            verify(bottom <= after.y - card.y + 0.5, "they stop above the next card: " + bottom + " > " + (after.y - card.y))
+            // The Week: a title whose word is wider than its card keeps one line ended by "…";
+            // one whose words fit wraps at words.
             page.mode = "week"
-            const wednesday = day(2, { timed: [placed("Swimming lesson at the pool", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 1, columns: 2 }), placed("Read", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 0, columns: 2 })] })
+            const wednesday = day(2, { timed: [placed("Unsubscribable-newsletters-everywhere", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 1, columns: 2 }), placed("Read the tax notice", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 0, columns: 2 })] })
             mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0), day(1), wednesday, day(3), day(4), day(5), day(6)] })
             wait(50)
-            tryVerify(() => !root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0].listed, 3000, "the Week as a grid")
-            const title = root.all(page, o => o.text === "Swimming lesson at the pool" && o.visible)[0]
-            verify(title !== undefined, "its title")
-            verify(title.wrapMode === Text.WordWrap || title.wrapMode === Text.NoWrap, "at words or on one line, never inside a word: " + title.wrapMode)
+            const grid = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+            tryVerify(() => !grid.listed, 3000, "the Week as a grid")
+            const long = root.all(page, o => o.text === "Unsubscribable-newsletters-everywhere" && o.visible)[0]
+            verify(long !== undefined, "its title")
+            verify(!grid.wordsFit(long.text, long.width), "its word wider than its card")
+            compare(long.wrapMode, Text.NoWrap, "never broken inside")
+            verify(long.lineCount === 1 && long.truncated, "one line, ended by …")
+            const short = root.all(page, o => o.text === "Read the tax notice" && o.visible)[0]
+            verify(grid.wordsFit(short.text, short.width), "each word fits")
+            compare(short.wrapMode, Text.WordWrap, "wrapped at words")
+            verify(short.lineCount > 1, "on more than one line: " + short.lineCount)
         }
 
         function test_a_phone_s_day_head_on_the_page() {
