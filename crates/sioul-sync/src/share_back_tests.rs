@@ -338,3 +338,36 @@ fn a_file_being_written_is_named_as_no_sync_app_sends_it() {
     }
     assert!(is_leftover(".lease.md.4211-7.sioul.tmp"), "the earlier form is still cleaned");
 }
+
+/// A change made here that lost to another device's later one in the same
+/// exchange, the device then ended: the file holds the later change, so the
+/// journal never says it holds this device's; the person choosing the same
+/// value again later makes a new change, at a new clock, which goes and
+/// stays (the review of 24 November 2026, must-fix 2).
+#[test]
+fn a_value_chosen_again_after_it_lost_goes_at_a_new_clock() {
+    let base = scratch("back-again");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/config.toml", "theme = \"dark\"\n");
+    desk.exchange(&folder, &key, at(0));
+    phone.exchange(&folder, &key, at(1));
+    phone.write("config/config.toml", "theme = \"light\"\n");
+    dated(&phone.path("config/config.toml"), at(2));
+    desk.write("config/config.toml", "theme = \"system\"\n");
+    desk.exchange(&folder, &key, at(3));
+    // The phone's exchange sends "light" and writes the desk's later "system" over it; it ends.
+    ends(&phone, &folder, &key, at(4), &plain(&phone));
+    assert!(phone.read("config/config.toml").contains("system"));
+    // The person chooses "light" again.
+    phone.write("config/config.toml", "theme = \"light\"\n");
+    dated(&phone.path("config/config.toml"), at(5));
+    phone.exchange(&folder, &key, at(6));
+    desk.exchange(&folder, &key, at(7));
+    phone.exchange(&folder, &key, at(8));
+    for c in [&desk, &phone] {
+        assert!(c.read("config/config.toml").contains("light"), "{}", c.read("config/config.toml"));
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}

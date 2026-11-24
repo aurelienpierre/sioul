@@ -7751,8 +7751,16 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // What this device appends, noted in the journal on the disk first
     // (`journal`): ended before its memory is saved, the next look sends a
     // change it finds again at its own clock, never a later one. Not noted (a
-    // full disk), nothing is appended.
-    journal.note(out.iter().map(|(key, value, clock, _)| Landed::new(key, *clock, sharing.computer, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default())).collect())?;
+    // full disk), nothing is appended. Never a change whose key another
+    // device's later change wrote or found so in this exchange: the file holds
+    // that change, not this one, and the same value chosen again later is a
+    // new change, at a new clock (the review of 24 November 2026, must-fix 2).
+    journal.note(
+        out.iter()
+            .filter(|(key, ..)| !written_keys.contains(key) && !settled.contains(key))
+            .map(|(key, value, clock, _)| Landed::new(key, *clock, sharing.computer, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default()))
+            .collect(),
+    )?;
     append(sharing, &mut memory, &out)?;
     // This device's own take-outs of files sealed apart, and the round and line they went into (`stands`);
     // the contents its own changes replaced (`Sealed::replaced`).
