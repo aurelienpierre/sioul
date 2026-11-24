@@ -378,11 +378,52 @@ const EXCHANGE_AT_MOST: std::time::Duration = std::time::Duration::from_secs(60)
 /// mail opens on what is found.
 fn mail_round(exchanged: std::sync::mpsc::Receiver<()>) {
     crate::mailnote::hold();
-    fetch_mail(&load_config());
+    // The accounts fetched beside the exchange; what follows a fetch (your rules first)
+    // waits for the exchange, which brings what other devices did and undid (`Exchanged`).
+    let done = std::sync::Arc::new(Exchanged::default());
+    let fetching = {
+        let done = std::sync::Arc::clone(&done);
+        std::thread::spawn(move || fetch_mail(&load_config(), &done))
+    };
     let _ = exchanged.recv_timeout(EXCHANGE_AT_MOST);
+    done.say();
+    let _ = fetching.join();
     crate::mailnote::close_now();
     crate::mailnote::tick();
     crate::ledger::background_step(&load_config());
+}
+
+/// The step's exchange done, or given up waiting for: what follows a fetch
+/// runs then (`fetch_mail`), so that your rules read what other devices did
+/// and undid before they act.
+#[derive(Default)]
+struct Exchanged {
+    done: Mutex<bool>,
+    said: std::sync::Condvar,
+}
+
+impl Exchanged {
+    fn say(&self) {
+        if let Ok(mut done) = self.done.lock() {
+            *done = true;
+        }
+        self.said.notify_all();
+    }
+
+    fn wait(&self) {
+        let Ok(mut done) = self.done.lock() else { return };
+        while !*done {
+            match self.said.wait_timeout(done, EXCHANGE_AT_MOST) {
+                Ok((next, timeout)) => {
+                    done = next;
+                    if timeout.timed_out() {
+                        return;
+                    }
+                }
+                Err(_) => return,
+            }
+        }
+    }
 }
 
 /// The inbox of each account fetched, every account at once (each in a
@@ -392,7 +433,7 @@ fn mail_round(exchanged: std::sync::mpsc::Receiver<()>) {
 /// notifications, told in one notification once every account is fetched
 /// and the step's exchange done (`mail_round`, `mailnote::close_now`), and to
 /// the home screen's card when any came (`homecard::mail_came`); whether any came.
-fn fetch_mail(config: &Config) -> bool {
+fn fetch_mail(config: &Config, exchanged: &Exchanged) -> bool {
     let any = std::sync::atomic::AtomicBool::new(false);
     std::thread::scope(|scope| {
         for account in config.accounts.iter().filter(|a| a.syncs()) {
@@ -402,8 +443,14 @@ fn fetch_mail(config: &Config) -> bool {
                 match sioul_sync::inbox(account, &password) {
                     Ok(report) => {
                         let mut came = !report.new.is_empty();
+                        // A code among it: its notice at once, as the window's fetch tells it (`backend::notify_codes`).
+                        if !report.first && !report.new.is_empty() {
+                            crate::backend::notify_codes(&report.new);
+                        }
                         // Its ties to projects, the tasks routes make of it, your rules, as the
-                        // window does them (`arrivals`): before your spam filter moves anything.
+                        // window does them (`arrivals`): once the step's exchange brought what
+                        // other devices did and undid, before your spam filter moves anything.
+                        exchanged.wait();
                         crate::arrivals::in_background(&report.new, report.first);
                         crate::spam::after_fetch(account, &report.new, report.first);
                         // Mail's topics: the new mail judged by the topics' table, then some of the mail kept (docs/topics.md, "The model").
@@ -414,10 +461,6 @@ fn fetch_mail(config: &Config) -> bool {
                         let filtered = crate::filters::after_fetch(account, &report.new, report.first);
                         if !filtered.problem.is_empty() {
                             eprintln!("sioul: steps: {}: {}", account.id, filtered.problem);
-                        }
-                        // A code among it: its notice at once, as the window's fetch tells it (`backend::notify_codes`).
-                        if !report.first && !report.new.is_empty() {
-                            crate::backend::notify_codes(&report.new);
                         }
                         crate::mailnote::arrived(&account.id, &report.new, report.first);
                         crate::mailnote::unfiltered(&account.id, &filtered.tell);
@@ -597,6 +640,9 @@ fn step(reason: &str) -> serde_json::Value {
     // New mail's notification taken away once each message it told is settled on any device, at
     // every step, a mail round or not (review of phase 2, M1): the words this exchange brought.
     crate::notices::withdraw_if_settled();
+    // Your rules: what another device undid taken back here, what waits tried again, the
+    // papers kept unchecked read where an antivirus can (`arrivals::settle_in_background`).
+    crate::arrivals::settle_in_background();
     // Reachable, or someone on Always through, brought by this exchange: a round now, if it turned
     // due (review of phase 2, L4); its exchange is the one just done.
     if mail.is_none() {

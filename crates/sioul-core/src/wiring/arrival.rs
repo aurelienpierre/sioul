@@ -4,8 +4,8 @@
 //! Mail arrives (docs/rules.md, "Where rules run"): the one function the
 //! window's arrival chain, the phone's background step and `sioul watch`
 //! call with what a fetch brought, so that a phone fetching alone does what a
-//! computer does (the inventory's A.0: until phase 1, the phone's step tied
-//! nothing to projects and made no task):
+//! computer does (until phase 1 the phone's background step tied nothing to
+//! projects and made no task):
 //!
 //! 1. **projects' ties**: each message the Porch places in a project's lane
 //!    (its routes, its conversation) tied to it in `links.toml`

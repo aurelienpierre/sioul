@@ -5709,7 +5709,11 @@ impl qobject::Sioul {
     fn let_in(mut self: Pin<&mut Self>, address: &QString) {
         let address = address.to_string();
         let line = match KnownSenders::let_in(&load_config().known_senders_path(), &address) {
-            Ok(()) => say("ui-let-in-done", &[("address", address)]),
+            Ok(()) => {
+                // What the screener held of theirs this week meets your rules now.
+                crate::arrivals::let_in(&self.qt_thread(), &self.shared(), &address);
+                say("ui-let-in-done", &[("address", address)])
+            }
             Err(e) => e,
         };
         self.as_mut().set_status(QString::from(&line));
