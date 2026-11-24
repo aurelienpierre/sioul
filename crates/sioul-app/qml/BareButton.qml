@@ -75,7 +75,7 @@ T.Button {
         radius: theme ? theme.radius : 0
         visible: control.selected || control.down || control.visualFocus || (control.hovered && control.enabled)
         color: control.down ? control.palette.mid
-            : control.selected ? (theme ? theme.chosen : Color.blend(control.palette.window, control.palette.dark, 0.16))
+            : control.selected ? (theme ? theme.chosenTint : Color.blend(control.palette.window, control.palette.dark, 0.16))
             : control.hovered ? (theme ? theme.hover : control.palette.light) : "transparent"
         border.color: control.visualFocus ? control.palette.highlight : theme ? theme.accent : control.palette.dark
         border.width: control.visualFocus || control.selected ? 2 : 0

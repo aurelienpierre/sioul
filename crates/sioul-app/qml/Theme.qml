@@ -56,7 +56,8 @@ QtObject {
     // fifth (light) or a sixth (dark) of the way in from the cards; the text on
     // it 10.4:1 light and 8.4:1 dark, the frame 4.3:1 and 4.8:1 against it
     // (qml/style/StyleButton.qml, tests/qml/tst_style.qml).
-    readonly property color chosen: dark ? "#383f38" : "#d8ddd8"
+    // Named apart from the light or dark choice `chosen`, which main.qml's Theme declares.
+    readonly property color chosenTint: dark ? "#383f38" : "#d8ddd8"
     // What you type in or choose from (a text field, a text area, a combo box, a
     // box to tick): a fill of its own, a step below a card's surface (light
     // 93 L* against the cards' 98; dark 9 against 16) and away from a filled

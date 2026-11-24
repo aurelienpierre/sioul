@@ -104,7 +104,7 @@ T.Button {
         readonly property color edge: theme ? theme.edge : control.palette.mid
         readonly property color accent: theme ? theme.accent : control.palette.dark
         // The selected one's tint: a light step of the accent on the page.
-        readonly property color tint: theme ? theme.chosen : Color.blend(control.palette.window, control.palette.dark, 0.16)
+        readonly property color tint: theme ? theme.chosenTint : Color.blend(control.palette.window, control.palette.dark, 0.16)
         // High contrast, as the system asks it (Qt 6.10's style hints; never with an older Qt).
         readonly property var hints: Qt.styleHints
         readonly property bool highContrast: hints.accessibility ? hints.accessibility.contrastPreference === Qt.HighContrast : false

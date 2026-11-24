@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Fields and buttons that stand out (Theme.qml's `field`, `edge`,
-// `focusEdge` and `chosen`, and Sioul's overrides of the Basic style in
+// `focusEdge` and `chosenTint`, and Sioul's overrides of the Basic style in
 // qml/style/, which cpp/style.cpp gives in place of Basic's own;
 // BareButton.qml). In both themes: the text on a field reads at 4.5:1 or
 // better, its placeholder too; the field's fill is not the cards'; the edge
@@ -35,8 +35,11 @@ Item {
     width: 600
     height: 400
 
+    // As main.qml makes it: its own `chosen` (the light or dark choice) beside the theme's colours.
     Theme {
         id: light
+
+        readonly property string chosen: ""
     }
     Theme {
         id: dark
@@ -245,11 +248,11 @@ Item {
             verify(contrast(t.focusEdge, t.edge) >= 3, "the focused edge against the edge at rest: " + contrast(t.focusEdge, t.edge).toFixed(2))
             verify(contrast(t.focusEdge, t.field) >= 3, "the focused edge against the fill: " + contrast(t.focusEdge, t.field).toFixed(2))
             // Selected: its words on its tint, its frame against the tint and the page; the main action's words on the accent.
-            verify(contrast(t.text, t.chosen) >= 4.5, "text on a selected button: " + contrast(t.text, t.chosen).toFixed(2))
-            verify(contrast(t.accent, t.chosen) >= 3, "the selected frame against its tint: " + contrast(t.accent, t.chosen).toFixed(2))
+            verify(contrast(t.text, t.chosenTint) >= 4.5, "text on a selected button: " + contrast(t.text, t.chosenTint).toFixed(2))
+            verify(contrast(t.accent, t.chosenTint) >= 3, "the selected frame against its tint: " + contrast(t.accent, t.chosenTint).toFixed(2))
             verify(contrast(t.accent, t.background) >= 3, "the selected frame against the page: " + contrast(t.accent, t.background).toFixed(2))
             verify(contrast(t.accentText, t.accent) >= 4.5, "the main action's words: " + contrast(t.accentText, t.accent).toFixed(2))
-            verify(!Qt.colorEqual(t.chosen, t.field), "a selected button is not a field")
+            verify(!Qt.colorEqual(t.chosenTint, t.field), "a selected button is not a field")
         }
 
         function test_every_button_with_words_is_outlined() {
@@ -280,7 +283,7 @@ Item {
 
         function test_selected_is_not_the_main_action() {
             const background = flatChecked.background
-            verify(Qt.colorEqual(background.color, light.chosen), "the tint")
+            verify(Qt.colorEqual(background.color, light.chosenTint), "the tint")
             compare(background.border.width, 2)
             verify(Qt.colorEqual(background.border.color, light.accent), "the accent's frame")
             verify(!Qt.colorEqual(background.color, mainAction.background.color), "not the main action's fill")
@@ -310,7 +313,7 @@ Item {
             verify(!iconAlone.background.visible, "an icon alone: no outline")
             verify(!arrowAlone.background.visible, "an arrow alone: no outline")
             verify(!bare.background.visible, "a fold line: no outline")
-            verify(Qt.colorEqual(bareChosen.background.color, light.chosen), "a bare button chosen: the selected look")
+            verify(Qt.colorEqual(bareChosen.background.color, light.chosenTint), "a bare button chosen: the selected look")
             compare(bareChosen.background.border.width, 2)
             compare(bare.implicitWidth, basicBare.implicitWidth, "a bare button's size is a button's")
             compare(bare.implicitHeight, basicBare.implicitHeight)
