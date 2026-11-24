@@ -3576,10 +3576,11 @@ struct Sealed {
     mine: BTreeMap<String, (i64, u64)>,
     /// For each of `mine`: the time its file in the folder had when this
     /// device last wrote it there (sealed it, sealed it again, or took it as
-    /// its own), in whole seconds. Dated otherwise since, it was made fresh
-    /// by a device using it again (`blobs::make_fresh`), whatever either clock
-    /// says (`stands`; the check of 9684719, must-fix 1). None in an older
-    /// Sioul's memory: a day's margin from the take-out then (`USE_MARGIN`).
+    /// its own), in whole seconds. Dated otherwise since, and after a day
+    /// before a take-out (`USE_MARGIN`), it was made fresh by a device using
+    /// it again since that take-out (`blobs::make_fresh`; `stands`; the check
+    /// of 9684719, must-fix 1, and 24 November 2026). None in an older Sioul's
+    /// memory: the margin alone then.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     stamped: BTreeMap<String, i64>,
     /// Of `mine`, those this device took as its own from the folder, sealed
@@ -3846,10 +3847,12 @@ enum Stands {
 ///   this Sioul's format or a newer one held (`Memory::waiting`), no change
 ///   replaced it lately (`Sealed::replaced`: the same bytes may be another
 ///   note's earlier version, kept by reference), no other device's record
-///   named it since (`named_at`), its file was not made fresh (another device
-///   using it again, `blobs::put`, `blobs::make_fresh`: this device's own file
-///   dated otherwise than when it wrote it, `Sealed::stamped`, another's dated
-///   since), and no text names it (`texts_media`) (else `InTime`);
+///   named it since (`named_at`), its file was not made fresh since (another
+///   device using it again, `blobs::put`, `blobs::make_fresh`: dated after a
+///   day before the take-out, and this device's own dated otherwise than when
+///   it wrote it, `Sealed::stamped`; made fresh before that, as when a device
+///   named every note again days earlier, it is no use since: 24 November
+///   2026), and no text names it (`texts_media`) (else `InTime`);
 /// - this device can tell: every part whose files are sealed apart is shared
 ///   here (`FILE_PARTS`), so that a current paper of the same bytes is known,
 ///   and so are the texts' media (`texts_media`: the texts shared here and
@@ -3888,16 +3891,25 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
     let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
     let blobs = sharing.folder.join("blobs");
     // Its file made fresh since: dated after a day before the take-out
-    // (`USE_MARGIN`, clocks apart). This device's own also when dated after
-    // the time it wrote it there (`Sealed::stamped`), whatever the take-out's
-    // time (a touch read here before the take-out: the check of 9684719,
-    // must-fix 1); dated as it wrote it, never, however recent; dated before
-    // that and before the margin, never either (a copy given an earlier time).
+    // (`USE_MARGIN`, clocks apart); this device's own, dated as it wrote it
+    // there (`Sealed::stamped`), never, however recent. A use older than
+    // that margin is older than the take-out, which every reader read after
+    // it, and never holds the content back. Until 24 November 2026 this
+    // device's own counted as made fresh whenever dated after it wrote it,
+    // whatever the take-out's time (the check of 9684719, must-fix 1): a
+    // content another device made fresh days before the take-out (its
+    // storage moved, naming every note again) then waited two weeks after
+    // every device had read that it was taken out (324.9 MB of attachments
+    // taken out on one computer stayed so). A device that puts the note back
+    // after the take-out makes its file fresh then (a use, kept: an eDrive
+    // phone's file comes before its record), sends a record naming the
+    // content (`named_at`), and seals it again from its own file if it went
+    // meanwhile (`look_after_sealed`, `fresh_again`).
     let made_fresh = |name: &str, since_wall: i64| {
         let Some(modified) = std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) else { return false };
         let (seconds, ms) = (modified.as_secs() as i64, modified.as_millis() as i64);
         match sealed.stamped.get(name).filter(|_| sealed.mine.contains_key(name)) {
-            Some(stamp) => seconds > *stamp || (seconds != *stamp && ms > since_wall),
+            Some(stamp) => seconds != *stamp && ms > since_wall,
             None => ms > since_wall,
         }
     };

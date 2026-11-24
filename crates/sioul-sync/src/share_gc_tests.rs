@@ -337,6 +337,77 @@ fn a_note_and_a_paper_taken_out_free_their_contents_once_every_device_read_so() 
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// The case of 24 November 2026: contents sealed on the desk, made fresh by
+/// another device days before they were taken out (its storage moved,
+/// naming every note again), then taken out on the desk: kept while that
+/// device has not read the take-out, gone at the desk's next exchange once
+/// it has (until then they waited two weeks from that freshening: 324.9 MB
+/// of attachments stayed so). Kept beside them: a content made fresh since
+/// its take-out (a use), one another note still holds, and one the other
+/// device keeps by reference as a note's earlier version.
+#[test]
+fn contents_made_fresh_elsewhere_before_their_take_out_leave_once_every_device_read_it() {
+    let base = scratch("gc-fresh-before");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let attached = b"%PDF-1.4 an attachment, fiction\n".repeat(40);
+    let (fresh, same, template) = (b"# Made fresh since\n".to_vec(), b"# The same in two notes\n".to_vec(), b"# A template, edited in one note\n".to_vec());
+    put(&dn, "a.md", &attached);
+    put(&dn, "b.md", &fresh);
+    put(&dn, "c1.md", &same);
+    put(&dn, "c2.md", &same);
+    put(&dn, "y.md", &template);
+    put(&dn, "z.md", &template);
+    // Enough notes beside them that four going together are not many at once (`withheld`).
+    for n in 0..20 {
+        put(&dn, &format!("stays-{n}.md"), format!("# A note that stays, {n}\n").as_bytes());
+    }
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let [a, b, c, y] = [&attached, &fresh, &same, &template].map(|bytes| content_name(&base, &key, bytes));
+    // y.md edited here: the laptop keeps the template by reference among y.md's earlier versions.
+    put(&dn, "y.md", b"# y, written over the template\n");
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    with_notes(&laptop, &folder, &key, NOW + 3 * MINUTE, &ln);
+    let versions = crate::history::versions(&crate::history::root(&laptop.memory), "notes", "files/notes/y.md");
+    assert!(versions.len() == 1 && versions[0].sealed.is_some(), "kept by reference: {versions:?}");
+    // Sealed here ten days ago (`Sealed::stamped`); a made fresh by the laptop six days ago, b now.
+    let (now, day) = (std::time::SystemTime::now(), std::time::Duration::from_secs(86_400));
+    let ten_days_ago = (now - 10 * day).duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+    let files = desk.memory.with_file_name("files.json");
+    let mut said: serde_json::Value = serde_json::from_slice(&std::fs::read(&files).unwrap()).unwrap();
+    assert!(said.get("stamped").is_some_and(|s| s.get(&a).is_some() && s.get(&b).is_some()), "this Sioul says when it wrote its own");
+    for name in [&a, &b] {
+        said["stamped"][name.as_str()] = serde_json::json!(ten_days_ago);
+    }
+    std::fs::write(&files, serde_json::to_vec(&said).unwrap()).unwrap();
+    let dated = |name: &str, when: std::time::SystemTime| std::fs::File::options().write(true).open(folder.join("blobs").join(name)).unwrap().set_modified(when).unwrap();
+    dated(&a, now - 6 * day);
+    dated(&b, now);
+    for note in ["a.md", "b.md", "c1.md", "z.md"] {
+        std::fs::remove_file(dn.join(note)).unwrap();
+    }
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 4 * MINUTE, &dn).sent, 0, "held a while");
+    let outcome = with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn);
+    assert_eq!(outcome.sent, 4, "{outcome:?}");
+    assert!(sealed(&folder, &a), "the laptop has not read the take-out: kept");
+    let waits = leaving(&desk.memory, &desk.id);
+    assert!(waits.unread.contains_key(&laptop.id), "{waits:?}");
+    with_notes(&laptop, &folder, &key, NOW + 16 * MINUTE, &ln);
+    with_notes(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
+    assert!(!sealed(&folder, &a), "made fresh before its take-out, read by every device: gone");
+    assert!(sealed(&folder, &b), "made fresh since its take-out: a use, kept its time");
+    assert!(sealed(&folder, &c), "another note still holds it");
+    assert!(sealed(&folder, &y), "an earlier version kept by reference");
+    assert!(sealed(&folder, &content_name(&base, &key, b"# A note that stays, 0\n")));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// While a device that counts keeps a file taken out by reference (a Sioul
 /// before 17 October 2026: `blobs::KEEPING_TWO_WEEKS`), the content of one
 /// taken out stays as replaced contents do, two weeks from its last use,
