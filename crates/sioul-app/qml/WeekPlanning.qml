@@ -2067,7 +2067,11 @@ ColumnLayout {
                         // A card with no room for a line under its top margin says it by its name to
                         // screen readers alone.
                         visible: words.room - words.anchors.topMargin >= planning.titleLine
-                        anchors.fill: parent
+                        // As tall as its room: the words, centred in it as before, never below the next card.
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: Math.max(0, words.room - words.anchors.topMargin)
                         anchors.leftMargin: card.isNight ? planning.lane + 4 : 6
                         anchors.rightMargin: 2 + (card.pinned || card.kind === "block" ? 14 : 0)
                         anchors.topMargin: Math.max(planning.cardPadding / 2, Math.min(card.properTop, card.height - planning.cardLeast))
