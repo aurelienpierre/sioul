@@ -392,7 +392,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                     },
                 })
                 .collect();
-            // How text reads is Settings ▸ Look's (every page with long text follows it).
+            // How text reads is Settings ▸ Display's (every page with long text follows it).
             // Every lane, empty or not, in the order mail is sorted, each with how
             // mail lands there and what the Porch itself decides of it; a
             // project's lane is in its page. The senders you know decide the people's
@@ -446,7 +446,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // Mail's topics: the list, their seeds and rules, the groups Sioul noticed (docs/topics.md).
             b.group = tr.text("topics-settings", None);
             b.push("topics.list", "topics", Kind::Topics, SettingValue::Text(String::new()));
-            // How a message reads is Settings ▸ Look's.
+            // How a message reads is Settings ▸ Display's.
             // The lists you left from a message, newest first: kept on this device (`unsubscribe::Record`).
             let mut left = crate::unsubscribe::Record::load(&crate::unsubscribe::Record::default_path()).lists;
             // The lists of the mail you called spam, above them: with no list left yet the
@@ -1704,7 +1704,7 @@ mod tests {
         // The notes folder first (the projects' file's renaming shows only for a folder holding its
         // first name: `the_projects_file_is_renamed_on_demand`), then where new notes go.
         assert_eq!(keys("notes"), vec!["case_store", "notes_folder"]);
-        // Mail's own: how often mail is fetched is Accounts', how text reads Settings ▸ Look's.
+        // Mail's own: how often mail is fetched is Accounts', how text reads Settings ▸ Display's.
         assert_eq!(keys("mail"), vec!["mail.threads", "mail.filter", "spam.actions", "spam.proven", "mail.leave_on_spam", "spam.threshold_spam", "spam.threshold_unsure", "spam.filter", "topics.list", "mail.leave_spam"]);
         // An address's own, on its card in Accounts; what all share, at the top (how often,
         // beside how far back) and under them (the AI's key).
@@ -1771,7 +1771,7 @@ mod tests {
         assert_eq!(attention.iter().map(|s| s.key.as_str()).collect::<Vec<_>>(), ["reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing", "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep"]);
         assert!(attention.iter().all(|s| !s.label.starts_with("set-") && !s.help.starts_with("set-")));
         // Nothing is set in two places: a setting has one owner (24 November 2026: how text
-        // reads, once in Porch ⚙, Mail ⚙ and Notes' "Aa", is Settings ▸ Look's alone).
+        // reads, once in Porch ⚙, Mail ⚙ and Notes' "Aa", is Settings ▸ Display's alone).
         let mut seen: std::collections::BTreeMap<String, &str> = std::collections::BTreeMap::new();
         let look: Vec<String> = for_view("parameters", &config, &tr, &[], None).into_iter().filter(|s| s.section == "look").map(|s| s.key).collect();
         assert_eq!(look, ["language", "theme", "places_named", "passwords_shown", "reading.family", "reading.size", "reading.spacing"], "what this device is: its card in Devices alone");

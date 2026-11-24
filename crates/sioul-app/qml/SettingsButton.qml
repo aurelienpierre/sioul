@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The small button that opens a page's settings, at the end of its first
-// row. How long text reads is Settings ▸ Look's alone (24 November 2026: the
+// row. How long text reads is Settings ▸ Display's alone (24 November 2026: the
 // "Aa" this button also was, in Notes, is gone).
 
 import QtQuick
