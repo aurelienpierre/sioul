@@ -956,11 +956,6 @@ SioulWindow {
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
-        // "Subscribe to a calendar…" from Settings ▸ Hours ▸ Vacations and holidays: the Agenda's ⚙, its form open.
-        else if (item.kind === "settings:agendas.subscribe") {
-            window.page = 4
-            Qt.callLater(() => agendaPage.askSubscribe())
-        }
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
@@ -4382,6 +4377,27 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(agendaPage.eventForm(), "calendars-event-form"),
                 () => agendaPage.eventForm().close(),
+                // Tasks ⚙ ▸ Task lists, the lists of tasks alone (the demo's Work tasks), then
+                // its removal asked: the sentence and its confirmation; nothing is removed.
+                () => window.page = 1,
+                () => tasksPage.openSettings(true, "task_lists"),
+                () => {},
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    console.warn("task lists: " + (lists ? lists.shown.map(l => l.name).join(", ") : "none"))
+                    if (lists && lists.shown.length > 0)
+                        lists.askRemoval(lists.shown[0].id)
+                },
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists-remove.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    if (lists)
+                        lists.removing = ""
+                    tasksPage.openSettings(false)
+                },
                 () => window.close()
             ]
             readonly property var invoicesSteps: [
@@ -4541,15 +4557,11 @@ SioulWindow {
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
                 () => sitesPage.bitwardenUnlock.close(),
-                // Where Bitwarden is set: the password manager's card at the top of Accounts
-                // (none set on a demo profile), then its form in Add an account.
+                // Where Bitwarden is set: the password manager's card at the top of Accounts,
+                // which holds its form while none is set (none on a demo profile).
                 () => window.showParameters("bitwarden"),
                 () => {},
                 () => grabber.save("vault-card-none"),
-                () => accountsPage.addVault(),
-                () => {},
-                () => {},
-                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no

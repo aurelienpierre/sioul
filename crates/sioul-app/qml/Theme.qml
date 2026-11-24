@@ -103,7 +103,7 @@ QtObject {
         return available < 720 ? available : Math.round(Math.min(Math.max(520, available * 0.42), 760, available - 240))
     }
 
-    // Long text (notes, mail, a task's notes): the family, size and spacing chosen in "Aa".
+    // Long text (notes, mail, a task's notes): the family, size and spacing chosen in Settings ▸ Display (`reading.*`).
     property string readingFamily: ""
     property int readingSize: 16
     // Line height, as a multiple of the font's (1.5 reads more easily than Qt's 1.0).

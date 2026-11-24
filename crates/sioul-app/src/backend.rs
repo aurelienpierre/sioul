@@ -1834,7 +1834,7 @@ pub mod qobject {
         #[qinvokable]
         fn need_every_day(self: Pin<&mut Sioul>, edit: &QString) -> QString;
 
-        /// How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+        /// How long a new event lasts, in minutes (Agenda ⚙; 30 unset).
         #[qinvokable]
         fn new_event_minutes(self: &Sioul) -> i32;
 
@@ -3221,7 +3221,7 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
 
@@ -9574,7 +9574,7 @@ impl qobject::Sioul {
         // tied to one time of a repeating event, found by its field's rows (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
-        // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
+        // "ai" Settings ▸ AI agents (what is in no project, texts, the spam filter), a project opened to agents on its page, an agent's text
         // draft in the Texts page used, nothing sent (docs/mcp.md),
         // "health" the Health page, its week, its settings (⚙), a block's menu and its change
         // for one day, closed unsaved (docs/health.md), "tiles" the costs as tiles in a task's

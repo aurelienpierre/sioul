@@ -362,7 +362,7 @@ Le ⚙ en haut de la page :
 - **Quand les bureaux sont ouverts**.
 - **Types de tâches** : renommés, retirés ou ajoutés ; les tâches gardent le type qu’elles ont.
 - **Catégories** : renommées sur toutes les tâches qui les ont, ou retirées de toutes.
-- **Listes de tâches** : renommées, ici et sur le serveur ; une liste vide peut être supprimée.
+- **Listes de tâches** : chaque liste qui ne contient que des tâches. La vôtre se renomme ici et sur son serveur à la prochaine synchronisation, et **Supprimer…** la supprime en entier, même avec des tâches dedans : une phrase dit d’abord ce qui part (combien de tâches, de quel serveur, ce que le serveur en garde), et une copie datée de la liste est gardée avant qu’elle parte, le chemin du retour ([Vos agendas sur leurs serveurs](agenda.md#agendas-on-their-servers)). Une liste que quelqu’un d’autre partage avec vous a **Ne plus l’afficher…** à la place. Un agenda qui prend aussi des événements se renomme et se supprime avec les agendas, dans Agenda ⚙ ▸ **Vos agendas**, et n’est pas listé ici ; à qui est une liste, à quoi elle sert et qui la voit restent là aussi.
 - **Une tâche sans durée compte** tant de minutes : 30 sauf si vous le changez, de 5 à 240.
 - **Les nouvelles tâches vont dans** : la liste où va une nouvelle tâche, tapée en une ligne ou dans son formulaire (où une autre peut se choisir).
 - **Les créneaux vont dans** : l’agenda des tâches que vous fixez à une heure ; sauf si vous en choisissez un, « Tâches planifiées », créé la première fois avec la liste de chaque tâche (sur cet appareil pour une liste gardée ici, ou pour un compte Google).

@@ -92,21 +92,18 @@ Item {
                 const field = newGroup(form)
                 field.text = "Clients"
                 verify(line.visible, "a group typed, not yet added, counts")
-                compare(root.all(line, c => c.text === "contact-groups-held:book=Team" && c.visible).length, 1, "the book named")
+                compare(line.text, "contact-groups-held:book=Team", "the book named")
                 field.accepted()
                 compare(form.chosen, ["Clients"])
                 compare(field.text, "")
                 verify(line.visible, "the group added")
                 test.waitForRendering(form)
-                for (const item of root.all(line, c => c.visible && c.width > 0)) {
+                for (const item of [line].concat(root.all(line, c => c.visible && c.width > 0))) {
                     const x = item.mapToItem(form, 0, 0).x
                     verify(x >= 0 && x + item.width <= width + 1, "within " + width + ": " + x + " + " + item.width)
                 }
-                // Its door: the book's switch, asked of the page.
-                let asked = 0
-                form.askedSwitch.connect(() => asked++)
-                mouseClick(root.named(form, "contactFormGroupsDoor")[0])
-                compare(asked, 1)
+                // Said, with no door: the book's switch is Contacts ⚙ ▸ Address books' alone.
+                compare(root.named(form, "contactFormGroupsDoor").length, 0)
                 form.chosen = []
                 verify(!line.visible, "the group taken off: nothing to say")
                 // A card that comes with its groups says it at once.

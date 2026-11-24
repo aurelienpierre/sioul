@@ -17,7 +17,7 @@ QtObject {
     required property var sioul
 
     // An instant (ms) as a date whose own clock reads the time zone Sioul shows
-    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
+    // (`zone::current`, Settings ▸ Hours ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
     function wall(ms) {
         return new Date(ms + (typeof paths.sioul.zoneOffset === "function" ? paths.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }

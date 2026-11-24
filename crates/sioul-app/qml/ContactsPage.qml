@@ -1391,7 +1391,6 @@ Item {
                                     const book = (page.shown.books || []).find(b => b.place === place)
                                     return book && book.groups === false ? book.name : ""
                                 }
-                                onAskedSwitch: page.openSettings(true, "addressbooks")
                             }
                         }
                         Label {

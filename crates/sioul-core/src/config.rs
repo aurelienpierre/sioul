@@ -758,15 +758,15 @@ pub struct AgendaSettings {
     /// entry that does not read is passed over (`subscribed::entries`).
     #[serde(default, deserialize_with = "crate::subscribed::entries")]
     pub subscriptions: std::collections::BTreeMap<String, crate::subscribed::Subscription>,
-    /// Where a new event goes ("account/id"), Settings ▸ Agenda; unset: the
+    /// Where a new event goes ("account/id"), Agenda ⚙; unset: the
     /// first calendar that takes events, as before (`agenda::default_calendar`).
     #[serde(default)]
     pub calendar: Option<String>,
-    /// Minutes you keep between two events, Settings ▸ Agenda (22 October
+    /// Minutes you keep between two events, Agenda ⚙ (22 October
     /// 2026): closer, they are said too close (`overlaps`); unset, none.
     #[serde(default)]
     pub between: Option<u32>,
-    /// The time zone to show and enter times in, Settings ▸ Agenda (30 October
+    /// The time zone to show and enter times in, Settings ▸ Hours since 24 November 2026 (Agenda ⚙ from 30 October
     /// 2026): a name of the time zone database ("America/New_York"); unset,
     /// this device's own, followed as it changes (`zone::current`). This
     /// device's own, never shared (sioul-sync's `CONFIG_LOCAL`).
@@ -814,11 +814,11 @@ pub struct AgendaSettings {
     #[serde(default)]
     pub send_hours: Vec<String>,
     /// Minutes a new event lasts when made from the agenda's timeline or its
-    /// form, Settings ▸ Agenda (5 November 2026); unset, 30.
+    /// form, Agenda ⚙ (5 November 2026); unset, 30.
     #[serde(default)]
     pub new_event: Option<u32>,
     /// Addresses suggested while a place is typed, from the network (the
-    /// Base Adresse Nationale in France, else Photon), Settings ▸ Agenda
+    /// Base Adresse Nationale in France, else Photon), Agenda ⚙
     /// (5 November 2026); unset, on. Places you used before are suggested
     /// either way, from this device alone.
     #[serde(default)]

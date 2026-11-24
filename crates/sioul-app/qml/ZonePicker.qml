@@ -4,7 +4,7 @@
 // A time zone found by typing part of its name ("paris", "new y", "utc"):
 // the matches listed under the field, at most twelve, those whose city
 // starts with it first; a press picks one (`picked`), Enter the first.
-// Settings ▸ Agenda ▸ Time zone and an event's own clock (EventDialog.qml)
+// Settings ▸ Hours ▸ Time zone and an event's own clock (EventDialog.qml)
 // use it; the names are the time zone database's (`zone::matching`).
 
 pragma ComponentBehavior: Bound

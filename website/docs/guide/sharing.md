@@ -143,7 +143,7 @@ On the phone itself, while Android has not given Sioul an access, one more line 
 
 **Details**, under the four, holds the rest. It stays open or closed as you left it, on this device alone:
 
-- **Rename…**: a name of your own for the device. Emptying the field puts its system's name back; under a name you gave, the card says what its system calls it. On this device's own card, **What this device is** changes what it is, as in [Settings](settings.md#display).
+- **Rename…**: a name of your own for the device. Emptying the field puts its system's name back; under a name you gave, the card says what its system calls it. On this device's own card, **What this device is** changes what it is: its one place ([Settings](settings.md#devices)).
 - **Last opened**, while it is in use (otherwise it is in sight), and **Last shared**: when Sioul was last opened there, and when it last read the other devices and wrote its own changes.
 - **Sioul**: the version it runs, such as "0.0.3 (eff8661abcde)", with a sentence when it is older than this device's, so that you can update it when you like.
 - **Shares**: the parts it shares ([What travels from this device](#what-travels-from-this-device)). On this device's card, **Change what travels from this device…** leads to them. Another device's parts cannot be switched from here: a part is switched on or off on the device itself, where its data lands. A device on an older Sioul does not say what it shares.

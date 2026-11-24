@@ -170,7 +170,7 @@ static WANTED: Mutex<Option<String>> = Mutex::new(None);
 static ASKING: AtomicBool = AtomicBool::new(false);
 
 /// The addresses suggested for `typed`, as the window asks after a pause: the
-/// places used before at once, then, when allowed (Settings ▸ Agenda) and
+/// places used before at once, then, when allowed (Agenda ⚙) and
 /// three characters at least, the service's, on a thread, one question at a
 /// time, the last typed only; each told (`addresses_suggested(typed, json)`:
 /// `{used: [label], found: [{label, lat, lon}], service}`). Only what was
