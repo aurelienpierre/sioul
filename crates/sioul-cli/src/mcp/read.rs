@@ -1063,6 +1063,14 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     // Each day's events from the one model (`timeline::calendar_days`), their fields as before part 8.
     let listed = timeline::calendar_days(&shown, from, days, today, &zone, &s.tr);
     let words = sioul_core::words::Words::of(&s.config);
+    // Whose each agenda is, where it names someone (24 November 2026): "Sam's agenda". Another
+    // person's events (a partner's, another parent's) are theirs, never the person's own
+    // appointments; a person closed to agents has theirs left out above, counted.
+    let whose: BTreeMap<String, (sioul_core::agendas::Whose, String)> = if shown.iter().any(|e| e.child || e.other_person) {
+        sioul_core::agendas::all(&s.config).into_iter().filter(|a| matches!(a.whose, sioul_core::agendas::Whose::Child | sioul_core::agendas::Whose::Partner | sioul_core::agendas::Whose::Parent | sioul_core::agendas::Whose::Someone)).map(|a| (a.id.clone(), (a.whose, a.whose_words(&s.tr)))).collect()
+    } else {
+        BTreeMap::new()
+    };
     let mut lines = Vec::new();
     let mut out = Vec::new();
     for day in &placed {
@@ -1106,17 +1114,25 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             let event = &shown[listed.index];
             let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
             let uri = links::event_uri(&event.uid);
+            let (whose_id, whose_said) = whose.get(&event.agenda).map(|(w, said)| (w.id(), said.clone())).unwrap_or(("", String::new()));
             if !in_blocks.contains(&(event.key.clone(), event.start)) {
                 let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
                 let gone = if event.cancelled { "× " } else { "" };
                 let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
-                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}  <{uri}>")));
+                // Another person's: said so, not the person's own appointment.
+                let theirs = match (whose_said.is_empty(), event.another_persons()) {
+                    (_, true) => format!("  ({}; not the person's own appointment)", if whose_said.is_empty() { "another person's agenda" } else { whose_said.as_str() }),
+                    (false, false) => format!("  ({whose_said})"),
+                    _ => String::new(),
+                };
+                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}{theirs}  <{uri}>")));
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
             events.push(json!({
                 "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "end": instant(event.end), "ongoing": listed.ongoing, "clock": event.clock, "summary": summary, "location": event.location,
                 "notes": notes, "calendar": event.calendar, "all_day": listed.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
                 "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
+                "whose": whose_id, "whose_said": whose_said, "another_persons": event.another_persons(),
             }));
         }
         // The dates asked that day, at the head (part 8): its title, its kind and the time left.

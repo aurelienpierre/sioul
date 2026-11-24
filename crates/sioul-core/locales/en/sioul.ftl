@@ -4121,6 +4121,16 @@ extension-calendar-new-here = A new calendar on this device only
 extension-calendar-for = The calendar for { $name }
 extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
+extension-agenda-whose = { $whose ->
+        [shared] { $calendar } is an agenda shared with you.
+        [child] { $calendar } is a child's agenda.
+        [parent] { $calendar } is another parent's agenda.
+        [someone] { $calendar } is someone else's agenda.
+        [partner] { $calendar } is a partner's agenda.
+       *[yours] { $calendar } is your own agenda.
+    }
+extension-agenda-whose-person = { $calendar } is { $person }'s agenda.
+extension-agenda-theirs = Its events are theirs: they remind you of nothing and never count as your time.
 # Whether an agenda's events are the person's own busy time, one sentence for one idea (23 November 2026): an
 # extension agenda's switch, beside its calendar (OPAQUE or TRANSPARENT, `[extensions.busy]`), and a subscribed
 # calendar's tick, in the form and on its line (`engagements`); the line under each says what it does.
@@ -5032,6 +5042,7 @@ agendas-group-yours = Yours
 agendas-group-children = Children
 agendas-group-parent = Another parent
 agendas-group-partners = Partners
+agendas-group-someone = Other people
 agendas-group-shared = Shared with you
 agendas-kept-hidden = kept hidden
 agenda-keep-hidden = Keep hidden on this device
@@ -5361,7 +5372,15 @@ agenda-whose-yours = Yours
 agenda-whose-child = A child's
 agenda-whose-parent = Another parent's
 agenda-whose-partner = A partner's
+agenda-whose-someone = Someone else's
 agenda-whose-shared = Shared with you
+agenda-of-person = { $person }'s agenda
+agenda-of-role = { $whose ->
+        [child] A child's agenda
+        [parent] Another parent's agenda
+        [someone] Someone else's agenda
+       *[partner] A partner's agenda
+    }
 agenda-person = Their name
 agenda-person-child = The child's name
 agenda-for = For

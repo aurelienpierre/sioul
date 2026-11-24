@@ -475,11 +475,14 @@ pub(crate) fn save(id: &str, edit: &str) -> String {
 }
 
 /// The persons an agenda's "Whose name" and "The other parent" offer, by
-/// the agenda's whose: a child's, a partner's, another parent's (docs/persons.md).
+/// the agenda's whose: a child's, a partner's, another parent's; someone
+/// else's, any of your people but you (docs/persons.md).
 pub(crate) fn agenda_choices(store: &Persons) -> serde_json::Value {
     let today = sioul_core::zone::now().date();
-    let list = |relation: Relation| store.persons.iter().filter(|p| p.relation() == relation && !p.ended(today)).map(|p| serde_json::json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>();
-    serde_json::json!({ "child": list(Relation::Child), "partner": list(Relation::Partner), "parent": list(Relation::OtherParent) })
+    let shown = |p: &&sioul_core::persons::Person| !p.ended(today);
+    let list = |relation: Relation| store.persons.iter().filter(|p| p.relation() == relation).filter(shown).map(|p| serde_json::json!({ "id": p.id, "name": p.name })).collect::<Vec<_>>();
+    let anyone: Vec<serde_json::Value> = store.persons.iter().filter(|p| p.relation() != Relation::Me).filter(shown).map(|p| serde_json::json!({ "id": p.id, "name": p.name })).collect();
+    serde_json::json!({ "child": list(Relation::Child), "partner": list(Relation::Partner), "parent": list(Relation::OtherParent), "someone": anyone })
 }
 
 /// An agenda's person chosen (`field`: "person", whose it is, or

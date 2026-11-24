@@ -811,7 +811,7 @@ impl Persons {
         use crate::agendas::Whose;
         agendas
             .iter()
-            .filter(|a| matches!(a.whose, Whose::Child | Whose::Partner | Whose::Parent))
+            .filter(|a| matches!(a.whose, Whose::Child | Whose::Partner | Whose::Parent | Whose::Someone))
             .filter(|a| a.person_id.is_empty() || self.get(&a.person_id).is_none_or(|p| !p.agents))
             .map(|a| a.id.clone())
             .collect()
@@ -1038,7 +1038,9 @@ pub fn renamed_agendas(calendars: &BTreeMap<String, crate::agendas::Said>, befor
             Some(Whose::Parent) => Some(Relation::OtherParent),
             _ => None,
         };
-        if relation.is_some_and(|r| before.of_agenda(said, r).is_some_and(|p| p.id == person.id)) && said.name.as_deref().is_none_or(|n| n.trim() != new.trim()) {
+        // Someone else's names a person by key alone (`Agenda::with_persons`).
+        let someones = whose == Some(Whose::Someone) && said.person.as_deref().is_some_and(|key| key.trim() == person.id);
+        if (someones || relation.is_some_and(|r| before.of_agenda(said, r).is_some_and(|p| p.id == person.id))) && said.name.as_deref().is_none_or(|n| n.trim() != new.trim()) {
             out.push((place.clone(), "name", new.trim().to_string()));
         }
         if whose == Some(Whose::Child) && before.parent_of_agenda(said).is_some_and(|p| p.id == person.id) && said.parent.as_deref().is_none_or(|n| n.trim() != new.trim()) {

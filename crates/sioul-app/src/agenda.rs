@@ -330,6 +330,16 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
     // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
     let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
+    // Whose agenda it is, beside what brought it: "Sam's agenda · From Planity" (24 November 2026).
+    // An agenda for its availability alone is titled by its own name already: nothing more.
+    // A calendar named after them already ("Léa"): nothing more either.
+    let whose = if (o.child || o.other_person) && !o.busy {
+        let agenda = sioul_core::agendas::agenda_of(&calendar, &load_config());
+        let named = !agenda.person.trim().is_empty() && o.calendar.to_lowercase().contains(&agenda.person.trim().to_lowercase());
+        if named { String::new() } else { agenda.whose_words(tr()) }
+    } else {
+        String::new()
+    };
     json(&serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
@@ -377,6 +387,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
         // An event an extension brought (its UID's form alone says so): where it comes from.
         "brought_by": sioul_core::extensions::uid_mark(&o.uid).map(|m| crate::backend::say("extension-event-from", &[("name", sioul_core::extensions::category(&m.extension))])).unwrap_or_default(),
+        "whose": whose,
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
@@ -678,6 +689,7 @@ impl FilterNow {
                     Whose::Child => tr().text("agendas-group-children", None),
                     Whose::Parent => tr().text("agendas-group-parent", None),
                     Whose::Partner => tr().text("agendas-group-partners", None),
+                    Whose::Someone => tr().text("agendas-group-someone", None),
                     Whose::Shared => tr().text("agendas-group-shared", None),
                 };
                 groups.push(GroupShown { key: key.clone(), title, agendas: Vec::new() });
@@ -1277,6 +1289,13 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
 /// (your own time around a meeting with others), and the next step of what
 /// prepares it (`pairs::appointment_view`); its file's links read with it.
 fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], tasks: &[sioul_core::tasks::Task], zone: &TimeZone) {
+    // Another person's agenda (a partner's, another parent's): their name first on its rows,
+    // "Sam's agenda" (24 November 2026), read once for the whole show.
+    let whose: std::collections::HashMap<String, String> = if occurrences.iter().any(|o| o.other_person) {
+        sioul_core::agendas::all(&load_config()).into_iter().filter(|a| a.whose.another_person()).map(|a| (a.id.clone(), a.whose_words(tr()))).collect()
+    } else {
+        Default::default()
+    };
     for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Event) {
         let timeline::Source::Calendar { key, start, .. } = &item.source else { continue };
         let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { continue };
@@ -1284,9 +1303,9 @@ fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], t
         // Its legs read with it (part E): Leave at from the first, their titles on its line.
         let legs = sioul_core::anchors::legs_seen_in(&o.uid, occurrences);
         let view = sioul_core::pairs::appointment_view(o, &links, tasks, &legs, None, tr(), zone);
-        if !view.line.is_empty() {
-            item.line = view.line;
-        }
+        // An agenda for its availability alone titles its blocks by its own name already.
+        let named = if o.other_person && !o.busy { whose.get(&o.agenda).cloned().unwrap_or_default() } else { String::new() };
+        item.line = [named, view.line].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" · ");
     }
 }
 

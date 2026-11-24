@@ -68,6 +68,21 @@ Item {
         function extensionAccept(id) {
             mock.asked = mock.asked.concat(["accept " + id])
         }
+        // What Agenda ⚙ knows to make a calendar (`agenda::setup`), and its making (`servers::make`).
+        signal personsChanged
+        function agendasSetup() {
+            return JSON.stringify({ accounts: [{ id: "cloud", name: "you@cloud.example.org", google: false }, { id: "local", name: "this computer", google: false }], persons: { partner: [{ id: "p-sam", name: "Sam" }], child: [], parent: [] } })
+        }
+        function newAgenda(text) {
+            const asked = JSON.parse(text)
+            mock.asked = mock.asked.concat(["new " + asked.account + " " + asked.name + " " + asked.whose + " " + asked.events + " " + asked.tasks])
+            return JSON.stringify({ place: asked.account + "/new", problem: "" })
+        }
+        function setAgendaPerson(place, field, person) {
+            mock.asked = mock.asked.concat(["person " + place + " " + field + " " + person])
+            return ""
+        }
+        function household() { return "{}" }
         function extensionCalendar(id, agenda, choice) {
             mock.asked = mock.asked.concat(["calendar " + id + " " + agenda + " " + choice])
         }
@@ -206,10 +221,24 @@ Item {
             const kids = find(tab, "extensionCalendar:p-2")
             compare(none.currentIndex, 0, "Choose…, while none is chosen")
             compare(kids.currentIndex, 3, "the calendar chosen")
-            none.activated(1)
             kids.activated(3)
             kids.activated(0)
-            compare(mock.asked, ["calendar timetable p-1 new:cloud"], "the one already chosen, and Choose…, ask nothing")
+            compare(mock.asked, [], "the one already chosen, and Choose…, ask nothing")
+            // A new calendar: Agenda ⚙'s form, its account and name proposed, whose it is asked there;
+            // once made, written as the agenda's line writes it, then chosen.
+            none.activated(1)
+            const form = find(tab, "extensionNewCalendar:p-1")
+            verify(form !== null && form.visible, "the form that makes a calendar")
+            compare(find(form, "agendaNewName").text, "Timetable: <b>Alex</b>")
+            const whose = find(form, "agendaWhose")
+            whose.activated(3)
+            compare(form.whose, "partner")
+            find(form, "agendaPerson").activated(1)
+            compare(form.personId, "p-sam")
+            form.make()
+            compare(mock.asked, ["new cloud Timetable: <b>Alex</b> partner true false", "person cloud/new person p-sam", "calendar timetable p-1 place:cloud/new"])
+            verify(find(tab, "extensionNewCalendar:p-1") === null, "closed once made")
+            mock.asked = []
             // The busy toggle shows the choice (or the extension's suggestion), and sends the flip.
             compare(find(tab, "extensionBusy:p-1").checked, false, "a pupil's lessons are not your busy time by default")
             compare(find(tab, "extensionBusy:p-1").text, "agenda-busy-time", "the words of a subscribed calendar's tick")

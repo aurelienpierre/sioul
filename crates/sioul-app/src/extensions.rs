@@ -99,13 +99,43 @@ pub(crate) trait AgendaDoor {
 /// The agendas' door itself.
 pub(crate) struct Door;
 
+/// Whether "Count these as my busy time" is offered for the agenda a
+/// calendar is: not for another person's (a partner's, another parent's,
+/// `Whose::another_person`), whose events are never the person's time.
+fn busy_offered(calendar: &sioul_core::vdir::Collection, config: &sioul_core::config::Config) -> bool {
+    !sioul_core::agendas::agenda_of(calendar, config).whose.another_person()
+}
+
+/// Whose the calendar at `place` is, in words, for an extension's agenda
+/// line (24 November 2026): "Bookings is your own agenda.", "Bookings is
+/// Sam's agenda.", "… an agenda shared with you."; for another person's,
+/// that its events tell the person nothing. Said in Agenda ⚙ ▸ Your agendas
+/// or in the form that made it, never chosen here.
+fn whose_line(agenda: &sioul_core::agendas::Agenda, label: &str) -> String {
+    use sioul_core::agendas::Whose;
+    let calendar = ("calendar", label.to_string());
+    let said = match agenda.whose {
+        whose if whose != Whose::Yours && whose != Whose::Shared && !agenda.person.trim().is_empty() => say("extension-agenda-whose-person", &[calendar, ("person", agenda.person.clone())]),
+        whose => say("extension-agenda-whose", &[calendar, ("whose", whose.id().to_string())]),
+    };
+    if agenda.whose.another_person() { format!("{said} {}", say("extension-agenda-theirs", &[])) } else { said }
+}
+
 impl AgendaDoor for Door {
     fn take(&self, extension: &str, agenda: &AgendaReply, place: &str) -> Result<door::Done, door::Problem> {
         let Some(calendar) = door::calendar_at(place) else { return Err(door::Problem::CalendarGone) };
         let cancelled = |title: &str| say("extension-event-cancelled", &[("title", title.to_string())]);
         let words = door::Words { cancelled: &cancelled, from: say("extension-event-from-line", &[("name", sioul_core::extensions::category(extension))]) };
-        // The person's per-agenda choice, or the extension's suggestion when they made none.
-        let busy = crate::backend::config_read().map_or(agenda.busy, |c| c.extensions.busy_for(extension, &agenda.id, agenda.busy));
+        let config = crate::backend::config_read();
+        // The person's per-agenda choice, or the extension's suggestion when they made none. Into
+        // another person's agenda (a partner's appointments), the suggestion alone: never the
+        // person's time whatever its mark (`Occurrence::holds_time`), so no choice of theirs is
+        // offered there (`busy_offered`); the mark says that person's busy time.
+        let busy = match config {
+            Some(c) if !busy_offered(&calendar, &c) => agenda.busy,
+            Some(c) => c.extensions.busy_for(extension, &agenda.id, agenda.busy),
+            None => agenda.busy,
+        };
         door::take(extension, agenda, &calendar, &words, busy)
     }
 
@@ -472,6 +502,9 @@ struct Calendars {
     chosen: Option<BTreeMap<String, String>>,
     /// `[extensions.busy]`, the per-agenda busy choices (none when the settings do not read).
     busy: Option<BTreeMap<String, bool>>,
+    /// Whose each of those calendars is, by place: its line's words (`whose_line`), and
+    /// whether it is another person's (no busy choice offered then).
+    whose: BTreeMap<String, (String, bool)>,
 }
 
 impl Calendars {
@@ -487,20 +520,25 @@ impl Calendars {
             .map(|account| json!({ "choice": format!("new:{}", id_of(account)), "label": say("extension-calendar-new", &[("account", account["name"].as_str().unwrap_or_default().to_string())]) }))
             .collect();
         let mut labels = BTreeMap::new();
+        let mut whose = BTreeMap::new();
         for calendar in sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).into_iter().filter(door::writable) {
             let place = sioul_core::agendas::place(&calendar);
             let label = calendar.label(&config, tr());
             choices.push(json!({ "choice": format!("place:{place}"), "label": label }));
+            let agenda = sioul_core::agendas::agenda_of(&calendar, &config);
+            whose.insert(place.clone(), (whose_line(&agenda, &calendar.name), agenda.whose.another_person()));
             labels.insert(place, label);
         }
         choices.push(json!({ "choice": format!("new:{}", sioul_core::vdir::LOCAL), "label": say("extension-calendar-new-here", &[]) }));
         let settings = crate::backend::config_read().map(|c| c.extensions);
-        Self { choices, labels, chosen: settings.as_ref().map(|e| e.calendars.clone()), busy: settings.map(|e| e.busy) }
+        Self { choices, labels, chosen: settings.as_ref().map(|e| e.calendars.clone()), busy: settings.map(|e| e.busy), whose }
     }
 }
 
 /// An agenda an extension brought, for the page: its name, where its lessons
-/// go and how it went, in one line; the calendar chosen ("" none).
+/// go and how it went, in one line; the calendar chosen ("" none); whose that
+/// calendar is, in words, and whether it is another person's (`theirs`: the
+/// busy choice is not offered).
 fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Value {
     let place = calendars.chosen.as_ref().and_then(|c| c.get(&sioul_core::config::extension_calendar_key(extension, &agenda.id))).cloned().unwrap_or_default();
     let label = calendars.labels.get(&place).cloned();
@@ -517,7 +555,8 @@ fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Valu
     };
     // Whether its lessons count as the person's own busy time: their choice, or the extension's suggestion.
     let busy = calendars.busy.as_ref().and_then(|b| b.get(&sioul_core::config::extension_calendar_key(extension, &agenda.id)).copied()).unwrap_or(agenda.busy);
-    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "busy": busy })
+    let (whose, theirs) = calendars.whose.get(&place).cloned().unwrap_or_default();
+    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "busy": busy, "whose": whose, "theirs": theirs })
 }
 
 /// The address books a set's contacts may go into, as the page offers them:
@@ -2055,5 +2094,31 @@ mod tests {
             "only the fields asked, in their order"
         );
         assert!(CRED_FORM.lock().unwrap().is_none(), "once");
+    }
+
+    /// An extension's agenda line says whose its calendar is, in words, with
+    /// no control (24 November 2026): yours, a person's by name, a role's
+    /// without one, shared; another person's adds that its events tell the
+    /// person nothing, and offers no busy choice (`busy_offered`).
+    #[test]
+    fn an_agenda_line_says_whose_its_calendar_is() {
+        use sioul_core::agendas::{Agenda, Said};
+        let collection = sioul_core::vdir::Collection { kind: sioul_core::vdir::Kind::Calendars, account: "cloud".into(), id: "bookings".into(), dir: std::path::PathBuf::from("/nowhere/cloud/bookings"), name: "Bookings".into(), color: None, read_only: false, components: vec!["VEVENT".into()] };
+        let config = sioul_core::config::Config::default();
+        let of = |whose: &str, name: &str| Agenda::of(&collection, &Said { whose: Some(whose.into()), name: (!name.is_empty()).then(|| name.to_string()), ..Said::default() }, &config, false, &|| true);
+        let calendar = || ("calendar", "Bookings".to_string());
+        assert_eq!(whose_line(&of("yours", ""), "Bookings"), say("extension-agenda-whose", &[calendar(), ("whose", "yours".into())]));
+        assert_eq!(whose_line(&of("shared", "Club"), "Bookings"), say("extension-agenda-whose", &[calendar(), ("whose", "shared".into())]));
+        assert_eq!(whose_line(&of("child", "Tom"), "Bookings"), say("extension-agenda-whose-person", &[calendar(), ("person", "Tom".into())]));
+        let partner = whose_line(&of("partner", "Sam"), "Bookings");
+        assert_eq!(partner, format!("{} {}", say("extension-agenda-whose-person", &[calendar(), ("person", "Sam".into())]), say("extension-agenda-theirs", &[])));
+        assert!(partner.contains("Sam") && partner.contains("Bookings"), "{partner}");
+        assert!(whose_line(&of("parent", ""), "Bookings").starts_with(&say("extension-agenda-whose", &[calendar(), ("whose", "parent".into())])));
+        for lang in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(lang);
+            for key in ["extension-agenda-whose", "extension-agenda-whose-person", "extension-agenda-theirs", "event-remind-usual-free"] {
+                assert!(words.own(key).is_some(), "{lang}: {key}");
+            }
+        }
     }
 }

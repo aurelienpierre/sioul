@@ -4154,6 +4154,16 @@ extension-calendar-new-here = Un nouveau calendrier sur cet appareil seulement
 extension-calendar-for = Le calendrier pour { $name }
 extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
+extension-agenda-whose = { $whose ->
+        [shared] { $calendar } est un agenda partagé avec vous.
+        [child] { $calendar } est l’agenda d’un enfant.
+        [parent] { $calendar } est l’agenda de l’autre parent.
+        [someone] { $calendar } est l’agenda de quelqu’un d’autre.
+        [partner] { $calendar } est l’agenda d’un ou d’une partenaire.
+       *[yours] { $calendar } est votre propre agenda.
+    }
+extension-agenda-whose-person = { $calendar } est l’agenda de { $person }.
+extension-agenda-theirs = Ses événements sont les siens : ils ne vous rappellent rien et ne comptent jamais comme votre temps.
 # À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
 agenda-busy-time = Compter comme mon temps occupé
 agenda-busy-time-help = Indisponible pendant eux : « Pendant une indisponibilité » de Ne pas déranger s’applique, la disponibilité que vous partagez les montre et le plan garde leur temps.
@@ -5063,6 +5073,7 @@ agendas-group-yours = Les vôtres
 agendas-group-children = Enfants
 agendas-group-parent = L’autre parent
 agendas-group-partners = Partenaires
+agendas-group-someone = D’autres personnes
 agendas-group-shared = Partagés avec vous
 agendas-kept-hidden = gardé caché
 agenda-keep-hidden = Garder caché sur cet appareil
@@ -5395,7 +5406,15 @@ agenda-whose-yours = À vous
 agenda-whose-child = À un enfant
 agenda-whose-parent = À l’autre parent
 agenda-whose-partner = À un ou une partenaire
+agenda-whose-someone = À quelqu’un d’autre
 agenda-whose-shared = Partagé avec vous
+agenda-of-person = Agenda de { $person }
+agenda-of-role = { $whose ->
+        [child] Agenda d’un enfant
+        [parent] Agenda de l’autre parent
+        [someone] Agenda de quelqu’un d’autre
+       *[partner] Agenda d’un ou d’une partenaire
+    }
 agenda-person = Son nom
 agenda-person-child = Le nom de l’enfant
 agenda-for = Pour

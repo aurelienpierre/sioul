@@ -289,7 +289,7 @@ CardFrame {
     dot: card.there && card.event.color ? card.event.color : card.theme.accent
     when: card.there ? card.event.when : ""
     // An event an extension brought (a pupil's lesson) says where it comes from: "From Skolengo".
-    from: !card.there ? "" : (card.isTask ? card.sioul.textWith("agenda-task-of", "list", card.event.list) : card.event.calendar) + (card.event.recurring ? "  ·  " + (card.event.repeats || card.sioul.text("agenda-repeats")) : "") + ((card.event.brought_by || "") !== "" ? "  ·  " + card.event.brought_by : "")
+    from: !card.there ? "" : (card.isTask ? card.sioul.textWith("agenda-task-of", "list", card.event.list) : card.event.calendar) + ((card.event.whose || "") !== "" ? "  ·  " + card.event.whose : "") + (card.event.recurring ? "  ·  " + (card.event.repeats || card.sioul.text("agenda-repeats")) : "") + ((card.event.brought_by || "") !== "" ? "  ·  " + card.event.brought_by : "")
     stateLine: card.there && (card.event.before > 0 || card.event.after > 0) ? card.sioul.textArgs("agenda-kept", JSON.stringify({ before: card.event.before, after: card.event.after })) : ""
     editable: card.there && !card.event.read_only
     why: card.there ? card.event.why || "" : ""

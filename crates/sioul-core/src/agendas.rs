@@ -48,13 +48,16 @@ pub enum Whose {
     Parent,
     /// A partner's.
     Partner,
-    /// Shared with you by anyone else: a colleague, a club, a subscription.
+    /// Someone else's own: a co-worker's, a friend's (24 November 2026): one
+    /// of your people, a name typed, or nobody named.
+    Someone,
+    /// Shared with you by anyone else: a club, a team, a subscription.
     Shared,
 }
 
 impl Whose {
     /// In the order the filter's groups come.
-    pub const ALL: [Whose; 5] = [Whose::Yours, Whose::Child, Whose::Parent, Whose::Partner, Whose::Shared];
+    pub const ALL: [Whose; 6] = [Whose::Yours, Whose::Child, Whose::Parent, Whose::Partner, Whose::Someone, Whose::Shared];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -62,6 +65,7 @@ impl Whose {
             Whose::Child => "child",
             Whose::Parent => "parent",
             Whose::Partner => "partner",
+            Whose::Someone => "someone",
             Whose::Shared => "shared",
         }
     }
@@ -70,7 +74,8 @@ impl Whose {
         Whose::ALL.into_iter().find(|w| w.id() == text.trim().to_ascii_lowercase())
     }
 
-    /// Another person's own agenda: a partner's, another parent's. Its events
+    /// Another person's own agenda: a partner's, another parent's, someone
+    /// else's (a co-worker's, a friend's). Its events
     /// are theirs: they tell you nothing (`reminders`, but an invitation in it
     /// you accepted) and are never your present moment nor your day (`now`,
     /// the Porch, the home card); the Agenda and that person's page show them.
@@ -78,7 +83,7 @@ impl Whose {
     /// shared by default (a contacts' birthdays, a club's), and its alarms
     /// still come; nor a child's, whose holder is told (`holders`).
     pub fn another_person(self) -> bool {
-        matches!(self, Whose::Partner | Whose::Parent)
+        matches!(self, Whose::Partner | Whose::Parent | Whose::Someone)
     }
 }
 
@@ -150,7 +155,8 @@ pub enum Reach {
 /// configuration from reading.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Said {
-    /// "yours", "child", "parent", "partner", "shared".
+    /// "yours", "child", "parent", "partner", "someone", "shared". An older
+    /// Sioul reads a word it does not know as unsaid ("someone" on 0.1.0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub whose: Option<String>,
     /// Whose name: a child's above all ("Léa").
@@ -328,6 +334,26 @@ impl Agenda {
         self.whose != Whose::Yours
     }
 
+    /// Whose it is, in words, where its events show as someone's (24
+    /// November 2026: an event's card, the Agenda's rows, the agents'
+    /// `agenda`): "Sam's agenda" for a child's, a partner's, another parent's
+    /// or someone else's that names a person, "A partner's agenda" for one
+    /// that names none; "" for yours and for one shared with you.
+    pub fn whose_words(&self, tr: &crate::i18n::Translator) -> String {
+        let mut args = crate::i18n::args();
+        match self.whose {
+            Whose::Yours | Whose::Shared => String::new(),
+            _ if !self.person.trim().is_empty() => {
+                args.set("person", self.person.trim().to_string());
+                tr.text("agenda-of-person", Some(&args))
+            }
+            whose => {
+                args.set("whose", whose.id().to_string());
+                tr.text("agenda-of-role", Some(&args))
+            }
+        }
+    }
+
     /// Its busy times only.
     pub fn busy(&self) -> bool {
         self.access == Access::Availability
@@ -373,6 +399,14 @@ impl Agenda {
             Whose::Child => Relation::Child,
             Whose::Partner => Relation::Partner,
             Whose::Parent => Relation::OtherParent,
+            // Someone else's: one of your people by key, whatever their relation; else the name typed.
+            Whose::Someone => {
+                if let Some(person) = self.said.person.as_deref().map(str::trim).filter(|id| !id.is_empty()).and_then(|id| persons.get(id)) {
+                    self.person_id = person.id.clone();
+                    self.person = person.name.clone();
+                }
+                return self;
+            }
             Whose::Yours | Whose::Shared => return self,
         };
         if let Some(person) = persons.of_agenda(&self.said, relation) {
@@ -584,7 +618,7 @@ pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), 
     let value = value.trim();
     let written: Option<String> = match field {
         _ if value.is_empty() => None,
-        "whose" => Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner or shared"))?.id().to_string()),
+        "whose" => Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner, someone or shared"))?.id().to_string()),
         "name" => Some(value.to_string()),
         "area" => Some(Area::parse(value).ok_or_else(|| format!("{value}: work, admin, leisure, joined by +"))?.id()),
         "reaches" => Some(Reaches::parse(value).ok_or_else(|| format!("{value}: all-day or outside-work"))?.id().to_string()),
@@ -1474,13 +1508,26 @@ mod tests {
         let shared = of("home", true, true, &Said::default());
         assert_eq!((shared.whose, shared.access, shared.theirs()), (Whose::Shared, Access::Read, true), "read only, with details");
         // Shared is nobody's own: a contacts' birthdays, a club's (their alarms still come, `reminders`).
-        assert_eq!(Whose::ALL.map(Whose::another_person), [false, false, true, true, false], "a partner's and another parent's alone");
+        assert_eq!(Whose::ALL.map(Whose::another_person), [false, false, true, true, true, false], "a partner's, another parent's and someone else's alone");
+        // Someone else's (a co-worker's): a name typed, or nobody; an older Sioul reads the word as unsaid.
+        let colleague = of("home", false, true, &Said { whose: Some("someone".into()), name: Some("Kim".into()), ..Said::default() });
+        assert_eq!((colleague.whose, colleague.person.as_str(), colleague.theirs()), (Whose::Someone, "Kim", true));
+        let en = crate::i18n::Translator::new("en");
+        assert_eq!((colleague.whose_words(&en), of("home", false, true, &Said { whose: Some("someone".into()), ..Said::default() }).whose_words(&en)), ("Kim's agenda".to_string(), "Someone else's agenda".to_string()));
+        // A calendar read by its address takes the role too.
+        let subscribed = Agenda::of(&collection(vdir::SUBSCRIBED, "club", &["VEVENT"]), &Said { whose: Some("someone".into()), ..Said::default() }, &config, true, &|| true);
+        assert!(subscribed.whose.another_person() && subscribed.read_only());
         let busy = of("home", true, false, &Said::default());
         assert_eq!((busy.whose, busy.access, busy.busy()), (Whose::Shared, Access::Availability, true), "read only, no details: availability only");
         // What you say wins; read and write is never more than the server allows.
         let said = Said { whose: Some("child".into()), name: Some(" Léa ".into()), area: Some("leisure".into()), reaches: Some("outside-work".into()), access: Some("write".into()), ..Said::default() };
         let child = of("home", true, true, &said);
         assert_eq!((child.whose, child.person.as_str(), child.area, child.access, child.reach()), (Whose::Child, "Léa", Area::LEISURE, Access::Read, Reach::OutsideWork));
+        // Whose, in words, where its events show (the card, the rows, the agents).
+        let (en, fr) = (crate::i18n::Translator::new("en"), crate::i18n::Translator::new("fr"));
+        let partner = of("home", false, true, &Said { whose: Some("partner".into()), ..Said::default() });
+        assert_eq!((child.whose_words(&en), child.whose_words(&fr), partner.whose_words(&en)), ("Léa's agenda".to_string(), "Agenda de Léa".to_string(), "A partner's agenda".to_string()));
+        assert_eq!((shared.whose_words(&en), home.whose_words(&en)), (String::new(), String::new()), "shared and yours: nobody named");
         let chosen = of("home", false, true, &Said { access: Some("availability".into()), ..Said::default() });
         assert!(chosen.busy() && chosen.read_only());
         // Words this Sioul does not know are unsaid.

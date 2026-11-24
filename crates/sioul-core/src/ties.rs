@@ -428,7 +428,7 @@ fn agenda_ties(config: &Config, events: &[EventRef], persons: &Persons) -> (Vec<
     let zone = crate::zone::current();
     let (mut held, mut taken, mut children) = (Vec::new(), Vec::new(), BTreeSet::new());
     for agenda in crate::agendas::all(config).into_iter().map(|a| a.with_persons(persons)) {
-        if !matches!(agenda.whose, Whose::Child | Whose::Partner | Whose::Parent) {
+        if !matches!(agenda.whose, Whose::Child | Whose::Partner | Whose::Parent | Whose::Someone) {
             continue;
         }
         if agenda.whose == Whose::Child {
