@@ -111,8 +111,10 @@ Item {
             out[placed.item.id] = placed
         return out
     }
-    // The room the lines take at a list's left edge, while a day shown has one.
-    readonly property int lineRoom: page.shown.days.some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
+    // The room the lines of events over several days take at the lists' left edge (What
+    // comes, a phone's Month list): kept whether lines show or not, so that the days'
+    // titles and rows stand at one place in both lists, whatever they hold (rule 17).
+    readonly property int lineRoom: 26
 
     // A list's rows of a day for its events over several days (`ongoing::Through`): an
     // event's row on its first day shown, its whole span under its title ("Ongoing
@@ -136,8 +138,45 @@ Item {
     function monthRows(day) {
         return (day.lines || []).filter(p => page.shownHere(p.item) && p.spans !== true).map(page.monthRow).concat(page.spanRows(day)).sort((a, b) => a.sort - b.sort)
     }
-    // The room the lines take at the phone's Month list's left edge.
-    readonly property int monthLineRoom: page.mode === "month" && page.narrow && page.shown.days.some(d => ((d.through || {}).lines || []).length > 0) ? 26 : 0
+    // The lists' times as wide as the widest of them, whole ("13:35 – 19:00", "All day",
+    // "From 23:00", longer in French), measured in the rows' own font (ItemRow.qml: 12
+    // points on a phone, 14 on a computer): never narrower than they were, a third of
+    // the page at most, past which a time wraps at its words rather than being cut.
+    // A line of a Month's cell (a computer's), as its titles are drawn.
+    FontMetrics {
+        id: monthLineFont
+
+        font.pixelSize: 12
+    }
+    FontMetrics {
+        id: phoneTimes
+
+        font.pixelSize: 12
+        font.features: { "tnum": 1 }
+    }
+    FontMetrics {
+        id: wideTimes
+
+        font.pixelSize: 14
+        font.features: { "tnum": 1 }
+    }
+    function timesWidth(days, rowsOf, compact) {
+        const metrics = compact ? phoneTimes : wideTimes
+        const least = compact ? 76 : 116
+        if (!metrics.font)
+            return least
+        let widest = 0
+        for (const d of days || []) {
+            for (const r of rowsOf(d))
+                widest = Math.max(widest, metrics.advanceWidth(r.when || ""))
+        }
+        return Math.max(least, Math.min(Math.ceil(widest) + 2, Math.round(page.width / 3)))
+    }
+    readonly property real comesTimes: page.mode === "agenda" ? page.timesWidth(daysPlace.rows, page.comesRows, page.narrow) : 116
+    readonly property real monthTimes: page.mode === "month" && page.narrow ? page.timesWidth(month.listed, page.monthRows, true) : 76
+
+    // The same room at the phone's Month list's left edge.
+    readonly property int monthLineRoom: page.lineRoom
 
     // The Month's bars (`ongoing::Bar`), those of a calendar Show hides left out; how many
     // lanes each week's row takes; a bar's height.
@@ -1141,7 +1180,7 @@ Item {
                             Layout.leftMargin: page.lineRoom
                             theme: page.theme
                             compact: page.narrow
-                            timeWidth: page.narrow ? 76 : 116
+                            timeWidth: page.comesTimes
                             when: listed.modelData.when
                             title: listed.modelData.title
                             line: listed.modelData.line
@@ -1216,7 +1255,7 @@ Item {
             }
 
             // The Month (§4.5): six weeks of seven cells. On a computer each cell its
-            // dates first, then its appointments, three lines, then "…"; on a phone its
+            // dates first, then its appointments, as many lines as its room holds, then "…"; on a phone its
             // number and two marks at most, the month's dates and appointments listed
             // under the grid from today on. Days off are shaded; no step, meal or dose.
             ColumnLayout {
@@ -1268,6 +1307,18 @@ Item {
                                 // The bars' lanes in the cell's week row, and where they start in it.
                                 readonly property int barLanes: page.narrow ? 0 : page.monthBarLanes[Math.floor(cell.index / 7)] || 0
                                 readonly property real barsTop: 4 + cellHead.y + cellHead.height + 2
+                                // How many of its lines its room holds (a computer's): all of them when they
+                                // fit, else as many as leave a line for "…".
+                                readonly property int fits: {
+                                    if (page.narrow)
+                                        return 0
+                                    const line = monthLineFont.height + 2
+                                    const room = cell.height - 8 - cellHead.height - cell.barLanes * (page.monthBarHeight + 2) - 2
+                                    const more = (page.shown.bars_more || [])[cell.index] > 0
+                                    if (!more && cell.lines.length * line <= room)
+                                        return cell.lines.length
+                                    return Math.max(1, Math.min(cell.lines.length, Math.floor(room / line) - 1))
+                                }
 
                                 objectName: "monthCell"
                                 Layout.fillWidth: true
@@ -1337,7 +1388,7 @@ Item {
                                         }
                                     }
                                     Repeater {
-                                        model: page.narrow ? [] : cell.lines.slice(0, Math.max(1, 3 - cell.barLanes))
+                                        model: page.narrow ? [] : cell.lines.slice(0, cell.fits)
 
                                         delegate: RowLayout {
                                             id: monthLine
@@ -1376,7 +1427,7 @@ Item {
                                         }
                                     }
                                     Label {
-                                        visible: !page.narrow && (cell.lines.length > Math.max(1, 3 - cell.barLanes) || (page.shown.bars_more || [])[cell.index] > 0)
+                                        visible: !page.narrow && (cell.lines.length > cell.fits || (page.shown.bars_more || [])[cell.index] > 0)
                                         text: "…"
                                         color: page.theme.muted
                                     }
@@ -1495,11 +1546,13 @@ Item {
                         Component.onCompleted: listedDay.lay()
                         Component.onDestruction: page.layLines(listedDay.spans, null, [], null, null, null)
 
+                        // Its title, where and as large as What comes' day titles.
                         Label {
                             Layout.leftMargin: page.monthLineRoom
                             text: listedDay.modelData.title + (listedDay.through.more > 0 ? "   " + page.sioul.textArgs("agenda-lines-more", JSON.stringify({ count: listedDay.through.more })) : "")
                             textFormat: Text.PlainText
                             font.weight: Font.DemiBold
+                            font.pixelSize: 16
                             color: page.theme.text
 
                             TapHandler {
@@ -1521,7 +1574,7 @@ Item {
                                 Layout.leftMargin: page.monthLineRoom
                                 theme: page.theme
                                 compact: true
-                                timeWidth: 76
+                                timeWidth: page.monthTimes
                                 when: monthItem.modelData.when
                                 title: monthItem.modelData.title
                                 // An event over several days: its span, "Ongoing since …", "until 10:15".

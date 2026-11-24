@@ -171,6 +171,50 @@ ColumnLayout {
         return lines
     }
 
+    // Whether every word of `text` fits within `width` in the titles' font: a card
+    // then wraps its title at words; else it keeps one line ended by "…", so that no
+    // word is ever broken inside (a narrow day of the Week, a crowded slot).
+    function wordsFit(text, width) {
+        if (width <= 0 || !titleFont.font)
+            return false
+        for (const word of String(text).split(/\s+/)) {
+            if (word !== "" && titleFont.advanceWidth(word) > width)
+                return false
+        }
+        return true
+    }
+
+    // How far each card's words may reach down before the next card under it in
+    // its slot: a card shorter than a line is drawn a line tall, and the next one,
+    // a few minutes later, would sit on its words (the Day's short blocks). Only the
+    // cards so crowded are listed: {key: room}.
+    readonly property var crowded: {
+        planning.revision
+        planning.hourHeight
+        planning.dayWidth
+        const boxes = []
+        for (let i = 0; i < things.count; i++) {
+            const row = things.get(i)
+            if (row.kind === "night" || row.kind === "gain" || row.kind === "slack" || row.kind === "leg" || row.edge !== "")
+                continue
+            boxes.push({ key: row.key, day: row.day, box: planning.boxOf(row) })
+        }
+        const room = {}
+        for (const a of boxes) {
+            let least = a.box.height
+            for (const b of boxes) {
+                if (b === a || b.day !== a.day || b.box.y <= a.box.y || b.box.y - a.box.y >= least)
+                    continue
+                if (b.box.x >= a.box.x + a.box.width || a.box.x >= b.box.x + b.box.width)
+                    continue
+                least = b.box.y - a.box.y
+            }
+            if (least < a.box.height)
+                room[a.key] = least
+        }
+        return room
+    }
+
     // How tall an hour must be for every appointment and pinned task to show its
     // whole title (§4.4: those alone, so that a crowded week does not grow without end).
     readonly property real legibleHour: {
@@ -2011,9 +2055,17 @@ ColumnLayout {
                         }
                     }
                     ColumnLayout {
+                        id: words
+
+                        // The height its words may take: the card's, or less when the next card in
+                        // its slot starts within it (`crowded`): its words never run under that one.
+                        readonly property real room: planning.crowded[card.key] !== undefined ? Math.min(card.height, planning.crowded[card.key]) : card.height
+
                         // Every card says its title: meals, naps and the night by their names (the night
                         // right of the doses' lane, which runs through it); time for you, quiet words.
                         // Never its times, which a click shows over it (`timesKey`).
+                        // A card with no room for a line says it by its name to screen readers alone.
+                        visible: words.room >= planning.titleLine
                         anchors.fill: parent
                         anchors.leftMargin: card.isNight ? planning.lane + 4 : 6
                         anchors.rightMargin: 2 + (card.pinned || card.kind === "block" ? 14 : 0)
@@ -2025,8 +2077,9 @@ ColumnLayout {
                             text: card.edge !== "" ? card.when + " · " + card.title : card.done ? "✓  " + card.title : card.title
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
-                            wrapMode: Text.Wrap
-                            maximumLineCount: Math.max(1, Math.floor((card.height - planning.cardPadding) / planning.titleLine))
+                            // At words when each fits, else one line and "…": never inside a word.
+                            wrapMode: planning.wordsFit(text, width) ? Text.WordWrap : Text.NoWrap
+                            maximumLineCount: Math.max(1, Math.floor((words.room - planning.cardPadding) / planning.titleLine))
                             font.pixelSize: card.isLeg ? 11 : 12
                             font.italic: card.isQuiet || (card.isLeg && card.certainty === "unconfirmed")
                             font.strikeout: card.cancelled
@@ -2037,7 +2090,7 @@ ColumnLayout {
                         Label {
                             readonly property string beside: card.location !== "" ? card.location : card.list !== "" ? planning.sioul.textWith("agenda-task-of", "list", card.list) : ""
 
-                            visible: beside !== "" && card.edge === "" && !card.isQuiet && card.height >= planning.cardPadding + planning.titleLine + planning.timeLine && !!timeFont.font && timeFont.advanceWidth(beside) <= card.width - 8
+                            visible: beside !== "" && card.edge === "" && !card.isQuiet && words.room >= planning.cardPadding + planning.titleLine + planning.timeLine && !!timeFont.font && timeFont.advanceWidth(beside) <= card.width - 8
                             Layout.fillWidth: true
                             text: beside
                             textFormat: Text.PlainText

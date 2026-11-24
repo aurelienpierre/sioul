@@ -672,22 +672,30 @@ Item {
         }
 
         // The Month on a computer (§4.5): a cell's dates first, then its
-        // appointments, three lines, then "…"; a tap on a line opens its card;
-        // a day off shaded.
+        // appointments, as many lines as its room holds, then "…"; a tap on a
+        // line opens its card; a day off shaded.
         function test_month_on_a_computer() {
             const page = makePage()
             page.mode = "month"
             const monday = day(0)
             monday.lines = [dated("CAF", monday.start, "plain"), placed("Fair", "event", monday.start, 0, 1440, { all_day: true }), placed("Doctor", "event", monday.start, 840, 870), placed("Yoga", "event", monday.start, 1080, 1140)]
             const tuesday = day(1, { off: true })
-            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, tuesday].concat([2, 3, 4, 5, 6].map(n => day(n))) })
+            const wednesday = day(2)
+            // More than any cell's room (a week alone: one row, the whole page high).
+            wednesday.lines = Array.from({ length: 60 }, (_, i) => placed("E" + i, "event", wednesday.start, 480 + i * 10, 485 + i * 10))
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday, tuesday, wednesday].concat([3, 4, 5, 6].map(n => day(n))) })
             wait(50)
             const cells = root.all(page, c => c.objectName === "monthCell")
             compare(cells.length, 7)
             const lines = root.all(cells[0], c => c.objectName === "monthLine")
-            compare(lines.length, 3, "three lines, then …")
-            verify(root.all(cells[0], c => c.text === "…" && c.visible).length === 1)
+            compare(lines.length, 4, "every line its room holds")
+            compare(root.all(cells[0], c => c.text === "…" && c.visible).length, 0, "nothing hidden: no …")
             compare(lines[0].modelData.item.title, "CAF", "its date first")
+            const crowded = root.all(cells[2], c => c.objectName === "monthLine")
+            verify(crowded.length > 4 && crowded.length < 60, "as many as fit: " + crowded.length)
+            verify(root.all(cells[2], c => c.text === "…" && c.visible).length === 1, "then …")
+            const last = crowded[crowded.length - 1]
+            verify(last.mapToItem(cells[2], 0, last.height).y <= cells[2].height, "within its cell")
             verify(String(cells[1].color) !== String(cells[2].color), "a day off shaded")
             mouseClick(lines[1])
             compare(shell.opened.length, 1)
@@ -793,6 +801,37 @@ Item {
             page.showPart("legs", true)
             page.readAgain()
             verify(mock.asked.length > asked, "the days read again")
+        }
+
+        // The Day's short blocks (review of 24 November 2026): a card shorter than a line
+        // is drawn a line tall, and the next one, minutes later, starts within it: the
+        // first one's words stop there, never written over the next. A narrow Week's
+        // titles wrap at words, or keep one line and "…": never broken inside a word.
+        function test_short_cards_never_write_over_each_other() {
+            const page = makePage()
+            page.mode = "day"
+            const monday = day(0, { timed: [placed("Snack", "event", root.monday, 960, 965, { when: "16:00 – 16:05" }), placed("Write to the landlord", "event", root.monday, 967, 1027, { when: "16:07 – 17:07" })] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [monday] })
+            wait(50)
+            const planning = root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0]
+            const next = planning.boxOf(planning.rowOf(monday.timed[1], monday, 0))
+            const snack = planning.boxOf(planning.rowOf(monday.timed[0], monday, 0))
+            verify(next.y < snack.y + snack.height, "the next card starts within the first one's box")
+            const card = root.all(page, o => o.box !== undefined && o.itemId === "Snack")[0]
+            verify(card !== undefined, "the first card")
+            for (const w of root.all(card, o => o.text === "Snack" && o.visible)) {
+                const bottom = w.mapToItem(card, 0, w.height).y
+                verify(bottom <= next.y - card.y + 0.5, "the first one's words stop at the next: " + bottom + " > " + (next.y - card.y))
+            }
+            verify(root.all(page, o => o.text === "Write to the landlord" && o.visible).length === 1, "the next one's words")
+            page.mode = "week"
+            const wednesday = day(2, { timed: [placed("Swimming lesson at the pool", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 1, columns: 2 }), placed("Read", "event", root.monday + 2 * 86400, 1020, 1080, { when: "17:00 – 18:00", column: 0, columns: 2 })] })
+            mock.agenda = JSON.stringify({ version: 3, from: "2099-01-05", sentence: "", days: [day(0), day(1), wednesday, day(3), day(4), day(5), day(6)] })
+            wait(50)
+            tryVerify(() => !root.all(page, o => typeof o.thingAt === "function" && typeof o.rowOf === "function")[0].listed, 3000, "the Week as a grid")
+            const title = root.all(page, o => o.text === "Swimming lesson at the pool" && o.visible)[0]
+            verify(title !== undefined, "its title")
+            verify(title.wrapMode === Text.WordWrap || title.wrapMode === Text.NoWrap, "at words or on one line, never inside a word: " + title.wrapMode)
         }
 
         function test_a_phone_s_day_head_on_the_page() {
