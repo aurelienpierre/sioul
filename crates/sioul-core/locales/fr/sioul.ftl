@@ -11045,3 +11045,498 @@ rules-runs-filter = Agit sur le serveur à chaque relève, sur l’appareil qui 
 rules-runs-topic = Lue chaque fois que les sujets du courrier sont donnés.
 rules-file-type-any = Toutes les pièces jointes
 rules-for-me = Vous
+# Paramètres ▸ Règles : « quand ceci arrive, faire cela » (docs/rules.md, RulesTab.qml, RuleEditor.qml).
+settings-tab-rules = Règles
+settings-about-rules = Quand quelque chose arrive, ce que fait Sioul : vos règles, et celles gardées avec vos projets, vos budgets, vos filtres et vos thèmes.
+rules-tab-own = Vos règles
+rules-tab-presets = Préréglages
+rules-about = Chaque règle dit ce que fait Sioul quand quelque chose arrive. Une règle agit sur ce qui vient après son enregistrement ; chaque chose qu’elle fait est dite une fois, avec Annuler.
+rules-presets-about = Les règles qui viennent avec Sioul : ce qu’il fait de lui-même, dit de la même façon, actif comme il l’a toujours été. Détails montre ce que vous pouvez changer et en copie une pour en faire la vôtre ; la plupart deviendront les vôtres dans des versions suivantes.
+rules-none = Pas encore de règle. Ajoutez-en une ici, ou depuis un courriel : « Faire une règle de ceci… » dans son menu.
+rules-add = Ajouter une règle…
+rules-switch = Cette règle active
+rules-remove = Retirer cette règle
+rules-removed = Règle retirée : { $sentence }
+rules-switched-on = Règle activée : { $sentence }
+rules-switched-off = Règle éteinte : { $sentence } Elle reste dans la liste.
+rules-saved = Règle enregistrée : { $sentence }
+rules-saved-past = Règle enregistrée : { $sentence } { $done }
+rules-lately = { $n ->
+        [one] Ce qu’elle a fait dernièrement (une fois)
+       *[other] Ce qu’elle a fait dernièrement ({ $n })
+    }
+rules-not-this-one = Pas pour celui-ci
+rules-not-this-one-said = Cette règle laisse celui-ci tranquille désormais.
+rules-from-this = Faire une règle de ceci…
+rules-kept-project = Gardée avec le projet { $project }, parmi ses routes ; elle se change sur sa page.
+rules-kept-budget = Gardée avec le budget { $budget }, parmi les courriels qui deviennent ses lignes ; aucune page ne la change encore.
+rules-kept-filters = Gardée parmi les filtres des courriels ; elle se change dans Courriels ⚙ ▸ Filtres, où leur ordre est gardé aussi.
+rules-kept-topics = Gardée avec le thème { $topic } ; elle se change dans Courriels ⚙ ▸ Thèmes.
+rules-kept-off = Elle est éteinte là où elle est gardée.
+rules-open-project = Ouvrir le projet
+rules-open-budget = Ouvrir l’argent
+rules-open-filters = Ouvrir les filtres
+rules-open-topics = Ouvrir les thèmes
+rules-unknown = Écrite par un Sioul plus récent : gardée telle quelle, et pas appliquée sur cet appareil.
+rules-read-only = Vos règles ont été écrites par un Sioul plus récent : elles sont montrées, et rien ne s’applique ni ne change sur cet appareil tant qu’il n’est pas mis à jour.
+rules-not-read = Vos règles n’ont pas pu être lues : { $error }
+rules-editor-new = Nouvelle règle
+rules-editor-edit = Modifier la règle
+rules-when = Quand
+rules-then = Alors
+rules-when-type = Ce qu’elle surveille
+rules-when-event = Ce qui lui arrive
+rules-match = Quelles conditions
+rules-match-all = Toutes les conditions
+rules-match-any = Une seule suffit
+rules-add-condition = Ajouter une condition
+rules-condition-remove = Retirer cette condition
+rules-field = Ce qu’elle lit
+rules-test = Comment elle compare
+rules-then-action = Ce qu’elle fait
+rules-choose-action = Choisir ce qu’elle fait…
+rules-choose = Choisir…
+rules-later = { $name } (plus tard)
+rules-optional = { $name } (si vous voulez)
+rules-chosen-here = Choisi ici
+rules-taken-from = D’après ce qui l’a déclenchée
+rules-value-text = Un mot ou une expression
+rules-value-words = Des mots ou des expressions, séparés par des virgules
+rules-value-addresses = Des adresses, séparées par des virgules
+rules-value-domains = Des domaines, comme exemple.fr, séparés par des virgules
+rules-value-size = Une taille, comme 5 Mo
+rules-value-time = Une heure, comme 18:00
+rules-value-pattern = Des mots, avec {"{"}sender{"}"}, {"{"}month{"}"}, {"{"}year{"}"}, {"{"}subject{"}"} ou {"{"}file{"}"} là où vont ceux du courriel
+rules-value-and = et
+rules-value-until = { $name }, jusqu’à
+rules-value-none-yet = Aucun pour l’instant
+rules-model-new = Un nouveau modèle de tâche
+rules-model-name = Son nom
+rules-model-name-hint = Payer une facture, Vérifier un relevé…
+rules-model-prefix = Devant le titre de chaque tâche
+rules-model-prefix-hint = Payer :
+rules-model-list = Sa liste
+rules-model-list-usual = La liste habituelle
+rules-model-days = Demandée après, en jours travaillés
+rules-model-keep = Garder ce modèle
+rules-preview-title = Ce qu’elle aurait fait ces 30 derniers jours
+rules-preview-looking = Je regarde les 30 derniers jours…
+rules-preview-none = Rien ces 30 derniers jours : elle agit sur ce qui vient désormais.
+rules-preview-some = { $n ->
+        [one] Un courriel ces 30 derniers jours :
+       *[other] { $n } courriels ces 30 derniers jours :
+    }
+rules-preview-more = et { $n } de plus
+rules-preview-line = { $day }, { $who } : { $does }
+rules-act-put-back = Annulé : remis comme avant. La règle laisse celui-ci tranquille désormais.
+rules-act-kept = Cela a changé depuis, donc cela reste tel quel. La règle laisse celui-ci tranquille désormais.
+rules-also-past = { $n ->
+        [one] Aussi pour ce courriel, une fois
+       *[other] Aussi pour ces { $n } courriels, une fois chacun
+    }
+rules-message-gone = Aucune règle ne peut partir de ce courriel : il n’est plus là, ou le Porche l’a mis de côté.
+rules-act-when = { $when } : { $line }
+rules-act-undone = { $when } : { $line } Annulé depuis.
+rules-model-of = { $model } ({ $project })
+rules-done-past = { $n ->
+        [0] Rien ces 30 derniers jours ne l’appelait.
+        [one] Fait une fois pour les 30 derniers jours.
+       *[other] Fait pour { $n } courriels des 30 derniers jours.
+    }
+rules-preset-not-copied = Ce préréglage ne peut pas encore être copié : Sioul le fait de lui-même, comme toujours.
+rules-add-title = Ajouter une règle
+rules-start-blank = Partir de rien
+rules-start-message = D’un courriel
+rules-start-find = Quelques mots de son objet ou de son expéditeur
+rules-start-no-message = Aucun courriel des 30 derniers jours n’est encore là.
+rules-start-none-found = Aucun courriel des 30 derniers jours n’a ces mots.
+rules-start-preset = D’un préréglage
+rules-preset-title = Vient avec Sioul
+rules-preset-details = Ce que vous pouvez changer
+rules-preset-later = Sioul le fait de lui-même, comme toujours : ses détails deviendront les vôtres dans une version suivante.
+rules-preset-copy = Copier pour en faire la mienne
+rules-preset-open = Détails
+
+# Une règle en mots (crates/sioul-core/src/wiring/words.rs) : des phrases entières
+# par événement, condition et action, leurs valeurs insérées, jointes par le code.
+rule-sentence = { $when } : { $then }.
+rule-when-shared = { $when } :
+rule-quoted = « { $text } »
+rule-join-comma = {", "}
+rule-join-and = {" "}et{" "}
+rule-join-or = {" "}ou{" "}
+rule-a-message = un courriel
+rule-a-message-first = Un courriel
+rule-heading-any = Quand { $type } { $event }
+rule-heading-message-arrives = Quand un courriel arrive
+rule-heading-message-is-sent = Quand un courriel est envoyé
+rule-heading-task-is-made = Quand une tâche est créée
+rule-heading-task-is-done = Quand une tâche est faite
+rule-heading-task-is-put-off = Quand une tâche est remise à plus tard
+rule-heading-task-comes-due = Quand une tâche arrive à sa date
+rule-heading-event-is-made = Quand un événement est créé
+rule-heading-event-moves = Quand un événement est déplacé
+rule-heading-event-starts-soon = Quand un événement commence bientôt
+rule-heading-event-is-over = Quand un événement est fini
+rule-heading-movement-appears = Quand un mouvement d’argent apparaît
+rule-heading-movement-did-not-leave = Quand un paiement n’est pas parti à sa date
+rule-when-message-says = Quand un courriel{ $from } { $says }{ $rest }
+rule-says-code = contient un code
+rule-says-password = contient un mot de passe
+rule-says-password-reset = propose de changer un mot de passe
+rule-says-sign-in-link = contient un lien pour vous connecter
+rule-says-confirmation = vous demande de confirmer quelque chose
+rule-says-invitation = contient une invitation
+rule-says-newsletter = est une infolettre
+rule-says-payment = parle d’un paiement
+rule-says-payment-received = dit que de l’argent est arrivé
+rule-says-payment-made = dit qu’un paiement a été fait
+rule-says-order = confirme une commande
+rule-says-bill = apporte une facture
+rule-says-refund = annonce un remboursement
+rule-says-payment-refused = dit qu’un paiement a été refusé
+rule-says-sign-in-notice = dit que quelqu’un s’est connecté
+rule-says-site-waits = dit que quelque chose vous attend sur un site
+rule-says-parcel = parle d’un colis
+rule-says-bounce = dit qu’un courriel n’a pas pu être remis
+rule-says-renewal = annonce un renouvellement
+rule-says-reply = répond à quelque chose que vous avez envoyé
+rule-circle-known = de quelqu’un que vous connaissez
+rule-circle-safe = de quelqu’un de votre cercle Sûrs
+rule-circle-neutral = de l’un de vos contacts
+rule-circle-restricted = de quelqu’un de votre cercle Restreints
+rule-circle-stranger = d’un inconnu
+rule-if-any = où { $field } { $test } { $value }
+rule-if-message-sender = de l’adresse { $value }
+rule-if-message-sender-domain = du domaine { $value }
+rule-if-message-from = { $test ->
+        [not-contains] dont l’expéditeur ne contient pas { $value }
+        [is] dont l’expéditeur est { $value }
+        [is-not] dont l’expéditeur n’est pas { $value }
+       *[contains] dont l’expéditeur contient { $value }
+    }
+rule-if-message-reply-to = { $test ->
+        [not-contains] dont l’adresse de réponse ne contient pas { $value }
+        [is] dont l’adresse de réponse est { $value }
+        [is-not] dont l’adresse de réponse n’est pas { $value }
+       *[contains] dont l’adresse de réponse contient { $value }
+    }
+rule-if-message-circle = { $test ->
+        [is-not] qui ne vient pas { $value }
+       *[is] { $value }
+    }
+rule-if-message-card = { $test ->
+        [exists] de quelqu’un de vos contacts
+        [missing] de quelqu’un qui n’est pas dans vos contacts
+       *[is] de la part de { $value }
+    }
+rule-if-message-to = { $test ->
+        [not-contains] pas envoyé à une adresse contenant { $value }
+        [is] envoyé à { $value }
+        [is-not] pas envoyé à { $value }
+       *[contains] envoyé à une adresse contenant { $value }
+    }
+rule-if-message-cc = { $test ->
+        [not-contains] sans copie à une adresse contenant { $value }
+        [is] avec une copie à { $value }
+        [is-not] sans copie à { $value }
+       *[contains] avec une copie à une adresse contenant { $value }
+    }
+rule-if-message-account = { $test ->
+        [is-not] sur une autre adresse que { $value }
+       *[is] sur votre adresse { $value }
+    }
+rule-if-message-subject = { $test ->
+        [contains] dont l’objet contient { $value }
+        [not-contains] dont l’objet ne contient pas { $value }
+        [is] dont l’objet est { $value }
+        [is-not] dont l’objet n’est pas { $value }
+       *[has-words] avec { $value } dans son objet
+    }
+rule-if-message-text = { $test ->
+        [contains] dont le texte contient { $value }
+        [not-contains] dont le texte ne contient pas { $value }
+       *[has-words] avec { $value } dans son texte
+    }
+rule-if-message-anywhere = { $test ->
+        [not-contains] sans { $value } nulle part
+       *[contains] avec { $value } quelque part
+    }
+rule-if-message-attachment = { $test ->
+        [missing] sans pièce jointe
+        [contains] avec une pièce jointe dont le nom contient { $value }
+        [not-contains] sans pièce jointe dont le nom contient { $value }
+       *[exists] avec une pièce jointe
+    }
+rule-if-message-attachment-type = { $test ->
+        [is-not] sans { $value } en pièce jointe
+       *[is] avec { $value } en pièce jointe
+    }
+rule-if-message-list = { $test ->
+        [missing] qui ne vient ni d’une infolettre ni d’une liste
+        [contains] de la liste { $value }
+        [not-contains] qui ne vient pas de la liste { $value }
+       *[exists] d’une infolettre ou d’une liste
+    }
+rule-if-message-size = { $test ->
+        [below] de moins de { $value }
+       *[above] de plus de { $value }
+    }
+rule-if-message-date = { $test ->
+        [before] avant le { $value }
+        [between] entre le { $value } et le { $until }
+       *[after] après le { $value }
+    }
+rule-if-message-weekday = { $test ->
+        [is-not] un autre jour que le { $value }
+       *[is] le { $value }
+    }
+rule-if-message-hour = { $test ->
+        [before] avant { $value }
+        [between] entre { $value } et { $until }
+       *[after] à partir de { $value }
+    }
+rule-if-message-topic = { $test ->
+        [is-not] hors du thème { $value }
+       *[is] dans le thème { $value }
+    }
+rule-if-message-project = { $test ->
+        [is-not] qui n’est pas pour le projet { $value }
+       *[is] pour le projet { $value }
+    }
+rule-if-message-kind = { $test ->
+        [is-not] où Sioul ne reconnaît pas { $value }
+       *[is] où Sioul reconnaît { $value }
+    }
+rule-if-message-amount = { $test ->
+        [below] de moins de { $value }
+       *[above] de plus de { $value }
+    }
+rule-from-message-subject = son objet
+rule-from-message-project = son projet
+rule-from-message-sender = son expéditeur
+rule-from-message-amount = le montant qu’il annonce
+rule-do-unchosen = (ce qu’elle fait, encore à choisir)
+rule-do-any = { $action } : { $params }
+rule-do-message-tie-to-project = { $project-from ->
+        [yes] { $same ->
+            [no] rattacher son courriel au projet de sa conversation
+           *[yes] le rattacher au projet de sa conversation
+        }
+       *[no] { $same ->
+            [no] rattacher son courriel au projet { $project }
+           *[yes] le rattacher au projet { $project }
+        }
+    }
+rule-do-message-give-topic = { $topic-from ->
+        [yes] { $same ->
+            [no] donner à son courriel le thème que Sioul lui trouve
+           *[yes] lui donner le thème que Sioul lui trouve
+        }
+       *[no] { $same ->
+            [no] donner à son courriel le thème { $topic }
+           *[yes] lui donner le thème { $topic }
+        }
+    }
+rule-do-message-never-topic = { $same ->
+        [no] ne jamais donner à son courriel le thème { $topic }
+       *[yes] ne jamais lui donner le thème { $topic }
+    }
+rule-do-message-move-to-folder = { $same ->
+        [no] ranger son courriel dans le dossier { $folder }
+       *[yes] le ranger dans le dossier { $folder }
+    }
+rule-do-message-archive = { $same ->
+        [no] archiver son courriel
+       *[yes] l’archiver
+    }
+rule-do-message-junk = { $same ->
+        [no] mettre son courriel dans les indésirables
+       *[yes] le mettre dans les indésirables
+    }
+rule-do-message-mark-read = { $same ->
+        [no] marquer son courriel comme lu
+       *[yes] le marquer comme lu
+    }
+rule-do-message-flag = { $same ->
+        [no] marquer son courriel d’un drapeau
+       *[yes] le marquer d’un drapeau
+    }
+rule-do-message-keyword = { $same ->
+        [no] donner à son courriel le mot-clé { $name }
+       *[yes] lui donner le mot-clé { $name }
+    }
+rule-do-message-trash = { $same ->
+        [no] mettre son courriel à la corbeille
+       *[yes] le mettre à la corbeille
+    }
+rule-do-message-keep-attachments = { $same ->
+        [no] garder { $which } de son courriel dans Papiers
+       *[yes] garder { $which } dans Papiers
+    }
+rule-do-message-keep-attachments-name = , si leur nom contient { $value }
+rule-do-message-keep-attachments-kind = , comme { $value }
+rule-do-message-keep-attachments-title = , sous le nom { $value }
+rule-do-message-keep-attachments-for = , pour { $value }
+rule-attachments-any = ses pièces jointes
+rule-attachments-pdf = ses PDF
+rule-attachments-image = ses images
+rule-attachments-document = ses documents
+rule-attachments-archive = ses archives
+rule-attachments-calendar = ses invitations
+rule-attachments-audio = ses sons
+rule-attachments-video = ses vidéos
+rule-attachments-text = ses fichiers texte
+rule-for-me = vous
+rule-do-task-make = faire une tâche du modèle { $model }
+rule-do-task-make-project = { $from ->
+        [yes] , dans son projet
+       *[no] , dans le projet { $value }
+    }
+rule-do-task-make-title = { $from ->
+        [yes] , intitulée d’après { $value }
+       *[no] , intitulée { $value }
+    }
+rule-do-task-make-days = { $n ->
+        [one] , demandée un jour travaillé après son arrivée
+       *[other] , demandée { $count } jours travaillés après son arrivée
+    }
+rule-do-task-mark-done = { $same ->
+        [no] marquer sa tâche comme faite
+       *[yes] la marquer comme faite
+    }
+rule-do-task-set-date = { $same ->
+        [no] demander sa tâche pour le { $date }
+       *[yes] la demander pour le { $date }
+    }
+rule-do-task-tag = { $same ->
+        [no] donner à sa tâche l’étiquette { $tag }
+       *[yes] lui donner l’étiquette { $tag }
+    }
+rule-do-task-move-to-list = { $same ->
+        [no] déplacer sa tâche dans { $list }
+       *[yes] la déplacer dans { $list }
+    }
+rule-do-task-add-step = { $same ->
+        [no] ajouter l’étape { $title } à sa tâche
+       *[yes] lui ajouter l’étape { $title }
+    }
+rule-do-event-make = créer l’événement { $title } dans { $calendar }
+rule-do-event-move = { $same ->
+        [no] déplacer son événement de { $minutes } minutes
+       *[yes] le déplacer de { $minutes } minutes
+    }
+rule-do-movement-plan = { $direction ->
+        [credit] compter une rentrée d’argent dans le budget { $budget }
+       *[debit] compter un paiement dans le budget { $budget }
+    }
+rule-do-movement-plan-amount = { $from ->
+        [yes] , du montant qu’il annonce
+       *[no] , de { $value }
+    }
+rule-do-movement-plan-label = , comme { $value }
+rule-do-none-tell = { $level ->
+        [quiet] le dire discrètement, dans la ligne d’état
+       *[now] vous le dire
+    }
+rule-do-none-tell-words = { $level ->
+        [quiet] dire { $words } discrètement, dans la ligne d’état
+       *[now] vous dire { $words }
+    }
+rule-heading-message-is-said-spam = Quand vous dites qu’un courriel est indésirable
+rule-heading-supply-runs-low = Quand un stock devient bas
+rule-heading-supply-comes-in = Quand un stock est réapprovisionné
+rule-heading-call-rings = Quand un appel sonne
+rule-heading-call-is-missed = Quand un appel est manqué
+rule-heading-call-is-answered = Quand un appel est pris
+rule-heading-paper-renewal-nears = Quand un papier est bientôt à renouveler
+rule-heading-letter-scan-arrives = Quand le scan d’une lettre arrive
+rule-heading-contract-notice-nears = Quand le préavis d’un contrat approche
+rule-heading-invoice-is-issued = Quand une facture est émise
+rule-heading-invoice-is-due = Quand une facture arrive à échéance
+rule-heading-site-offers-file = Quand un site propose un fichier
+rule-heading-site-notifies = Quand un site vous notifie
+rule-heading-clock-moment-begins = Quand un moment de la journée commence
+rule-heading-clock-day-comes = Quand un nouveau jour arrive
+rule-heading-movement-day-comes = Quand le jour d’un paiement arrive
+rule-if-message-spam = { $test ->
+        [is-not] que votre filtre ne juge pas indésirable
+       *[is] que votre filtre juge indésirable
+    }
+rule-if-message-folder = { $test ->
+        [is-not] hors du dossier { $value }
+       *[is] dans le dossier { $value }
+    }
+rule-from-message-topic = le thème que Sioul lui trouve
+rule-do-message-tie-to-project-plain = { $same ->
+        [no] rattacher son courriel à un projet
+       *[yes] le rattacher à un projet
+    }
+rule-do-message-give-topic-plain = { $same ->
+        [no] donner un thème à son courriel
+       *[yes] lui donner un thème
+    }
+rule-do-task-make-plain = faire une tâche
+rule-do-message-tie-to-task = { $same ->
+        [no] rattacher son courriel à sa tâche
+       *[yes] le rattacher à sa tâche
+    }
+rule-do-message-tie-to-site = { $same ->
+        [no] rattacher son courriel à son site
+       *[yes] le rattacher à son site
+    }
+rule-do-message-leave-list = { $same ->
+        [no] quitter la liste de son courriel
+       *[yes] quitter sa liste
+    }
+rule-do-event-answer = reporter la réponse dans son événement
+rule-do-movement-join = { $same ->
+        [yes] le joindre au paiement qu’il est
+       *[no] le joindre au paiement dont il parle
+    }
+rule-do-movement-plan-plain = { $same ->
+        [yes] le compter dans son budget
+       *[no] compter le paiement dont il parle dans son budget
+    }
+rule-do-supply-take-out = retirer de vos stocks ce qu’elle a utilisé
+rule-do-task-set-aside = mettre sa préparation de côté
+rule-do-task-estimate = lui donner une première estimation
+rule-do-task-set-date-plain = { $same ->
+        [no] demander sa tâche pour un autre jour
+       *[yes] la demander pour un autre jour
+    }
+rule-do-event-pause = suspendre sa série
+rule-do-event-make-plain = créer un événement assorti
+rule-do-event-move-plain = { $same ->
+        [no] déplacer ses créneaux avec elle
+       *[yes] le déplacer avec elle
+    }
+rule-do-call-decline = { $same ->
+        [no] refuser son appel
+       *[yes] le refuser
+    }
+rule-do-letter-read = { $same ->
+        [no] lire sa lettre
+       *[yes] la lire
+    }
+rule-do-paper-keep = le garder dans Papiers
+rule-do-none-do-not-disturb = activer « Ne pas déranger »
+rule-act-tie = { $wrote ->
+        [no] { $Subject } était déjà dans le projet { $project }.
+       *[yes] { $Subject } rattaché au projet { $project }.
+    }
+rule-act-task = { $wrote ->
+        [no] { $Subject } : sa tâche était déjà là.
+       *[yes] { $Subject } : une tâche en a été faite.
+    }
+rule-act-topic = { $wrote ->
+        [no] { $Subject } avait déjà le thème { $topic }.
+       *[yes] { $Subject } a reçu le thème { $topic }.
+    }
+rule-act-tell = { $Subject } : signalé.
+rule-act-paper = { $wrote ->
+        [no] { $Subject } : ses pièces jointes étaient déjà dans Papiers.
+       *[yes] { $Subject } : ses pièces jointes gardées dans Papiers.
+    }
+rule-act-other = { $Subject } : fait.
+e-act-other = { $subject } : fait.
