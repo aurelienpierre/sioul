@@ -16,7 +16,8 @@
 // and is as wide selected as not; disabled, none is filled and its words are
 // muted; a symbolic icon is tinted as the words, a colour one keeps its own
 // colours; an icon or an arrow alone stays bare, as does a BareButton, which
-// takes the selected look when chosen; a text field, a text area one can
+// takes the selected look when chosen; a tool button follows the same rules
+// at Basic's own size (StyleToolButton.qml); a text field, a text area one can
 // type in, a number box and the boxes to tick have the field's fill and the
 // edge, a read-only text area none; with the focus, a field's edge is 2 points
 // of the focused edge; every size is Basic's; a field's menu (cut, copy,
@@ -138,6 +139,35 @@ Item {
 
                 text: "Open the site"
                 icon.name: "internet-web-browser"
+            }
+            // Apart: a checked tool button beside the toggle above would make it one choice among several.
+            Row {
+                StyleToolButton {
+                    id: toolIcon
+
+                    text: "Settings"
+                    icon.name: "settings-configure"
+                    display: T.AbstractButton.IconOnly
+                }
+                StyleToolButton {
+                    id: toolWords
+
+                    text: "Aa"
+                }
+                StyleToolButton {
+                    id: toolChecked
+
+                    text: "?"
+                    checkable: true
+                    checked: true
+                }
+                Basic.ToolButton {
+                    id: basicTool
+
+                    text: "Settings"
+                    icon.name: "settings-configure"
+                    display: T.AbstractButton.IconOnly
+                }
             }
             BareButton {
                 id: bareChosen
@@ -299,6 +329,18 @@ Item {
             compare(otherChoice.contentItem.children[0].text, "✓  Month")
             compare(otherChoice.implicitWidth, before, "the same width")
             otherChoice.checked = false
+        }
+
+        // A tool button: Basic's grey square retired; an icon alone bare, words outlined, checked selected; Basic's size.
+        function test_a_tool_button_follows_the_buttons() {
+            filled.forceActiveFocus()
+            verify(!toolIcon.background.visible, "an icon alone: bare at rest")
+            verify(toolWords.background.visible && toolWords.background.color.a === 0, "words: no fill")
+            compare(toolWords.background.border.width, 1, "words: outlined")
+            verify(Qt.colorEqual(toolChecked.background.color, light.chosenTint), "checked: the selected tint")
+            compare(toolChecked.background.border.width, 2)
+            compare(toolIcon.implicitWidth, basicTool.implicitWidth)
+            compare(toolIcon.implicitHeight, basicTool.implicitHeight)
         }
 
         function test_a_colour_icon_keeps_its_colours() {

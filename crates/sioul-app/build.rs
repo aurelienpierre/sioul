@@ -281,6 +281,7 @@ fn main() {
         "qml/BareButton.qml",
         // Sioul's overrides of the Basic style, which cpp/style.cpp gives in place of Basic's own.
         "qml/style/StyleButton.qml",
+        "qml/style/StyleToolButton.qml",
         "qml/style/StyleTextField.qml",
         "qml/style/StyleTextArea.qml",
         "qml/style/StyleCheckBox.qml",
