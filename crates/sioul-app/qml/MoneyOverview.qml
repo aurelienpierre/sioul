@@ -301,10 +301,9 @@ ScrollView {
                         Icon {
                             iconName: "view-financial-budget"
                         }
+                        // Its whole name while the row has room (the period gives way first), then cut.
                         Label {
-                            Layout.fillWidth: true
-                            Layout.preferredWidth: 0
-                            Layout.maximumWidth: implicitWidth
+                            Layout.minimumWidth: 0
                             text: budgetCard.modelData.title
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
