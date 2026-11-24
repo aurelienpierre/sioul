@@ -4377,6 +4377,27 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(agendaPage.eventForm(), "calendars-event-form"),
                 () => agendaPage.eventForm().close(),
+                // Tasks ⚙ ▸ Task lists, the lists of tasks alone (the demo's Work tasks), then
+                // its removal asked: the sentence and its confirmation; nothing is removed.
+                () => window.page = 1,
+                () => tasksPage.openSettings(true, "task_lists"),
+                () => {},
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    console.warn("task lists: " + (lists ? lists.shown.map(l => l.name).join(", ") : "none"))
+                    if (lists && lists.shown.length > 0)
+                        lists.askRemoval(lists.shown[0].id)
+                },
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists-remove.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    if (lists)
+                        lists.removing = ""
+                    tasksPage.openSettings(false)
+                },
                 () => window.close()
             ]
             readonly property var invoicesSteps: [

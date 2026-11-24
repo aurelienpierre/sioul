@@ -156,7 +156,7 @@ ColumnLayout {
         setup.read()
     }
 
-    // A list of tasks alone (it takes no events): renamed and removed in Tasks ⚙, not here.
+    // A list of tasks alone (it takes no events): renamed and removed in Tasks ⚙ (TaskListsSetup.qml), not here.
     function tasksOnly(agenda) {
         return agenda.tasks === true && agenda.events !== true
     }
@@ -625,7 +625,8 @@ ColumnLayout {
                     }
                 }
                 // On its server (part 5): yours renamed, recoloured, removed; someone else's stopped showing.
-                // A list of tasks alone is renamed and removed in Tasks ⚙ ▸ Task lists, its one place.
+                // A list of tasks alone is renamed and removed (or stopped showing) in Tasks ⚙ ▸ Task
+                // lists, its one place, by the same calls (TaskListsSetup.qml).
                 TextField {
                     objectName: "agendaRename"
                     visible: one.modelData.server && one.modelData.server.own === true && !setup.tasksOnly(one.modelData)
@@ -671,7 +672,7 @@ ColumnLayout {
                 }
                 Button {
                     objectName: "agendaRemove"
-                    visible: one.modelData.server && one.modelData.server.server !== undefined && (one.modelData.server.own === true ? !setup.tasksOnly(one.modelData) : one.modelData.server.server !== "local") && setup.removing !== one.modelData.id
+                    visible: one.modelData.server && one.modelData.server.server !== undefined && (one.modelData.server.own === true || one.modelData.server.server !== "local") && !setup.tasksOnly(one.modelData) && setup.removing !== one.modelData.id
                     text: setup.sioul.text(one.modelData.server && one.modelData.server.own === true ? "agenda-remove" : "agenda-stop-showing")
                     onClicked: setup.askRemoval(one.modelData.id)
                 }

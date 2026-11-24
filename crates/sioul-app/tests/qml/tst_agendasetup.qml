@@ -183,22 +183,26 @@ Item {
             verify(link.visible && !link.checked, "the link off until asked")
         }
 
-        // A list of tasks alone, yours on its server: renamed and removed in Tasks ⚙ ▸ Task lists,
-        // its one place (24 November 2026), so neither here; a calendar that also takes tasks is.
+        // A list of tasks alone, yours or someone else's: renamed, removed or stopped showing in
+        // Tasks ⚙ ▸ Task lists, its one place (24 November 2026, tst_tasklists.qml), so none of it
+        // here; a calendar that also takes tasks is.
         function test_a_list_of_tasks_alone_is_renamed_in_tasks() {
             const setup = make()
             setup.view = Object.assign({}, root.view, { agendas: [
                 Object.assign({}, root.row, { id: "cloud/chores", name: "Chores", place: "cloud.example.org", events: false, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: true } }),
-                Object.assign({}, root.row, { id: "cloud/home", name: "Home", place: "cloud.example.org", events: true, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: true } })
+                Object.assign({}, root.row, { id: "cloud/home", name: "Home", place: "cloud.example.org", events: true, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: true } }),
+                Object.assign({}, root.row, { id: "cloud/sams-chores", name: "Sam’s chores", place: "cloud.example.org", whose: "shared", events: false, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: false } })
             ] })
             test.waitForRendering(setup)
             setup.toggle("cloud/chores")
             setup.toggle("cloud/home")
+            setup.toggle("cloud/sams-chores")
             wait(30)
             const chores = line(setup, 0)
             const home = line(setup, 1)
             verify(!root.named(chores, "agendaRename")[0].visible && !root.named(chores, "agendaRemove")[0].visible, "Tasks ⚙'s")
             verify(root.named(home, "agendaRename")[0].visible && root.named(home, "agendaRemove")[0].visible, "a calendar that takes tasks too: here")
+            verify(!root.named(line(setup, 2), "agendaRemove")[0].visible, "someone else's list of tasks: stopped showing in Tasks ⚙")
         }
 
         // Someone else's: nothing to change, "Stop showing…" asked the same

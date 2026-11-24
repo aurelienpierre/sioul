@@ -9561,7 +9561,7 @@ impl qobject::Sioul {
         // tied to one time of a repeating event, found by its field's rows (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
-        // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
+        // "ai" Settings ▸ AI agents (what is in no project, texts, the spam filter), a project opened to agents on its page, an agent's text
         // draft in the Texts page used, nothing sent (docs/mcp.md),
         // "health" the Health page, its week, its settings (⚙), a block's menu and its change
         // for one day, closed unsaved (docs/health.md), "tiles" the costs as tiles in a task's

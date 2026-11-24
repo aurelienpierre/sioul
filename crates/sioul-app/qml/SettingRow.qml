@@ -368,6 +368,20 @@ ColumnLayout {
             }
         }
     }
+    // The lists that hold only tasks (TaskListsSetup.qml), Tasks ⚙'s own block: each renamed or
+    // removed there, as Your agendas did it before (24 November 2026).
+    Loader {
+        active: field.setting.kind === "tasklists"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            TaskListsSetup {
+                sioul: field.sioul
+                theme: field.theme
+            }
+        }
+    }
     // The address books (AddressBooksSetup.qml), Contacts ⚙'s own block (wave D): its sentence said first there, once.
     Loader {
         active: field.setting.kind === "addressbooks"
@@ -1016,7 +1030,7 @@ ColumnLayout {
     // Names, each renamed in place or taken away: kinds of task (new ones
     // added below), categories (taken off every task, after a second word).
     Loader {
-        active: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections"
+        active: field.setting.kind === "kinds" || field.setting.kind === "categories"
         visible: active
         Layout.fillWidth: true
 
@@ -1025,7 +1039,7 @@ ColumnLayout {
                 spacing: 2
 
                 Repeater {
-                    model: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections" ? field.setting.value : []
+                    model: field.setting.kind === "kinds" || field.setting.kind === "categories" ? field.setting.value : []
 
                     delegate: RowLayout {
                         id: named
@@ -1039,7 +1053,7 @@ ColumnLayout {
                         TextField {
                             Layout.fillWidth: true
                             text: named.modelData.label
-                            // Google's calendars change on its own pages only: greyed, with why.
+                            // A name that cannot change (its `locked`, said): greyed, with why.
                             enabled: !named.modelData.locked
                             ToolTip.visible: !enabled && hovered
                             ToolTip.text: field.theme.plain(named.modelData.locked || "")
@@ -1071,7 +1085,7 @@ ColumnLayout {
                         }
                         Button {
                             visible: named.asking
-                            text: field.sioul.text(field.setting.kind === "collections" ? "set-collections-remove" : "set-task-categories-remove")
+                            text: field.sioul.text("set-task-categories-remove")
                             onClicked: field.save(field.setting.key, { from: named.modelData.id, to: "" }, field.setting.value)
                         }
                         Button {

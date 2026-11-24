@@ -264,6 +264,11 @@ Item {
         tasksSettings.grab(path)
     }
 
+    // For the window's images: a part of the settings panel by its objectName (the task lists' block).
+    function settingsPart(name) {
+        return tasksSettings.part(name)
+    }
+
     // For the window's tests: the screen closed.
     function closeStop() {
         doneDialog.now().accept()

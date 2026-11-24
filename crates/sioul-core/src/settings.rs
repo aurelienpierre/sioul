@@ -56,8 +56,13 @@ pub enum Kind {
     Kinds,
     /// Categories in use: each renamed or taken off every task that has it.
     Categories,
-    /// Task lists, calendars, address books: renamed in place, deleted when empty.
-    Collections,
+    /// The lists that hold only tasks, the window's own block in Tasks ⚙
+    /// (`TaskListsSetup.qml`): each renamed on its server, or removed after
+    /// one sentence says what goes, a dated copy of it kept first, or,
+    /// someone else's, no longer shown: what Agenda ⚙ ▸ Your agendas did for
+    /// them before, by the same calls (the app's `servers`). Nothing in `value`.
+    #[serde(rename = "tasklists")]
+    TaskLists,
     /// Nothing to change: what a lane holds (`label`) and how mail lands there (`help`, a line each).
     Note,
     /// A secret kept in the system keyring, typed and never shown: `value` says whether one is kept.
@@ -190,40 +195,6 @@ impl Builder<'_> {
         self.out.push(Setting { key: key.to_string(), kind, label, help, value, choices: Vec::new(), rows: Vec::new(), min: 0.0, max: 0.0, step: 1.0, unit: String::new(), group: self.group.clone(), section: self.section.clone() });
         let last = self.out.len() - 1;
         &mut self.out[last]
-    }
-
-    /// The collections of a kind, to rename or delete, named "account/id":
-    /// every one, empty ones too; a read-only one listed, fixed, its row
-    /// saying why (never offered for a new item: 21 October 2026); none, no setting.
-    /// One that holds `apart` too is left out: a calendar that also takes tasks is
-    /// renamed and removed with the calendars, in Agenda ⚙ ▸ Your agendas.
-    fn collections(&mut self, config: &Config, id: &str, kind: crate::vdir::Kind, holding: &str, apart: &str) {
-        use crate::capabilities::{Provider, provider_of_collection};
-        let named: Vec<crate::config::NamedValue> = crate::vdir::collections(kind)
-            .into_iter()
-            // A calendar of busy blocks Sioul keeps: no agenda of yours to rename or remove here (Agenda ⚙ ▸ Your availability's Stop does);
-            // nor a calendar subscribed by its address, renamed and stopped on its own line in Your agendas.
-            .filter(|c| (holding.is_empty() || c.holds(holding)) && (apart.is_empty() || !c.holds(apart)) && c.account != crate::vdir::SUBSCRIBED && !(kind == crate::vdir::Kind::Calendars && crate::agendas::is_mirror(config, &c.account, &c.id)))
-            .map(|c| crate::config::NamedValue {
-                id: format!("{}/{}/{}", if kind == crate::vdir::Kind::Contacts { "contacts" } else { "calendars" }, c.account, c.id),
-                // Google's calendars change through its Calendar API (part 5);
-                // its address books and task lists on its own pages only.
-                locked: if c.read_only {
-                    self.tr.text("collection-read-only", None)
-                } else if provider_of_collection(config.account(&c.account), &c) == Provider::Google
-                    && !(kind == crate::vdir::Kind::Calendars && !c.components.is_empty() && c.components.iter().all(|k| k.eq_ignore_ascii_case("VEVENT")))
-                {
-                    self.tr.text("google-fixed-collection", None)
-                } else {
-                    String::new()
-                },
-                detail: { let place = c.place(config); if place.is_empty() { self.tr.text("collection-here", None) } else { place } },
-                label: c.name,
-            })
-            .collect();
-        if !named.is_empty() {
-            self.push("collections", id, Kind::Collections, SettingValue::Named(named));
-        }
     }
 
     /// The key for the AI, when an address allows it; whether one is kept is the window's to say.
@@ -605,8 +576,12 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("office_hours", "office-hours", Kind::Windows, SettingValue::Windows(office));
             let kinds = config.task_kinds(tr).into_iter().map(|(id, label)| crate::config::NamedValue { id, label, ..Default::default() }).collect();
             b.push("tasks.kind", "task-kinds", Kind::Kinds, SettingValue::Named(kinds));
-            // Task lists renamed and removed here alone; a calendar that takes tasks too is Your agendas'.
-            b.collections(config, "task-lists", crate::vdir::Kind::Calendars, "VTODO", "VEVENT");
+            // The lists that hold only tasks: renamed and removed here, their one place (24 November
+            // 2026), as Your agendas did it (a dated copy first); a calendar that takes events too is
+            // Your agendas'. None on this device, no row.
+            if crate::vdir::collections(crate::vdir::Kind::Calendars).iter().any(|c| c.holds("VTODO") && !c.holds("VEVENT")) {
+                b.push("task_lists", "task-lists", Kind::TaskLists, SettingValue::Text(String::new()));
+            }
             let s = b.push("tasks.estimate", "task-estimate", Kind::Int, int(config.tasks.estimate, crate::plan::Settings::default().default_estimate));
             Builder::range(s, 5.0, 240.0, 5.0, "min");
             let s = b.push("tasks.list", "task-list", Kind::Choice, SettingValue::Text(config.tasks.list.clone().unwrap_or_default()));
@@ -1412,7 +1387,9 @@ pub fn apply(config_path: &Path, config: &Config, key: &str, value: &SettingValu
             let SettingValue::Rename(change) = value else { return Err(format!("{key}: a change expected")) };
             crate::config::change_kind(config_path, &change.from, &change.to)
         }
-        // "calendars/<account>/<id>" or "contacts/…": renamed, or deleted when empty.
+        // "calendars/<account>/<id>" or "contacts/…": renamed, or deleted when empty. No row of
+        // the window writes it since 24 November 2026 (Tasks ⚙'s lists go through the app's
+        // `servers`, as Your agendas' do); the test build's step list "collections" still does.
         "collections" => {
             let SettingValue::Rename(change) = value else { return Err(format!("{key}: a change expected")) };
             let mut parts = change.from.splitn(3, '/');
@@ -1697,10 +1674,9 @@ mod tests {
     fn each_page_has_its_own() {
         let config: Config = toml::from_str("case_store = \"~/Notes\"\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nshield = true\nshield_ai = true\n").unwrap();
         let tr = Translator::new("en");
-        // Calendars, task lists and address books share one key, each page its own kind of them,
-        // and depend on what this computer holds: left out.
+        // The lists that hold only tasks depend on what this computer holds: left out.
         // Your contacts' categories are this computer's: left out too.
-        let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
+        let keys = |view: &str| for_view(view, &config, &tr, &[("acct/plan".into(), "Plan".into())], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "task_lists" && !s.key.starts_with(crate::porch::CATEGORY) && !s.key.starts_with(crate::porch::CONTACT)).map(|s| s.key).collect::<Vec<_>>();
         // The notes folder first (the projects' file's renaming shows only for a folder holding its
         // first name: `the_projects_file_is_renamed_on_demand`), then where new notes go.
         assert_eq!(keys("notes"), vec!["case_store", "notes_folder"]);
@@ -1820,9 +1796,9 @@ mod tests {
         // Each page's settings are its own: none of them is in Settings too.
         let parameters: Vec<String> = for_view("parameters", &config, &tr, &[], None).into_iter().map(|s| s.key).collect();
         for page in PAGES {
-            // "collections" is the Agenda's and Tasks' alike, each listing its own kind: it is
-            // there only when the folders hold some, which another test's stand-ins may.
-            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "collections") {
+            // The lists that hold only tasks show only when the folders hold some, which another
+            // test's stand-ins may.
+            for row in for_view(page, &config, &tr, &[], None).into_iter().filter(|s| s.kind != Kind::Note && s.key != "task_lists") {
                 assert!(!parameters.contains(&row.key), "{} is in {page} and in Settings", row.key);
                 assert_eq!(page_of(&row.key, &config, &tr), Some(*page), "{}", row.key);
             }

@@ -362,7 +362,7 @@ The ⚙ at the top of the page:
 - **When offices are open**.
 - **Kinds of task**: renamed, taken away or added; tasks keep the kind they have.
 - **Categories**: renamed on every task that has them, or taken off them all.
-- **Task lists**: renamed, here and on the server; an empty one can be deleted. A calendar that also takes events is renamed and removed with the calendars, in Agenda ⚙ ▸ **Your agendas**, and is not listed here.
+- **Task lists**: each list that holds only tasks. Yours is renamed here and on its server at the next sync, and **Remove…** removes it whole, even with tasks in it: one sentence first says what goes (how many tasks, from which server, what the server keeps), and a dated copy of the list is kept before it goes, the way back ([Your agendas on their servers](agenda.md#agendas-on-their-servers)). A list someone else shares with you has **Stop showing…** instead. A calendar that also takes events is renamed and removed with the calendars, in Agenda ⚙ ▸ **Your agendas**, and is not listed here; whose a list is, what it is for and who sees it stay there too.
 - **A task without an estimate counts** so many minutes: 30 unless you change it, from 5 to 240.
 - **New tasks go into**: the list a new task goes into, typed in one line or in its form (where another can be chosen).
 - **Time blocks go into**: the calendar of the tasks you pin to a time; unless you choose one, "Planned tasks", made the first time with each task's list (on this device for a list kept here, or for a Google account).

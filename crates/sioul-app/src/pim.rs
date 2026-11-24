@@ -2969,9 +2969,10 @@ mod tests {
     /// 21 October 2026: a calendar that holds no event yet is offered for a
     /// new event like the others; only a read-only one stays out of the
     /// chooser. Renaming and removing (24 November 2026): no row of calendars
-    /// in Agenda ⚙ (their line in Your agendas is their one place); a list of
-    /// tasks alone is Tasks ⚙'s, a read-only one listed there fixed, its row
-    /// saying why; a calendar that takes events too is not listed there.
+    /// in Agenda ⚙ (their line in Your agendas is their one place); the lists
+    /// that hold only tasks are Tasks ⚙'s own block (`task_lists`), shown once
+    /// there is one, which goes through `servers` as Your agendas does
+    /// (`servers::tests::a_list_of_tasks_alone_is_removed_as_an_agenda_is`).
     #[test]
     fn an_empty_calendar_is_offered_and_a_read_only_one_says_why() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
@@ -2991,22 +2992,10 @@ mod tests {
         vdir::create(Kind::Calendars, account, "Errands", None, &["VTODO"]).unwrap();
         let offered: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&calendars()).unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
         assert!(!offered.iter().any(|n| n.starts_with("Errands")), "a task list is never offered for an event: {offered:?}");
-        assert!(!sioul_core::settings::for_view("agenda", &load_config(), tr(), &[], None).iter().any(|s| s.key == "collections"), "no second place for the calendars");
-        let chores = vdir::create(Kind::Calendars, account, "Chores", None, &["VTODO"]).unwrap();
-        let path = vdir::state_path(account, Kind::Calendars, &chores.id);
-        let mut state = vdir::State::load(&path);
-        state.read_only = true;
-        state.save(&path).unwrap();
-        let rows = sioul_core::settings::for_view("tasks", &load_config(), tr(), &[], None);
-        let named = rows.iter().find(|s| s.key == "collections" && matches!(&s.value, sioul_core::config::SettingValue::Named(n) if n.iter().any(|v| v.id.contains(account)))).map(|s| match &s.value {
-            sioul_core::config::SettingValue::Named(n) => n.clone(),
-            _ => Vec::new(),
-        });
-        let named = named.expect("the task lists' setting");
-        let held = named.iter().find(|v| v.id.ends_with(&format!("{account}/{}", chores.id))).expect("the read-only list listed");
-        assert_eq!(held.locked, tr().text("collection-read-only", None));
-        assert!(named.iter().any(|v| v.label.starts_with("Errands") && v.locked.is_empty()), "{named:?}");
-        assert!(!named.iter().any(|v| v.id.ends_with(&format!("{account}/empty")) || v.id.ends_with(&format!("{account}/full"))), "a calendar that takes events too is Your agendas': {named:?}");
+        let rows = |view: &str| sioul_core::settings::for_view(view, &load_config(), tr(), &[], None);
+        assert!(!rows("agenda").iter().chain(rows("tasks").iter()).any(|s| s.key == "collections"), "no row of calendars to rename or delete");
+        let lists = rows("tasks").into_iter().filter(|s| s.key == "task_lists").collect::<Vec<_>>();
+        assert_eq!(lists.iter().map(|s| s.kind).collect::<Vec<_>>(), [sioul_core::settings::Kind::TaskLists], "the lists of tasks alone, Tasks ⚙'s own block, once there is one");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let stopped = sync_line(&Err(SyncError::NoPassword));
         assert!(stopped.starts_with("calendars: the account's sync stopped: ") && stopped.contains("waits"), "{stopped}");
