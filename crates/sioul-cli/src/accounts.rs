@@ -644,15 +644,26 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let config = Config::load(&s.config_path).unwrap_or_default();
                 let device = sioul_sync::share::Here::load(&sioul_core::config::state_dir()).id;
                 let scan = |file: &std::path::Path| sioul_sync::antivirus::for_rules(file, false);
-                let here = sioul_core::wiring::arrival::Here { config: &config, device: &device, tells_here: false, known: &|_| false, scan: &scan, tr: &s.tr };
+                let here = sioul_core::wiring::arrival::Here { config: &config, device: &device, tells_here: false, known: &|_| false, scan: &scan, can_scan: sioul_sync::antivirus::present(), moment: &|_| true, tr: &s.tr };
                 let arrived = sioul_core::wiring::arrival::arrived(&here, &report.new, report.first);
                 let today = sioul_core::zone::now().date();
                 for made in &arrived.route_tasks.made {
                     let line = s.say("routetasks-made", &[("title", made.title.clone()), ("list", made.list.clone()), ("day", s.tr.day_in(made.due, today))]);
                     println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", line)]));
                 }
-                for done in arrived.rules.done.iter().filter(|d| d.act.wrote) {
+                for done in arrived.rules.done.iter().filter(|d| d.act.wrote || d.act.act == "tell") {
                     println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", done.line.clone())]));
+                }
+                // What a rule could not do, once per rule and reason; papers an antivirus refused, taken out.
+                let mut said: Vec<(&str, &str)> = Vec::new();
+                for refused in &arrived.rules.refused {
+                    if !said.contains(&(refused.rule.as_str(), refused.why)) {
+                        said.push((refused.rule.as_str(), refused.why));
+                        println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", s.tr.text(refused.why, None))]));
+                    }
+                }
+                for title in &arrived.rules.taken_out {
+                    println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", s.say("rules-paper-taken-out", &[("title", title.clone())]))]));
                 }
                 for problem in arrived.route_tasks.problems.iter().chain(&arrived.rules.problems) {
                     eprintln!("{}", crate::plain_lines(problem));

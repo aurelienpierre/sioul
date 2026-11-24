@@ -10593,7 +10593,6 @@ rules-refused-no-topic = The topic it names is no longer there.
 rules-refused-your-word = You gave this message a topic yourself: yours stands.
 rules-refused-no-id = This message has no identifier to give it a topic by.
 rules-refused-infected = The antivirus refused an attachment: none of this message's files is kept.
-rules-refused-unchecked = No antivirus could check an attachment here: nothing is kept; you can keep it yourself.
 rules-refused-no-papers = Papers have no folder on this device yet.
 rules-refused-no-attachment = This message holds no attachment the rule names.
 rules-refused-deletes = A rule never deletes anything.
@@ -11123,4 +11122,10 @@ rule-act-paper = { $wrote ->
        *[yes] { $Subject }: its attachments kept in Papers.
     }
 rule-act-other = { $Subject }: done.
--act-other = { $subject }: done.
+rules-refused-code-told = A message holding a code is told by its own notice: no rule tells it again.
+rules-refused-elsewhere = Another device keeps your notices: it tells this message, or this one does once it keeps them.
+rules-refused-too-large = Its attachments are too large to keep as papers by a rule: keep them yourself if you want them.
+rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
+rules-paper-taken-out = “{ $title }” was taken out of your papers: the antivirus refused its file.
+papers-unchecked = Not checked by an antivirus.
+rules-refused-moment = The moment does not let a notice come now: it waits, and is told when it can within the week.

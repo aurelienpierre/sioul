@@ -205,6 +205,9 @@ pub struct ActionDecl {
 #[derive(Debug, Clone, Copy)]
 pub struct TypeDecl {
     pub id: &'static str,
+    /// The optional feature it belongs to: a type whose feature is off
+    /// declares nothing to the rules' editor. None for every type for now.
+    pub feature: Option<&'static str>,
     pub events: &'static [EventDecl],
     pub fields: &'static [FieldDecl],
     pub actions: &'static [ActionDecl],
@@ -324,6 +327,7 @@ const fn event(id: &'static str, phase: u8) -> EventDecl {
 /// A message (mail).
 const MESSAGE: TypeDecl = TypeDecl {
     id: "message",
+    feature: None,
     phase: 1,
     events: &[event("arrives", 1), event("is-sent", 2), event("is-said-spam", 3)],
     fields: &[
@@ -387,7 +391,7 @@ const MESSAGE: TypeDecl = TypeDecl {
             writes: Writes::Paper,
             undo: true,
             once: "rules-once-paper",
-            refuses: &["rules-refused-infected", "rules-refused-unchecked", "rules-refused-no-papers"],
+            refuses: &["rules-refused-infected", "rules-refused-too-large", "rules-refused-write", "rules-refused-no-papers"],
             phase: 1,
         },
         ActionDecl { id: "move-to-folder", params: &[param("folder", Value::Text, true)], writes: Writes::MailFolder, undo: true, once: "rules-once-server", refuses: &[], phase: 4 },
@@ -408,6 +412,7 @@ const MESSAGE: TypeDecl = TypeDecl {
 /// A task.
 const TASK: TypeDecl = TypeDecl {
     id: "task",
+    feature: None,
     phase: 2,
     events: &[event("is-made", 2), event("is-done", 2), event("is-put-off", 2), event("comes-due", 2)],
     fields: &[
@@ -446,6 +451,7 @@ const TASK: TypeDecl = TypeDecl {
 /// An event (an appointment).
 const EVENT: TypeDecl = TypeDecl {
     id: "event",
+    feature: None,
     phase: 2,
     events: &[event("is-made", 2), event("moves", 2), event("starts-soon", 2), event("is-over", 2)],
     fields: &[
@@ -466,6 +472,7 @@ const EVENT: TypeDecl = TypeDecl {
 /// budgets' mail rules, which `readers` shows (phase 3).
 const MOVEMENT: TypeDecl = TypeDecl {
     id: "movement",
+    feature: None,
     phase: 3,
     events: &[event("appears", 3), event("did-not-leave", 3), event("day-comes", 3)],
     fields: &[],
@@ -492,7 +499,7 @@ const MOVEMENT: TypeDecl = TypeDecl {
 /// The types the presets name whose events and actions come later (phase 3),
 /// with no fields yet.
 const fn later_type(id: &'static str, events: &'static [EventDecl], actions: &'static [ActionDecl]) -> TypeDecl {
-    TypeDecl { id, phase: 3, events, fields: &[], actions }
+    TypeDecl { id, feature: None, phase: 3, events, fields: &[], actions }
 }
 
 const fn later_action(id: &'static str, writes: Writes) -> ActionDecl {
@@ -511,6 +518,7 @@ const CLOCK: TypeDecl = later_type("clock", &[event("moment-begins", 3), event("
 /// Sioul itself: the action that belongs to no object.
 const SIOUL: TypeDecl = TypeDecl {
     id: "none",
+    feature: None,
     phase: 1,
     events: &[],
     fields: &[],
@@ -558,6 +566,9 @@ pub struct Catalogue {
 #[derive(Debug, Clone, Serialize)]
 pub struct TypeOut {
     pub id: &'static str,
+    /// The optional feature it belongs to (`TypeDecl::feature`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature: Option<&'static str>,
     pub name: String,
     pub available: bool,
     pub phase: u8,
@@ -647,6 +658,7 @@ pub fn catalogue(tr: &Translator) -> Catalogue {
         .iter()
         .map(|t| TypeOut {
             id: t.id,
+            feature: t.feature,
             name: tr.text(&format!("rules-type-{}", t.id), None),
             available: available(t.phase) || t.actions.iter().any(|a| available(a.phase)),
             phase: t.phase,
@@ -716,7 +728,7 @@ pub struct PresetParam {
 pub struct Preset {
     /// Stable: a rule made from it remembers it (`store::Rule::preset`).
     pub id: &'static str,
-    /// The inventory's entry it is ("A.12"), for a reader of the code.
+    /// Which of Sioul's automatic acts it is, by a short reference ("A.12": mail, B tasks, C the clock, D events, E calls, F money, G papers and letters, I sites).
     pub entry: &'static str,
     /// Its rule, id "preset:<id>", on as Sioul ships it.
     pub rule: super::store::Rule,
@@ -755,8 +767,8 @@ const fn preset(id: &'static str, entry: &'static str, when: (&'static str, &'st
     PresetDecl { id, entry, when, conditions: &[], then, with: &[], setting: None, params: &[], phase }
 }
 
-/// What Sioul does by itself (`automations/inventory.md`, sections A to I):
-/// those a message, a task or an event triggers first, then the others.
+/// What Sioul does by itself, each automatic act of its modules: those a
+/// message, a task or an event triggers first, then the others.
 /// Left out, being no "when this happens, do that": the Porch's lanes and
 /// circles (readings), the notices' model and the matrix (what reaches you
 /// keeps its own place), the plan's reading of hours, health's needs (health
@@ -807,6 +819,10 @@ const PRESETS: &[PresetDecl] = &[
     preset("site-file-kept", "G.3", ("site", "offers-file"), ("paper", "keep"), 3),
 ];
 
+/// Presets the engine could run but whose own module runs them already:
+/// a rule made from one would tell twice.
+const BESIDE_ITS_OWN: &[&str] = &["codes-told"];
+
 /// The rule a preset says.
 fn preset_rule(p: &PresetDecl) -> super::store::Rule {
     use super::store::{Condition, Param, Rule, Then, When};
@@ -828,7 +844,8 @@ pub fn presets() -> Vec<Preset> {
         .iter()
         .map(|p| {
             let rule = preset_rule(p);
-            let offered = available(p.phase) && rule.problem().is_none();
+            // A preset whose own module still tells what it says (the codes' notice) is never offered beside it.
+            let offered = available(p.phase) && rule.problem().is_none() && !BESIDE_ITS_OWN.contains(&p.id);
             Preset { id: p.id, entry: p.entry, rule, setting: p.setting, params: p.params.iter().map(|&(param, key)| PresetParam { param, key }).collect(), runs: "as-today", phase: p.phase, offered }
         })
         .collect()
@@ -855,7 +872,7 @@ pub fn example(file: &std::path::Path, config: &crate::config::Config) -> Option
     let store = config.places().and_then(|places| crate::projects::ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
     let senders = crate::porch::Senders::load(config);
     let judged = crate::porch::judge(&[file.to_path_buf()], &config.mail_sources(), store.as_ref(), &crate::porch::SenderList::default(), &senders, now).into_iter().next()?;
-    if super::engine::set_aside(&judged) {
+    if super::engine::held(&judged) {
         return None;
     }
     let seen = super::message::seen(&judged, &senders, store.as_ref(), &crate::words::Words::of(config), None);

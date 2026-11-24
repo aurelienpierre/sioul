@@ -10979,7 +10979,6 @@ rules-refused-no-topic = Le sujet qu’elle nomme n’existe plus.
 rules-refused-your-word = Vous avez donné vous-même un sujet à ce courriel : le vôtre reste.
 rules-refused-no-id = Ce courriel n’a pas d’identifiant par lequel lui donner un sujet.
 rules-refused-infected = L’antivirus a refusé une pièce jointe : aucun fichier de ce courriel n’est gardé.
-rules-refused-unchecked = Aucun antivirus n’a pu vérifier une pièce jointe ici : rien n’est gardé ; vous pouvez la garder vous-même.
 rules-refused-no-papers = Les papiers n’ont pas encore de dossier sur cet appareil.
 rules-refused-no-attachment = Ce courriel ne porte aucune pièce jointe que la règle nomme.
 rules-refused-deletes = Une règle ne supprime jamais rien.
@@ -11509,4 +11508,10 @@ rule-act-paper = { $wrote ->
        *[yes] { $Subject } : ses pièces jointes gardées dans Papiers.
     }
 rule-act-other = { $Subject } : fait.
-e-act-other = { $subject } : fait.
+rules-refused-code-told = Un courriel qui porte un code est dit par sa propre notification : aucune règle ne le redit.
+rules-refused-elsewhere = Un autre appareil garde vos notifications : il dit ce courriel, ou celui-ci le fera quand il les gardera.
+rules-refused-too-large = Ses pièces jointes sont trop grandes pour qu’une règle les garde comme papiers : gardez-les vous-même si vous les voulez.
+rules-problem-reserved = Cette règle vient avec Sioul ou est lue là où elle se règle : changez-la là-bas.
+rules-paper-taken-out = « { $title } » a été retiré de vos papiers : l’antivirus a refusé son fichier.
+papers-unchecked = Pas vérifié par un antivirus.
+rules-refused-moment = Le moment ne laisse pas venir de notification maintenant : elle attend, et vient quand il le permet, dans la semaine.

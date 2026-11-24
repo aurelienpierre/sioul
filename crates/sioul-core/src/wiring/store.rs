@@ -380,6 +380,10 @@ impl Rules {
     /// changed here; one that cannot run is kept off (`Rule::problem`).
     /// Made or turned on now: it acts from `now` (Unix seconds).
     pub fn put(&mut self, mut rule: Rule, now: i64) -> Result<String, String> {
+        // The readers' and the presets' rules are never stored as yours: theirs run in their own modules.
+        if rule.id.starts_with("read:") || rule.id.starts_with("preset:") {
+            return Err("rules-problem-reserved".to_string());
+        }
         rule.unknown = unknown_in(&rule);
         if !rule.unknown.is_empty() {
             return Err("rules-problem-unknown".to_string());

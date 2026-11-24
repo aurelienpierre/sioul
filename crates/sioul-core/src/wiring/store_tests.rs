@@ -151,6 +151,10 @@ fn a_rule_that_cannot_run_is_kept_off() {
     let model = Model { name: "Pay a bill".into(), prefix: "Pay:".into(), business_days: Some(3), ..Model::default() };
     let model_id = Rules::change(&path, |rules| rules.put_model(model)).unwrap().unwrap();
     assert_eq!(model_id, "pay-a-bill");
+    // A reader's or a preset's rule is never stored as yours: theirs run in their own modules.
+    for id in ["read:project/p/route/r1/task", "preset:codes-told"] {
+        assert_eq!(Rules::change(&path, |rules| rules.put(Rule { id: id.into(), ..tax_rule() }, 40)).unwrap(), Err("rules-problem-reserved".to_string()));
+    }
     let rules = Rules::load(&path).unwrap();
     assert_eq!(rules.models[0].prefix, "Pay:");
     let project = crate::projects::Project { id: "flat".into(), title: "Flat".into(), models: vec![crate::projects::Model { id: "visit".into(), name: "Visit".into(), ..crate::projects::Model::default() }], ..crate::projects::Project::default() };

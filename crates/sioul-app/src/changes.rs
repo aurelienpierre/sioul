@@ -201,6 +201,10 @@ pub(crate) fn arrived(qt: &QtThread, shared: &Arc<Shared>, kinds: &BTreeSet<Kind
     if kinds.contains(&Kind::Topics) {
         crate::mail::show_mail(qt, shared);
     }
+    // What another device's rules did or undid, and papers kept unchecked: settled here (`arrivals`).
+    if kinds.contains(&Kind::Rules) || kinds.contains(&Kind::Papers) {
+        crate::arrivals::settle(qt, shared);
+    }
 }
 
 /// What the sharing wrote here, said by kind, each once.

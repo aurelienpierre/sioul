@@ -78,7 +78,7 @@ fn a_mail_rule_a_filter_and_a_sender_rule_read_as_rules() {
 }
 
 /// The presets: what Sioul does by itself, in the shape of a rule, each
-/// with its entry of the inventory and when it moves into the engine; the
+/// with its reference and when it moves into the engine; the
 /// ones offered now give a draft that runs, off, remembering its preset.
 #[test]
 fn the_presets_say_what_sioul_does_by_itself() {
@@ -94,11 +94,10 @@ fn the_presets_say_what_sioul_does_by_itself() {
         assert_eq!(preset.runs, "as-today");
     }
     let offered: Vec<&str> = presets.iter().filter(|p| p.offered).map(|p| p.id).collect();
-    assert_eq!(offered, ["codes-told"]);
-    let draft = declare::from_preset("codes-told").unwrap();
-    assert!(!draft.on && draft.id.is_empty() && draft.preset == "codes-told");
-    assert!(draft.problem().is_none());
-    assert!(declare::from_preset("supplies-used").is_none(), "shown, not offered");
+    assert!(offered.is_empty(), "the one the engine could run, codes told, is never offered beside its own notice: {offered:?}");
+    let codes = presets.iter().find(|p| p.id == "codes-told").unwrap();
+    assert!(codes.rule.problem().is_none() && codes.phase == 1, "it could run");
+    assert!(declare::from_preset("codes-told").is_none() && declare::from_preset("supplies-used").is_none(), "shown, not offered");
     let money = presets.iter().find(|p| p.id == "money-mail-planned").unwrap();
     assert_eq!((money.rule.then.kind.as_str(), money.rule.then.action.as_str(), money.phase), ("movement", "plan", 3));
     assert_eq!(presets.iter().find(|p| p.id == "new-mail-told").unwrap().setting, Some("reminders.mail"));
