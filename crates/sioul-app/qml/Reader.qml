@@ -9,6 +9,7 @@
 
 pragma ComponentBehavior: Bound
 
+import QtQml.Models
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
@@ -114,23 +115,18 @@ Panel {
     // A message to settle, Spam or Not spam: your filter flagged it where it
     // lies, a mailbox's row says spam, or it lies in a junk folder.
     readonly property bool settles: reader.role === "junk" || (reader.item !== null && !reader.item.server && !reader.item.review && (typeof reader.item.spam === "string" && reader.item.spam !== "" || !!reader.item.flag))
-    // Narrow: the actions show their icons only, their names on hover, as
-    // soon as their names would not fit in the row (French ones are longer).
-    // Narrower still (a phone): "junk" goes in the menu under ⋮.
-    readonly property bool compact: reader.actionsWidth(b => b.wideWidth) > reader.availableWidth
-    // Too narrow for every action's icon: "Junk" goes into the "…" menu.
-    readonly property bool tight: reader.actionsWidth(b => b.narrowWidth) > reader.availableWidth
+    // The actions keep their words; those the row has no room for wait in its ⋮,
+    // with their words too (ActionFolds.qml), the least used first: on a phone,
+    // Reply, Archive and Delete stay in the row.
+    readonly property ActionFolds folds: ActionFolds {
+        actions: [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton, unsubscribeButton]
+        room: reader.availableWidth - moreButton.implicitWidth - actionRow.spacing
+        spacing: actionRow.spacing
+    }
 
     // The message is done with here (filed away, deleted, Escape): its page closes the
     // reader.
     signal closeRequested
-
-    // The row's width, each action as wide as `width` says. "Junk" counts
-    // whether it shows or not: it hides when the row is too narrow.
-    function actionsWidth(width) {
-        const named = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, unsubscribeButton].filter(b => b.visible).concat([junkButton])
-        return named.reduce((sum, b) => sum + width(b), 0) + moreButton.implicitWidth + (named.length + 1) * actionRow.spacing
-    }
 
     // The colour of a sender's check: the accent when verified, the forged colour when
     // forged, else muted.
@@ -309,7 +305,8 @@ Panel {
                 id: replyButton
 
                 theme: reader.theme
-                compact: reader.compact
+                folds: reader.folds
+                rank: 0
                 iconName: "mail-reply-sender"
                 label: reader.sioul.text("ui-reply")
                 onClicked: reader.window.compose("reply", reader.key)
@@ -318,8 +315,9 @@ Panel {
                 id: replyAllButton
 
                 theme: reader.theme
-                compact: reader.compact
-                visible: reader.reading !== null && reader.reading.others
+                folds: reader.folds
+                rank: 4
+                offered: reader.reading !== null && reader.reading.others
                 iconName: "mail-reply-all"
                 label: reader.sioul.text("ui-reply-all")
                 onClicked: reader.window.compose("reply-all", reader.key)
@@ -328,7 +326,8 @@ Panel {
                 id: forwardButton
 
                 theme: reader.theme
-                compact: reader.compact
+                folds: reader.folds
+                rank: 3
                 iconName: "mail-forward"
                 label: reader.sioul.text("ui-forward")
                 onClicked: reader.window.compose("forward", reader.key)
@@ -338,21 +337,30 @@ Panel {
                 id: addButton
 
                 theme: reader.theme
-                compact: reader.compact
+                folds: reader.folds
+                rank: 5
                 iconName: "list-add"
                 label: reader.sioul.text("ui-add-new")
-                onClicked: addMenu.now().popup(addButton, 0, addButton.height)
+                // From ⋮ when it waits there: its menu opens under ⋮.
+                onClicked: {
+                    const at = addButton.visible ? addButton : moreButton
+                    addMenu.now().popup(at, 0, at.height)
+                }
             }
             // Tied to what is there already: a task, an event, a project, anything.
             ActionButton {
                 id: linkButton
 
                 theme: reader.theme
-                compact: reader.compact
+                folds: reader.folds
+                rank: 6
                 enabled: reader.source.uri !== ""
                 iconName: "insert-link"
                 label: reader.sioul.text("ui-link-existing")
-                onClicked: linkMenu.now().popup(linkButton, 0, linkButton.height)
+                onClicked: {
+                    const at = linkButton.visible ? linkButton : moreButton
+                    linkMenu.now().popup(at, 0, at.height)
+                }
             }
             Item {
                 Layout.fillWidth: true
@@ -361,8 +369,9 @@ Panel {
                 id: archiveButton
 
                 theme: reader.theme
-                compact: reader.compact
-                visible: reader.role !== "archive" && reader.role !== "all"
+                folds: reader.folds
+                rank: 1
+                offered: reader.role !== "archive" && reader.role !== "all"
                 iconName: "archive-insert"
                 label: reader.sioul.text("ui-archive")
                 onClicked: reader.act("archive")
@@ -371,7 +380,8 @@ Panel {
                 id: trashButton
 
                 theme: reader.theme
-                compact: reader.compact
+                folds: reader.folds
+                rank: 2
                 iconName: "user-trash"
                 label: reader.role === "trash" ? reader.sioul.text("ui-delete-for-good") : reader.sioul.text("ui-trash")
                 onClicked: reader.act("trash")
@@ -380,8 +390,9 @@ Panel {
                 id: junkButton
 
                 theme: reader.theme
-                compact: reader.compact
-                visible: !reader.tight
+                folds: reader.folds
+                // In the junk, Not spam is what the message is there for.
+                rank: reader.role === "junk" ? 1 : 8
                 iconName: reader.role === "junk" ? "mail-mark-notjunk" : "mail-mark-junk"
                 label: reader.role === "junk" ? reader.sioul.text("ui-not-junk") : reader.sioul.text("ui-junk")
                 onClicked: reader.act(reader.role === "junk" ? "not-junk" : "junk")
@@ -397,8 +408,9 @@ Panel {
                 readonly property var offer: reader.reading && reader.reading.unsubscribe ? reader.reading.unsubscribe : null
 
                 theme: reader.theme
-                compact: reader.compact
-                visible: unsubscribeButton.offer !== null
+                folds: reader.folds
+                rank: 7
+                offered: unsubscribeButton.offer !== null
                 opacity: unsubscribeButton.offer !== null && unsubscribeButton.offer.offered ? 1 : 0.5
                 iconName: "dialog-cancel"
                 label: unsubscribeButton.offer !== null ? unsubscribeButton.offer.label : ""
@@ -415,7 +427,7 @@ Panel {
                 id: moreButton
 
                 theme: reader.theme
-                compact: reader.compact
+                compact: true
                 iconName: "overflow-menu"
                 label: reader.sioul.text("ui-more")
                 display: AbstractButton.IconOnly
@@ -462,12 +474,22 @@ Panel {
         SioulMenu {
             id: more
 
-            // On a phone, where the row has no room for it.
-            MenuItem {
-                visible: reader.tight
-                height: visible ? implicitHeight : 0
-                text: reader.theme.plain(junkButton.label)
-                onTriggered: reader.act(reader.role === "junk" ? "not-junk" : "junk")
+            // First, with their words, the actions the row has no room for.
+            Instantiator {
+                model: reader.folds.folded
+
+                delegate: MenuItem {
+                    required property var modelData
+
+                    text: reader.theme.plain(modelData.label)
+                    icon.name: modelData.iconName
+                    icon.color: reader.theme.text
+                    // Unsubscribe while nothing may be contacted: dimmed, as in the row.
+                    enabled: modelData.enabled && modelData.opacity === 1
+                    onTriggered: modelData.clicked()
+                }
+                onObjectAdded: (index, item) => more.insertItem(index, item)
+                onObjectRemoved: (index, item) => more.removeItem(item)
             }
             MenuItem {
                 text: reader.unread ? reader.sioul.text("ui-mark-read") : reader.sioul.text("ui-mark-unread")

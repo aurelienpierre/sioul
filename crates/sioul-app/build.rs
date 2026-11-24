@@ -31,6 +31,7 @@ fn main() {
         "qml/StorageMove.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
+        "qml/ActionFolds.qml",
         "qml/RailButton.qml",
         "qml/Places.qml",
         "qml/AddressField.qml",

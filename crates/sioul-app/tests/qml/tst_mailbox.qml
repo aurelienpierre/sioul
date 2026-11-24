@@ -442,7 +442,7 @@ Item {
             compare(mock.off, ["work"])
             compare(page.listItems.map(r => r.subject), ["On both lists", "Dinner on Friday"])
             wait(50)
-            verify(!addressSwitch(page, "work").checked && addressSwitch(page, "work").contentItem.hollow, "off: its outline alone")
+            verify(!addressSwitch(page, "work").checked && addressSwitch(page, "work").contentItem.children[0].hollow, "off: its outline alone")
             // Leisure unticked again: home shows nothing ticked for it, work is off: nothing at all.
             page.tickAreas("work")
             compare(page.listItems.length, 0)
