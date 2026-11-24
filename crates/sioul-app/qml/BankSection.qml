@@ -394,7 +394,8 @@ ColumnLayout {
                             // Split, not the same, the same as…, what tells of it opened.
                             ToolButton {
                                 objectName: "bankMovementMore"
-                                text: "⋯"
+                                icon.name: "overflow-menu"
+                                icon.color: section.theme.text
                                 Accessible.name: section.sioul.text("movement-split")
                                 onClicked: actions.show({ key: row.modelData.key, who: row.modelData.label, amount: row.modelData.amount, cents: row.modelData.cents, budget_id: row.modelData.chosen.startsWith("budget:") ? row.modelData.chosen.slice(7) : "", sources: row.modelData.sources, probable: row.modelData.probable })
                             }

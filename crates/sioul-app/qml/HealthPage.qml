@@ -738,7 +738,8 @@ Item {
 
                                     objectName: "needRowMore"
                                     visible: row.editable && !row.modelData.off
-                                    text: "⋯"
+                                    icon.name: "overflow-menu"
+                                    icon.color: page.theme.text
                                     Accessible.name: page.sioul.textWith("need-menu", "name", row.modelData.name)
                                     ToolTip.visible: hovered
                                     ToolTip.text: page.theme.plain(Accessible.name)

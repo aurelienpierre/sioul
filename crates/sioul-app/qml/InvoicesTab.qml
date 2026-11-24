@@ -382,9 +382,10 @@ Item {
                             font.features: { "tnum": 1 }
                             color: tab.theme.text
                         }
+                        // Its menu, on a phone too (a long press opens it as well).
                         ToolButton {
-                            visible: !tab.compact
-                            text: "⋯"
+                            icon.name: "overflow-menu"
+                            icon.color: tab.theme.text
                             Accessible.name: tab.sioul.text("invoices-menu")
                             onClicked: tab.menuOf(line.modelData)
                         }
@@ -437,7 +438,8 @@ Item {
                     color: tab.theme.text
                 }
                 ToolButton {
-                    text: "⋯"
+                    icon.name: "overflow-menu"
+                    icon.color: tab.theme.text
                     Accessible.name: tab.sioul.text("invoices-menu")
                     onClicked: tab.menuOf({ number: tab.invoice.number, draft: "", kind: tab.invoice.kind, title: tab.invoice.title, status: tab.invoice.status })
                 }

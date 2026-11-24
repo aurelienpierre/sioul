@@ -43,8 +43,11 @@ ListView {
 
     signal openBudget(string id)
 
-    function moodIcon(mood) {
-        return { "better": "go-up", "as-planned": "dialog-ok-apply", "short": "go-down" }[mood] || "view-financial-budget"
+    // How a period should end, as a sign that is no arrow (an arrow folds or opens:
+    // rule 8 of the interface): more than planned, as planned, short. The sentence
+    // beside it says it in words.
+    function moodSign(mood) {
+        return { "better": "+", "as-planned": "=", "short": "−" }[mood] || ""
     }
 
     // The bank accounts, made now when they were not yet.
@@ -162,9 +165,14 @@ ListView {
                 Layout.fillWidth: true
                 spacing: 8
 
-                Icon {
-                    iconName: tab.moodIcon(line.modelData.mood)
-                    size: 16
+                Label {
+                    Layout.preferredWidth: 16
+                    horizontalAlignment: Text.AlignHCenter
+                    text: tab.moodSign(line.modelData.mood)
+                    textFormat: Text.PlainText
+                    font.weight: Font.DemiBold
+                    color: line.modelData.mood === "short" ? tab.theme.warm : tab.theme.muted
+                    Accessible.ignored: true
                 }
                 Label {
                     Layout.preferredWidth: 80

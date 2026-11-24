@@ -180,7 +180,8 @@ Item {
                 objectName: "moneyMailFilters"
                 // As wide as what it shows: the style's buttons are 100 pixels at least.
                 implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                text: tab.compact ? "" : tab.sioul.text("movements-filters")
+                // In words on a phone too: an icon alone was named on hover only.
+                text: tab.sioul.text("movements-filters")
                 icon.name: "view-filter"
                 icon.color: tab.theme.text
                 Accessible.name: tab.sioul.text("movements-filters")
@@ -334,9 +335,10 @@ Item {
                             font.features: { "tnum": 1 }
                             color: tab.theme.text
                         }
+                        // Its menu, on a phone too (a long press opens it as well).
                         ToolButton {
-                            visible: !tab.compact
-                            text: "⋯"
+                            icon.name: "overflow-menu"
+                            icon.color: tab.theme.text
                             Accessible.name: tab.sioul.text("movements-menu")
                             onClicked: tab.menuOf(line.model)
                         }

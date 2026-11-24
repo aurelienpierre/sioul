@@ -7,7 +7,7 @@
 // budget, its state in words and what tells of it. Money in looks as money
 // out does. A month grid on demand, beside the list, never instead of it
 // (a computer's; a phone keeps the list). A row's menu (a long press, a
-// right click, its "⋯") moves it, splits it, says it is not the same.
+// right click, its ⋮; a tap on a phone) moves it, splits it, says it is not the same.
 
 pragma ComponentBehavior: Bound
 
@@ -153,6 +153,9 @@ ColumnLayout {
                             leftPadding: 0
                             Accessible.name: line.modelData.date + ", " + line.modelData.who + ", " + line.modelData.way_words + " " + line.modelData.amount + ", " + line.modelData.state
                             onPressAndHold: section.menuOf(line.modelData, line, line.pressX, line.pressY)
+                            // A phone: a tap, not only a long press, opens its menu, where the finger is.
+                            onClicked: if (section.compact)
+                                section.menuOf(line.modelData, line, line.pressX, line.pressY)
 
                             TapHandler {
                                 acceptedButtons: Qt.RightButton
@@ -176,6 +179,8 @@ ColumnLayout {
                                     }
                                     Label {
                                         Layout.fillWidth: true
+                                        // The room left: never what widens the row past a phone's screen.
+                                        Layout.preferredWidth: 0
                                         text: line.modelData.who
                                         textFormat: Text.PlainText
                                         elide: Text.ElideRight
@@ -190,13 +195,15 @@ ColumnLayout {
                                         font.weight: line.modelData.way === "in" ? Font.DemiBold : Font.Normal
                                         color: section.theme.text
                                     }
-                                    // A computer's; a long press on a phone.
+                                    // A computer's ⋮; on a phone a tap on the row opens the same menu
+                                    // (a ⋮ on every row passed the phone page's budget of objects).
                                     Loader {
                                         visible: active
                                         active: !section.compact
 
                                         sourceComponent: ToolButton {
-                                            text: "⋯"
+                                            icon.name: "overflow-menu"
+                                            icon.color: section.theme.text
                                             Accessible.name: section.sioul.text("bank-movement-where")
                                             onClicked: section.menuOf(line.modelData)
                                         }
@@ -204,6 +211,7 @@ ColumnLayout {
                                 }
                                 Label {
                                     Layout.fillWidth: true
+                                    Layout.preferredWidth: 0
                                     Layout.leftMargin: section.dateWidth + 8
                                     text: [line.modelData.state, line.modelData.budget].filter(t => t !== "").join("  ·  ")
                                     textFormat: Text.PlainText

@@ -343,40 +343,74 @@ SafeDialog {
             text: amount.text.trim().startsWith("-") || amount.text.trim().startsWith("−") ? dialog.sioul.text("movement-form-price") : dialog.sioul.text("movement-form-paid")
             color: dialog.theme.muted
         }
-        TextField {
-            id: gross
-
-            objectName: "movementGross"
+        // Its hint under it, whole: as a placeholder it was cut in a narrow form.
+        ColumnLayout {
             visible: dialog.more && !dialog.recurring && dialog.has("gross")
             Layout.fillWidth: true
-            placeholderText: dialog.sioul.text("movement-form-paid-hint")
-            horizontalAlignment: Text.AlignRight
-            font.features: { "tnum": 1 }
+            spacing: 2
+
+            TextField {
+                id: gross
+
+                objectName: "movementGross"
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                font.features: { "tnum": 1 }
+                Accessible.description: dialog.sioul.text("movement-form-paid-hint")
+            }
+            Label {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
+                text: dialog.sioul.text("movement-form-paid-hint")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 12
+                color: dialog.theme.muted
+            }
         }
         Label {
             visible: dialog.more && !dialog.recurring && dialog.has("fees")
             text: dialog.sioul.text("movement-form-fees")
             color: dialog.theme.muted
         }
-        RowLayout {
+        // Which fee, whole, and its amount, named: side by side where both fit,
+        // else the amount under the choice.
+        GridLayout {
+            id: feeRow
+
             visible: dialog.more && !dialog.recurring && dialog.has("fees")
             Layout.fillWidth: true
-            spacing: 8
+            columns: feeRow.width >= feeKind.implicitWidth + 8 + 110 ? 2 : 1
+            columnSpacing: 8
+            rowSpacing: 6
 
             PlainComboBox {
                 id: feeKind
 
                 Layout.fillWidth: true
+                // Its widest choice's width, so that none is cut.
+                // (Its font read, so that this follows it: advanceWidth() alone is read once.)
+                implicitWidth: (feeKindMetrics.font ? Math.ceil(Math.max(...feeKind.model.map(k => feeKindMetrics.advanceWidth(k)))) : 0) + 40 + feeKind.leftPadding + feeKind.rightPadding
                 model: dialog.feeKinds.map(k => dialog.sioul.text("movement-fee-kind-" + k))
+                Accessible.name: dialog.sioul.text("movement-form-fees")
+
+                FontMetrics {
+                    id: feeKindMetrics
+
+                    font: feeKind.font
+                }
             }
             TextField {
                 id: fee
 
                 objectName: "movementFee"
-                Layout.preferredWidth: 90
+                Layout.fillWidth: feeRow.columns === 1
+                Layout.preferredWidth: 110
+                placeholderText: dialog.sioul.text("budget-add-amount")
                 horizontalAlignment: Text.AlignRight
                 inputMethodHints: Qt.ImhFormattedNumbersOnly
                 font.features: { "tnum": 1 }
+                Accessible.name: dialog.sioul.text("movement-form-fees") + ", " + dialog.sioul.text("budget-add-amount")
             }
         }
         Label {

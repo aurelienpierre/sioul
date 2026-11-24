@@ -314,7 +314,7 @@ Item {
         }
 
         // A bank line's pane at 360 points (10 November 2026: its buttons were past the
-        // edge, its words cut with them): Back, Change…, Ties and ⋯ on one line within it.
+        // edge, its words cut with them): Back, Change…, Ties and ⋮ on one line within it.
         function test_a_movement_s_pane_fits_a_small_phone() {
             fakeWindow.compact = true
             const tab = createTemporaryObject(tabComponent, root, { width: 360 - 16, height: 700 })
@@ -325,7 +325,7 @@ Item {
             const row = named(tab, "movementBack")[0].parent
             verify(row.implicitWidth <= 360 - 16, "its buttons' row: " + row.implicitWidth)
             const buttons = Array.from(row.children).filter(c => c.visible && c.text !== undefined)
-            compare(buttons.length, 4, "Back, Change…, Ties and ⋯")
+            compare(buttons.length, 4, "Back, Change…, Ties and ⋮")
             for (const button of buttons)
                 verify(button.mapToItem(tab, button.width, 0).x <= 360 - 16 + 0.5, button.text + " within the screen: " + button.mapToItem(tab, button.width, 0).x)
         }

@@ -70,7 +70,9 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 6
 
+        // Back to the budgets; on a phone the title bar's back does it: one way back.
         Button {
+            visible: !detail.window.compact
             flat: true
             text: "◂  " + detail.sioul.text("budget-back")
             onClicked: detail.back()
@@ -88,15 +90,14 @@ ColumnLayout {
             visible: detail.narrow
             Layout.fillWidth: true
         }
+        // Edit in words, on a phone too (an icon alone was named on hover only).
         Button {
             flat: true
-            // The style's buttons are 100 pixels at least, their icon alone too.
-            Layout.preferredWidth: detail.narrow ? 40 : -1
+            // As wide as its words: the style's buttons are 100 pixels at least.
+            implicitWidth: implicitContentWidth + leftPadding + rightPadding
             text: detail.sioul.text("ui-edit")
             icon.name: "document-edit"
             icon.color: detail.theme.text
-            display: detail.narrow ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-            Accessible.name: detail.sioul.text("ui-edit")
             onClicked: budgetDialog.now().edit(detail.budget, detail.shown)
         }
         Button {
@@ -306,8 +307,10 @@ ColumnLayout {
                 font.pixelSize: 13
                 color: detail.theme.muted
             }
+            // The room left: its words cut, never widening the row past a phone's screen.
             ColumnLayout {
                 Layout.fillWidth: true
+                Layout.preferredWidth: 0
                 spacing: 0
 
                 Label {

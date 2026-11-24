@@ -822,7 +822,8 @@ Panel {
                 }
                 ToolButton {
                     Layout.alignment: Qt.AlignVCenter
-                    text: "⋯"
+                    icon.name: "overflow-menu"
+                    icon.color: panel.theme.text
                     Accessible.name: panel.sioul.text("task-pinned-menu")
                     ToolTip.visible: hovered
                     ToolTip.text: panel.sioul.text("task-pinned-menu")
@@ -1733,28 +1734,28 @@ Panel {
                 color: panel.theme.muted
             }
             GridLayout {
-                visible: panel.form && panel.moreShown && panel.detail !== null
                 id: moreGrid
 
                 // A label's first line level with its field's words, however many lines it takes.
                 readonly property real labelTop: Math.max(0, Math.round((startField.implicitHeight - moreLabels.height) / 2))
 
+                visible: panel.form && panel.moreShown && panel.detail !== null
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 10
                 rowSpacing: 6
 
-                Label {
                 FontMetrics {
                     id: moreLabels
                 }
 
+                Label {
                     text: panel.sioul.text("task-field-start")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("start") ? 1 : 0.45
                 }
                 DateField {
@@ -1776,9 +1777,9 @@ Panel {
                     text: panel.sioul.text("task-field-due")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                 }
                 // The date asked, and an hour when it has one: "done by", never a slot (docs/tasks.md,
                 // "A date asked and its hour"). No hour by default, the word its way back; a list that keeps none (Google
@@ -1856,9 +1857,9 @@ Panel {
                     text: panel.sioul.text("task-field-estimate")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("estimate") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1876,9 +1877,9 @@ Panel {
                     text: panel.sioul.text("task-field-before")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1893,9 +1894,9 @@ Panel {
                     text: panel.sioul.text("task-field-after")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1930,9 +1931,9 @@ Panel {
                     text: panel.sioul.text("task-field-project")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("project") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1949,9 +1950,9 @@ Panel {
                     text: panel.sioul.text("task-field-billable")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("billable") ? 1 : 0.45
                 }
                 // Its time billed or not; unsaid, as its project says (work for a client is billed).
@@ -1969,9 +1970,9 @@ Panel {
                     text: panel.sioul.text("task-field-energy")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("energy") ? 1 : 0.45
                 }
                 // What it takes: the day's weather says how many heavy ones a day holds;
@@ -2000,9 +2001,9 @@ Panel {
                     text: panel.sioul.text("task-kind")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
-                    wrapMode: Text.Wrap
                     Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                     Layout.topMargin: moreGrid.labelTop
+                    wrapMode: Text.Wrap
                     opacity: panel.keeps("kind") ? 1 : 0.45
                 }
                 PlainComboBox {
