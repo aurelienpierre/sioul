@@ -1734,16 +1734,27 @@ Panel {
             }
             GridLayout {
                 visible: panel.form && panel.moreShown && panel.detail !== null
+                id: moreGrid
+
+                // A label's first line level with its field's words, however many lines it takes.
+                readonly property real labelTop: Math.max(0, Math.round((startField.implicitHeight - moreLabels.height) / 2))
+
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 10
                 rowSpacing: 6
 
                 Label {
+                FontMetrics {
+                    id: moreLabels
+                }
+
                     text: panel.sioul.text("task-field-start")
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("start") ? 1 : 0.45
                 }
                 DateField {
@@ -1766,6 +1777,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                 }
                 // The date asked, and an hour when it has one: "done by", never a slot (docs/tasks.md,
                 // "A date asked and its hour"). No hour by default, the word its way back; a list that keeps none (Google
@@ -1790,48 +1803,53 @@ Panel {
                                 panel.change("due", panel.dueOf(date, dueHour.text))
                         }
                     }
-                    ClockField {
-                        id: dueHour
+                    // The hour and its word stay together: wrapped, they go under the day as one.
+                    Row {
+                        spacing: 4
 
-                        objectName: "taskDueHour"
-                        readonly property bool given: panel.hourReads(dueHour.text)
+                        ClockField {
+                            id: dueHour
 
-                        theme: panel.theme
-                        sioul: panel.sioul
-                        visible: panel.keeps("due_hour")
-                        // An hour of no day means nothing: a day first.
-                        enabled: panel.canEdit && dueField.date.replace(/[-_ ]/g, "") !== ""
-                        Accessible.name: panel.sioul.text("task-field-due-hour")
-                        text: panel.detail ? panel.detail.edit.due.slice(11, 16) : ""
-                        // Read here, not from `given`: `textEdited` comes before the text's change is told.
-                        onTextEdited: {
-                            if (panel.hourReads(dueHour.text))
-                                panel.change("due", panel.dueOf(dueField.date, dueHour.text))
-                            // Emptied by hand, as by the button.
-                            else if (dueHour.text.replace(/[^0-9]/g, "") === "" && panel.detail && panel.detail.edit.due.length > 10)
-                                panel.change("due", dueField.date)
+                            objectName: "taskDueHour"
+                            readonly property bool given: panel.hourReads(dueHour.text)
+
+                            theme: panel.theme
+                            sioul: panel.sioul
+                            visible: panel.keeps("due_hour")
+                            // An hour of no day means nothing: a day first.
+                            enabled: panel.canEdit && dueField.date.replace(/[-_ ]/g, "") !== ""
+                            Accessible.name: panel.sioul.text("task-field-due-hour")
+                            text: panel.detail ? panel.detail.edit.due.slice(11, 16) : ""
+                            // Read here, not from `given`: `textEdited` comes before the text's change is told.
+                            onTextEdited: {
+                                if (panel.hourReads(dueHour.text))
+                                    panel.change("due", panel.dueOf(dueField.date, dueHour.text))
+                                // Emptied by hand, as by the button.
+                                else if (dueHour.text.replace(/[^0-9]/g, "") === "" && panel.detail && panel.detail.edit.due.length > 10)
+                                    panel.change("due", dueField.date)
+                            }
                         }
-                    }
-                    // The word a day alone is said by, and the way back to it.
-                    Label {
-                        objectName: "taskNoHourLabel"
-                        visible: panel.keeps("due_hour") && !dueHour.given
-                        height: dueHour.height
-                        verticalAlignment: Text.AlignVCenter
-                        text: panel.sioul.text("task-no-hour")
-                        color: panel.theme.muted
-                    }
-                    Button {
-                        objectName: "taskNoHour"
-                        visible: panel.keeps("due_hour") && dueHour.given
-                        flat: true
-                        // Its words' width, not a button's usual 100: it stays on the line of the hour.
-                        implicitWidth: implicitContentWidth + 12
-                        leftPadding: 6
-                        rightPadding: 6
-                        enabled: panel.canEdit
-                        text: panel.sioul.text("task-no-hour")
-                        onClicked: panel.change("due", dueField.date)
+                        // The word a day alone is said by, and the way back to it.
+                        Label {
+                            objectName: "taskNoHourLabel"
+                            visible: panel.keeps("due_hour") && !dueHour.given
+                            height: dueHour.height
+                            verticalAlignment: Text.AlignVCenter
+                            text: panel.sioul.text("task-no-hour")
+                            color: panel.theme.muted
+                        }
+                        Button {
+                            objectName: "taskNoHour"
+                            visible: panel.keeps("due_hour") && dueHour.given
+                            flat: true
+                            // Its words' width, not a button's usual 100: it stays on the line of the hour.
+                            implicitWidth: implicitContentWidth + 12
+                            leftPadding: 6
+                            rightPadding: 6
+                            enabled: panel.canEdit
+                            text: panel.sioul.text("task-no-hour")
+                            onClicked: panel.change("due", dueField.date)
+                        }
                     }
                 }
                 Label {
@@ -1839,6 +1857,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("estimate") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1857,6 +1877,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1872,6 +1894,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("margins") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1907,6 +1931,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("project") ? 1 : 0.45
                 }
                 PlainComboBox {
@@ -1924,6 +1950,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("billable") ? 1 : 0.45
                 }
                 // Its time billed or not; unsaid, as its project says (work for a client is billed).
@@ -1942,6 +1970,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("energy") ? 1 : 0.45
                 }
                 // What it takes: the day's weather says how many heavy ones a day holds;
@@ -1971,6 +2001,8 @@ Panel {
                     color: panel.theme.muted
                     Layout.maximumWidth: 120
                     wrapMode: Text.Wrap
+                    Layout.alignment: Qt.AlignLeft | Qt.AlignTop
+                    Layout.topMargin: moreGrid.labelTop
                     opacity: panel.keeps("kind") ? 1 : 0.45
                 }
                 PlainComboBox {

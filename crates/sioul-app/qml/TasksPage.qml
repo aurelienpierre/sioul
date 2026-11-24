@@ -1188,9 +1188,16 @@ Item {
                                     width: groups.width - 12
                                     spacing: 2
 
+                                    // Its project's or its list's name: wrapped within the list, two
+                                    // lines at most, never widening it past a phone's screen.
                                     Label {
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
                                         text: group.modelData.title
                                         textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
                                         font.weight: Font.DemiBold
                                         font.pixelSize: 16
                                         color: page.theme.text
