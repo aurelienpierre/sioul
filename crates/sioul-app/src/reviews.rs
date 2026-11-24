@@ -310,8 +310,8 @@ pub(crate) fn line(date: &str) -> String {
 
 /// Whether an event goes on now (not a whole day's, not cancelled), never
 /// one of another person's agenda: it is not your present moment
-/// (`Occurrence::another_persons`).
-fn meeting(stamp: i64) -> bool {
+/// (`Occurrence::another_persons`). Health's notices ask it too.
+pub(crate) fn meeting(stamp: i64) -> bool {
     sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && !e.another_persons() && e.start <= stamp && e.end > stamp)
 }
 
@@ -598,6 +598,32 @@ pub(crate) fn night_open(bed: i64, now: &Zoned) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An event of another person's agenda going on now is no meeting of
+    /// yours: neither the end of work's notice nor Health's notices wait for
+    /// it; the same event in an agenda of yours holds them (review of 3346ff96, 11).
+    #[test]
+    fn another_person_s_event_is_no_meeting_of_yours() {
+        sioul_core::config::stand_ins_only();
+        let _turn = crate::children::TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        use sioul_core::vdir::{self, Kind};
+        let stamp = sioul_core::zone::now().timestamp().as_second();
+        let utc = |at: i64| jiff::Timestamp::from_second(at).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
+        let calendar = vdir::create(Kind::Calendars, vdir::LOCAL, "Kim's lessons, meeting test", None, &["VEVENT"]).unwrap();
+        vdir::store_item(&calendar.dir.join("lesson.ics"), &format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting-test-lesson\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Lesson\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(stamp - 600), utc(stamp + 1800))).unwrap();
+        let config = sioul_core::config::default_path();
+        std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+        let had = std::fs::read_to_string(&config).ok();
+        let place = sioul_core::agendas::place(&calendar);
+        assert!(meeting(stamp), "yours: a meeting");
+        sioul_core::agendas::set_field(&config, &place, "whose", "partner").unwrap();
+        assert!(!meeting(stamp), "a partner's: none of yours");
+        match had {
+            Some(text) => std::fs::write(&config, text).unwrap(),
+            None => std::fs::remove_file(&config).unwrap(),
+        }
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+    }
     use sioul_core::capacity::{DayBalance, GainBalance, ScaleBalance};
     use sioul_core::i18n::Translator;
 

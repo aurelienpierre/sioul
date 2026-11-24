@@ -1094,7 +1094,8 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
     items.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| (a.1.kind == "dose").cmp(&(b.1.kind == "dose"))));
     // Whole days and errands in words.
     let mut lines = Vec::new();
-    for event in around.events.iter().filter(|e| !e.cancelled && e.all_day && e.end > start && e.start < next) {
+    // Never another person's whole day (their day off, their "Unavailable"): not your day.
+    for event in around.events.iter().filter(|e| !e.cancelled && e.all_day && !e.another_persons() && e.end > start && e.start < next) {
         lines.push(say("day-all-day", &[("what", event.summary.clone())]));
     }
     for errand in health.errands().into_iter().filter(|e| e.day == date) {
@@ -4149,8 +4150,7 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
     }
     let _ = today.save(&path);
     // In a meeting, nothing is said: the time stays kept. Another person's appointment is not yours.
-    let meeting = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && !e.another_persons() && e.start <= stamp && e.end > stamp);
-    if meeting {
+    if crate::reviews::meeting(stamp) {
         return Vec::new();
     }
     let attention = crate::hours::attention();

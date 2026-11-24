@@ -942,10 +942,25 @@ pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let mut all_day: Vec<String> = Vec::new();
     let mut planned: Vec<Value> = Vec::new();
     let mut blocks: Vec<(i64, Value, String)> = Vec::new();
-    let row = |kind: &str, item: &timeline::Item, from: i64, to: i64, uid: &str, energy: &str, location: &str| json!({ "kind": kind, "title": item.title, "start": instant(from), "end": instant(to), "uid": uid, "location": location, "energy": energy });
+    // Whose each event's agenda is, named as `agenda` names it (another person's: never the person's own).
+    let whose = whose_named(s, &occurrences);
+    let theirs = |item: &timeline::Item| -> (&'static str, String, bool) {
+        let timeline::Source::Calendar { key, start, .. } = &item.source else { return ("", String::new(), false) };
+        let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { return ("", String::new(), false) };
+        let (id, said) = whose.get(&o.agenda).map(|(w, said)| (w.id(), said.clone())).unwrap_or(("", String::new()));
+        (id, said, o.another_persons())
+    };
+    let row = |kind: &str, item: &timeline::Item, from: i64, to: i64, uid: &str, energy: &str, location: &str| {
+        let (whose_id, whose_said, another) = if kind == "event" { theirs(item) } else { ("", String::new(), false) };
+        json!({ "kind": kind, "title": item.title, "start": instant(from), "end": instant(to), "uid": uid, "location": location, "energy": energy, "whose": whose_id, "whose_said": whose_said, "another_persons": another })
+    };
     for item in agents.items().iter().filter(|i| i.time.proper(&zone).1 > midnight && i.time.proper(&zone).0 < next) {
         match (item.kind, item.time) {
-            (timeline::Kind::Event, timeline::Time::Day { .. }) => all_day.push(item.title.clone()),
+            (timeline::Kind::Event, timeline::Time::Day { .. }) => {
+                let (_, said, another) = theirs(item);
+                let note = whose_note(&said, another);
+                all_day.push(if note.is_empty() { item.title.clone() } else { format!("{} {}", item.title, note.trim()) });
+            }
             (timeline::Kind::Step, timeline::Time::Day { .. }) => planned.push(json!({ "uid": item.owner, "title": item.title })),
             (kind, timeline::Time::Span { start, at, until, end }) => {
                 let (name, uid, energy) = match kind {
@@ -958,6 +973,7 @@ pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
                     blocks.push((start, row("margin", item, start, at, "", "", ""), String::new()));
                 }
                 let tail = if name == "task" { format!("  [{uid}]") } else if place.is_empty() { String::new() } else { format!(" · {place}") };
+                let tail = if name == "event" { let (_, said, another) = theirs(item); format!("{tail}{}", whose_note(&said, another)) } else { tail };
                 blocks.push((at, row(name, item, at, until, uid, energy, &place), format!("  {}  {}{tail}", timeline::range(at, until, &zone), item.title)));
                 if until < end {
                     blocks.push((until, row("margin", item, until, end, "", "", ""), String::new()));
@@ -1045,6 +1061,28 @@ pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: 
 /// task's address, title and time; pinned, done, or of that day's plan with
 /// no time left that day; laid in a time block, that block's address too:
 /// review of 1880bce, L14); health and your hours never.
+/// Whose each agenda of `events` is, where it names someone (24 November 2026): "Sam's
+/// agenda", by place. Another person's events (a partner's, another parent's, someone
+/// else's) are theirs, never the person's own appointments; a person closed to agents has
+/// theirs left out before, counted.
+fn whose_named(s: &Session, events: &[agenda::Occurrence]) -> BTreeMap<String, (sioul_core::agendas::Whose, String)> {
+    use sioul_core::agendas::Whose;
+    if !events.iter().any(|e| e.child || e.other_person) {
+        return BTreeMap::new();
+    }
+    sioul_core::agendas::all(&s.config).into_iter().filter(|a| matches!(a.whose, Whose::Child | Whose::Partner | Whose::Parent | Whose::Someone)).map(|a| (a.id.clone(), (a.whose, a.whose_words(&s.tr)))).collect()
+}
+
+/// What an event's line says of whose it is: "  (Sam's agenda; not the person's own
+/// appointment)" for another person's, "  (Léa's agenda)" for a child's, else nothing.
+fn whose_note(said: &str, another: bool) -> String {
+    match (said.is_empty(), another) {
+        (_, true) => format!("  ({}; not the person's own appointment)", if said.is_empty() { "another person's agenda" } else { said }),
+        (false, false) => format!("  ({said})"),
+        _ => String::new(),
+    }
+}
+
 pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     let zone = sioul_core::zone::current();
     let today = sioul_core::zone::now().date();
@@ -1063,14 +1101,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     // Each day's events from the one model (`timeline::calendar_days`), their fields as before part 8.
     let listed = timeline::calendar_days(&shown, from, days, today, &zone, &s.tr);
     let words = sioul_core::words::Words::of(&s.config);
-    // Whose each agenda is, where it names someone (24 November 2026): "Sam's agenda". Another
-    // person's events (a partner's, another parent's) are theirs, never the person's own
-    // appointments; a person closed to agents has theirs left out above, counted.
-    let whose: BTreeMap<String, (sioul_core::agendas::Whose, String)> = if shown.iter().any(|e| e.child || e.other_person) {
-        sioul_core::agendas::all(&s.config).into_iter().filter(|a| matches!(a.whose, sioul_core::agendas::Whose::Child | sioul_core::agendas::Whose::Partner | sioul_core::agendas::Whose::Parent | sioul_core::agendas::Whose::Someone)).map(|a| (a.id.clone(), (a.whose, a.whose_words(&s.tr)))).collect()
-    } else {
-        BTreeMap::new()
-    };
+    let whose = whose_named(s, &shown);
     let mut lines = Vec::new();
     let mut out = Vec::new();
     for day in &placed {
@@ -1120,11 +1151,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
                 let gone = if event.cancelled { "× " } else { "" };
                 let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
                 // Another person's: said so, not the person's own appointment.
-                let theirs = match (whose_said.is_empty(), event.another_persons()) {
-                    (_, true) => format!("  ({}; not the person's own appointment)", if whose_said.is_empty() { "another person's agenda" } else { whose_said.as_str() }),
-                    (false, false) => format!("  ({whose_said})"),
-                    _ => String::new(),
-                };
+                let theirs = whose_note(&whose_said, event.another_persons());
                 said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}{theirs}  <{uri}>")));
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
@@ -1576,4 +1603,16 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "found": found }) })
+}
+
+#[cfg(test)]
+mod whose_tests {
+    /// What an event's line says of whose it is, to agents (review of 3346ff96, 11).
+    #[test]
+    fn an_event_s_line_says_whose_it_is() {
+        assert_eq!(super::whose_note("Kim's agenda", true), "  (Kim's agenda; not the person's own appointment)");
+        assert_eq!(super::whose_note("", true), "  (another person's agenda; not the person's own appointment)");
+        assert_eq!(super::whose_note("Léa's agenda", false), "  (Léa's agenda)");
+        assert_eq!(super::whose_note("", false), "");
+    }
 }

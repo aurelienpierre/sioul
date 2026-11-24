@@ -156,6 +156,13 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
         edit.margins = read[0].margins;
     }
     let mut data = event_json(&found, &edit, s);
+    // Whose agenda it is, as `agenda` says it (24 November 2026): another person's reminds the
+    // person of nothing, whatever `remind` says (review of 3346ff96).
+    let agenda = sioul_core::agendas::agenda_of(&found.calendar, &s.config);
+    let named = matches!(agenda.whose, sioul_core::agendas::Whose::Child | sioul_core::agendas::Whose::Partner | sioul_core::agendas::Whose::Parent | sioul_core::agendas::Whose::Someone);
+    data["whose"] = json!(if named { agenda.whose.id() } else { "" });
+    data["whose_said"] = json!(agenda.whose_words(&s.tr));
+    data["another_persons"] = json!(agenda.whose.another_person() && !agenda::with_others(&found.text));
     data["clock"] = json!(clock);
     if !clock.is_empty() {
         data["clock_start"] = json!(clock_start);
