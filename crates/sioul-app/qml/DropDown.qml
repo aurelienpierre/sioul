@@ -10,7 +10,8 @@
 // by topic). "▾" after words is for a button that opens a menu of actions
 // ("New ▾"), never for a value. Its words are plain text, cut with "…" when
 // the box is narrower than they are; a screen reader hears a combo box, by
-// `Accessible.name`, or by its value.
+// `Accessible.name`, or by its value, and the keys that open a combo box open
+// it (Space, Return, Enter, Down, Alt+Down).
 //
 //     DropDown {
 //         theme: page.theme
@@ -41,6 +42,13 @@ T.Button {
     spacing: 6
     Accessible.role: Accessible.ComboBox
     Accessible.name: control.text
+    // As a combo box opens: Space (a button's own), Return, Enter, Down and Alt+Down.
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Down) {
+            event.accepted = true
+            control.clicked()
+        }
+    }
 
     contentItem: T.Label {
         text: control.text

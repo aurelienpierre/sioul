@@ -250,17 +250,19 @@ SafeDialog {
         RowLayout {
             visible: dialog.editing === null
 
-            // A click on the choice shown unticks it: its binding ticks it again.
+            // One choice of two (`autoExclusive`: a ✓ on the one chosen). A click ticks one and
+            // unticks the other by hand: both bindings are given back.
             Button {
                 id: once
 
                 text: dialog.sioul.text("budget-add-once")
                 checkable: true
+                autoExclusive: true
                 checked: !dialog.recurring
-                flat: dialog.recurring
                 onClicked: {
                     dialog.recurring = false
                     once.checked = Qt.binding(() => !dialog.recurring)
+                    recurringButton.checked = Qt.binding(() => dialog.recurring)
                 }
             }
             Button {
@@ -268,10 +270,11 @@ SafeDialog {
 
                 text: dialog.sioul.text("budget-add-recurring")
                 checkable: true
+                autoExclusive: true
                 checked: dialog.recurring
-                flat: !dialog.recurring
                 onClicked: {
                     dialog.recurring = true
+                    once.checked = Qt.binding(() => !dialog.recurring)
                     recurringButton.checked = Qt.binding(() => dialog.recurring)
                 }
             }

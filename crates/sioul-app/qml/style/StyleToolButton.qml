@@ -10,9 +10,10 @@
 // button on a grey square, which reads as a field, and a checked one in the
 // pressed tone. Here an icon alone (⚙, ?, a folder to make) is bare, with a
 // light ground under the pointer, the pressed tone while pressed and a ring
-// with the keyboard's focus; one with words ("Aa") is outlined; checked, it
-// has the selected look (the accent's frame, its tint, bold words);
-// highlighted, the accent's fill. A colour icon keeps its own colours. Every
+// with the keyboard's focus; one with words ("Aa") or a lone arrow (◂ ▸) is
+// outlined; checked, it has the selected look (the accent's frame, its tint,
+// bold words, its icon in the words' colour); highlighted and not checked,
+// the accent's fill. A colour icon keeps its own colours. Every
 // size is Basic's.
 
 import QtQuick
@@ -25,13 +26,17 @@ T.ToolButton {
     // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette then.
     readonly property var shownIn: control.Window.window
     readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
-    // Words on it (a letter or a digit): an arrow or a cross alone is an icon.
-    readonly property bool hasWords: control.display !== T.AbstractButton.IconOnly && /[0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/.test(control.text)
-    readonly property bool mainAction: control.highlighted && control.enabled
-    readonly property bool selected: control.checked && !control.highlighted
-    // One choice among several (another checkable button beside it, not a box to tick): a ✓ before its words when selected.
-    readonly property bool choice: control.autoExclusive
-        || (control.checkable && control.parent !== null && Array.prototype.some.call(control.parent.children, c => c !== control && c.checkable === true && c.flat !== undefined))
+    // Words on it, outlined: a letter or a digit (× and ÷ are signs, not letters), or a
+    // lone arrow to go back and forth (◂ ▸ ‹ › « »), which is a button too, not a bullet.
+    // A cross, a sign or any other symbol alone is an icon, bare.
+    readonly property bool hasWords: control.display !== T.AbstractButton.IconOnly
+        && (/[0-9A-Za-zÀ-ÖØ-öø-ɏͰ-ϿЀ-ӿ]/.test(control.text) || /^\s*[◂▸◀▶‹›«»]\s*$/.test(control.text))
+    // The main action; a page that also checks it means a state: it is drawn selected.
+    readonly property bool mainAction: control.highlighted && !control.checked && control.enabled
+    readonly property bool selected: control.checked
+    // One choice among several, said by the page (`autoExclusive`, or a ButtonGroup): a ✓
+    // before its words when selected. A toggle on its own (Filters, Select) has none.
+    readonly property bool choice: control.autoExclusive || (control.checkable && control.T.ButtonGroup.group !== null)
     // Its icon in its own colours: a colour icon would become a solid shape under a tint.
     readonly property bool ownColours: control.sioulTheme !== undefined && control.sioulTheme.ownColours(control.icon.name)
     // Its words selected: bold, in the family and size the page gave.
@@ -82,8 +87,9 @@ T.ToolButton {
             icon.width: control.icon.width
             icon.height: control.icon.height
             icon.cache: control.icon.cache
-            // A colour icon in its own colours, whatever the page asks; a symbolic one as asked.
-            icon.color: control.ownColours ? "transparent" : control.enabled ? control.icon.color : control.ink
+            // A colour icon in its own colours, whatever the page asks; a symbolic one as asked,
+            // but in the words' colour on the selected tint and the accent's fill, and when disabled.
+            icon.color: control.ownColours ? "transparent" : control.enabled && !control.selected && !control.mainAction ? control.icon.color : control.ink
             text: control.selected && control.choice && control.hasWords ? "✓  " + control.text : control.text
             font: control.selected ? control.boldFont : control.font
             color: control.ink
@@ -105,7 +111,7 @@ T.ToolButton {
         implicitWidth: 40
         implicitHeight: 40
         radius: theme ? theme.radius : 0
-        visible: !bare || control.down || control.visualFocus || highContrast
+        visible: !bare || control.down || control.visualFocus || highContrast || (control.hovered && control.enabled)
         color: control.mainAction ? Color.blend(control.palette.dark, control.palette.mid, control.down ? 0.5 : 0.0)
             : control.down ? control.palette.mid
             : control.selected ? tint
