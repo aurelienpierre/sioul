@@ -30,14 +30,14 @@ Each rule is marked:
 
 ## Where the state lives
 
-- **In `quiet.toml`, the sharing's "time" part** (chosen here). The pauses are overrides of what now is, as "Done for today" and "A little longer" already are, in the same file; the time part carries it with the plan's other files, and every device that plans needs it to lay the same day (Free time's moved end, the lighter day after a pause). A pause pressed on one device is a pause on all (P8), once the sharing has carried it: at each device's next exchange, a minute at most when the window is open; a phone with Sioul put away follows when it is opened again (Android freezes an app in the back).
+- **In `quiet.toml`, the sharing's "time" part** (chosen here). The pauses are overrides of what now is, as "Work done for today" and "A little longer" already are, in the same file; the time part carries it with the plan's other files, and every device that plans needs it to lay the same day (Free time's moved end, the lighter day after a pause). A pause pressed on one device is a pause on all (P8), once the sharing has carried it: at each device's next exchange, a minute at most when the window is open; a phone with Sioul put away follows when it is opened again (Android freezes an app in the back).
 - **Two stamps per pause**, `free_since`/`free_ended`, `paused_since`/`paused_ended`: on while the press is later than the end. Never a key taken away: the sharing merges key by key, and a pause is never half on (G).
 - **The setup** is in the configuration, `[free_time]` and `[pause]`, with the settings part.
 - A device whose time part is off pauses alone.
 
 ## Which comes first
 
-The pause, then sleep, then Free time, then meals, then the hours' own overrides ("Done for today", "A little longer", "Work until tonight", an older Sioul's "Work now"), then the hours (`quiet::mode`).
+The pause, then sleep, then Free time, then meals, then the hours' own overrides ("Work done for today", "A little longer", "Work until tonight", an older Sioul's "Work now"), then the hours (`quiet::mode`).
 
 | Now | Time | What still comes |
 |---|---|---|
@@ -81,7 +81,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 - **What no longer fits goes to later days**, as the plan always lays it, with no count (GP10, GP14); a dated step that can no longer be done is said as the plan always says it. (R)
 - **Said once** (GP16): coming back, the status line says "Today, work runs until 19:00." and nothing more; no countdown, no "hours owed", no number of steps moved. (R)
 - **One key keeps the usual end** (GP11, GP19): "Keep my usual end", beside that sentence, in the status line's menu during Free time and while the end is moved, no reason asked; that day nothing more moves. The setting "The end of work moves" off makes it the default. (R)
-- **Sioul ends the moved time itself** (GP21): from the usual end to the moved end the time is work (`Reason::Extended`, no line: it was said once); at the moved end, leisure. "Done for today" ends it earlier, as any day (GP15). (R)
+- **Sioul ends the moved time itself** (GP21): from the usual end to the moved end the time is work (`Reason::Extended`, no line: it was said once); at the moved end, leisure. "Work done for today" ends it earlier, as any day (GP15). (R)
 - While Free time goes on, the plan already lays today as if you came back now.
 
 ### Never
@@ -125,7 +125,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 - "You are back. Nothing was lost." (O, P23)
 - **The rest of today** (P23, capacity criterion 36):
   - lighter (unsaid): today's room and heavy steps are no more than a hazy day's, 60 % and one heavy (`pause::today_level`, the `lighter` days in `quiet.toml`); "The rest of today is lighter." when today's work is not over;
-  - no more work today: the day closed as "Done for today", without its sheet; "Work waits until tomorrow at 09:00.";
+  - no more work today: the day closed as "Work done for today", without its sheet; "Work waits until tomorrow at 09:00.";
   - as planned.
   The morning's weather is not changed: the evening's review never sees the pause (P25). (R)
 - **The work of the paused hours goes to later days** (P7): the day is not extended, a moved end of today is dropped. (R, O)

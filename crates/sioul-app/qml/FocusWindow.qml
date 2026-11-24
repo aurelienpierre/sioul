@@ -397,7 +397,7 @@ SioulWindow {
                     Layout.fillWidth: true
                     flat: true
                     text: focusWindow.sioul.text("done-button")
-                    icon.name: "weather-clear-night"
+                    icon.name: "task-complete"
                     icon.color: focusWindow.theme.text
                     onClicked: {
                         focusWindow.stop(false)

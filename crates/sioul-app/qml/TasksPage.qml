@@ -1009,7 +1009,7 @@ Item {
                                     Layout.alignment: Qt.AlignHCenter
                                     flat: true
                                     text: page.sioul.text("done-button")
-                                    icon.name: "weather-clear-night"
+                                    icon.name: "task-complete"
                                     icon.color: page.theme.text
                                     ToolTip.visible: hovered
                                     ToolTip.text: page.sioul.text("done-button-help")

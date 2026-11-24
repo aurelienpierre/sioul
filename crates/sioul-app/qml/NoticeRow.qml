@@ -274,6 +274,8 @@ ItemDelegate {
                     icon.name: "overflow-menu"
                     icon.color: row.theme.text
                     Accessible.name: row.sioul.text("ui-more")
+                    // Whose row it is, for a screen reader going from one ⋮ to the next.
+                    Accessible.description: [row.notice.who, row.notice.what].filter(t => !!t).join(", ")
                     ToolTip.visible: hovered
                     ToolTip.text: row.sioul.text("ui-more")
                     ToolTip.delay: 400
