@@ -133,6 +133,8 @@ impl Device {
             let n = address.strip_prefix("mid:sale-")?.split('@').next()?.to_string();
             std::fs::read_dir(mail.join("cur")).ok()?.filter_map(Result::ok).map(|e| e.path()).find(|p| p.file_name().is_some_and(|f| f.to_string_lossy().starts_with(&format!("{n}."))))
         });
+        // A device that can ask none (a phone) is told so; the others have one.
+        engine.can_scan = scan != Scanned::NoAntivirus;
         engine.scan = Box::new(move |_: &Path| scan.clone());
         engine
     }
@@ -240,10 +242,11 @@ fn two_devices_running_one_rule_make_one_task() {
 
 /// Undo is a state: undone on the desk before its record reached the
 /// phone, which made the same task meanwhile; when the record comes, the
-/// phone takes its own copy back (the same bytes: its Undo matches), and
-/// the same message fetched again makes nothing on either device. A task
-/// changed since stays, and is still never made again; one moved to another
-/// list is found there.
+/// phone takes its own copy back (the same bytes: its Undo matches), even
+/// with the only rule removed meanwhile, once; the same message fetched
+/// again makes nothing on either device. "Not for this one" takes nothing
+/// back anywhere. A task changed since stays, and is still never made
+/// again; one moved to another list is found there.
 #[test]
 fn an_act_undone_is_taken_back_on_every_device() {
     crate::config::stand_ins_only();
@@ -257,14 +260,29 @@ fn an_act_undone_is_taken_back_on_every_device() {
     let undone = undo(&act, &desk.place(), Some(&desk.places()), &move |_| Some(list.clone()), 1_796_000_000_000).unwrap();
     assert!(undone.put_back);
     assert!(desk.tasks().is_empty() && !desk.ties().links.iter().any(|e| e.how == "made"), "the task and its tie gone");
-    // The desk's record comes to the phone: its own copy taken back, at its next pass.
+    // The desk's record comes to the phone, whose only rule was removed meanwhile:
+    // its own copy taken back all the same, at its next pass, once.
     phone.receive_acts(&desk);
-    let settled = phone.engine(&[sale_task()], Scanned::Clean).settle(&Translator::new("en"));
+    assert_eq!(Acts::read(&phone.acts).to_take_back("phone").len(), 1, "what makes a device settle without rules");
+    let settled = phone.engine(&[], Scanned::Clean).settle(&Translator::new("en"));
     assert!(settled.problems.is_empty(), "{settled:?}");
     assert!(phone.tasks().is_empty(), "taken back on the phone");
     assert!(!phone.ties().links.iter().any(|e| e.how == "made"));
+    assert!(Acts::read(&phone.acts).to_take_back("phone").is_empty(), "taken back once");
     assert!(phone.arrive(&[sale_task()], &[at_phone], false).done.is_empty());
     assert!(desk.arrive(&[sale_task()], &[mail], false).done.is_empty());
+    // "Not for this one" on the desk: never again, but the task stays on both devices.
+    let (kept_desk, kept_phone) = (Device::new(&base, "kept-desk"), Device::new(&base, "kept-phone"));
+    let at_desk = kept_desk.store(4, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Kept", "2026-11-20", &[]);
+    let at_kept_phone = kept_phone.store(4, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Kept", "2026-11-20", &[]);
+    let act = kept_desk.arrive(&[sale_task()], std::slice::from_ref(&at_desk), false).done[0].act.clone();
+    assert_eq!(kept_phone.arrive(&[sale_task()], std::slice::from_ref(&at_kept_phone), false).done.len(), 1);
+    not_for_this_one(&act.rule, &act.object, &kept_desk.place(), 1_796_000_000_000).unwrap();
+    kept_phone.receive_acts(&kept_desk);
+    kept_phone.engine(&[sale_task()], Scanned::Clean).settle(&Translator::new("en"));
+    kept_desk.engine(&[sale_task()], Scanned::Clean).settle(&Translator::new("en"));
+    assert_eq!((kept_desk.tasks().len(), kept_phone.tasks().len()), (1, 1), "kept where it is");
+    assert!(kept_phone.arrive(&[sale_task()], &[at_kept_phone], false).done.is_empty(), "never again");
     // Changed since: it stays.
     let other = Device::new(&base, "other");
     let mail = other.store(2, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Card", "2026-11-20", &[]);
@@ -283,7 +301,7 @@ fn an_act_undone_is_taken_back_on_every_device() {
     let file = moved.tasks()[0].clone();
     let elsewhere = home.join(file.file_name().unwrap());
     std::fs::rename(&file, &elsewhere).unwrap();
-    super::acts::append(&moved.place().log(), &[Act { at: 9, rule: act.rule.clone(), object: act.object.clone(), undone: true, ..Act::default() }]).unwrap();
+    super::acts::append(&moved.place().log(), &[Act { at: 9, rule: act.rule.clone(), object: act.object.clone(), result: act.result.clone(), undone: true, back: true, ..Act::default() }]).unwrap();
     let mut engine = moved.engine(&[sale_task()], Scanned::Clean);
     let gone = Collection { dir: home.clone(), id: "home".into(), ..moved.list.clone() };
     engine.all_lists = Box::new(move || vec![gone.clone()]);
@@ -368,9 +386,11 @@ fn the_preview_does_nothing() {
 }
 
 /// Tie it to a project, give it a topic, tell: each once; the tie the
-/// routes write; your own word on a topic stands; a notice only from the
-/// device that keeps the notices (another leaves a pending line, told once
-/// the lease moves there), never beside a code's own notice.
+/// routes write; your own word on a topic stands, and so does one given
+/// again after an Undo; a notice only from the device that keeps the
+/// notices (another leaves a pending line, told once the lease moves
+/// there), only when the moment lets it come (else it waits), never beside
+/// a code's own notice.
 #[test]
 fn a_tie_a_topic_and_a_notice() {
     crate::config::stand_ins_only();
@@ -395,17 +415,30 @@ fn a_tie_a_topic_and_a_notice() {
     // Undo of the topic: your word taken back.
     let act = out.done.iter().find(|d| d.act.act == "topic" && d.act.object == "mid:sale-1@shop.example.org").unwrap().act.clone();
     undo(&act, &desk.place(), None, &|_| None, 1_796_000_000_000).unwrap();
-    assert_eq!(crate::topics::labels::Said::of(&crate::topics::labels::read_all_in(&desk.dir.join("topics"))).message("sale-1@shop.example.org"), None);
+    let topics = || crate::topics::labels::Said::of(&crate::topics::labels::read_all_in(&desk.dir.join("topics")));
+    assert_eq!(topics().message("sale-1@shop.example.org"), None);
+    // The same topic given again by hand afterwards stays: a take-back is done once.
+    crate::topics::labels::append(&crate::topics::labels::own_log(&desk.dir.join("topics"), "desk"), &crate::topics::labels::tagging(&["sale-1@shop.example.org".to_string()], Some("shop"), 1_796_000_100)).unwrap();
+    desk.engine(&[topic.clone()], Scanned::Clean).settle(&Translator::new("en"));
+    desk.engine(&[topic.clone()], Scanned::Clean).settle(&Translator::new("en"));
+    assert_eq!(topics().message("sale-1@shop.example.org"), Some(Some("shop")), "your word given again stays");
     // Another device that does not keep the notices tells nothing: a pending line, told where the lease moves.
     let phone = Device::new(&base, "phone");
     let at_phone = phone.store(1, "Shop <shop@shop.example.org>", GENUINE, "Your order 4 is ready", "2026-11-20", &[]);
     let quiet = phone.arrive(std::slice::from_ref(&tell), std::slice::from_ref(&at_phone), false);
     assert!(quiet.notices.is_empty() && quiet.done.is_empty() && quiet.refused.iter().all(|r| r.why == "rules-refused-elsewhere" && r.waits), "{quiet:?}");
     assert!(Acts::read(&phone.acts).is_pending("r-tell", "mid:sale-1@shop.example.org"));
+    // The lease moved here, in a do-not-disturb: never recorded as told, it still waits.
+    let mut keeper = phone.engine(std::slice::from_ref(&tell), Scanned::Clean);
+    keeper.tells_here = true;
+    keeper.moment = Box::new(|_: &crate::notice::Notice| false);
+    let held = keeper.settle(&Translator::new("en"));
+    assert!(held.notices.is_empty() && held.done.is_empty() && held.refused.iter().all(|r| r.why == "rules-refused-moment" && r.waits), "{held:?}");
+    assert!(!Acts::read(&phone.acts).touched("r-tell", "mid:sale-1@shop.example.org"), "not told");
     let mut keeper = phone.engine(std::slice::from_ref(&tell), Scanned::Clean);
     keeper.tells_here = true;
     let told = keeper.settle(&Translator::new("en"));
-    assert_eq!(told.notices.len(), 1, "the lease moved here: told now");
+    assert_eq!(told.notices.len(), 1, "the moment came: told now");
     // Your own word on the topic stands.
     crate::topics::labels::append(&crate::topics::labels::own_log(&phone.dir.join("topics"), "phone"), &crate::topics::labels::tagging(&["sale-1@shop.example.org".to_string()], None, 1)).unwrap();
     let yours = phone.arrive(&[topic], &[at_phone], false);

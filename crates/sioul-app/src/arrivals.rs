@@ -15,13 +15,16 @@
 //!
 //! Undo is a state every device comes to (`Engine::settle`): when the
 //! rules' record or the papers come from another device, and at each phone
-//! step, what this device wrote of a pair undone elsewhere is taken back,
-//! the pending acts are tried again, and the papers kept unchecked are read
-//! by this device's antivirus. When you let a sender in, the rules run on
-//! what they sent this week, which the screener held.
+//! step, what this device wrote that an Undo elsewhere took back is taken
+//! back here once, even when no rule is left; the pending acts are tried
+//! again (a phone's notice that waited for its moment among them), and the
+//! papers kept unchecked are read where an antivirus can be asked. When you
+//! let a sender in, the rules run on what they sent this week, which the
+//! screener held.
 
 use crate::backend::{QtThread, Shared, load_config, tr};
 use sioul_core::wiring::arrival::{self, Here};
+use sioul_core::notice::Notice;
 use sioul_core::wiring::engine::{self, Engine, Outcome, Place};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -42,6 +45,25 @@ fn scan(file: &Path) -> engine::Scanned {
     sioul_sync::antivirus::for_rules(file, crate::attachments::phone())
 }
 
+/// Whether an antivirus can be asked here at all: never on a phone.
+fn can_scan() -> bool {
+    !crate::attachments::phone() && sioul_sync::antivirus::present()
+}
+
+/// What the phone's notices say of a rule's notice now.
+fn decision(config: &sioul_core::config::Config, notice: &Notice) -> sioul_core::notice::Decision {
+    let now = sioul_core::zone::now();
+    let moment = sioul_core::notice::moment_from_files(config, &now, true);
+    sioul_core::notice::decide(notice, &sioul_core::notice::told(None), moment, config.notices.minutes(), now.timestamp().as_second())
+}
+
+/// Whether a rule's notice may come now: on a phone, unless the moment
+/// makes it wait (a pause, a do-not-disturb), when it stays pending and is
+/// told at a later step; a computer's window holds a notice itself.
+fn moment(config: &sioul_core::config::Config, notice: &Notice) -> bool {
+    !cfg!(target_os = "android") || !matches!(decision(config, notice), sioul_core::notice::Decision::Wait(_))
+}
+
 /// The refusals said already in this run, by rule and reason: each once.
 static SAID: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
 
@@ -55,7 +77,8 @@ pub(crate) fn in_window(qt: &QtThread, shared: &Arc<Shared>, files: &[PathBuf], 
     let uids: BTreeSet<String> = crate::work::loaded_known(shared).map(|l| l.tasks.iter().map(|t| t.uid.clone()).collect()).unwrap_or_default();
     let known = |uid: &str| uids.contains(uid);
     let device = device();
-    let here = Here { config: &config, device: &device, tells_here: keeps_notices(), known: &known, scan: &scan, tr: tr() };
+    let allows = |notice: &Notice| moment(&config, notice);
+    let here = Here { config: &config, device: &device, tells_here: keeps_notices(), known: &known, scan: &scan, can_scan: can_scan(), moment: &allows, tr: tr() };
     let out = arrival::arrived(&here, files, first);
     crate::routetasks::said(qt, shared, &out.route_tasks);
     said(qt, shared, &out.rules, &device);
@@ -72,7 +95,8 @@ pub(crate) fn in_background(files: &[PathBuf], first: bool) {
     }
     let config = load_config();
     let device = device();
-    let here = Here { config: &config, device: &device, tells_here: keeps_notices(), known: &|_| false, scan: &scan, tr: tr() };
+    let allows = |notice: &Notice| moment(&config, notice);
+    let here = Here { config: &config, device: &device, tells_here: keeps_notices(), known: &|_| false, scan: &scan, can_scan: can_scan(), moment: &allows, tr: tr() };
     let out = arrival::arrived(&here, files, first);
     for problem in out.route_tasks.problems.iter().chain(&out.rules.problems) {
         eprintln!("sioul: arrivals: {problem}");
@@ -80,23 +104,22 @@ pub(crate) fn in_background(files: &[PathBuf], first: bool) {
     post_on_phone(&config, &out.rules);
 }
 
-/// A rule's notices on a phone: posted (Notices.java) only as the moment
-/// lets a notice to know come, never in a pause or a do-not-disturb.
+/// A rule's notices on a phone: posted (Notices.java) as the moment lets a
+/// notice to know come; one the moment made wait was not made at all (the
+/// engine's `moment`: a pending line, told at a later step).
 fn post_on_phone(config: &sioul_core::config::Config, out: &Outcome) {
-    let now = sioul_core::zone::now();
-    let stamp = now.timestamp().as_second();
-    let moment = sioul_core::notice::moment_from_files(config, &now, true);
     for notice in &out.notices {
-        if let sioul_core::notice::Decision::Post(_) = sioul_core::notice::decide(notice, &sioul_core::notice::told(None), moment, config.notices.minutes(), stamp) {
+        if let sioul_core::notice::Decision::Post(_) = decision(config, notice) {
             crate::eventalarms::day_note(&notice.key(), notice);
         }
     }
 }
 
-/// What a phone step settles of the rules when no window runs: what was
-/// undone elsewhere taken back, the pending acts tried again, the papers
-/// kept unchecked read (none without an antivirus). Nothing when there is
-/// no rule and no paper kept unchecked.
+/// What a phone step settles of the rules when no window runs: what an
+/// Undo elsewhere took back taken back here, the pending acts tried again
+/// (a notice whose moment came), the papers kept unchecked read where an
+/// antivirus can be asked (never on a phone). Nothing when there is no rule,
+/// nothing to take back, and no paper to read.
 pub(crate) fn settle_in_background() {
     let config = load_config();
     let Some(engine) = engine_here(&config) else { return };
@@ -119,17 +142,25 @@ pub(crate) fn settle(qt: &QtThread, shared: &Arc<Shared>) {
     });
 }
 
-/// The engine on this device, when it has something to settle: a rule, or
-/// a paper kept unchecked.
+/// The engine on this device, when it has something to settle: a rule;
+/// an act an Undo elsewhere took back, still to take back here, even once
+/// no rule is left; a paper kept unchecked, where an antivirus can be asked.
 fn engine_here(config: &sioul_core::config::Config) -> Option<Engine<'static>> {
+    let device = device();
     let rules = sioul_core::wiring::store::Rules::load(&sioul_core::wiring::store::path()).unwrap_or_default();
-    let unchecked = config.places().and_then(|p| sioul_core::papers::Wallet::load_at(&p).ok()).is_some_and(|w| w.papers.iter().any(|p| p.unchecked));
-    if rules.rules.is_empty() && !unchecked {
+    let can_scan = can_scan();
+    let something = !rules.rules.is_empty()
+        || !sioul_core::wiring::acts::Acts::read(&sioul_core::wiring::acts::folder()).to_take_back(&sioul_core::wiring::acts::device_name(&device)).is_empty()
+        || (can_scan && config.places().and_then(|p| sioul_core::papers::Wallet::load_at(&p).ok()).is_some_and(|w| w.papers.iter().any(|p| p.unchecked)));
+    if !something {
         return None;
     }
-    let mut engine = Engine::here(config, &device(), &sioul_core::zone::now());
+    let mut engine = Engine::here(config, &device, &sioul_core::zone::now());
     engine.tells_here = keeps_notices();
     engine.scan = Box::new(scan);
+    engine.can_scan = can_scan;
+    let config = config.clone();
+    engine.moment = Box::new(move |notice: &Notice| moment(&config, notice));
     Some(engine)
 }
 
@@ -175,7 +206,8 @@ fn said(qt: &QtThread, shared: &Arc<Shared>, rules: &Outcome, device: &str) {
             }
         }
     }
-    let done: Vec<engine::Done> = rules.done.iter().filter(|d| d.act.wrote).cloned().collect();
+    // What was written, and a quiet tell, which writes nothing but is said.
+    let done: Vec<engine::Done> = rules.done.iter().filter(|d| d.act.wrote || d.act.act == "tell").cloned().collect();
     if done.is_empty() {
         if !lines.is_empty() {
             crate::backend::tell(qt, shared, lines.join(" "));

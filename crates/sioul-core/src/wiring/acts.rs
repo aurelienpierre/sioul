@@ -16,6 +16,10 @@
 //!   a line `undone`; the rule never acts on that object again, anywhere. A
 //!   tie taken apart by hand, a task deleted: their act stays recorded, so
 //!   they are never made again either.
+//! - **Taken back**: Undo's line also says `back` and names the result it
+//!   took back; every device that wrote that same result takes its own copy
+//!   back once, and writes a line `taken` (`Acts::to_take_back`). "Not for
+//!   this one" alone takes nothing back: what was made stays where it is.
 //! - **Chains**: what a rule made is known by its act (`result`), with how
 //!   many steps it is from the first object (`depth`): a rule never acts on
 //!   what it made itself, and a chain stops at `declare::CHAIN` steps.
@@ -25,7 +29,8 @@
 //!
 //! ```text
 //! {"at":1795435200123,"rule":"0b6c…","object":"mid:a@example.org","act":"task","result":"sioul:task/5f…","wrote":true,"depth":1,"list":"local/work","digest":"9e1c…"}
-//! {"at":1795435260000,"rule":"0b6c…","object":"mid:a@example.org","undone":true}
+//! {"at":1795435260000,"rule":"0b6c…","object":"mid:a@example.org","result":"sioul:task/5f…","undone":true,"back":true}
+//! {"at":1795435290000,"rule":"0b6c…","object":"mid:a@example.org","result":"sioul:task/5f…","taken":true}
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -81,10 +86,19 @@ pub struct Act {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub digest: String,
     /// The act undone, or "not for this one": the rule never acts on that
-    /// object again, and every device takes back what it wrote of it
-    /// (`engine::Engine::take_back`).
+    /// object again, on any device.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub undone: bool,
+    /// Undo took back `result`: every device that wrote that same result
+    /// takes its own copy back (`engine::Engine::take_back`). Without it, an
+    /// `undone` line ("not for this one", an Undo too late) leaves what was
+    /// made where it is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
+    /// The device whose log holds this line took back its copy of `result`
+    /// (or found it changed and left it): never asked again.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub taken: bool,
     /// The rule matched but could not act, for a reason that may pass (a
     /// message id, "rules-refused-…"): tried again at each pass for a week
     /// (`PENDING_MS`), said once. Such a line does not count as done.
@@ -136,6 +150,10 @@ pub struct Acts {
     touched: std::collections::HashSet<(String, String)>,
     /// (rule, object) undone or said "not for this one".
     undone: std::collections::HashSet<(String, String)>,
+    /// (rule, object, result) Undo took back.
+    back: std::collections::HashSet<(String, String, String)>,
+    /// (device, rule, object, result) a device took back already.
+    taken: std::collections::HashSet<(String, String, String, String)>,
 }
 
 /// A line as an older or a newer Sioul may have written it: when it does
@@ -172,7 +190,9 @@ impl Acts {
         let pair = |a: &Act| (a.rule.clone(), a.object.clone());
         let touched = all.iter().filter(|a| a.pending.is_empty()).map(pair).collect();
         let undone = all.iter().filter(|a| a.undone).map(pair).collect();
-        Acts { all, touched, undone }
+        let back = all.iter().filter(|a| a.undone && a.back).map(|a| (a.rule.clone(), a.object.clone(), a.result.clone())).collect();
+        let taken = all.iter().filter(|a| a.taken).map(|a| (a.device.clone(), a.rule.clone(), a.object.clone(), a.result.clone())).collect();
+        Acts { all, touched, undone, back, taken }
     }
 
     /// Whether `rule` acted on `object`, found it done, or was told not to,
@@ -209,10 +229,17 @@ impl Acts {
         self.all.iter().any(|a| a.rule == rule && a.object == object && !a.pending.is_empty())
     }
 
-    /// What `device` (its log's name) wrote of pairs undone since, on any
-    /// device: what it must take back (`engine::Engine::take_back`).
+    /// What `device` (its log's name) wrote that an Undo on any device took
+    /// back since, the very result it names, and that this device has not
+    /// taken back yet: what it must take back (`engine::Engine::take_back`).
+    /// "Not for this one" asks nothing back.
     pub fn to_take_back(&self, device: &str) -> Vec<&Act> {
-        self.all.iter().filter(|a| a.device == device && a.wrote && !a.undone && !a.act.is_empty() && self.undone(&a.rule, &a.object)).collect()
+        let key = |a: &Act| (a.rule.clone(), a.object.clone(), a.result.clone());
+        self.all
+            .iter()
+            .filter(|a| a.device == device && a.wrote && !a.undone && !a.taken && !a.act.is_empty() && a.pending.is_empty() && self.back.contains(&key(a)))
+            .filter(|a| !self.taken.contains(&(device.to_string(), a.rule.clone(), a.object.clone(), a.result.clone())))
+            .collect()
     }
 
     /// The acts whose result is `object`: what made it, if a rule did, its
@@ -249,8 +276,9 @@ impl Acts {
 mod tests {
     use super::*;
 
-    /// Two devices' logs read together: once, undone, depth, lately; a line
-    /// a later Sioul wrote or a crash cut left out; no word of the mail.
+    /// Two devices' logs read together: once, undone, depth, lately, what
+    /// to take back and what to leave; a line a later Sioul wrote or a crash
+    /// cut left out; no word of the mail.
     #[test]
     fn every_device_s_acts_are_read_together() {
         let folder = std::env::temp_dir().join(format!("sioul-wiring-acts-{}", std::process::id()));
@@ -279,6 +307,17 @@ mod tests {
         assert!(!waiting.touched("r3", "mid:c@example.org") && waiting.is_pending("r3", "mid:c@example.org"));
         assert_eq!(waiting.pending(20).len(), 1);
         assert!(waiting.pending(10 + PENDING_MS).is_empty(), "a week later, no more");
+        // Two papers of one message, written on the desk: "not for this one" takes nothing back;
+        // an Undo takes back the one it names, once.
+        let paper = |at: i64, id: &str| Act { at, rule: "r4".into(), object: "mid:d@example.org".into(), act: "paper".into(), result: format!("sioul:paper/{id}"), wrote: true, device: "desk".into(), ..Act::default() };
+        let mark = |at: i64, id: &str, back: bool, taken: bool, device: &str| Act { at, rule: "r4".into(), object: "mid:d@example.org".into(), result: format!("sioul:paper/{id}"), undone: !taken, back, taken, device: device.into(), ..Act::default() };
+        let left = Acts::of(vec![paper(1, "p1"), paper(1, "p2"), mark(2, "p1", false, false, "phone")]);
+        assert!(left.undone("r4", "mid:d@example.org") && left.to_take_back("desk").is_empty(), "not for this one: left where it is");
+        let back = Acts::of(vec![paper(1, "p1"), paper(1, "p2"), mark(2, "p1", true, false, "phone")]);
+        assert_eq!(back.to_take_back("desk").iter().map(|a| a.result.as_str()).collect::<Vec<_>>(), ["sioul:paper/p1"], "the paper undone, not the other");
+        assert!(back.to_take_back("phone").is_empty(), "the phone wrote nothing");
+        let done = Acts::of(vec![paper(1, "p1"), paper(1, "p2"), mark(2, "p1", true, false, "phone"), mark(3, "p1", false, true, "desk")]);
+        assert!(done.to_take_back("desk").is_empty(), "taken back once");
         let _ = std::fs::remove_dir_all(&folder);
     }
 }

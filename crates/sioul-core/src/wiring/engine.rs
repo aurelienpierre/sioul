@@ -228,8 +228,8 @@ fn retried(why: &str) -> bool {
 }
 
 /// The papers this process asked an antivirus about already, by their
-/// list's place, id and digest, whatever it answered: a device without one
-/// asks once a run.
+/// list's place, id, and their file's size and time, whatever it answered:
+/// each asked once a run, no file read to know it.
 static SCANNED: std::sync::Mutex<Vec<(PathBuf, String, String)>> = std::sync::Mutex::new(Vec::new());
 
 /// How a pass runs.
@@ -376,6 +376,14 @@ pub struct Engine<'a> {
     pub find_mail: Box<dyn Fn(&str) -> Option<PathBuf> + 'a>,
     /// The antivirus, for a file a rule would keep (`Scanned`).
     pub scan: Box<dyn Fn(&Path) -> Scanned + 'a>,
+    /// Whether an antivirus can be asked here at all (a computer with one):
+    /// without one, a file a rule keeps is marked unchecked at once, and the
+    /// papers kept unchecked are not looked at.
+    pub can_scan: bool,
+    /// Whether a rule's notice may come now (a phone asks `notice::decide`):
+    /// else it waits on a pending line, told when the moment comes within
+    /// the week. A computer's window holds a notice until its moment itself.
+    pub moment: Box<dyn Fn(&Notice) -> bool + 'a>,
     /// Where files to scan are written first.
     pub scratch: PathBuf,
     pub zone: TimeZone,
@@ -437,6 +445,8 @@ impl<'a> Engine<'a> {
                 _ => None,
             }),
             scan: Box::new(|_: &Path| Scanned::Unanswered("no antivirus given".to_string())),
+            can_scan: false,
+            moment: Box::new(|_: &Notice| true),
             scratch: crate::config::cache_dir().join("attachments").join("rules"),
             zone: now.time_zone().clone(),
             now: now.clone(),
@@ -487,19 +497,31 @@ impl<'a> Engine<'a> {
         out
     }
 
-    /// What this device wrote of every pair undone or said "not for this
-    /// one" on any device, put back here while it is as the rule left it (a
-    /// task, a tie, a topic's word, a paper): Undo is a state every device
-    /// comes to. What was put back.
+    /// What this device wrote that an Undo on any device took back (the
+    /// very result it names: one paper of two stays), put back here while
+    /// it is as the rule left it (a task, a tie, a topic's word, a paper):
+    /// Undo is a state every device comes to. Each once: a line `taken`
+    /// follows, so that what you give again by hand afterwards stays. "Not
+    /// for this one" takes nothing back. What was put back.
     pub fn take_back(&self) -> Result<Vec<Act>, String> {
         let me = acts::device_name(&self.place.device);
-        let mut back = Vec::new();
+        let now_ms = self.now.timestamp().as_millisecond();
+        let (mut back, mut lines, mut problems) = (Vec::new(), Vec::new(), Vec::new());
         for act in self.acts.to_take_back(&me) {
-            if put_back(act, &self.place, self.places.as_ref(), &*self.find_list, &*self.all_lists, self.now.timestamp().as_millisecond())? {
-                back.push(act.clone());
+            match put_back(act, &self.place, self.places.as_ref(), &*self.find_list, &*self.all_lists, now_ms) {
+                Ok(put) => {
+                    if put {
+                        back.push(act.clone());
+                    }
+                    lines.push(Act { at: now_ms, rule: act.rule.clone(), object: act.object.clone(), result: act.result.clone(), taken: true, ..Act::default() });
+                }
+                Err(e) => problems.push(e),
             }
         }
-        Ok(back)
+        if let Err(e) = acts::append(&self.place.log(), &lines) {
+            problems.push(e);
+        }
+        if problems.is_empty() { Ok(back) } else { Err(problems.join("; ")) }
     }
 
     /// The pending acts of the rules that run, younger than a week, their
@@ -830,8 +852,9 @@ impl<'a> Engine<'a> {
 
     /// Tell: a notice to know about the message, as the moment allows, from
     /// the device that keeps the notices; another device leaves a pending
-    /// line, told where the lease moves within the week; quietly, said and
-    /// kept only. Never for mail already here, nor for a code, which its own
+    /// line, told where the lease moves within the week, and so does a
+    /// moment that does not let it come (`moment`); quietly, said and kept
+    /// only. Never for mail already here, nor for a code, which its own
     /// notice tells.
     fn tell(&self, rule: &Rule, seen: &Seen, base: Act, mode: Mode, tr: &Translator) -> Result<Vec<Doing>, &'static str> {
         let level = Self::fixed(rule, "level").unwrap_or_else(|| "now".to_string());
@@ -860,6 +883,13 @@ impl<'a> Engine<'a> {
             let hint = card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
             Notice::new(base.object.clone(), notice::Kind::Minor, title, body).hint(hint.clone()).action(tr.text("notify-open-message", None), notice::Act::Open { address: base.object.clone(), hint })
         });
+        // Not now (a pause, a do-not-disturb): never recorded as told; a pending line waits for the moment.
+        if let Some(notice) = &notice
+            && matches!(mode, Mode::Arrival | Mode::Retry)
+            && !(self.moment)(notice)
+        {
+            return Err("rules-refused-moment");
+        }
         Ok(vec![Doing { act: Act { act: "tell".into(), result: level.clone(), wrote: level == "now", ..base }, notice, ..Doing::default() }])
     }
 
@@ -941,6 +971,10 @@ impl<'a> Engine<'a> {
                 unchecked.push(false);
                 continue;
             }
+            if !self.can_scan {
+                unchecked.push(true);
+                continue;
+            }
             let file = folder.join(kept_name(name, sum));
             if let Err(e) = std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, bytes)) {
                 work.problems.push(format!("{}: {e}", file.display()));
@@ -968,6 +1002,9 @@ impl<'a> Engine<'a> {
         let movement = self.movement_of(places, &message);
         let person = Self::fixed(rule, "for").filter(|p| p.as_str() != crate::persons::ME);
         let stamp = self.stamp(arrived);
+        // What this pass keeps: taken out again when a copy fails, so that the act waits whole.
+        let mut kept_now: Vec<String> = Vec::new();
+        let mut failed = false;
         for ((name, bytes, sum, kept), unchecked) in found.iter().zip(unchecked) {
             if let Some(id) = kept {
                 // Kept already: tied to this message; read clean here now, its mark taken off.
@@ -989,8 +1026,12 @@ impl<'a> Engine<'a> {
             let title = self.paper_title(rule, seen, name, arrived, tr);
             let kind = Self::fixed(rule, "kind").map(|k| crate::papers::Kind::of(&k)).or_else(|| crate::papers::Kind::guess(&self.words, name)).or_else(|| Self::shown_subject(seen).and_then(|s| crate::papers::Kind::guess(&self.words, &s))).unwrap_or_default();
             let file = folder.join(kept_name(name, sum));
-            if !file.exists() && std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, bytes)).is_err() {
-                continue;
+            if !file.exists()
+                && let Err(e) = std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, bytes))
+            {
+                work.problems.push(format!("{}: {e}", file.display()));
+                failed = true;
+                break;
             }
             scratch.push(file.clone());
             let kept = keep_named(&wallet, &file, name, sum).and_then(|path| {
@@ -1003,40 +1044,60 @@ impl<'a> Engine<'a> {
             });
             if let Err(e) = kept {
                 work.problems.push(e);
-                continue;
+                failed = true;
+                break;
             }
+            kept_now.push(id.clone());
             if let Ok(again) = crate::papers::Wallet::load_at(places) {
                 wallet = again;
             }
-            // The papers' files read again when next asked: this one is among them now.
-            work.papers = None;
             let mut ties = vec![made_tie(&id)];
             if let Some(movement) = &movement {
                 ties.push(Edge { from: links::paper_uri(&id), to: links::movement_uri(movement), how: "link".into() });
-            }
-            if let Some(person) = &person {
-                let path = self.place.ties.clone();
-                let _ = LocalLinks::change(&path, |local| crate::persons::tie_paper(local, &id, std::slice::from_ref(person)));
             }
             doings.push(Doing { act: Act { act: "paper".into(), result: links::paper_uri(&id), wrote: true, digest: sum.clone(), ..base.clone() }, ties, ..Doing::default() });
         }
         clear(&scratch);
         let _ = std::fs::remove_dir(&folder);
+        work.papers = None;
+        if failed {
+            // Nothing of a message kept by halves: what this pass kept goes out again, and the act waits.
+            for id in &kept_now {
+                if let Err(e) = remove_paper(places, id) {
+                    work.problems.push(e);
+                }
+            }
+            return Err("rules-refused-write");
+        }
+        if let Some(person) = &person {
+            let path = self.place.ties.clone();
+            for id in &kept_now {
+                let _ = LocalLinks::change(&path, |local| crate::persons::tie_paper(local, id, std::slice::from_ref(person)));
+            }
+        }
         Ok(doings)
     }
 
     /// The papers kept unchecked whose file is here, read by this device's
-    /// antivirus once a run: clean, their mark taken off; refused, taken out
-    /// of the wallet with their file, on every device (the wallet and the
-    /// papers' folder travel). Their titles, to say once.
+    /// antivirus once a run (none asked where none can be): clean, their
+    /// mark taken off; refused, taken out of the wallet with their file, on
+    /// every device (the wallet and the papers' folder travel). Their
+    /// titles, to say once.
     pub fn scan_unchecked(&self) -> Vec<String> {
+        if !self.can_scan {
+            return Vec::new();
+        }
         let Some(places) = self.places.as_ref() else { return Vec::new() };
         let Ok(wallet) = crate::papers::Wallet::load_at(places) else { return Vec::new() };
         let mut out = Vec::new();
         for paper in wallet.papers.iter().filter(|p| p.unchecked) {
-            let Some(file) = wallet.file_path(paper).filter(|f| f.is_file()) else { continue };
-            let Ok(bytes) = std::fs::read(&file) else { continue };
-            let key = (places.records.clone(), paper.id.clone(), digest(&bytes));
+            let Some(file) = wallet.file_path(paper) else { continue };
+            let Ok(meta) = std::fs::metadata(&file) else { continue };
+            if !meta.is_file() {
+                continue;
+            }
+            let changed = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
+            let key = (places.records.clone(), paper.id.clone(), format!("{} {changed}", meta.len()));
             {
                 let Ok(mut asked) = SCANNED.lock() else { continue };
                 if asked.contains(&key) {
@@ -1122,6 +1183,16 @@ impl Outcome {
 /// it), on every device: its title. The act that made it, if a rule did,
 /// stays recorded; a line says why it went.
 fn take_out(places: &Places, place: &Place, id: &str) -> Result<Option<String>, String> {
+    let title = remove_paper(places, id)?;
+    if title.is_some() {
+        acts::append(&place.log(), &[Act { at: jiff::Timestamp::now().as_millisecond(), object: links::paper_uri(id), act: "paper".into(), result: links::paper_uri(id), refused: "rules-refused-infected".into(), ..Act::default() }])?;
+    }
+    Ok(title)
+}
+
+/// A paper out of the wallet, its file deleted unless another paper names
+/// it: its title, none when it was not there.
+fn remove_paper(places: &Places, id: &str) -> Result<Option<String>, String> {
     let wallet = crate::papers::Wallet::load_at(places)?;
     let Some(paper) = wallet.get(id).cloned() else { return Ok(None) };
     let file = wallet.file_path(&paper);
@@ -1130,7 +1201,6 @@ fn take_out(places: &Places, place: &Place, id: &str) -> Result<Option<String>, 
     if let Some(file) = file.filter(|f| f.exists() && !shared) {
         crate::filelock::remove_wiping(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     }
-    acts::append(&place.log(), &[Act { at: jiff::Timestamp::now().as_millisecond(), object: links::paper_uri(id), act: "paper".into(), result: links::paper_uri(id), refused: "rules-refused-infected".into(), ..Act::default() }])?;
     Ok(Some(paper.title))
 }
 
@@ -1268,18 +1338,27 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
     })
 }
 
-/// An act put back while it is as the rule left it (`put_back`), and "not
-/// for this one" written either way: the rule never does it again for that
-/// object, and every device takes back what it wrote of it (`take_back`).
-/// `find_list` finds a task's list by "account/id"; a task moved since is
-/// looked for in every list (`crate::tasks::lists`).
+/// An act put back while it is as the rule left it (`put_back`), and the
+/// rule never does it again for that object either way. Put back (or gone
+/// already), the line says `back` with its result: every device that wrote
+/// that same result takes its own copy back (`Engine::take_back`), and this
+/// device's `taken` line follows. Changed since, it stays everywhere, as
+/// after "not for this one". `find_list` finds a task's list by
+/// "account/id"; a task moved since is looked for in every list
+/// (`crate::tasks::lists`).
 pub fn undo(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn Fn(&str) -> Option<Collection>, now_ms: i64) -> Result<Undone, String> {
     let put = put_back(act, place, places, find_list, &crate::tasks::lists, now_ms)?;
-    not_for_this_one(&act.rule, &act.object, place, now_ms)?;
+    let mark = Act { at: now_ms, rule: act.rule.clone(), object: act.object.clone(), result: act.result.clone(), ..Act::default() };
+    let mut lines = vec![Act { undone: true, back: put, ..mark.clone() }];
+    if put {
+        lines.push(Act { taken: true, ..mark });
+    }
+    acts::append(&place.log(), &lines)?;
     Ok(Undone { put_back: put })
 }
 
-/// "Not for this one": the rule never acts on that object again, on any device.
+/// "Not for this one": the rule never acts on that object again, on any
+/// device; what it made stays where it is.
 pub fn not_for_this_one(rule: &str, object: &str, place: &Place, now_ms: i64) -> Result<(), String> {
     acts::append(&place.log(), &[Act { at: now_ms, rule: rule.to_string(), object: object.to_string(), undone: true, ..Act::default() }])
 }

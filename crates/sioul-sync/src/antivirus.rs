@@ -123,7 +123,8 @@ pub fn scan(file: &Path) -> Verdict {
 /// as papers"), as "Keep in papers" decides it by hand: on a phone no
 /// antivirus can be asked, and the file is kept unchecked, as by hand there;
 /// on a computer, the antivirus's verdict; one that could not read it (none
-/// there, none answering, too large) keeps it out, since a rule cannot ask.
+/// there, none answering, too large) keeps it marked unchecked, read again
+/// by a device that can ask one.
 /// `phone`: Sioul runs the phone's way (the window's `attachments::phone`).
 pub fn for_rules(file: &Path, phone: bool) -> sioul_core::wiring::engine::Scanned {
     use sioul_core::wiring::engine::Scanned;

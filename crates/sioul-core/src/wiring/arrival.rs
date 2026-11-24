@@ -11,7 +11,9 @@
 //!    (its routes, its conversation) tied to it in `links.toml`
 //!    (`how = "project"`), only the ties this adds, under the file's lock;
 //! 2. **route tasks** (`routetasks::on_arrival`), never at a first fetch;
-//! 3. **the rules** (`engine::Engine::on_arrival`), never at a first fetch.
+//! 3. **the rules** (`engine::Engine::on_arrival`), never at a first fetch;
+//!    what was undone elsewhere taken back first, even once no rule is left
+//!    (`acts::Acts::to_take_back`).
 //!
 //! Each writes only in Sioul's own folders, under each file's lock, which
 //! every process of the device shares (the window, the phone's background
@@ -26,6 +28,8 @@ use crate::links::{Edge, LocalLinks};
 use crate::porch::{Lane, SenderList, Senders};
 use crate::projects::ProjectStore;
 use crate::routetasks::{self, Workdays};
+use crate::notice::Notice;
+use crate::wiring::acts::{self, Acts};
 use crate::wiring::engine::{Engine, Outcome, Scanned};
 use crate::wiring::store::{self, Rules};
 use std::path::{Path, PathBuf};
@@ -41,6 +45,10 @@ pub struct Here<'a> {
     pub known: &'a dyn Fn(&str) -> bool,
     /// The antivirus, for the files a rule keeps (sioul-sync's `antivirus::for_rules`).
     pub scan: &'a dyn Fn(&Path) -> Scanned,
+    /// Whether an antivirus can be asked here at all (`Engine::can_scan`).
+    pub can_scan: bool,
+    /// Whether a rule's notice may come now (`Engine::moment`).
+    pub moment: &'a dyn Fn(&Notice) -> bool,
     pub tr: &'a Translator,
 }
 
@@ -69,6 +77,9 @@ pub fn arrived(here: &Here, files: &[PathBuf], first: bool) -> Arrived {
     let senders = Senders::load(config);
     let rules = Rules::load(&store::path());
     let runs = rules.as_ref().is_ok_and(|r| r.running().next().is_some());
+    // What an Undo elsewhere took back, this device takes back too, rules or none.
+    let record = Acts::read(&acts::folder());
+    let settles = !record.to_take_back(&acts::device_name(here.device)).is_empty();
     // Judged once, with your spam filter's verdict, for the ties and the rules.
     let sources = config.mail_sources();
     let judged = crate::porch::judge(files, &sources, store.as_ref(), &SenderList::default(), &senders, stamp);
@@ -92,17 +103,24 @@ pub fn arrived(here: &Here, files: &[PathBuf], first: bool) -> Arrived {
         let making = routetasks::Making { config, own: &own, lists: &lists, workdays: &workdays, known: here.known, ties: &ties, zone: &zone, now: &now };
         out.route_tasks = routetasks::on_arrival(&gate, store, files, &making, &ties_path);
     }
-    match rules {
-        Ok(rules) if runs => {
-            let mut engine = Engine::of(config, here.device, &now, rules, store, senders, Vec::new());
-            engine.tells_here = here.tells_here;
-            engine.known = Box::new(|uid: &str| (here.known)(uid));
-            engine.scan = Box::new(|file: &Path| (here.scan)(file));
-            out.rules = engine.on_arrival(&judged, first, here.tr);
-        }
-        Ok(_) => {}
-        Err(e) => out.rules.problems.push(e),
+    let (rules, problem) = match rules {
+        Ok(rules) => (rules, None),
+        Err(e) => (Rules::default(), Some(e)),
+    };
+    if runs || settles {
+        let mut engine = Engine::of(config, here.device, &now, rules, store, senders, Vec::new());
+        engine.acts = record;
+        engine.tells_here = here.tells_here;
+        engine.known = Box::new(|uid: &str| (here.known)(uid));
+        engine.scan = Box::new(|file: &Path| (here.scan)(file));
+        engine.can_scan = here.can_scan;
+        engine.moment = Box::new(|notice: &Notice| (here.moment)(notice));
+        // The ties' problem, said before the rules' own.
+        let earlier = std::mem::take(&mut out.rules.problems);
+        out.rules = engine.on_arrival(&judged, first, here.tr);
+        out.rules.problems.splice(0..0, earlier);
     }
+    out.rules.problems.extend(problem);
     out
 }
 

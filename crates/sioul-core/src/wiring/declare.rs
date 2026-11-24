@@ -391,7 +391,7 @@ const MESSAGE: TypeDecl = TypeDecl {
             writes: Writes::Paper,
             undo: true,
             once: "rules-once-paper",
-            refuses: &["rules-refused-infected", "rules-refused-unchecked", "rules-refused-no-papers"],
+            refuses: &["rules-refused-infected", "rules-refused-too-large", "rules-refused-write", "rules-refused-no-papers"],
             phase: 1,
         },
         ActionDecl { id: "move-to-folder", params: &[param("folder", Value::Text, true)], writes: Writes::MailFolder, undo: true, once: "rules-once-server", refuses: &[], phase: 4 },
