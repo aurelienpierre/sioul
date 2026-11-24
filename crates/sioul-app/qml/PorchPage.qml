@@ -1761,70 +1761,82 @@ Item {
                 height: Math.min(implicitHeight, help.roomHeight - 2 * page.theme.gap)
                 padding: 16
 
-                contentItem: ScrollView {
-                    contentWidth: availableWidth
+                // The help and its settings scroll; Close stays in the popup's foot, never scrolled away.
+                contentItem: ColumnLayout {
+                    spacing: 8
 
-                    ColumnLayout {
-                        width: help.availableWidth
-                        spacing: 8
+                    ScrollView {
+                        id: helpScroll
 
-                        Label {
-                            Layout.fillWidth: true
-                            text: help.lane ? help.lane.title : ""
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            font.pixelSize: 17
-                            font.weight: Font.DemiBold
-                            color: page.theme.text
-                        }
-                        Repeater {
-                            model: help.lane ? [help.lane.about].concat(help.lane.rules || []).filter(t => !!t) : []
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.preferredHeight: helpColumn.implicitHeight
+                        contentWidth: availableWidth
 
-                            delegate: Label {
-                                required property string modelData
+                        ColumnLayout {
+                            id: helpColumn
 
+                            width: helpScroll.availableWidth
+                            spacing: 8
+
+                            Label {
                                 Layout.fillWidth: true
-                                text: modelData
+                                text: help.lane ? help.lane.title : ""
                                 textFormat: Text.PlainText
                                 wrapMode: Text.Wrap
-                                lineHeight: 1.25
+                                font.pixelSize: 17
+                                font.weight: Font.DemiBold
                                 color: page.theme.text
                             }
-                        }
-                        Repeater {
-                            model: help.rows
+                            Repeater {
+                                model: help.lane ? [help.lane.about].concat(help.lane.rules || []).filter(t => !!t) : []
 
-                            delegate: Loader {
-                                id: ruleRow
+                                delegate: Label {
+                                    required property string modelData
 
-                                required property var modelData
+                                    Layout.fillWidth: true
+                                    text: modelData
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.25
+                                    color: page.theme.text
+                                }
+                            }
+                            Repeater {
+                                model: help.rows
 
-                                Layout.fillWidth: true
-                                Layout.topMargin: 6
-                                Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
+                                delegate: Loader {
+                                    id: ruleRow
 
-                                Connections {
-                                    target: ruleRow.item
+                                    required property var modelData
 
-                                    function onSave(key, value, shown) {
-                                        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                        if (problem === "")
-                                            help.rows = JSON.parse(page.sioul.settings(help.lane.settings))
-                                        else
-                                            page.sioul.status = problem
-                                    }
-                                    // A link followed (Filed's, to the automatic senders' words): its place shows, not this over it.
-                                    function onFollowed() {
-                                        help.close()
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 6
+                                    Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
+
+                                    Connections {
+                                        target: ruleRow.item
+
+                                        function onSave(key, value, shown) {
+                                            const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
+                                            if (problem === "")
+                                                help.rows = JSON.parse(page.sioul.settings(help.lane.settings))
+                                            else
+                                                page.sioul.status = problem
+                                        }
+                                        // A link followed (Filed's, to the automatic senders' words): its place shows, not this over it.
+                                        function onFollowed() {
+                                            help.close()
+                                        }
                                     }
                                 }
                             }
                         }
-                        Button {
-                            Layout.alignment: Qt.AlignRight
-                            text: page.sioul.text("ui-close")
-                            onClicked: help.close()
-                        }
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignRight
+                        text: page.sioul.text("ui-close")
+                        onClicked: help.close()
                     }
                 }
             }
