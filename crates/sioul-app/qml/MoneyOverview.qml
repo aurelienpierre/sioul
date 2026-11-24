@@ -43,13 +43,6 @@ ScrollView {
 
     contentWidth: availableWidth
 
-    // How a period should end, as a sign that is no arrow (an arrow folds or opens:
-    // rule 8 of the interface): more than planned, as planned, short. The sentence
-    // beside it says it in words.
-    function moodSign(mood) {
-        return { "better": "+", "as-planned": "=", "short": "−" }[mood] || ""
-    }
-
     // What is coming in view, for the window's images.
     function showComing() {
         const flick = overview.contentItem as Flickable
@@ -293,14 +286,12 @@ ScrollView {
                     spacing: 10
 
                     // Its name and period, cut within the card, never widening it past a
-                    // phone's screen; Open in words.
+                    // phone's screen; Open in words. (No icon before its name: the same on
+                    // every card, it said nothing, and a phone's page keeps within its
+                    // budget of objects, tst_coming.qml.)
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
-
-                        Icon {
-                            iconName: "view-financial-budget"
-                        }
                         // Its whole name while the row has room (the period gives way first), then cut.
                         Label {
                             Layout.minimumWidth: 0
@@ -354,30 +345,17 @@ ScrollView {
                         wrapMode: Text.Wrap
                         color: overview.theme.text
                     }
-                    // How its period should end, in one sentence, with the reserve that covers it.
-                    RowLayout {
+                    // How its period should end, in one sentence, with the reserve that covers it:
+                    // in words alone (an up or down arrow read as a fold), a shortfall in the
+                    // warmer tone. The Budgets tab's list keeps a sign before each line.
+                    Label {
                         Layout.fillWidth: true
-                        spacing: 6
-
-                        Label {
-                            Layout.alignment: Qt.AlignTop
-                            Layout.preferredWidth: 16
-                            horizontalAlignment: Text.AlignHCenter
-                            text: overview.moodSign(budgetCard.modelData.mood)
-                            textFormat: Text.PlainText
-                            font.weight: Font.DemiBold
-                            color: budgetCard.modelData.mood === "short" ? overview.theme.warm : overview.theme.muted
-                            Accessible.ignored: true
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            // It wraps in the card's width: its own, unwrapped, asks for none.
-                            Layout.preferredWidth: 0
-                            text: budgetCard.modelData.verdict
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: overview.theme.text
-                        }
+                        // It wraps in the card's width: its own, unwrapped, asks for none.
+                        Layout.preferredWidth: 0
+                        text: budgetCard.modelData.verdict
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: budgetCard.modelData.mood === "short" ? overview.theme.warm : overview.theme.text
                     }
                 }
             }
