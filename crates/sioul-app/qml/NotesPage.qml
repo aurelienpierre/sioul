@@ -623,180 +623,190 @@ Item {
                 interval: 300
                 onTriggered: page.sioul.searchNoteTexts()
             }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
+            // The page's head (PageHead.qml): New, a folder, a memo at the left; what the
+            // list shows and of which type after them, on a line of their own when the
+            // column is narrow; the ⚙ last at the right; on a phone, the two folded
+            // behind "Filters".
+            PageHead {
+                id: notesHead
 
-                Button {
-                    text: page.sioul.text("note-new")
-                    icon.name: "document-new"
-                    icon.color: page.theme.text
-                    onClicked: newNote.now().open()
-                }
-                ToolButton {
-                    visible: !page.shown.missing
-                    icon.name: "folder-new"
-                    icon.color: page.theme.text
-                    Accessible.name: page.sioul.text("note-folder-new")
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.sioul.text("note-folder-new")
-                    ToolTip.delay: 400
-                    onClicked: folderName.now().ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder("", name), page.sioul.text("note-folder-make"))
-                }
-                // One click starts a memo, one stops it; it opens as a note.
-                // As wide as what it shows: a button's background asks for 100 pixels.
-                Button {
-                    visible: !page.shown.missing
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: memo.item ? page.sioul.textWith("note-memo-stop", "time", Math.floor(memo.item.seconds / 60) + ":" + String(memo.item.seconds % 60).padStart(2, "0")) : ""
-                    icon.name: "media-record"
-                    icon.color: memo.item ? page.theme.warm : page.theme.text
-                    display: memo.item ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
-                    Accessible.name: page.sioul.text("note-memo")
-                    ToolTip.visible: hovered && !memo.item
-                    ToolTip.text: page.sioul.text("note-memo")
-                    ToolTip.delay: 400
-                    onClicked: {
-                        // Stopped before it started (the system still asking for the
-                        // microphone): nothing to keep, the recorder goes.
-                        if (memo.item && memo.item.started)
-                            memo.item.stop()
-                        else if (memo.item)
-                            memo.active = false
-                        else
-                            memo.active = true
+                Layout.fillWidth: true
+                sioul: page.sioul
+                theme: page.theme
+                foldsFilters: page.window.compact === true
+                offersFilters: !page.shown.missing
+                filtersSet: (page.showing !== "folder" ? 1 : 0) + (page.typed !== "all" ? 1 : 0)
+                filtersName: "noteFilters"
+                navigation: [
+                    Button {
+                        text: page.sioul.text("note-new")
+                        icon.name: "document-new"
+                        icon.color: page.theme.text
+                        onClicked: newNote.now().open()
+                    },
+                    ToolButton {
+                        visible: !page.shown.missing
+                        icon.name: "folder-new"
+                        icon.color: page.theme.text
+                        Accessible.name: page.sioul.text("note-folder-new")
+                        ToolTip.visible: hovered
+                        ToolTip.text: page.sioul.text("note-folder-new")
+                        ToolTip.delay: 400
+                        onClicked: folderName.now().ask(page.sioul.text("note-folder-new"), "", name => page.sioul.makeFolder("", name), page.sioul.text("note-folder-make"))
+                    },
+                    // One click starts a memo, one stops it; it opens as a note.
+                    // As wide as what it shows: a button's background asks for 100 pixels.
+                    Button {
+                        visible: !page.shown.missing
+                        implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                        text: memo.item ? page.sioul.textWith("note-memo-stop", "time", Math.floor(memo.item.seconds / 60) + ":" + String(memo.item.seconds % 60).padStart(2, "0")) : ""
+                        icon.name: "media-record"
+                        icon.color: memo.item ? page.theme.warm : page.theme.text
+                        display: memo.item ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
+                        Accessible.name: page.sioul.text("note-memo")
+                        ToolTip.visible: hovered && !memo.item
+                        ToolTip.text: page.sioul.text("note-memo")
+                        ToolTip.delay: 400
+                        onClicked: {
+                            // Stopped before it started (the system still asking for the
+                            // microphone): nothing to keep, the recorder goes.
+                            if (memo.item && memo.item.started)
+                                memo.item.stop()
+                            else if (memo.item)
+                                memo.active = false
+                            else
+                                memo.active = true
+                        }
                     }
-                }
-                Item {
-                    Layout.fillWidth: true
-                }
-                SettingsButton {
+                ]
+                settings: SettingsButton {
                     id: notesSettings
 
                     sioul: page.sioul
                     theme: page.theme
                     view: "notes"
                 }
-            }
-            // What the list shows, and of which type: one line under the search,
-            // as wide as the column gives, each choice kept on this device as it
-            // was left (notesview.rs). Their names show when the line has room
-            // for them; the boxes alone say them to a screen reader.
-            RowLayout {
-                id: choices
 
-                readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.spacing + 4
+                // What the list shows, and of which type: one line under the buttons,
+                // as wide as the column gives, each choice kept on this device as it
+                // was left (notesview.rs). Their names show when the line has room
+                // for them; the boxes alone say them to a screen reader.
+                RowLayout {
+                    id: choices
 
-                objectName: "noteChoices"
-                visible: !page.shown.missing
-                Layout.fillWidth: true
-                spacing: 6
+                    readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.spacing + 4
 
-                Label {
-                    id: showName
+                    objectName: "noteChoices"
+                    visible: !page.shown.missing && !notesHead.filtersFolded
+                    width: notesHead.row.width
+                    spacing: 6
 
-                    visible: choices.named
-                    text: page.sioul.text("note-show")
-                    textFormat: Text.PlainText
-                    color: page.theme.muted
-                }
-                PlainComboBox {
-                    id: showBox
+                    Label {
+                        id: showName
 
-                    objectName: "noteShow"
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: showBox.implicitWidth
-                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
-                    // column, its words end in "…" rather than being cut.
-                    implicitWidth: Math.ceil(Math.max(...showBox.model.map(c => showBoxMetrics.advanceWidth(c.text)))) + 13 + showBox.leftPadding + showBox.rightPadding
-                    spacing: 4
-                    textRole: "text"
-                    valueRole: "value"
-                    contentItem: Label {
-                        leftPadding: 12
-                        rightPadding: 1
-                        text: showBox.displayText
+                        visible: choices.named
+                        text: page.sioul.text("note-show")
                         textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignVCenter
-                        font: showBox.font
-                        color: showBox.palette.text
+                        color: page.theme.muted
                     }
+                    PlainComboBox {
+                        id: showBox
 
-                    FontMetrics {
-                        id: showBoxMetrics
+                        objectName: "noteShow"
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: showBox.implicitWidth
+                        // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                        // column, its words end in "…" rather than being cut.
+                        implicitWidth: Math.ceil(Math.max(...showBox.model.map(c => showBoxMetrics.advanceWidth(c.text)))) + 13 + showBox.leftPadding + showBox.rightPadding
+                        spacing: 4
+                        textRole: "text"
+                        valueRole: "value"
+                        contentItem: Label {
+                            leftPadding: 12
+                            rightPadding: 1
+                            text: showBox.displayText
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                            font: showBox.font
+                            color: showBox.palette.text
+                        }
 
-                        font: showBox.font
-                    }
-                    model: [{ value: "folder", text: page.sioul.text("note-show-folder") }, { value: "changed", text: page.sioul.text("note-show-changed") }, { value: "created", text: page.sioul.text("note-show-created") }]
-                    currentIndex: Math.max(0, showBox.indexOfValue(page.showing))
-                    Accessible.name: page.sioul.text("note-show")
-                    // Each box says its own choice: two chosen in a row both count, before Rust's answer.
-                    onActivated: index => page.sioul.setNotesView(showBox.model[index].value, typeBox.model[Math.max(0, typeBox.currentIndex)].value)
+                        FontMetrics {
+                            id: showBoxMetrics
 
-                    // Rust's answer, or the page made again: the box follows what is kept.
-                    Connections {
-                        target: page
+                            font: showBox.font
+                        }
+                        model: [{ value: "folder", text: page.sioul.text("note-show-folder") }, { value: "changed", text: page.sioul.text("note-show-changed") }, { value: "created", text: page.sioul.text("note-show-created") }]
+                        currentIndex: Math.max(0, showBox.indexOfValue(page.showing))
+                        Accessible.name: page.sioul.text("note-show")
+                        // Each box says its own choice: two chosen in a row both count, before Rust's answer.
+                        onActivated: index => page.sioul.setNotesView(showBox.model[index].value, typeBox.model[Math.max(0, typeBox.currentIndex)].value)
 
-                        function onShowingChanged() {
-                            showBox.currentIndex = Math.max(0, showBox.indexOfValue(page.showing))
+                        // Rust's answer, or the page made again: the box follows what is kept.
+                        Connections {
+                            target: page
+
+                            function onShowingChanged() {
+                                showBox.currentIndex = Math.max(0, showBox.indexOfValue(page.showing))
+                            }
                         }
                     }
-                }
-                Item {
-                    implicitWidth: 4
-                }
-                Label {
-                    id: typeName
+                    Item {
+                        implicitWidth: 4
+                    }
+                    Label {
+                        id: typeName
 
-                    visible: choices.named
-                    text: page.sioul.text("note-type")
-                    textFormat: Text.PlainText
-                    color: page.theme.muted
-                }
-                PlainComboBox {
-                    id: typeBox
-
-                    objectName: "noteType"
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: typeBox.implicitWidth
-                    // One width whatever is chosen, its widest choice's; squeezed by a narrow
-                    // column, its words end in "…" rather than being cut.
-                    implicitWidth: Math.ceil(Math.max(...typeBox.model.map(c => typeBoxMetrics.advanceWidth(c.text)))) + 13 + typeBox.leftPadding + typeBox.rightPadding
-                    spacing: 4
-                    textRole: "text"
-                    valueRole: "value"
-                    contentItem: Label {
-                        leftPadding: 12
-                        rightPadding: 1
-                        text: typeBox.displayText
+                        visible: choices.named
+                        text: page.sioul.text("note-type")
                         textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        verticalAlignment: Text.AlignVCenter
-                        font: typeBox.font
-                        color: typeBox.palette.text
+                        color: page.theme.muted
                     }
+                    PlainComboBox {
+                        id: typeBox
 
-                    FontMetrics {
-                        id: typeBoxMetrics
+                        objectName: "noteType"
+                        Layout.fillWidth: true
+                        Layout.maximumWidth: typeBox.implicitWidth
+                        // One width whatever is chosen, its widest choice's; squeezed by a narrow
+                        // column, its words end in "…" rather than being cut.
+                        implicitWidth: Math.ceil(Math.max(...typeBox.model.map(c => typeBoxMetrics.advanceWidth(c.text)))) + 13 + typeBox.leftPadding + typeBox.rightPadding
+                        spacing: 4
+                        textRole: "text"
+                        valueRole: "value"
+                        contentItem: Label {
+                            leftPadding: 12
+                            rightPadding: 1
+                            text: typeBox.displayText
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                            font: typeBox.font
+                            color: typeBox.palette.text
+                        }
 
-                        font: typeBox.font
-                    }
-                    model: [{ value: "all", text: page.sioul.text("note-type-all") }, { value: "text", text: page.sioul.text("note-type-text") }, { value: "sound", text: page.sioul.text("note-type-sound") }, { value: "pdf", text: page.sioul.text("note-type-pdf") }, { value: "other", text: page.sioul.text("note-type-other") }]
-                    currentIndex: Math.max(0, typeBox.indexOfValue(page.typed))
-                    Accessible.name: page.sioul.text("note-type")
-                    onActivated: index => page.sioul.setNotesView(showBox.model[Math.max(0, showBox.currentIndex)].value, typeBox.model[index].value)
+                        FontMetrics {
+                            id: typeBoxMetrics
 
-                    Connections {
-                        target: page
+                            font: typeBox.font
+                        }
+                        model: [{ value: "all", text: page.sioul.text("note-type-all") }, { value: "text", text: page.sioul.text("note-type-text") }, { value: "sound", text: page.sioul.text("note-type-sound") }, { value: "pdf", text: page.sioul.text("note-type-pdf") }, { value: "other", text: page.sioul.text("note-type-other") }]
+                        currentIndex: Math.max(0, typeBox.indexOfValue(page.typed))
+                        Accessible.name: page.sioul.text("note-type")
+                        onActivated: index => page.sioul.setNotesView(showBox.model[Math.max(0, showBox.currentIndex)].value, typeBox.model[index].value)
 
-                        function onTypedChanged() {
-                            typeBox.currentIndex = Math.max(0, typeBox.indexOfValue(page.typed))
+                        Connections {
+                            target: page
+
+                            function onTypedChanged() {
+                                typeBox.currentIndex = Math.max(0, typeBox.indexOfValue(page.typed))
+                            }
                         }
                     }
-                }
-                Item {
-                    Layout.fillWidth: true
+                    Item {
+                        Layout.fillWidth: true
+                    }
                 }
             }
             // A note added, renamed, moved or deleted, a folder folded, the texts' answer
@@ -1058,7 +1068,7 @@ Item {
                     // the note, closed until opened; a long one scrolls in a third of the
                     // page. A heading chosen there, it closes, as a menu does, and the
                     // note's text, given back its room, shows that heading.
-                    CardFold {
+                    Fold {
                         id: outlineFold
 
                         objectName: "outlineFold"

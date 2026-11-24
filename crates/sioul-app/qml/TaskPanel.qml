@@ -43,8 +43,8 @@ Panel {
     property bool making: false
     // A task's form, its fields open to change ("Edit" on its details).
     property bool editing: false
-    // "How was it?" unfolded, on a task done.
-    property bool feltShown: false
+    // "How was it?" unfolded, on a task done: its fold's own state.
+    property alias feltShown: feltFold.open
     // The task just made from the form: its form stays until it is read back.
     property string madeUid: ""
     // Fields changed after the making, before the reading: saved once it is read.
@@ -778,46 +778,29 @@ Panel {
                     size: 16
                     color: panel.theme.accent
                 }
-                Label {
+                // A link (Link.qml): a click, a tap, Enter: the block, in the agenda.
+                Link {
                     id: pinnedText
 
+                    objectName: "taskPinnedLink"
                     Layout.fillWidth: true
                     // Its own width, not its text's: it wraps on a phone.
                     Layout.preferredWidth: 120
                     Layout.alignment: Qt.AlignVCenter
+                    theme: panel.theme
                     text: pinned.pin ? panel.sioul.textWith("task-pinned", "when", pinned.pin.when) : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: panel.theme.accent
-                    font.underline: pinnedHover.hovered
-                    Accessible.role: Accessible.Link
-                    Accessible.name: pinnedText.text
-
-                    HoverHandler {
-                        id: pinnedHover
-
-                        cursorShape: Qt.PointingHandCursor
+                    onActivated: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key }, true)
+                    // A long press, on a touch screen: its menu, there.
+                    onHeld: at => {
+                        panel.window.menuAt = at
+                        pinMenu.now().popup()
                     }
-                    // A click, a tap: the block, in the agenda.
-                    TapHandler {
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key }, true)
-                    }
+
                     TapHandler {
                         acceptedButtons: Qt.RightButton
-                        // A touch has no buttons: on a touch screen, the long press below.
+                        // A touch has no buttons: on a touch screen, the long press above.
                         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                         onTapped: pinMenu.now().popup()
-                    }
-                    TapHandler {
-                        id: pinnedHold
-
-                        acceptedDevices: PointerDevice.TouchScreen
-                        onTapped: panel.window.openThing({ kind: "event", uri: "", key: pinned.pin.key }, true)
-                        onLongPressed: {
-                            panel.window.menuAt = pinnedHold.point.scenePosition
-                            pinMenu.now().popup()
-                        }
                     }
                 }
                 ToolButton {
@@ -1120,16 +1103,15 @@ Panel {
                 Layout.fillWidth: true
                 spacing: 6
 
-                Label {
+                // A link (Link.qml): that task, opened here.
+                Link {
+                    objectName: "taskStepOfLink"
                     Layout.fillWidth: true
+                    theme: panel.theme
                     text: panel.detail && panel.detail.parent_title ? panel.sioul.textWith("task-step-of", "title", panel.detail.parent_title) : ""
-                    textFormat: Text.PlainText
+                    wrapMode: Text.NoWrap
                     elide: Text.ElideRight
-                    color: panel.theme.muted
-
-                    TapHandler {
-                        onTapped: panel.uid = panel.detail.edit.parent
-                    }
+                    onActivated: panel.uid = panel.detail.edit.parent
                 }
                 ToolButton {
                     objectName: "taskMakeOwn"
@@ -1470,20 +1452,19 @@ Panel {
             Repeater {
                 model: panel.detail ? panel.detail.frees : []
 
-                delegate: Label {
+                // A link each (Link.qml): the task it frees, opened here.
+                delegate: Link {
                     id: freed
 
                     required property var modelData
 
+                    objectName: "taskFreesLink"
                     Layout.fillWidth: true
+                    theme: panel.theme
                     text: panel.sioul.textWith("task-frees-one", "title", freed.modelData[1])
-                    textFormat: Text.PlainText
+                    wrapMode: Text.NoWrap
                     elide: Text.ElideRight
-                    color: panel.theme.muted
-
-                    TapHandler {
-                        onTapped: panel.uid = freed.modelData[0]
-                    }
+                    onActivated: panel.uid = freed.modelData[0]
                 }
             }
 
@@ -1644,20 +1625,23 @@ Panel {
             }
             // Done: how it was, if you want to say. Filled in with what was
             // foreseen; nothing is kept until one changes, or "As expected".
-            BareButton {
+            // Folded, made the first time it unfolds (Fold.qml).
+            Fold {
+                id: feltFold
+
+                objectName: "feltFold"
                 visible: panel.done && !panel.form && panel.canEdit
-                flat: true
-                text: (panel.feltShown ? "▾  " : "▸  ") + panel.sioul.text("felt-ask")
-                onClicked: panel.feltShown = !panel.feltShown
-            }
-            FeltRatings {
-                visible: panel.feltShown && panel.done && !panel.form
                 Layout.fillWidth: true
-                sioul: panel.sioul
                 theme: panel.theme
-                forecast: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands : ({})
-                kept: panel.feltToday()
-                onGiven: values => panel.keepFelt(values)
+                title: panel.sioul.text("felt-ask")
+
+                FeltRatings {
+                    sioul: panel.sioul
+                    theme: panel.theme
+                    forecast: panel.detail && panel.detail.edit.demands ? panel.detail.edit.demands : ({})
+                    kept: panel.feltToday()
+                    onGiven: values => panel.keepFelt(values)
+                }
             }
             // Done: what it really used of your supplies (docs/supplies.md), each line
             // changeable, "Add a supply"; kept on its card, to put right days later.

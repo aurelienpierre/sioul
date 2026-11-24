@@ -116,14 +116,14 @@ Item {
     readonly property bool narrow: page.width < 640
     // On a phone, the project, kind and category filters folded behind one Filters button,
     // which says how many are set: the first task comes rows sooner. Unfolded by it.
-    property bool filtersShown: false
-    readonly property bool filtersFolded: page.window.compact && !page.filtersShown
+    property alias filtersShown: head.filtersShown
+    readonly property bool filtersFolded: head.filtersFolded
     readonly property int filtersSet: (page.projectFilter !== "" ? 1 : 0) + (page.kindFilter !== "" ? 1 : 0) + (page.categoryFilter !== "" ? 1 : 0)
     // What the list keeps beside an open card: `listLeast` pixels, where its
     // rows still hold on one line (the day's weather and its three choices, in
     // French); narrower, the card covers its right part (main.qml).
     readonly property real listLeast: 480
-    readonly property int halfFlow: Math.floor((viewsFlow.width - viewsFlow.spacing) / 2)
+    readonly property int halfFlow: Math.floor((head.row.width - head.row.spacing) / 2)
     // One kind, one category; "" for all. Kept between sessions, as the choices above.
     readonly property string kindFilter: page.shown && page.shown.view ? page.shown.view.filter.kind : ""
     readonly property string categoryFilter: page.shown && page.shown.view ? page.shown.view.filter.category : ""
@@ -314,27 +314,30 @@ Item {
             Layout.preferredWidth: columns.width
             spacing: 10
 
-            // The ways to see tasks: tabs across the page (Tabs.qml).
-            Tabs {
-                objectName: "taskModes"
-                name: page.sioul.text("ui-tasks")
+            // The page's head (PageHead.qml): the ways to see tasks as tabs across the
+            // page; under them Routines, then the filters, and the ⚙ last at the right,
+            // never on a line of its own; on a phone, the filters folded behind "Filters".
+            PageHead {
+                id: head
+
                 Layout.fillWidth: true
+                sioul: page.sioul
                 theme: page.theme
-                model: ["now", "day", "list", "board", "timeline", "search"].map(m => ({ id: m, text: page.sioul.text("task-mode-" + m) }))
-                current: page.mode
-                onChosen: id => page.mode = id
-            }
-            // Under them, Routines and the filters: on a second line when the
-            // window is too narrow for one, never past its edge.
-            Flow {
-                id: viewsFlow
-
-                Layout.fillWidth: true
-                spacing: 6
-
+                foldsFilters: page.window.compact === true
+                offersFilters: !page.searching
+                filtersSet: page.filtersSet
+                filtersName: "taskFilters"
+                tabs: Tabs {
+                    objectName: "taskModes"
+                    name: page.sioul.text("ui-tasks")
+                    Layout.fillWidth: true
+                    theme: page.theme
+                    model: ["now", "day", "list", "board", "timeline", "search"].map(m => ({ id: m, text: page.sioul.text("task-mode-" + m) }))
+                    current: page.mode
+                    onChosen: id => page.mode = id
+                }
                 // Routines: steps played one at a time; what they are, in its tip.
-                Button {
-                    flat: true
+                navigation: Button {
                     text: page.sioul.text("routines")
                     icon.name: "media-playback-start"
                     ToolTip.visible: hovered
@@ -343,24 +346,14 @@ Item {
                     Accessible.description: page.sioul.text("routines-tip")
                     onClicked: routinesDialog.now().show()
                 }
-                // On a phone: the three filters below, folded; how many are set, in its words.
-                Button {
-                    id: filtersButton
+                settings: SettingsButton {
+                    id: tasksSettings
 
-                    objectName: "taskFilters"
-                    visible: page.window.compact === true && !page.searching
-                    checkable: true
-                    checked: page.filtersShown
-                    flat: true
-                    text: page.sioul.textCounted("task-filters", page.filtersSet)
-                    icon.name: "view-filter"
-                    icon.color: page.filtersShown ? page.theme.accentText : page.theme.text
-                    onClicked: {
-                        page.filtersShown = !page.filtersShown
-                        // A click on it flips its own tick: it stays the fold's.
-                        filtersButton.checked = Qt.binding(() => page.filtersShown)
-                    }
+                    sioul: page.sioul
+                    theme: page.theme
+                    view: "tasks"
                 }
+
                 // The board and the timeline: one project, or all.
                 PlainComboBox {
                     readonly property var choices: [{ id: "", title: page.sioul.text("task-all-projects") }].concat(page.shown ? page.shown.projects : [])
@@ -399,9 +392,9 @@ Item {
                     objectName: "taskCategoryFilter"
                     visible: choices.length > 1 && !page.filtersFolded && !page.searching
                     // As wide as its longest choice ("Toutes les catégories" was cut),
-                    // within its line: on a phone, the line but the settings' button.
+                    // within its line: on a phone, the line but the agendas' filter.
                     implicitContentWidthPolicy: ComboBox.WidestText
-                    width: Math.min(Math.max(page.narrow ? page.halfFlow : 170, implicitWidth), page.narrow ? viewsFlow.width - tasksSettings.width - (tasksAgendas.visible ? tasksAgendas.width + viewsFlow.spacing : 0) - viewsFlow.spacing : 280)
+                    width: Math.min(Math.max(page.narrow ? page.halfFlow : 170, implicitWidth), page.narrow ? head.row.width - (tasksAgendas.visible ? tasksAgendas.width + head.row.spacing : 0) : 280)
                     model: choices.map(c => c === "" ? page.sioul.text("task-filter-any-category") : page.theme.plain(c))
                     currentIndex: Math.max(0, choices.findIndex(c => c.toLowerCase() === page.categoryFilter.toLowerCase()))
                     onActivated: index => page.sioul.filterTasks(page.kindFilter, choices[index])
@@ -418,13 +411,6 @@ Item {
                     shown: page.shown && page.shown.agendas ? (tasksAgendas.byHand && page.shown.agendas_full ? page.shown.agendas_full : page.shown.agendas) : ({ chosen: false, groups: [] })
                     narrow: page.narrow
                     iconOnly: true
-                }
-                SettingsButton {
-                    id: tasksSettings
-
-                    sioul: page.sioul
-                    theme: page.theme
-                    view: "tasks"
                 }
             }
 
@@ -1021,25 +1007,13 @@ Item {
                                     ToolTip.delay: 500
                                     onClicked: page.stopForToday()
                                 }
-                                // The day as a whole: the Day's tab, the Agenda's Day.
-                                Label {
+                                // The day as a whole: the Day's tab, the Agenda's Day; a link (Link.qml).
+                                Link {
                                     objectName: "nowDayInAgenda"
                                     Layout.alignment: Qt.AlignHCenter
+                                    theme: page.theme
                                     text: page.sioul.text("task-day-in-agenda")
-                                    textFormat: Text.PlainText
-                                    font.underline: dayLink.hovered
-                                    color: page.theme.muted
-                                    Accessible.role: Accessible.Link
-                                    Accessible.name: text
-
-                                    HoverHandler {
-                                        id: dayLink
-
-                                        cursorShape: Qt.PointingHandCursor
-                                    }
-                                    TapHandler {
-                                        onTapped: page.mode = "day"
-                                    }
+                                    onActivated: page.mode = "day"
                                 }
                             }
                         }

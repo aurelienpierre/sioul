@@ -72,7 +72,6 @@ Flow {
         flat: true
         text: row.sioul.textCounted("task-filters", row.setCount)
         icon.name: "view-filter"
-        icon.color: row.unfolded ? row.theme.accentText : row.theme.text
         onClicked: {
             row.unfolded = !row.unfolded
             // A click on it flips its own tick: it stays the fold's.

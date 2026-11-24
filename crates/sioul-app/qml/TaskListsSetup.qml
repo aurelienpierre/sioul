@@ -57,7 +57,7 @@ ColumnLayout {
     }
 
     objectName: "taskListsSetup"
-    spacing: 8
+    spacing: lists.theme.rowGap
     Component.onCompleted: lists.read()
 
     Connections {
@@ -84,7 +84,7 @@ ColumnLayout {
 
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: lists.theme.labelGap
 
                 Rectangle {
                     Layout.preferredWidth: 10
@@ -118,7 +118,7 @@ ColumnLayout {
             Label {
                 visible: (one.modelData.place || "") !== ""
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
+                Layout.leftMargin: lists.theme.indent
                 text: one.modelData.place || ""
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
@@ -128,14 +128,14 @@ ColumnLayout {
             Button {
                 objectName: "taskListRemove"
                 visible: one.modelData.server && one.modelData.server.server !== undefined && (one.own || one.modelData.server.server !== "local") && lists.removing !== one.modelData.id
-                Layout.leftMargin: 16
+                Layout.leftMargin: lists.theme.indent
                 text: lists.sioul.text(one.own ? "agenda-remove" : "agenda-stop-showing")
                 onClicked: lists.askRemoval(one.modelData.id)
             }
             ColumnLayout {
                 visible: lists.removing === one.modelData.id
                 Layout.fillWidth: true
-                Layout.leftMargin: 16
+                Layout.leftMargin: lists.theme.indent
                 spacing: 4
 
                 Label {
@@ -155,7 +155,7 @@ ColumnLayout {
                     color: lists.theme.muted
                 }
                 RowLayout {
-                    spacing: 8
+                    spacing: lists.theme.labelGap
 
                     Button {
                         objectName: "taskListRemoveConfirm"

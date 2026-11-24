@@ -514,6 +514,11 @@ ui-connecting = Connecting…
 ui-remove = Remove
 ui-remove-confirm = Remove “{ $id }”? Its password leaves the keyring; its mail stays on disk and on the server.
 ui-cancel = Cancel
+# A page's filters folded behind one button on a phone, with how many are set (PageHead.qml).
+ui-filters = { $n ->
+        [0] Filters
+       *[other] Filters ({ $n })
+    }
 ui-portal-name = Name
 ui-portal-url = Web address
 ui-add = Add
@@ -5881,6 +5886,10 @@ need-later-n = { $minutes } min later
 need-move-to = Move to
 need-move = Move
 need-unskip = Today after all
+# The interruption's main action: you stop now, as the meal, the nap or the night asks (Interruption.qml).
+need-stop-now = Stop now
+# Where you stopped, alone: the line kept, the dialog closed.
+stopped-keep = Keep this line
 stopped-note = Where I stopped…
 new-stopped = Where I stopped…
 need-gap = More than four hours between { $from } and { $to }.

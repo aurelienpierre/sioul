@@ -2,8 +2,8 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Mail's filter by topic (docs/topics.md, "Where topics show"), beside the
-// filter by area: a button saying which topic shows ("All topics" until one
-// is chosen) that unfolds the topics, one tap each. A topic is a way to
+// filter by area: a drop-down (DropDown.qml) saying which topic shows ("All
+// topics" until one is chosen) that unfolds the topics, one tap each. A topic is a way to
 // look at the one mailbox, never a place: nothing moves.
 
 pragma ComponentBehavior: Bound
@@ -47,14 +47,15 @@ Item {
         list.open()
     }
 
-    Button {
+    // A value chosen in a list: the window's one drop-down (DropDown.qml), the field's box and ⇕.
+    DropDown {
         id: button
 
         objectName: "topicFilter"
         anchors.fill: parent
-        flat: true
+        theme: filter.theme
         // Your own words: plain text all the same.
-        text: (filter.chosenTopic ? filter.theme.plain(filter.chosenTopic.name) : filter.sioul.text("topic-filter-all")) + "  ▾"
+        text: filter.chosenTopic ? filter.theme.plain(filter.chosenTopic.name) : filter.sioul.text("topic-filter-all")
         Accessible.name: filter.chosenTopic ? filter.sioul.textWith("topic-filter-name", "topic", filter.chosenTopic.name) : filter.sioul.text("topic-filter-all")
         onClicked: {
             if (list.opened)
