@@ -156,6 +156,8 @@ SafeDialog {
     // title, place, notes and repeat are its organizer's and are not offered;
     // your time around it, its costs and your reminder are.
     property bool withOthers: false
+    // An event of another person's agenda (`pim::EventView::theirs`): it reminds you of nothing, so no Remind.
+    property bool theirs: false
     // A meeting you organize (decision 7 of the event card): every field is
     // yours, and its guests, written through its own door.
     property bool organized: false
@@ -378,6 +380,7 @@ SafeDialog {
             dialog.hereOnly = found.here_only || ""
             dialog.stays = found.stays || ""
             dialog.withOthers = found.with_others === true
+            dialog.theirs = found.theirs === true
             dialog.organized = found.organized === true
             dialog.guests = found.guests || []
             dialog.around = Object.assign({ before: 0, after: 0 }, e.margins)
@@ -419,6 +422,7 @@ SafeDialog {
             dialog.hereOnly = ""
             dialog.stays = ""
             dialog.withOthers = false
+            dialog.theirs = false
             dialog.around = { before: 0, after: 0 }
             dialog.demands = { cognitive: null, emotional: null, anxiety: null, body: null, gain: null }
             dialog.remind = ""
@@ -1377,6 +1381,7 @@ SafeDialog {
                 // not this one, or so long before it and its time to get there. As
                 // usual, an event that leaves you free gets none: said so while Busy is off.
                 Label {
+                    visible: !dialog.theirs
                     Layout.maximumWidth: 160
                     text: dialog.sioul.text("event-remind")
                     wrapMode: Text.Wrap
@@ -1384,6 +1389,7 @@ SafeDialog {
                 }
                 PlainComboBox {
                     objectName: "eventRemind"
+                    visible: !dialog.theirs
                     Layout.fillWidth: true
                     textRole: "label"
                     model: dialog.reminds.map(c => ({ value: c.value, label: dialog.theme.plain(c.value === "" && !dialog.busy && (c.free || "") !== "" ? c.free : c.label) }))

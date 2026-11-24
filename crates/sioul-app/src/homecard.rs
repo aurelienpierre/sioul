@@ -2395,7 +2395,7 @@ mod tests {
         // Another person's agenda (a partner's appointments): never on the card, your day; an
         // invitation there you accepted is yours too. A child's and a shared one's stay.
         let mut theirs = events_of(&[
-            ("Client at the salon", "2026-10-06T14:00[Europe/Paris]", "2026-10-06T15:00[Europe/Paris]", false, None, false),
+            ("Lesson", "2026-10-06T14:00[Europe/Paris]", "2026-10-06T15:00[Europe/Paris]", false, None, false),
             ("Dinner together", "2026-10-06T20:00[Europe/Paris]", "2026-10-06T22:00[Europe/Paris]", false, None, false),
             ("Swimming", "2026-10-06T17:00[Europe/Paris]", "2026-10-06T18:00[Europe/Paris]", false, None, false),
             ("Club night", "2026-10-06T19:00[Europe/Paris]", "2026-10-06T20:00[Europe/Paris]", false, None, false),

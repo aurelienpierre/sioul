@@ -77,7 +77,7 @@ ColumnLayout {
         form.made(answer.place)
     }
 
-    spacing: 4
+    spacing: form.theme.labelGap
 
     Label {
         text: form.sioul.text("agenda-new-account")
@@ -102,7 +102,7 @@ ColumnLayout {
     Flow {
         visible: !form.eventsOnly
         Layout.fillWidth: true
-        spacing: 12
+        spacing: form.theme.gap
 
         CheckBox {
             id: newEvents
@@ -120,7 +120,7 @@ ColumnLayout {
     }
     Flow {
         Layout.fillWidth: true
-        spacing: 6
+        spacing: form.theme.labelGap
 
         Repeater {
             model: form.colours
@@ -173,7 +173,7 @@ ColumnLayout {
         id: newAreas
 
         Layout.fillWidth: true
-        spacing: 12
+        spacing: form.theme.gap
 
         CheckBox {
             id: newWork
@@ -213,20 +213,22 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: form.theme.warm
     }
+    // Cancel, then the main action, as every dialog's foot has them (docs/qt-quick.md, rule 15).
     RowLayout {
-        spacing: 8
+        Layout.alignment: Qt.AlignRight
+        spacing: form.theme.rowGap
 
         Button {
+            objectName: "agendaNewKeep"
+            text: form.sioul.text("ui-cancel")
+            onClicked: form.kept()
+        }
+        Button {
             objectName: "agendaNewMake"
+            highlighted: true
             enabled: newName.text.trim() !== "" && form.account !== null
             text: form.sioul.text("agenda-new-make")
             onClicked: form.make()
-        }
-        Button {
-            objectName: "agendaNewKeep"
-            flat: true
-            text: form.sioul.text("agenda-keep")
-            onClicked: form.kept()
         }
     }
 

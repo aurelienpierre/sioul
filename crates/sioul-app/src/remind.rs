@@ -204,6 +204,29 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
     serde_json::json!({ "line": line, "remind": remind_word(&event.remind), "writable": !calendar.read_only, "free": event.transparent }).to_string()
 }
 
+/// Said once on each device, at the first start of a Sioul that has them
+/// (review of 3346ff96, 6): the agendas said to be another person's no
+/// longer remind you (an older Sioul told their events), and, on a device
+/// that told reminders before, an event that leaves you free gets none by
+/// itself. Marked told in the state folder (`told-whose-reminds`), whatever
+/// there was to say.
+pub(crate) fn tell_once_since_whose(qt: &QtThread) {
+    let mark = sioul_core::config::state_dir().join("told-whose-reminds");
+    if mark.exists() {
+        return;
+    }
+    let told_before = reminders::told_dir().is_dir();
+    let names: Vec<String> = sioul_core::agendas::all(&load_config()).into_iter().filter(|a| a.events && a.whose.another_person()).map(|a| a.name).collect();
+    let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
+    let _ = std::fs::write(&mark, "");
+    let line = match (names.is_empty(), told_before) {
+        (false, _) => say("reminders-update-theirs", &[("agendas", names.join(", "))]),
+        (true, true) => say("reminders-update-free", &[]),
+        (true, false) => return,
+    };
+    crate::backend::set_status(qt, line);
+}
+
 /// An event's own reminder changed from its details, for every time it
 /// comes (`value`: "" as usual, "none", "15"): written into its file and
 /// sent, as its form saves it.
@@ -500,7 +523,7 @@ mod tests {
         let labels: Vec<&str> = offered.as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["As usual (15 minutes)", "Not this one", "5 minutes before", "10 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before"]);
         // As usual, an event that leaves you free gets none: said beside, for the form and the card.
-        assert_eq!(offered[0]["free"], "As usual: none, since this event leaves you free");
+        assert_eq!(offered[0]["free"], "As usual: none (it leaves you free)");
         // Another time, set elsewhere, kept among them; the usual time none.
         let other = choices_with(&sioul_core::i18n::Translator::new("fr"), 0, "20");
         let values: Vec<&str> = other.as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect();

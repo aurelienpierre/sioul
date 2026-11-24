@@ -556,6 +556,10 @@ struct EventView {
     /// A series ending after a number of times, some of them in pauses: how
     /// many take place (`series::count_words`); "" else.
     count_said: String,
+    /// An event of another person's agenda (`Whose::another_person`), no
+    /// meeting with others: it reminds you of nothing, so the editor offers
+    /// no Remind (review of 3346ff96, 7).
+    theirs: bool,
 }
 
 /// The conflicts among `events` (the next two weeks', those whose deletion
@@ -753,11 +757,12 @@ pub(crate) fn event(key: &str) -> String {
     let others = with_others(&text) && !organized;
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
     let guests = if others { Vec::new() } else { sioul_core::organizer::guests_of(&text) };
+    let theirs = !with_others(&text) && sioul_core::agendas::agenda_of(&calendar, &config).whose.another_person();
     edit_with_own(&path)
         .map(|edit| {
             // A series counted in times, some of them in pauses: how many take place, in plain words (F36).
             let count_said = sioul_core::series::count_words(&text, &sioul_core::zone::now(), tr());
-            json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests, count_said })
+            json(&EventView { edit, calendar: format!("{}/{}", calendar.account, calendar.id), calendar_name: calendar.label(&config, tr()), here_only: place, read_only: calendar.read_only, with_others: others, stays, organized, guests, count_said, theirs })
         })
         .unwrap_or_default()
 }

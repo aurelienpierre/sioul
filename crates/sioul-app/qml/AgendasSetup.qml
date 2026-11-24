@@ -55,7 +55,6 @@ ColumnLayout {
     // A calendar of busy blocks pressed: Agenda ⚙ ▸ Your availability, where it is kept, shown.
     signal availabilityAsked
 
-    readonly property var whoseChoices: ["yours", "child", "parent", "partner", "someone", "shared"]
     readonly property var areas: ["work", "admin", "leisure"]
 
     // Read again; `kept`, the same answer changes nothing (its rows, their open menus, stay).
@@ -141,6 +140,15 @@ ColumnLayout {
             next[id] = JSON.parse(answer || "{}")
             setup.sharing = next
         }
+    }
+
+    // "New agenda…" opened afresh, its role said (the window's pictures: someone else's, a name typed).
+    function askNew(whose, name) {
+        setup.subscribing = false
+        making.begin("", "")
+        making.whose = whose
+        making.name = name
+        setup.making = true
     }
 
     // "Subscribe to a calendar…": its form, opened afresh (also from Settings ▸ Hours, through AgendaPage's `askSubscribe`).

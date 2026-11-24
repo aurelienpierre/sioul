@@ -556,7 +556,8 @@ CardFrame {
         objectName: "eventCardRemind"
         visible: card.reminds.length > 0
         Layout.fillWidth: card.narrow
-        Layout.preferredWidth: card.narrow ? -1 : 260
+        // Wide enough for "As usual: none (…)" in French (review of 3346ff96, 12).
+        Layout.preferredWidth: card.narrow ? -1 : 340
         textRole: "label"
         model: card.reminds.map(c => ({ value: c.value, label: card.theme.plain(c.value === "" && card.reminder.free === true && (c.free || "") !== "" ? c.free : c.label) }))
         currentIndex: Math.max(0, card.reminds.findIndex(c => c.value === (card.reminder.remind || "")))
@@ -590,7 +591,8 @@ CardFrame {
         }
     }
     Label {
-        visible: busySwitch.visible
+        // Your rules for busy time never hold for another person's event: nothing said of them there.
+        visible: busySwitch.visible && card.event.another_persons !== true
         Layout.fillWidth: true
         // Why it is greyed, when its calendar is free as a whole (review B7); else what it does.
         text: card.there && (card.event.busy_why || "") !== "" ? card.event.busy_why : card.sioul.text(card.there && card.event.with_others === true ? "busy-with-others" : "busy-help")

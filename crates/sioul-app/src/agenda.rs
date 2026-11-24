@@ -298,8 +298,9 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         next.into_iter().collect()
     };
     agenda::mark_tasks(&mut found, &tasks_known(shared));
-    // Declined by you, as the agenda marks it: takes no leg (review of ab7daa4, later 15).
-    if found.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
+    // Declined by you, as the agenda marks it: takes no leg (review of ab7daa4, later 15); your
+    // answers in another person's agenda too (an invitation there you accepted is yours).
+    if found.iter().any(|e| e.other_person || e.attendees.iter().any(|a| a.answer == "declined")) {
         agenda::mark_declined(&mut found, &own());
     }
     let Some(o) = found.into_iter().next().filter(|o| !skipped.contains(&(path.clone(), o.start))) else { return "{}".into() };
@@ -330,12 +331,12 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
     // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
     let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
-    // Whose agenda it is, beside what brought it: "Sam's agenda · From Planity" (24 November 2026).
+    // Whose agenda it is, beside what brought it: "Kim's agenda · From Skolengo" (24 November 2026).
     // An agenda for its availability alone is titled by its own name already: nothing more.
     // A calendar named after them already ("Léa"): nothing more either.
     let whose = if (o.child || o.other_person) && !o.busy {
         let agenda = sioul_core::agendas::agenda_of(&calendar, &load_config());
-        let named = !agenda.person.trim().is_empty() && o.calendar.to_lowercase().contains(&agenda.person.trim().to_lowercase());
+        let named = names_person(&o.calendar, &agenda.person);
         if named { String::new() } else { agenda.whose_words(tr()) }
     } else {
         String::new()
@@ -388,10 +389,21 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // An event an extension brought (its UID's form alone says so): where it comes from.
         "brought_by": sioul_core::extensions::uid_mark(&o.uid).map(|m| crate::backend::say("extension-event-from", &[("name", sioul_core::extensions::category(&m.extension))])).unwrap_or_default(),
         "whose": whose,
+        // Another person's (`Occurrence::another_persons`): your rules for busy time never hold for it.
+        "another_persons": o.another_persons(),
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
     }))
+}
+
+/// Whether a calendar's name names `person` already, as whole words, case
+/// aside ("Léa", "Léa's school" for Léa; never "Samba" for Sam): its card then
+/// says no more of whose it is.
+fn names_person(calendar: &str, person: &str) -> bool {
+    let words = |text: &str| text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect::<Vec<_>>();
+    let (calendar, person) = (words(calendar), words(person));
+    !person.is_empty() && calendar.windows(person.len()).any(|w| w == person.as_slice())
 }
 
 /// One time of an event, read from its file when its panel opens: its notes,
@@ -1708,6 +1720,13 @@ pub(crate) fn asked(qt: &QtThread, shared: &Arc<Shared>) {
 pub(crate) mod tests {
     use super::*;
     use sioul_core::vdir::{self, Kind};
+
+    /// A calendar already named after its person: whole words alone (review of 3346ff96).
+    #[test]
+    fn a_calendar_names_its_person_by_whole_words() {
+        assert!(names_person("Léa", "Léa") && names_person("LÉA's school", "Léa") && names_person("Kim Lee: lessons", "kim lee"));
+        assert!(!names_person("Samba lessons", "Sam") && !names_person("Lessons", "") && !names_person("Lessons", "Kim"));
+    }
 
     /// Every file under `dir`, with its length and time: what a run wrote, compared.
     fn files(dir: &std::path::Path) -> Vec<(std::path::PathBuf, u64, Option<std::time::SystemTime>)> {

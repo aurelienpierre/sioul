@@ -46,7 +46,7 @@ ColumnLayout {
     // The roles that name one of your people (docs/persons.md).
     readonly property bool namesPerson: ["child", "partner", "parent", "someone"].indexOf(fields.whose) >= 0
 
-    spacing: 4
+    spacing: fields.theme.labelGap
 
     Label {
         text: fields.sioul.text("agenda-whose")
@@ -88,5 +88,15 @@ ColumnLayout {
         Accessible.name: placeholderText
         onEditingFinished: if (text.trim() !== fields.name)
             fields.nameGiven(text.trim())
+    }
+    // What another person's agenda does, said where it is chosen (review of 3346ff96, 6).
+    Label {
+        objectName: "agendaWhoseTheirs"
+        visible: ["partner", "parent", "someone"].indexOf(fields.whose) >= 0
+        Layout.fillWidth: true
+        text: fields.sioul.text("extension-agenda-theirs")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: fields.theme.muted
     }
 }

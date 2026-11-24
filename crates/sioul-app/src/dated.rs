@@ -21,7 +21,7 @@ use sioul_core::timeline;
 
 /// Each day's events as a letter's appointment is matched to them
 /// (`dated::letter_event`): its start, whether it is yours (a calendar you
-/// write, no meeting with others, neither a task's time block nor cancelled:
+/// write of your own, no meeting with others, neither a task's time block nor cancelled:
 /// review of part 4, later 1), and its file's text, read only for that day.
 pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> impl Fn(Date) -> Vec<EventSeen> + 'a {
     let zone = zone.clone();
@@ -29,7 +29,8 @@ pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> i
         occurrences
             .iter()
             .filter(|o| jiff::Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
-            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+            // Never another person's event (a co-worker's lesson that day): not yours to stand for it (review of 3346ff96, 8).
+            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && !o.theirs && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
             .collect()
     }
 }
@@ -327,6 +328,9 @@ mod tests {
         let marked = |events: &[Occurrence]| dated::of_letters(&letters, &[], &events_on(events, &zone), today, &zone, tr()).iter().any(|d| d.kind == Kind::LetterAppointment);
         assert!(marked(std::slice::from_ref(&block)), "a block is no event of yours");
         assert!(marked(std::slice::from_ref(&cancelled)), "nor one cancelled");
+        // Another person's at its time (a co-worker's lesson): never yours to stand for it (review of 3346ff96, 8).
+        let theirs = Occurrence { key: "/nowhere/lesson.ics".into(), uid: "lesson".into(), summary: "Lesson".into(), theirs: true, other_person: true, start: at("14:00"), end: at("15:00"), ..Occurrence::default() };
+        assert!(marked(std::slice::from_ref(&theirs)), "nor another person's");
         let doctor = Occurrence { cancelled: false, ..cancelled };
         assert!(!marked(&[block, doctor]), "an event of yours at its time stands for it");
     }

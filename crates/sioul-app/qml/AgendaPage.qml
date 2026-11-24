@@ -552,6 +552,17 @@ Item {
     }
 
     // For the window's images: one agenda's line opened in Agenda ⚙ ▸ Your agendas.
+    // For the window's pictures: "New agenda…" open, its role said (`AgendasSetup.askNew`); closed with "".
+    function openNewAgenda(whose, name) {
+        const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("agendasSetup")
+        if (setup === null)
+            return
+        if (whose === "")
+            setup.making = false
+        else
+            setup.askNew(whose, name)
+    }
+
     function openAgendaLine(id) {
         const setup = (page.narrow ? agendaSettingsNarrow : agendaSettings).part("agendasSetup")
         if (setup !== null)
