@@ -7,9 +7,8 @@
 // the door by their key ("needs", where every door to them leads: the
 // Porch's "Set my night", a meal's card, What reaches you, Health's ⚙)
 // shows the tab, the block under its own heading after the working hours
-// and the hours for your admin, before the days off; Health's ⚙ keeps a
-// line and a button that open them there. Made-up rows. Run by
-// tools/qml-test.sh.
+// and the hours for your admin, before the days off; Health's ⚙ says
+// nothing of them (their one place). Made-up rows. Run by tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -149,18 +148,14 @@ Item {
             compare(walk(page, i => i.visible && i.text === "needs-title-help", []).length, 1, "their sentence said once, by the block")
         }
 
-        // Health's ⚙: a line, and a button that closes it and opens them where they are.
-        function test_health_settings_lead_there() {
-            mock.opened = []
+        // Health's ⚙: nothing of them, neither set nor said to be elsewhere.
+        function test_health_settings_say_nothing_of_them() {
             const panel = createTemporaryObject(healthSettingsComponent, root)
             panel.open()
             tryCompare(panel, "opened", true)
             compare(walk(panel.contentItem, i => i instanceof NeedsSection, []).length, 0, "not set there")
-            const button = walk(panel.contentItem, i => i.objectName === "healthNeedsLink", [])[0]
-            verify(button && button.visible)
-            button.clicked()
-            compare(mock.opened, ["needs"])
-            tryCompare(panel, "visible", false)
+            compare(walk(panel.contentItem, i => i.objectName === "healthNeedsLink" || i.text === "needs-title", []).length, 0, "no line about them")
+            panel.close()
         }
     }
 }

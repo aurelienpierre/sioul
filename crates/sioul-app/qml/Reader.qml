@@ -96,7 +96,7 @@ Panel {
     // Flagged, as last done here: the server follows.
     property bool flagged: false
     // Why it is in its lane on the Porch, unfolded.
-    property bool reasonsShown: false
+    property alias reasonsShown: reasonsFold.open
     // Attachments stay folded until asked for.
     property bool attachmentsShown: false
     // The quoted history of an HTML message, folded.
@@ -837,28 +837,35 @@ Panel {
                     }
                 }
 
-                // Why it is where it is, on the Porch: folded, on request.
-                BareButton {
+                // Why it is where it is, on the Porch: folded, on request, made when unfolded (Fold.qml).
+                Fold {
+                    id: reasonsFold
+
+                    objectName: "reasonsFold"
                     visible: reader.item !== null && !!reader.item.reasons
-                    flat: true
-                    text: (reader.reasonsShown ? "▾  " : "▸  ") + reader.sioul.text("ui-reasons")
-                    onClicked: reader.reasonsShown = !reader.reasonsShown
-                }
-                Repeater {
-                    model: reader.reasonsShown && reader.item && reader.item.reasons ? reader.item.reasons : []
+                    Layout.fillWidth: true
+                    theme: reader.theme
+                    title: reader.sioul.text("ui-reasons")
 
-                    delegate: Label {
-                        id: reason
+                    ColumnLayout {
+                        spacing: 2
 
-                        required property string modelData
+                        Repeater {
+                            model: reader.item && reader.item.reasons ? reader.item.reasons : []
 
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 24
-                        text: "· " + reason.modelData
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: reader.theme.muted
-                        font.pixelSize: 13
+                            delegate: Label {
+                                id: reason
+
+                                required property string modelData
+
+                                Layout.fillWidth: true
+                                text: "· " + reason.modelData
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: reader.theme.muted
+                                font.pixelSize: 13
+                            }
+                        }
                     }
                 }
 

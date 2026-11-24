@@ -526,7 +526,7 @@ pub(crate) fn calendars() -> String {
     // Those that take events: a task list is the task views' (21 October 2026).
     let mut writable: Vec<Collection> = vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")).collect();
     // The one made for time blocks last: a new event goes elsewhere first (docs/tasks.md, "Pinned to a time");
-    // the one chosen in Settings ▸ Agenda first.
+    // the one chosen in Agenda ⚙ first.
     let default = agenda::default_calendar().map(|c| format!("{}/{}", c.account, c.id));
     writable.sort_by_key(|c| (default.as_deref() != Some(format!("{}/{}", c.account, c.id).as_str()), c.id == sioul_core::blocks::CALENDAR));
     let choices: Vec<CalendarChoice> = writable.into_iter().map(|c| CalendarChoice { id: format!("{}/{}", c.account, c.id), name: c.label(&config, tr()), color: c.color }).collect();
@@ -2967,8 +2967,12 @@ mod tests {
     }
 
     /// 21 October 2026: a calendar that holds no event yet is offered for a
-    /// new event like the others, and listed in Settings; only a read-only
-    /// one stays out of the chooser, listed there fixed, its row saying why.
+    /// new event like the others; only a read-only one stays out of the
+    /// chooser. Renaming and removing (24 November 2026): no row of calendars
+    /// in Agenda ⚙ (their line in Your agendas is their one place); the lists
+    /// that hold only tasks are Tasks ⚙'s own block (`task_lists`), shown once
+    /// there is one, which goes through `servers` as Your agendas does
+    /// (`servers::tests::a_list_of_tasks_alone_is_removed_as_an_agenda_is`).
     #[test]
     fn an_empty_calendar_is_offered_and_a_read_only_one_says_why() {
         // Writes Sioul's files where it reads them: never the person's own (review of 36002ea).
@@ -2988,15 +2992,10 @@ mod tests {
         vdir::create(Kind::Calendars, account, "Errands", None, &["VTODO"]).unwrap();
         let offered: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&calendars()).unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
         assert!(!offered.iter().any(|n| n.starts_with("Errands")), "a task list is never offered for an event: {offered:?}");
-        let rows = sioul_core::settings::for_view("agenda", &load_config(), tr(), &[], None);
-        let named = rows.iter().find(|s| s.key == "collections" && matches!(&s.value, sioul_core::config::SettingValue::Named(n) if n.iter().any(|v| v.id.contains(account)))).map(|s| match &s.value {
-            sioul_core::config::SettingValue::Named(n) => n.clone(),
-            _ => Vec::new(),
-        });
-        let named = named.expect("the calendars' setting");
-        let shared = named.iter().find(|v| v.id.ends_with(&format!("{account}/shared"))).expect("the read-only one listed");
-        assert_eq!(shared.locked, tr().text("collection-read-only", None));
-        assert!(named.iter().any(|v| v.id.ends_with(&format!("{account}/empty")) && v.locked.is_empty()));
+        let rows = |view: &str| sioul_core::settings::for_view(view, &load_config(), tr(), &[], None);
+        assert!(!rows("agenda").iter().chain(rows("tasks").iter()).any(|s| s.key == "collections"), "no row of calendars to rename or delete");
+        let lists = rows("tasks").into_iter().filter(|s| s.key == "task_lists").collect::<Vec<_>>();
+        assert_eq!(lists.iter().map(|s| s.kind).collect::<Vec<_>>(), [sioul_core::settings::Kind::TaskLists], "the lists of tasks alone, Tasks ⚙'s own block, once there is one");
         let _ = std::fs::remove_dir_all(Kind::Calendars.root().join(account));
         let stopped = sync_line(&Err(SyncError::NoPassword));
         assert!(stopped.starts_with("calendars: the account's sync stopped: ") && stopped.contains("waits"), "{stopped}");

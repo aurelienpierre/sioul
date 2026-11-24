@@ -366,23 +366,36 @@ FocusScope {
                 Layout.fillWidth: true
             }
             // The drawing or the outline: the same things, the keys on the same one.
+            // One choice of two (`autoExclusive`: a ✓ on the one shown); both bindings given back after a click.
             Button {
+                id: drawingChoice
+
                 objectName: "chainDrawing"
-                flat: true
                 checkable: true
+                autoExclusive: true
                 checked: !page.outlineShown
                 focusPolicy: Qt.NoFocus
                 text: page.sioul.text("chain-drawing")
-                onClicked: page.outlineShown = false
+                onClicked: {
+                    page.outlineShown = false
+                    drawingChoice.checked = Qt.binding(() => !page.outlineShown)
+                    outlineChoice.checked = Qt.binding(() => page.outlineShown)
+                }
             }
             Button {
+                id: outlineChoice
+
                 objectName: "chainOutline"
-                flat: true
                 checkable: true
+                autoExclusive: true
                 checked: page.outlineShown
                 focusPolicy: Qt.NoFocus
                 text: page.sioul.text("chain-outline")
-                onClicked: page.outlineShown = true
+                onClicked: {
+                    page.outlineShown = true
+                    drawingChoice.checked = Qt.binding(() => !page.outlineShown)
+                    outlineChoice.checked = Qt.binding(() => page.outlineShown)
+                }
             }
             Button {
                 visible: !page.outlineShown

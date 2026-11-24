@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // One setting: its name, the control that changes it, and a sentence on what
-// it does. Used in a page's settings panel and inside a Porch lane's "?".
+// it does. Used in a page's settings panel, Settings' tabs and a few cards.
 // Each kind's control is made for a setting of that kind only (a Loader
 // each): with every kind's controls in each row, hidden, the Porch's settings
 // panel alone took some 18 MB, and each page has its panel.
@@ -42,8 +42,10 @@ ColumnLayout {
     property string vaultState: ""
     // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
     signal unlockAsked()
-    // A link's button pressed: the panel it is in closes, its place shown (SettingsPanel.qml).
-    signal followed()
+
+    // Nothing drawn at all: the row that leaves the lists of the mail you called spam while
+    // there are none (its panel then shows no frame for it, SettingsPanel.qml).
+    readonly property bool blank: field.setting.kind === "leavespam" && !(leaveSpam.item !== null && leaveSpam.item.found.count > 0)
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -54,7 +56,7 @@ ColumnLayout {
 
     Label {
         // A block under a heading of its own (the panel's Section) says no title again.
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches" && field.setting.kind !== "mapsearch"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -72,41 +74,6 @@ ColumnLayout {
         wrapMode: Text.Wrap
         lineHeight: 1.25
         color: field.theme.text
-    }
-
-    // Nothing to change here: a sentence, and a button to where it is
-    // changed (the automatic senders' words, from the Porch's Filed lane).
-    Loader {
-        active: field.setting.kind === "link"
-        visible: active
-        Layout.fillWidth: true
-
-        sourceComponent: Component {
-            ColumnLayout {
-                spacing: 2
-
-                Label {
-                    Layout.fillWidth: true
-                    text: field.setting.kind === "link" ? field.setting.help : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    lineHeight: 1.25
-                    color: field.theme.text
-                }
-                Button {
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    flat: true
-                    text: field.theme.plain(field.setting.label)
-                    icon.name: "go-next"
-                    icon.color: field.theme.text
-                    // The window shows it, as a reminder's "Open" does (main.qml, openThing).
-                    onClicked: {
-                        field.followed()
-                        field.sioul.reminderOpened(String(field.setting.value), "", "")
-                    }
-                }
-            }
-        }
     }
 
     // The Bitwarden vault as it is now on this device, Unlock while it is
@@ -317,6 +284,8 @@ ColumnLayout {
     // Leaving the lists of the mail you called spam (LeaveSpam.qml): a row when there are
     // some, and with no list left yet the section's title, which the panel then shows none of.
     Loader {
+        id: leaveSpam
+
         active: field.setting.kind === "leavespam"
         visible: active && item !== null && item.found.count > 0
         Layout.fillWidth: true
@@ -402,6 +371,20 @@ ColumnLayout {
                 theme: field.theme
                 about: field.setting.help
                 onAvailabilityAsked: field.goTo("availability")
+            }
+        }
+    }
+    // The lists that hold only tasks (TaskListsSetup.qml), Tasks ⚙'s own block: each renamed or
+    // removed there, as Your agendas did it before (24 November 2026).
+    Loader {
+        active: field.setting.kind === "tasklists"
+        visible: active
+        Layout.fillWidth: true
+
+        sourceComponent: Component {
+            TaskListsSetup {
+                sioul: field.sioul
+                theme: field.theme
             }
         }
     }
@@ -1053,7 +1036,7 @@ ColumnLayout {
     // Names, each renamed in place or taken away: kinds of task (new ones
     // added below), categories (taken off every task, after a second word).
     Loader {
-        active: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections"
+        active: field.setting.kind === "kinds" || field.setting.kind === "categories"
         visible: active
         Layout.fillWidth: true
 
@@ -1062,7 +1045,7 @@ ColumnLayout {
                 spacing: 2
 
                 Repeater {
-                    model: field.setting.kind === "kinds" || field.setting.kind === "categories" || field.setting.kind === "collections" ? field.setting.value : []
+                    model: field.setting.kind === "kinds" || field.setting.kind === "categories" ? field.setting.value : []
 
                     delegate: RowLayout {
                         id: named
@@ -1076,7 +1059,7 @@ ColumnLayout {
                         TextField {
                             Layout.fillWidth: true
                             text: named.modelData.label
-                            // Google's calendars change on its own pages only: greyed, with why.
+                            // A name that cannot change (its `locked`, said): greyed, with why.
                             enabled: !named.modelData.locked
                             ToolTip.visible: !enabled && hovered
                             ToolTip.text: field.theme.plain(named.modelData.locked || "")
@@ -1108,7 +1091,7 @@ ColumnLayout {
                         }
                         Button {
                             visible: named.asking
-                            text: field.sioul.text(field.setting.kind === "collections" ? "set-collections-remove" : "set-task-categories-remove")
+                            text: field.sioul.text("set-task-categories-remove")
                             onClicked: field.save(field.setting.key, { from: named.modelData.id, to: "" }, field.setting.value)
                         }
                         Button {
@@ -1251,10 +1234,6 @@ ColumnLayout {
                     Layout.topMargin: 8
                     sioul: field.sioul
                     theme: field.theme
-                    onSubscribeAsked: {
-                        field.followed()
-                        field.sioul.reminderOpened("settings:agendas.subscribe", "", "")
-                    }
                 }
             }
         }
@@ -1551,7 +1530,7 @@ ColumnLayout {
 
     Label {
         // The blocks say their sentence first themselves.
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "mapsearch"
+        visible: text !== "" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

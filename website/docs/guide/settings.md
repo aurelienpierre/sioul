@@ -11,7 +11,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 The Settings page has a tab for each of the sections below, from **Display** to **AI agents**, across the top of the page. What sets a phone up is on its card in **Devices**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
 
 <figure markdown="span">
-  [![Settings on a computer, on its first tab: across the top, the tabs Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents; under Display, "Language and appearance" with Language, Colours, Show the places' names beside their icons and Show passwords as you type, each with its sentence; then "This device" and What this device is.](../assets/screens/settings-tabs.png){ loading=lazy }](../assets/screens/settings-tabs.png "Open the picture at full size")
+  [![Settings on a computer, on its first tab: across the top, the tabs Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents; under Display, "Language and appearance" with Language, Colours, Show the places' names beside their icons and Show passwords as you type, each with its sentence; then "How text reads" with Font, Size and Line spacing.](../assets/screens/settings-tabs.png){ loading=lazy }](../assets/screens/settings-tabs.png "Open the picture at full size")
   <figcaption>A tab for each section, across the top.</figcaption>
 </figure>
 
@@ -35,8 +35,8 @@ On a phone, and in a window as narrow, Settings opens on the list of its section
 - **Colours**: light, dark, or as the system has them. As the system's, Sioul turns dark or light with it, at once, its icons too (Windows 10's dark mode included); with high contrast on, by the lightness of the system's own colours.
 - **Show the places' names beside their icons**: the places on the left of the window show their names beside their icons, in a wider column, for whoever reads words more easily than icons. Without it, their icons alone; each one's name shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen. It travels with your settings to your other devices, when you [share them](sharing.md). The button at the left end of the title bar, over the places, or ++f9++, changes it too. The drawer that ☰ opens on a phone always shows their names.
 - **Show passwords as you type**: every password, passphrase and key field shows what you type from the start, on this device. Without it, the eye at the end of each field shows or hides what you typed, at any time.
+- **Font**, **Size**, **Line spacing**, under **How text reads**: how long text reads on this screen: notes, mail, a task's notes, a message opened on the Porch. Every page with long text follows them, and they are set here alone. This device only.
 - The sites' colours, **Colours for this screen** and **Calmer colours on sites**, are the Sites page's own, behind its ⚙: only the sites follow them ([Sites](sites.md#colours)).
-- **What this device is**: a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer. This device only. On a computer it is in this tab, under **This device**; on Android, at the top of [Devices](#devices), under the same heading. On every device, the button **What this device is**, on this device's card in Devices, opens it there too.
 - **Details on the home screen** (on Android): Sioul's cards on the home screen name what they show: a dose due, a code you just asked a site for, your reminders, a call declined, the next step's title; the latest messages on the Porch, with their sender, subject and first line; the coming events of your calendars, with their titles, and the dates asked of you ([First steps](first-steps.md#on-a-phone)). Turned off, they name nothing: the date, the weather and what now is for, then that a code, a reminder or mail waits, the events' times without their titles, each date by its kind alone, and that a next step waits: for a device whose home screen others see. This device only.
 
 ## Hours
@@ -46,6 +46,7 @@ On a phone, and in a window as narrow, Settings opens on the list of its section
   <figcaption>Two weeks: work, your admin.</figcaption>
 </figure>
 
+- **Time zone**, first: **Follow this device** at first (its zone named): the agenda, the plan, the reminders, the home screen's card and today itself follow the zone the device is in, and follow it when it changes (a phone landing elsewhere, a computer's zone changed) within a minute, without restarting. Or **Another time zone…**, found by typing part of its name: for a computer whose clock stays at home while you travel, or to see your days where you are going. An event never moves: only how its time reads changes. This setting stays on this device. Health keeps the system's clock, as its dose alarms do.
 - **Working hours**: on these days and hours, work can reach you. Outside them, work rests.
 - **Hours for your admin**: your own admin comes forward then: offices, bills, letters, health errands.
 - **Meals, rest and sleep**, under their own heading: your usual meals, naps and night, the alarm at waking, the notice before each and how far **Later** moves one ([Meals, rest and sleep](health.md#meals-rest-and-sleep)). Every page follows them: what now is for, the plan, what reaches you. A day that differs is changed on the Health page, that day only. Leisure is every other time, neither work nor admin: there is nothing to set for it.
@@ -75,7 +76,7 @@ When each reminder may come, and new mail, is in [What reaches you](#what-reache
 
 ## Pauses
 
-Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **What comes during a pause**, which opens What reaches you on **What comes when**; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Moments**, **In Free time**. See [Pauses](pauses.md).
+Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Moments**, **In Free time**. See [Pauses](pauses.md).
 
 ## A phone's card {#this-phone}
 
@@ -95,7 +96,7 @@ What sets a phone up is on its own card in [Devices](#devices), under its **Deta
 
 ## Sharing {#your-folder-and-sharing}
 
-The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Once they have moved, a line counts Sioul's old files still in your notes folder, with **Take them out**.
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Once they have moved, a line counts Sioul's old files still in your notes folder, with **Take them out**.
 
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).
@@ -107,7 +108,7 @@ Every device you share with, this one first, each on a short card; in a wide win
 - **What it is** and how it is **now**, as each device says them; unless it is in use, when it was **last opened**, under it.
 - **For**: **Work**, **Your admin**, **Leisure**, any of them together; nothing ticked, everything comes there. You can say it of any device, from any device. It travels with your settings, to each device that shares **Settings and accounts**. Each device then brings forward only what it is for, at the hours for it.
 - On this phone, while Android has not given an access, a line counts them, with **What Android must allow**, which opens them.
-- Under **Details**: **Rename…**, a name of your own for the device, which travels with your settings (left empty, the name its system gives it comes back); on this device's own card, **What this device is**, which changes what it is ([Display](#display)); when it **last opened** (while in use), when it **last shared**, its **Sioul**; **Shares**, the parts the device shares (a part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing), which **Change what travels from this device…** opens); in a narrow window, what comes forward on it at each time; a phone's own sections, its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)); last, for another device, **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**.
+- Under **Details**: **Rename…**, a name of your own for the device, which travels with your settings (left empty, the name its system gives it comes back); on this device's own card, **What this device is**, its one place: a phone, a tablet or a computer, as the system says unless you choose. A phone is carried: your other devices call it "the phone", and only the events' reminders come there. A tablet, like a computer, also reminds you of dates, waits, payments, papers and contracts, and your other devices call it "the tablet". The window's layout follows its size whatever you choose: a tablet held sideways gets a computer's layout, and narrowed in split screen, a phone's. Unless you choose, Android under 600 dp wide is a phone, Android from 600 dp a tablet, and any other system a computer; this device only; when it **last opened** (while in use), when it **last shared**, its **Sioul**; **Shares**, the parts the device shares (a part is switched on the device itself; this device's own are in [Sharing](#your-folder-and-sharing), which **Change what travels from this device…** opens); in a narrow window, what comes forward on it at each time; a phone's own sections, its **Calls**, and on the phone itself what Android must allow and what sets it up ([A phone's card](#this-phone)); last, for another device, **Count it again**, **Forget this device**, **Forget it now** and **Forget it and remove its files…**.
 - **What comes forward, and when**, under the devices: for each device, what comes at each time your week has (work, admin time, leisure, meals, sleep). Press a cell to change it; **As its areas say** puts it back. One sentence says what this device brings now ([What each device is for](hours.md#what-each-device-is-for)).
 
 While this device does not share, it is the only one listed. See [Your devices](sharing.md#your-devices).
@@ -195,11 +196,10 @@ The extensions are unofficial: a service can change and stop one. [The developer
 
 What an AI agent you connect with `sioul mcp` may use. The tab says first what holds for all of them: what an agent reads goes to the provider of its model; it never sends, deletes or pays anything, and never sees a password, a code or a whole account number.
 
-- **Things in no project**: the Porch's other mail, the tasks and notes of no project, the agenda, contacts, the phone's messages and calls, papers, contracts, and the budgets no project uses. Open unless you close it; closed, agents see only the projects you open below.
+- **Things in no project**: the Porch's other mail, the tasks and notes of no project, the agenda, contacts, the phone's messages and calls, papers, contracts, and the budgets no project uses. Open unless you close it; closed, agents see only the projects you open, each on its page ([Projects](projects.md)), with nothing to set here for them.
 - **Texts**: off unless you turn it on, as texts carry other people's words.
 - **The spam filter's tools**: an agent may run, test and judge your own spam filter, on computers. On unless you turn it off.
 - **Work and school Microsoft accounts**, shown when you have one: their mail stays closed to agents unless you open it here.
-- **Projects open to AI agents**: each project with its switch, closed to agents until you open it, here or on its page.
 
 See [Using an AI agent](ai-agent.md#choosing-what-an-agent-sees).
 
@@ -209,22 +209,22 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 
 | Page | Behind its ⚙ |
 |---|---|
-| [Porch](porch.md#the-porchs-settings) | the projects shown there, the calls your phones declined, how a message reads, how mail is sorted |
-| [Mail](mail.md#settings) | by conversation, how often folders are fetched, your filters, your own spam filter, whether saying Spam also leaves a list, mail's topics, how a message reads, the lists you left |
-| [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists, how long a task without an estimate counts, where new tasks go, where time blocks go and their alarm, the reminder when a wait is over, what a day holds, what is work and what is yours, GitHub |
-| [Agenda](agenda.md#the-agenda-settings) | your agendas and what each is, your availability, the conflicts compared, the calendars to rename or delete, where new events go, the hour the day opens on, the time kept between two events, how long a new event lasts, the reminder before an event, addresses suggested as you type, the time zone shown |
+| [Porch](porch.md#the-porchs-settings) | the projects shown there, the calls your phones declined, how mail is sorted and the senders you know |
+| [Mail](mail.md#settings) | by conversation, your filters, your own spam filter, whether saying Spam also leaves a list, mail's topics, the lists you left |
+| [Tasks](tasks.md#the-tasks-settings) | office hours, kinds, categories, task lists (those that take no events: a calendar that takes tasks too is renamed with the calendars), how long a task without an estimate counts, where new tasks go, where time blocks go and their alarm, the reminder when a wait is over, what a day holds, what is work and what is yours, GitHub |
+| [Agenda](agenda.md#the-agenda-settings) | your agendas and what each is (each calendar renamed or removed on its line), your availability, the conflicts compared, where new events go, the hour the day opens on, the time kept between two events, how long a new event lasts, the reminder before an event, addresses suggested as you type |
 | [Budgets](budgets.md#the-bank-watch) | the reminder before a planned payment |
 | [Contacts](contacts.md#the-contacts-settings) | address books, the changes made to many contacts at once, the map, the country of phone numbers written without one |
 | [Notes](notes.md#your-notes-folder) | the notes folder, where new notes go |
 | [Papers](papers.md#where-papers-live) | the papers' folder |
 | [Letters](papers.md#setting-it-up) | the letters' folder, where scans arrive |
 | [Texts](texts.md#pictures-and-files) | the multimedia messages sent from here, on a device without telephony |
-| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager); none on a phone, whose Sites page opens each site in the browser |
-| [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
+| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours (your Bitwarden account is in [Accounts](accounts.md#your-password-manager) alone); none on a phone, whose Sites page opens each site in the browser |
+| [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.
 
-Each address's own settings are on its card in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in the ⚙ of the pages where messages are read, Mail and the Porch, and behind **Aa** in Notes: one setting, shown where it is used.
+Each address's own settings, and how often every address is fetched, are in [Accounts](accounts.md#a-mail-address). How long text reads (the font, its size and the space between lines) is in [Display](#display), and the time zone in [Hours](#hours): each setting has one place.
 
 ### Your filters
 
@@ -238,7 +238,7 @@ In the Mail page's ⚙, under **Your own spam filter**: what it does with each o
 
 When you [share between your devices](sharing.md), your settings go with the part **Settings and accounts**, sealed like everything there. A setting changed on two devices keeps the later change, setting by setting. What you say of each device in [Devices](#devices), its name and what it is for, travels with them, so that you can say it once, from the device in your hand.
 
-What stays on each device: where its folders are (the notes folder, the papers' and the letters' folders, where scans arrive), whether Sioul's lists have moved out of its notes folder, how text reads on its screen (**Aa**), the time zone it shows (**Agenda ▸ Time zone**), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, whether its own spam filter trains there (**Train here**) and on which networks it downloads, **Keep this phone in step in the background**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
+What stays on each device: where its folders are (the notes folder, the papers' and the letters' folders, where scans arrive), whether Sioul's lists have moved out of its notes folder, how text reads on its screen (**How text reads**, in Display), the time zone it shows (**Time zone**, in Hours), **Show passwords as you type**, the **Details on the home screen** on Android, **What this device is**, whether its own spam filter trains there (**Train here**) and on which networks it downloads, **Keep this phone in step in the background**, and how its pages were left. Passwords, keys and tokens never travel: each device keeps its own in its keyring.
 
 ## Where settings are kept
 

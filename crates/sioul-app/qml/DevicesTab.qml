@@ -8,7 +8,7 @@
 // it is, how it is now (in use, or when it was last opened), and what it is
 // for (three switches, nothing ticked being everything); on this phone, one
 // line more while Android has not given an access, with its door. The rest
-// is one step away, under the card's Details (CardFold.qml), closed until
+// is one step away, under the card's Details (Fold.qml), closed until
 // opened at every width, and left as it was on this device (`viewFlag`,
 // never shared): Rename… (yours when you gave one) and What this device is
 // (as in Settings ▸ This device); when it last opened (while in use), last
@@ -581,7 +581,7 @@ ColumnLayout {
                 }
 
                 // The rest, one step away: closed until opened, left as it was on this device.
-                CardFold {
+                Fold {
                     id: details
 
                     objectName: "deviceDetails"

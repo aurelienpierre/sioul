@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! The time zone Sioul shows and enters times in, and decides "today" by
-//! (Settings ▸ Agenda ▸ Time zone, `agenda.time_zone`, this device's own):
+//! (Settings ▸ Hours ▸ Time zone, `agenda.time_zone`, this device's own):
 //! this device's zone, followed as it changes ("Follow this device", the
 //! default), else one chosen by hand from the time zone database, for a
 //! computer whose clock stays at home while you travel. Every view, the plan,
@@ -210,7 +210,7 @@ pub fn now() -> Zoned {
     Timestamp::now().to_zoned(current())
 }
 
-/// The setting changed here (Settings ▸ Agenda): read again at the next ask.
+/// The setting changed here (Settings ▸ Hours): read again at the next ask.
 pub fn forget() {
     *KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
 }

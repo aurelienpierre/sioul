@@ -80,10 +80,9 @@ pub struct LaneView {
     pub counted: bool,
     /// What the lane holds, in one short line, shown under its title.
     pub about: String,
-    /// How mail lands here, sentence by sentence, behind the lane's "?".
+    /// How mail lands here, sentence by sentence, behind the lane's "?": what
+    /// changes it said, never edited there (the senders you know are Porch ⚙'s).
     pub rules: Vec<String>,
-    /// The settings that change it, by page name (`settings::for_view`).
-    pub settings: String,
     pub items: Vec<ItemView>,
 }
 
@@ -170,9 +169,8 @@ pub fn porch(items: &[Triaged], config: &Config, store: Option<&ProjectStore>, t
             // A folded lane opens by itself when it holds mail of an account ranked above; hostile mail never does.
             let folded = folded && (lane == Lane::Hostile || !ranked.iter().any(|t| t.priority == Priority::Above));
             rules.push(order.clone());
-            let settings = format!("lane:{key}");
             let items = ranked.into_iter().map(|t| item_view(t, store, tr, config, &key)).collect();
-            LaneView { key, title, folded, counted, about, rules, settings, items }
+            LaneView { key, title, folded, counted, about, rules, items }
         })
         .filter(|l| !l.items.is_empty())
         .collect();
@@ -213,6 +211,13 @@ impl LaneInfo {
             }
     }
 }
+
+/// The lanes' rules that say where another page's setting is (an address's
+/// shield and rank in Accounts, a project's routes in Projects, who is
+/// blocked, what the spam filter does with each verdict): said in the lane's
+/// help, by the mail it explains, never in the Porch's settings, which hold
+/// only what they set (one canonical place per setting, 24 November 2026).
+pub const RULES_ELSEWHERE: &[&str] = &["rule-where-shield", "rule-where-rank", "rule-where-routes", "rule-where-blocked", "rule-review-where", "rule-low-none"];
 
 /// Every lane mail can land in, in the order the Porch shows them (the
 /// Porch's own sections come between: docs/porch.md): projects, public

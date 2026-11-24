@@ -65,9 +65,6 @@ ColumnLayout {
     // Where it was pressed: "" in the list of the devices that no longer count, "leaving" in what waits to leave the server.
     property string removingAt: ""
 
-    // The tab of your devices asked for (ParametersPage.qml shows it).
-    signal devicesAsked
-
     function askRemoval(id, at) {
         panel.removal = JSON.parse(panel.sioul.deviceFiles(id) || "{}")
         panel.removing = id
@@ -183,7 +180,7 @@ ColumnLayout {
         font.pixelSize: 13
         color: panel.theme.muted
     }
-    // The notes folder, where notes and papers travel from: the Notes page's ⚙ (its row, by its key).
+    // The notes folder, where notes and papers travel from: said here, set on the Notes page alone.
     Label {
         objectName: "shareNotesFolder"
         readonly property var folder: panel.sioul.notesFolder ? JSON.parse(panel.sioul.notesFolder) : ({ state: "ready", path: "" })
@@ -194,15 +191,6 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: panel.theme.text
-    }
-    Button {
-        objectName: "shareNotesFolderOpen"
-        implicitWidth: implicitContentWidth + leftPadding + rightPadding
-        flat: true
-        icon.name: "go-next"
-        icon.color: panel.theme.text
-        text: panel.sioul.text("share-notes-folder-open")
-        onClicked: panel.sioul.reminderOpened("settings:case_store", "", "")
     }
     // Where Sioul keeps its own lists (docs/notes-folder.md, "What lives where"): in the notes folder
     // until this device moved them, then in its own folder; the window of the move from here at any time.
@@ -587,26 +575,9 @@ ColumnLayout {
             onClicked: panel.stopping = false
         }
     }
-    // Your devices have a tab of their own (DevicesTab.qml; docs/database.md,
-    // "Devices"): what each is, when it last shared, what it is for, and
-    // forgetting one. Here, one line that leads there.
-    Label {
-        visible: panel.status.on
-        Layout.topMargin: 12
-        Layout.fillWidth: true
-        text: panel.sioul.text("share-devices-moved")
-        wrapMode: Text.Wrap
-        color: panel.theme.text
-    }
-    Button {
-        objectName: "shareToDevices"
-        visible: panel.status.on
-        flat: true
-        text: panel.sioul.text("share-devices-open")
-        icon.name: "go-next"
-        icon.color: panel.theme.text
-        onClicked: panel.devicesAsked()
-    }
+    // Your devices have a tab of their own, the next one (DevicesTab.qml;
+    // docs/database.md, "Devices"): what each is, when it last shared, what
+    // it is for, and forgetting one. Nothing here says so again.
     // The devices that no longer count here (they left, you forgot them,
     // another replaces them) whose files are still in the folder: each with
     // "Remove its files".

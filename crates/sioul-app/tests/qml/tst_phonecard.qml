@@ -430,7 +430,7 @@ Item {
             verify(named("callsProfile-personal") === null, "Calls folded, made once opened")
             // This device's web view, in one line (siteview.rs).
             verify(showing(named("webviewLine")) && named("webviewLine").text.indexOf("142.0.7444.90") > 0 && within(named("webviewLine")), "the web view's line")
-            verify(["apps", "messages", "texts", "dnd"].every(b => named("block-" + b).item === null), "the tab's blocks made only once unfolded")
+            verify(["apps", "messages", "texts", "dnd"].every(b => named("block-" + b) === null || named("block-" + b).item === null), "the tab's blocks made only once unfolded")
             // Calls unfolded: the rows, each opening its four choices.
             press(named("foldCalls"))
             wait(20)

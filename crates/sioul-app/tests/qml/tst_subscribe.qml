@@ -388,7 +388,8 @@ Item {
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
 
-        // A calendar of school holidays: its kind, the switch of days off, after class.
+        // A calendar of school holidays: its kind and after class; whether its days count as days
+        // off is Settings ▸ Hours' alone (24 November 2026), so no switch of it here.
         function test_a_holidays_calendar_says_its_kind() {
             const setup = createTemporaryObject(setupComponent, root)
             setup.toggle("subscribed/zone-a")
@@ -396,10 +397,7 @@ Item {
             compare(kind.currentIndex, 2)
             const after = root.named(setup, "subscriptionAfterClass").find(b => b.visible)
             verify(after.checked)
-            const daysOff = root.named(setup, "subscriptionDaysOff").find(b => b.visible)
-            verify(!daysOff.checked)
-            mouseClick(daysOff)
-            compare(mock.calls[mock.calls.length - 1], ["field", "zone-a", "days_off", "true"])
+            compare(root.named(setup, "subscriptionDaysOff").filter(b => b.visible).length, 0, "the days off: Settings ▸ Hours' alone")
             compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
         }
 

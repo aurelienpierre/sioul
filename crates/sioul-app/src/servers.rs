@@ -175,27 +175,41 @@ pub(crate) fn make(qt: &QtThread, shared: &Arc<Shared>, text: &str) -> Result<St
 
 /// An agenda renamed here, sent by the next sync; with Undo.
 pub(crate) fn rename(qt: &QtThread, shared: &Arc<Shared>, id: &str, name: &str) -> String {
-    let Some((collection, agenda, _)) = find(id) else { return tr().text("agenda-gone", None) };
-    if !own(&agenda, &collection) {
-        return tr().text("agenda-not-yours-to-change", None);
-    }
-    let was = collection.name.clone();
-    if let Err(e) = vdir::rename_collection(&collection, name) {
-        return e;
-    }
+    let (collection, was) = match renamed(id, name) {
+        Ok(done) => done,
+        Err(e) => return e,
+    };
     crate::pim::nudge(shared, &collection.account);
     crate::agenda::show_agenda(qt, shared);
     let id = id.to_string();
-    crate::mail::offer_back(qt, shared, say("agenda-renamed", &[("name", name.trim().to_string())]), move |qt, shared| match find(&id) {
-        Some((collection, _, _)) => {
-            let back = vdir::rename_collection(&collection, &was).err().unwrap_or_default();
+    crate::mail::offer_back(qt, shared, say("agenda-renamed", &[("name", name.trim().to_string())]), move |qt, shared| match named_back(&id, &was) {
+        Ok(collection) => {
             crate::pim::nudge(shared, &collection.account);
             crate::agenda::show_agenda(qt, shared);
-            back
+            String::new()
         }
-        None => tr().text("undo-too-late", None),
+        Err(e) => e,
     });
     String::new()
+}
+
+/// `rename`'s change itself: yours only; the collection and the name it had,
+/// for its Undo.
+fn renamed(id: &str, name: &str) -> Result<(Collection, String), String> {
+    let Some((collection, agenda, _)) = find(id) else { return Err(tr().text("agenda-gone", None)) };
+    if !own(&agenda, &collection) {
+        return Err(tr().text("agenda-not-yours-to-change", None));
+    }
+    let was = collection.name.clone();
+    vdir::rename_collection(&collection, name)?;
+    Ok((collection, was))
+}
+
+/// `rename`'s Undo: the name it had, given back (sent by the next sync too).
+fn named_back(id: &str, was: &str) -> Result<Collection, String> {
+    let Some((collection, _, _)) = find(id) else { return Err(tr().text("undo-too-late", None)) };
+    vdir::rename_collection(&collection, was)?;
+    Ok(collection)
 }
 
 /// An agenda's colour changed here ("#rrggbb"), sent by the next sync; with Undo.
@@ -809,6 +823,58 @@ mod tests {
         vdir::stop_showing(&sams_c).unwrap();
         assert!(State::load(&sams_c.state_path()).leave, "someone else's: its leave goes to the server");
         for c in vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == "p5-own") {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
+    }
+
+    /// A list that holds only tasks, renamed and removed in Tasks ⚙ ▸ Task
+    /// lists since 24 November 2026 (TaskListsSetup.qml), goes through the same
+    /// calls as an agenda in Your agendas did: yours renamed, and its name back
+    /// by Undo; removed after it is asked first with its tasks counted
+    /// ("Remove “Chores”, one task, from …?"), whatever it holds, a dated copy
+    /// of it written first; someone else's neither renamed nor removed, left
+    /// on its server.
+    #[test]
+    fn a_list_of_tasks_alone_is_removed_as_an_agenda_is() {
+        sioul_core::config::stand_ins_only();
+        let make = |name: &str, owned: Option<bool>| {
+            let made = vdir::create(Kind::Calendars, "p5-tasks", name, None, &["VTODO"]).unwrap();
+            let mut state = State::load(&made.state_path());
+            state.pending = false;
+            state.url = format!("https://cloud.example.invalid/remote.php/dav/calendars/jane/{}/", made.id);
+            state.owned = owned;
+            state.save(&made.state_path()).unwrap();
+            made
+        };
+        let chores = make("Chores", Some(true));
+        std::fs::write(chores.dir.join("chore-1.ics"), "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//tests//EN\r\nBEGIN:VTODO\r\nUID:chore-1\r\nDTSTAMP:20261124T090000Z\r\nSUMMARY:Water the plants\r\nEND:VTODO\r\nEND:VCALENDAR\r\n").unwrap();
+        let shared = make("Shared chores", Some(false));
+        // Renamed as `rename` does it, then its Undo: the name it had comes back; someone else's never.
+        let place = agendas::place(&chores);
+        let (_, was) = renamed(&place, "House chores").unwrap();
+        assert_eq!((was.as_str(), find(&place).unwrap().0.name.as_str()), ("Chores", "House chores"));
+        named_back(&place, &was).unwrap();
+        assert_eq!(find(&place).unwrap().0.name, "Chores", "Undo gives its name back");
+        assert_eq!(renamed(&agendas::place(&shared), "Mine now").err(), Some(tr().text("agenda-not-yours-to-change", None)));
+        let asked: serde_json::Value = serde_json::from_str(&removal(&agendas::place(&chores))).unwrap();
+        assert_eq!(asked["act"], "remove", "{asked}");
+        let mut args = sioul_core::i18n::args();
+        args.set("name", "Chores");
+        args.set("count", 1);
+        args.set("what", "tasks");
+        args.set("server", "cloud.example.invalid");
+        assert_eq!(asked["sentence"].as_str().unwrap_or_default(), tr().text("agenda-remove-question", Some(&args)), "its tasks counted, its server named");
+        let left: serde_json::Value = serde_json::from_str(&removal(&agendas::place(&shared))).unwrap();
+        assert_eq!(left["act"], "leave", "someone else's: left on its server");
+        // `remove` removes it with `vdir::remove_collection`: a list holding tasks passes, its copy first.
+        let (collection, agenda, _) = find(&agendas::place(&chores)).unwrap();
+        assert!(own(&agenda, &collection));
+        let copy = vdir::remove_collection(&collection).unwrap();
+        assert!(std::fs::read_to_string(&copy).unwrap().contains("Water the plants"), "the dated copy holds its tasks");
+        assert!(State::load(&collection.state_path()).removed, "gone from its server at the next sync");
+        let _ = std::fs::remove_file(&copy);
+        for c in vdir::every_collection(Kind::Calendars).into_iter().filter(|c| c.account == "p5-tasks") {
             let _ = std::fs::remove_dir_all(&c.dir);
             let _ = std::fs::remove_file(c.state_path());
         }

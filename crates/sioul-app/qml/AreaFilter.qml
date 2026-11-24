@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A page's filter by area (docs/areas.md, "A page's filter by area"): a
-// button saying what shows ("Admin · Leisure") that unfolds three boxes,
+// drop-down saying what shows ("Admin · Leisure", "All areas") that unfolds three boxes,
 // Work, Admin and Leisure, ticked as the hours say until you tick others;
 // "As the hours say" sets them back, while your ticks hold; one "?" says how
 // it works. Rust keeps the ticks and decides when they end (`areafilter`);
@@ -11,7 +11,8 @@
 // the boxes are what comes forward on a device at a time and the way back is
 // "As its areas say" (`asHoursText`, `name`). The Agenda's Day and Week use
 // it for the steps they draw, every area ticked unless you say: there
-// "Everything" (`offersEverything`) ticks the three in one tap.
+// "All areas" (`offersEverything`) ticks the three in one tap. The button is
+// the window's drop-down (DropDown.qml): it shows a value chosen in a list.
 
 pragma ComponentBehavior: Bound
 
@@ -72,14 +73,15 @@ Item {
         return list
     }
 
-    Button {
+    // A value chosen in a list: the window's one drop-down (DropDown.qml), the field's box and ⇕.
+    DropDown {
         id: button
 
         objectName: "areaFilter"
         anchors.fill: parent
-        flat: true
+        theme: filter.theme
         // The words come from Rust, ours: plain text all the same.
-        text: filter.theme.plain(filter.shown ? filter.shown.label : "") + "  ▾"
+        text: filter.theme.plain(filter.shown ? filter.shown.label : "")
         Accessible.name: filter.name !== "" ? filter.name : filter.sioul.textWith("area-filter-name", "areas", filter.shown ? filter.shown.label : "")
         // A press on it while its list is open closes the list (outside it): that
         // same click does not open it again.
@@ -181,7 +183,8 @@ Item {
                 visible: filter.offersEverything && !!filter.shown && !(filter.shown.work === true && filter.shown.admin === true && filter.shown.leisure === true)
                 flat: true
                 font.pixelSize: 13
-                text: filter.sioul.text("area-filter-everything")
+                // The state it gives, by the name the button then says (one name, rule 20).
+                text: filter.sioul.text("area-filter-all")
                 onClicked: filter.everything()
             }
             // Your ticks hold: the hours' back, in one tap.

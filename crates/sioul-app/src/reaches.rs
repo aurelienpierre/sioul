@@ -1608,7 +1608,7 @@ mod tests {
             let vic = notes("Vic");
             assert_eq!(vic.len(), 1, "{vic:?}");
             said_well(&vic[0].0, language);
-            for id in ["reach-circles-tie", "reach-people-open", "sender-circle", "person-reaches-open", "person-card-sheet", "phone-calls-row-people"] {
+            for id in ["reach-circles-tie", "reach-people-open", "sender-circle", "person-card-sheet", "phone-calls-row-people"] {
                 worded(&text(id), language);
             }
             // A person's sheet and page say why, in the circle's words.

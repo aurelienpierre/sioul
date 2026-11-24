@@ -30,7 +30,7 @@ pub struct Overlap {
     /// Minutes you keep between them (0 when they overlap: none is needed to say it).
     pub needed: i64,
     /// Where that time is set: "after" (the first event's own After),
-    /// "before" (the second's own Before), "setting" (Settings ▸ Agenda,
+    /// "before" (the second's own Before), "setting" (Agenda ⚙,
     /// Time kept between two events); "" when they overlap.
     pub source: String,
     /// One of them is tentative: busy tentatively (RFC 4791 §7.10's BUSY-TENTATIVE).
@@ -50,7 +50,7 @@ impl Overlap {
 /// only when their times do (22 October 2026). Closer than a time you set
 /// yourself, they are said too close, never overlapping, that time named
 /// with where you set it: the first's own After, the second's own Before, or
-/// `between` (Settings ▸ Agenda, Time kept between two events; 0 unless you
+/// `between` (Agenda ⚙, Time kept between two events; 0 unless you
 /// set it), the longest of the three, never added. No other time is ever
 /// put between two events: none from places, the plan or a default.
 pub fn overlaps(events: &[Occurrence], between: u32) -> Vec<Overlap> {
@@ -505,7 +505,7 @@ mod tests {
                     let said = |o: &[Overlap]| o.iter().map(|o| (o.at_once(), o.gap, o.needed, o.source.clone())).collect::<Vec<_>>();
                     assert_eq!(said(&overlaps(&both("X-SIOUL-AFTER:30\r\n", "X-SIOUL-BEFORE:10\r\n"), 0)), [(false, 20, 30, "after".to_string())], "{case}: too close, the first's After named");
                     assert_eq!(said(&overlaps(&both("", "X-SIOUL-BEFORE:45\r\n"), 0)), [(false, 20, 45, "before".to_string())], "{case}: the second's Before named");
-                    assert_eq!(said(&overlaps(&plain, 60)), [(false, 20, 60, "setting".to_string())], "{case}: the time set in Settings ▸ Agenda named");
+                    assert_eq!(said(&overlaps(&plain, 60)), [(false, 20, 60, "setting".to_string())], "{case}: the time set in Agenda ⚙ named");
                     assert!(overlaps(&plain, 20).is_empty(), "{case}: twenty minutes set, twenty minutes there");
                 }
             }

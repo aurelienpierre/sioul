@@ -284,7 +284,6 @@ Item {
                 flat: true
                 text: search.sioul.textCounted("task-filters", search.filtersSet)
                 icon.name: "view-filter"
-                icon.color: checked ? search.theme.accentText : search.theme.text
                 onClicked: {
                     search.unfolded = search.folded
                     // A click flips its own tick: it stays the fold's.

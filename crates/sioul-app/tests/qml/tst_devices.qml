@@ -345,14 +345,15 @@ Item {
         // was before 20 November 2026 was 190 to 262 points high in a wide
         // window, 569 to 817 in a narrow one.
         function test_a_closed_card_shows_four_things_and_nothing_else() {
-            const fold = "▸  devices-details"
+            // The fold's line (Fold.qml): the button's words, drawn as its arrow and its title.
+            const fold = ["▸  devices-details", "▸", "devices-details"]
             const boxes = ["area-admin", "area-leisure", "area-work"]
-            compare(words(card("desk")), ["A computer", "In use now.", "Work desk", "devices-this", fold].concat(boxes).sort())
-            compare(words(card("laptop")), ["A computer", "Counted as off, as you said, until it shares again. It does not share its doses.", "devices-for-all", "devices-plain-line:devices-col-opened|Fri 2 Oct 08:00", "laptop-host", fold].concat(boxes).sort())
-            compare(words(card("phone")), ["A phone", "Closed since Sat 10 Oct 21:40.", "The phone (Moss)", "devices-for-all", "devices-plain-line:devices-col-opened|Sat 10 Oct 21:00", fold].concat(boxes).sort())
+            compare(words(card("desk")), ["A computer", "In use now.", "Work desk", "devices-this"].concat(fold, boxes).sort())
+            compare(words(card("laptop")), ["A computer", "Counted as off, as you said, until it shares again. It does not share its doses.", "devices-for-all", "devices-plain-line:devices-col-opened|Fri 2 Oct 08:00", "laptop-host"].concat(fold, boxes).sort())
+            compare(words(card("phone")), ["A phone", "Closed since Sat 10 Oct 21:40.", "The phone (Moss)", "devices-for-all", "devices-plain-line:devices-col-opened|Sat 10 Oct 21:00"].concat(fold, boxes).sort())
             // Nothing of the Details made yet: made once opened.
             for (const id of ["desk", "laptop", "phone"]) {
-                compare(named(card(id), "deviceDetailsBody").item, null, id + ": Details made once opened")
+                verify(named(card(id), "deviceDetailsBody") === null, id + ": Details made once opened")
                 verify(card(id).height < 185, id + ": " + card(id).height + " points high")
             }
             root.width = 412
@@ -395,7 +396,7 @@ Item {
             const made = n => walk(again.item, i => i.objectName === "device-" + n, [])[0]
             verify(named(made("phone"), "deviceDetails").open, "the phone's Details open, as left")
             verify(named(made("phone"), "deviceDetailsBody").item !== null)
-            verify(!named(made("desk"), "deviceDetails").open && named(made("desk"), "deviceDetailsBody").item === null, "the desk's closed, as left")
+            verify(!named(made("desk"), "deviceDetails").open && named(made("desk"), "deviceDetailsBody") === null, "the desk's closed, as left")
             again.active = false
         }
 
@@ -666,8 +667,8 @@ Item {
             verify(shown(tab, "devices-grid-title") !== null && shown(tab, "devices-grid-help") !== null)
             const cell = (id, time) => walk(matrix, i => i.objectName === "cell-" + id + "-" + time && showing(i), [])[0] || null
             const face = c => walk(c, i => i.objectName === "areaFilter", [])[0]
-            compare(["work", "admin", "leisure", "meals", "sleep"].map(t => face(cell("desk", t)).text), ["Work  ▾", "Nothing  ▾", "Nothing  ▾", "Nothing  ▾", "Nothing  ▾"])
-            compare(face(cell("phone", "leisure")).text, "Leisure  ▾")
+            compare(["work", "admin", "leisure", "meals", "sleep"].map(t => face(cell("desk", t)).text), ["Work", "Nothing", "Nothing", "Nothing", "Nothing"])
+            compare(face(cell("phone", "leisure")).text, "Leisure")
             compare(face(cell("desk", "work")).Accessible.name, "Work desk, Work: Work")
             // The laptop's Sioul is older: no cell, one sentence.
             verify(cell("laptop", "work") === null)
@@ -678,7 +679,7 @@ Item {
             tryVerify(() => box("area:leisure") !== null, 2000)
             mouseClick(box("area:leisure"))
             compare(mock.asked, ["say phone at.work leisure"])
-            tryVerify(() => cell("phone", "work") !== null && face(cell("phone", "work")).text === "Leisure  ▾", 2000)
+            tryVerify(() => cell("phone", "work") !== null && face(cell("phone", "work")).text === "Leisure", 2000)
             compare(cell("phone", "work").border.width, 1, "a cell you changed is framed")
             compare(cell("phone", "admin").border.width, 0)
             // Nothing at all there: the last box unticked is "none", your word for nothing.
@@ -686,7 +687,7 @@ Item {
             tryVerify(() => box("area:leisure") !== null && box("area:leisure").checked === true, 2000)
             mouseClick(box("area:leisure"))
             compare(mock.asked[1], "say phone at.work none")
-            tryVerify(() => face(cell("phone", "work")).text === "Nothing  ▾", 2000)
+            tryVerify(() => face(cell("phone", "work")).text === "Nothing", 2000)
             // "As its areas say": the cell as it was.
             mouseClick(face(cell("phone", "work")))
             tryVerify(() => box("areaFilterAsHours") !== null, 2000)

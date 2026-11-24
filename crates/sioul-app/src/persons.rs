@@ -282,12 +282,11 @@ pub(crate) fn page(id: &str) -> String {
         "of": of,
         "papers": papers,
         "cards": cards,
-        // What reaches you from them (the circle Your people, docs/attention.md §1.2): a line and its door; their
+        // What reaches you from them (the circle Your people, docs/attention.md §1.2): a line, said; their
         // cards' sheets, each a door; with no card tied, that Sioul cannot recognise them yet.
         "reaches": if !me && person.in_circle(today) {
             serde_json::json!({
                 "line": say("person-reaches", &[("name", person.name.clone())]),
-                "door": tr().text("person-reaches-open", None),
                 "untied": if cards.is_empty() { say("person-reaches-untied", &[("name", person.name.clone())]) } else { String::new() },
             })
         } else {

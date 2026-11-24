@@ -575,7 +575,8 @@ Item {
                         color: page.theme.muted
                     }
                 }
-                // Nothing set yet: where to set it.
+                // Nothing set for the day; nothing set at all yet, with the first-run door to their
+                // one place, Settings ▸ Hours (gone once one is set).
                 Label {
                     visible: scroll.day !== null && scroll.day.items.length === 0
                     Layout.fillWidth: true
@@ -583,6 +584,15 @@ Item {
                     text: page.sioul.text(page.shown.any ? "health-day-nothing" : "health-day-empty")
                     wrapMode: Text.Wrap
                     color: page.theme.muted
+                }
+                Button {
+                    objectName: "healthNeedsSet"
+                    visible: scroll.day !== null && scroll.day.items.length === 0 && !page.shown.any
+                    flat: true
+                    icon.name: "go-next"
+                    icon.color: page.theme.text
+                    text: page.sioul.text("health-day-empty-set")
+                    onClicked: page.sioul.reminderOpened("needs", "", "")
                 }
 
                 Repeater {

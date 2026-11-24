@@ -37,13 +37,14 @@ Quand le temps libre prend une part de vos heures de travail, la fin du travail 
 
 Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 
-- **Ce qui vient pendant une pause** : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. Cela ouvre le tableau **Ce qui vient quand**, dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time), où la colonne **En pause** le dit ; là, **Plus tard** sur la ligne **Prises** fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
 - **Ce qui vous aide** : avec vos mots, une chose par ligne. Une ligne avec un lien ou le chemin d’un fichier l’ouvre depuis la pause : une playlist, un dossier de photos, la page d’une application.
 - **Une ligne pour la pause** : une ligne à vous, montrée à l’écran.
 - **Guide de respiration** : désactivé, sauf si vous l’activez ; c’est alors une forme lente pour respirer avec elle, montrée seulement quand vous la touchez, l’expiration plus longue que l’inspiration, au rythme que vous réglez dans **Respirations par minute** (six, tant que vous ne le changez pas ; de trois à dix).
 - **Au retour** : le reste de la journée allégé (comme un jour de brume), plus de travail ce jour-là, ou comme prévu.
 - **Numéros pour** : le pays dont le numéro d’urgence et la ligne d’écoute s’affichent pendant une pause ; sauf choix de votre part, le pays de vos numéros de téléphone.
 - **Essayer l’écran de pause** le montre tel qu’il sera. Rien n’est mis en attente.
+
+**Ce qui vient pendant une pause** se règle dans Ce qui vous joint : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. Le tableau **Ce qui vient quand**, dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time), le dit dans sa colonne **En pause** ; là, **Plus tard** sur la ligne **Prises** fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
 
 ### Appuyer {#press-it}
 
