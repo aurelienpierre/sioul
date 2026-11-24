@@ -495,14 +495,15 @@ Item {
                     ToolTip.text: page.theme.plain(text)
                     onClicked: page.mapShown = !page.mapShown
                 }
-                // Duplicates, in the place of a card.
+                // Duplicates, in the place of a card: shown, the button is drawn selected (a state, not the main action).
                 Button {
+                    id: duplicatesButton
+
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.sioul.text("dup-open")
                     icon.name: "edit-copy"
-                    // Highlighted, it is filled with the accent: its icon in the words' colour on it.
-                    icon.color: highlighted ? page.theme.accentText : page.theme.text
-                    highlighted: page.duplicatesShown
+                    checkable: true
+                    checked: page.duplicatesShown
                     display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
@@ -512,17 +513,21 @@ Item {
                             page.duplicatesShown = false
                         else
                             page.showDuplicates()
+                        // A click flips its own tick: the page's state ticks it.
+                        duplicatesButton.checked = Qt.binding(() => page.duplicatesShown)
                     }
                 }
-                // Many at once: each row a box (ContactSelection.qml).
+                // Many at once: each row a box (ContactSelection.qml); on, the button is drawn selected.
                 Button {
+                    id: selectButton
+
                     objectName: "contactsSelect"
                     visible: !page.mapShown && page.shown.contacts.length > 0
                     implicitWidth: implicitContentWidth + leftPadding + rightPadding
                     text: page.sioul.text("contacts-select")
                     icon.name: "edit-select-all"
-                    icon.color: highlighted ? page.theme.accentText : page.theme.text
-                    highlighted: page.selecting
+                    checkable: true
+                    checked: page.selecting
                     display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
                     Accessible.name: text
                     ToolTip.visible: hovered && display === AbstractButton.IconOnly
@@ -531,6 +536,7 @@ Item {
                         page.selecting = !page.selecting
                         if (!page.selecting)
                             page.selected = {}
+                        selectButton.checked = Qt.binding(() => page.selecting)
                     }
                 }
                 // A vCard or a CSV file read, its contacts imported (ContactImport.qml).
@@ -1397,7 +1403,6 @@ Item {
                                     const book = (page.shown.books || []).find(b => b.place === place)
                                     return book && book.groups === false ? book.name : ""
                                 }
-                                onAskedSwitch: page.openSettings(true, "addressbooks")
                             }
                         }
                         Label {

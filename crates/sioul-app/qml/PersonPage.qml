@@ -436,8 +436,9 @@ Panel {
                     text: page.sioul.text("person-link-card")
                     onClicked: picker.ask()
                 }
-                // One of your people: what reaches you from them, one door away; with no card
-                // linked, that Sioul cannot recognise them yet (absence proves nothing: said).
+                // One of your people, said; with no card linked, that Sioul cannot recognise them
+                // yet (absence proves nothing: said). What reaches you from them is their card's
+                // sheet, below, and the circle's rule What reaches you's alone.
                 Label {
                     objectName: "personReaches"
                     visible: page.shown !== null && !!page.shown.reaches
@@ -456,15 +457,6 @@ Panel {
                     wrapMode: Text.Wrap
                     font.pixelSize: 13
                     color: page.theme.muted
-                }
-                Button {
-                    objectName: "personReachesOpen"
-                    visible: page.shown !== null && !!page.shown.reaches
-                    flat: true
-                    icon.name: "go-next"
-                    icon.color: page.theme.text
-                    text: page.sioul.text("person-reaches-open")
-                    onClicked: page.window.showParameters("attention.people")
                 }
 
                 Label {

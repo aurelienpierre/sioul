@@ -221,7 +221,8 @@ Item {
     function showSetting(key) {
         // What the tab "This phone" held is this device's card in Devices ("phone"); who rings
         // when, each phone's section Calls ("calls"); each app by time, a phone's card ("apps").
-        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "phone": "devices.here", "calls": "devices.calls", "apps": "devices.apps" }
+        // What this device is: that card too, its one place (no tab draws its row: section "device").
+        const older = { "notify": "attention.own", "dnd": "attention.dnd", "dnd.button": "attention.dnd", "dnd.focus": "attention.dnd", "dnd.pauses": "attention.dnd", "dnd.sleep": "attention.dnd", "dnd.people": "attention.exceptions", "phone": "devices.here", "calls": "devices.calls", "apps": "devices.apps", "device_kind": "devices.here" }
         key = older[key] || key
         if (key === "attention" || key.startsWith("attention.")) {
             page.showReaches(key)
@@ -598,7 +599,6 @@ Item {
                         SharePanel {
                             sioul: page.sioul
                             theme: page.theme
-                            onDevicesAsked: page.showSetting("devices")
                         }
                     }
                 }

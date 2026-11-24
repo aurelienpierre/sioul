@@ -3,10 +3,11 @@
 
 // Sioul's overrides of the Basic style (docs/qt-quick.md, "Sioul's overrides
 // of the Basic style"). Wherever the QML engine would load the Basic style's
-// own Button.qml, TextField.qml, TextArea.qml, CheckBox.qml, RadioButton.qml
-// or SpinBox.qml, it loads Sioul's from qml/style/ instead (StyleButton.qml…):
-// a flat button that holds words keeps an outline, what you type in or tick
-// its own fill and a firmer border, in every window and dialog of Sioul's,
+// own Button.qml, ToolButton.qml, TextField.qml, TextArea.qml, CheckBox.qml,
+// RadioButton.qml or SpinBox.qml, it loads Sioul's from qml/style/ instead
+// (StyleButton.qml…): a button that holds words is outlined, an icon alone
+// bare, the main action filled with the accent, a selected one framed in it;
+// what you type in or tick has its own fill and a firmer border, in every window and dialog of Sioul's,
 // Qt's own included. Each is written as Qt 6.9 and 6.10 write Basic's, which
 // Qt 6.11 loads too: a property newer than the Qt that runs stops the file,
 // and with it every window (the Flatpak runs Qt 6.10). Every page imports QtQuick.Controls.Basic, chosen as the program
@@ -38,7 +39,7 @@ public:
         if (at < 0)
             return url;
         const QStringView name = QStringView(path).mid(at + basic.size());
-        static const QStringList overridden = { QStringLiteral("Button.qml"), QStringLiteral("TextField.qml"), QStringLiteral("TextArea.qml"),
+        static const QStringList overridden = { QStringLiteral("Button.qml"), QStringLiteral("ToolButton.qml"), QStringLiteral("TextField.qml"), QStringLiteral("TextArea.qml"),
                                                 QStringLiteral("CheckBox.qml"), QStringLiteral("RadioButton.qml"), QStringLiteral("SpinBox.qml") };
         if (!overridden.contains(name))
             return url;

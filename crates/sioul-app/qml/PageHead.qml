@@ -6,10 +6,13 @@
 // navigation at the left (`navigation`: Today ◂ ▸ and the title, a page's
 // own few actions), the filters after it (written inside it), and the page's
 // ⚙ last at the right (`settings`, SettingsButton.qml), a page having one.
-// The row wraps when the window is too narrow: the filters go on the lines
-// under it, each line as wide as the page, and the ⚙ stays at the right of
-// the first line, never alone on a line of its own (a Flow cannot keep its
-// room on one line only: the row lays its items out itself, `lay()`). On a
+// The row wraps when the window is too narrow: each item that does not fit
+// goes on the line under it (the navigation's buttons one by one too), the
+// lines under the first using the head's whole width, each item at its own
+// width (one wider than its line narrowed to it); the ⚙ stays at the right
+// of the first line, never alone on a line of its own, never over an item (a
+// Flow cannot keep its room on one line only: the row lays its items out
+// itself, `lay()`). On a
 // phone (`foldsFilters`), the filters fold behind one button, "Filters",
 // with how many are set; the page hides its filters while `filtersFolded`.
 //
@@ -58,9 +61,11 @@ ColumnLayout {
     property string filtersName: "pageFilters"
     // The row the navigation and filters are laid in, for a page's widths (`row.width`, `row.spacing`).
     readonly property alias row: row
-    // The row's items followed, and whether a laying out is asked already (`lay()`).
+    // The row's items followed, whether a laying out is asked already, and the items
+    // narrowed to their line, with their own width (`lay()`).
     property var watched: []
     property bool laying: false
+    property var narrowed: []
 
     spacing: head.theme.labelGap + 4
     Component.onCompleted: head.watch()
@@ -94,11 +99,15 @@ ColumnLayout {
             onWidthChanged: head.layLater()
             onChildrenChanged: head.watch()
 
-            Row {
+            // The navigation's items, laid one by one in the row's own lines (`lay()`), so that
+            // they wrap one at a time, as the filters do.
+            Item {
                 id: navigationSlot
 
-                visible: navigationSlot.children.length > 0
-                spacing: head.theme.labelGap
+                objectName: "pageHeadNavigation"
+                width: row.width
+                height: row.laidHeight
+                onChildrenChanged: head.watch()
             }
             // On a phone: the filters, folded, and how many are set.
             Button {
@@ -130,16 +139,27 @@ ColumnLayout {
         }
     }
 
+    // The row's items in their order: the navigation's, then the Filters button and the filters.
+    function items() {
+        const all = []
+        for (let i = 0; i < navigationSlot.children.length; i++)
+            all.push(navigationSlot.children[i])
+        for (let i = 0; i < row.children.length; i++)
+            if (row.children[i] !== navigationSlot)
+                all.push(row.children[i])
+        return all
+    }
+
     // Each item of the row followed: its size or its showing changed, the row is laid out again.
     function watch() {
-        for (let i = 0; i < row.children.length; i++) {
-            const item = row.children[i]
+        for (const item of head.items()) {
             if (head.watched.indexOf(item) >= 0)
                 continue
             head.watched.push(item)
             item.widthChanged.connect(head.layLater)
             item.heightChanged.connect(head.layLater)
             item.visibleChanged.connect(head.layLater)
+            item.implicitWidthChanged.connect(head.layLater)
         }
         head.layLater()
     }
@@ -151,25 +171,40 @@ ColumnLayout {
         }
     }
 
-    // Left to right, a line after another; the first line keeps the ⚙'s room at its right.
+    // Left to right, a line after another; the first line keeps the ⚙'s room at its
+    // right and is as tall as the ⚙ at least. An item wider than the line it starts is
+    // narrowed to it, and given its own width back once it fits (`narrowed`).
     function lay() {
         head.laying = false
         const width = row.width
         const keep = settingsSlot.visible ? settingsSlot.width + row.spacing : 0
         let x = 0
         let y = 0
-        let tallest = 0
+        let tallest = keep > 0 ? settingsSlot.height : 0
         let first = true
-        for (let i = 0; i < row.children.length; i++) {
-            const item = row.children[i]
+        for (const item of head.items()) {
             if (!item.visible)
                 continue
-            const room = first ? width - keep : width
-            if (x > 0 && x + item.width > room) {
+            const narrowed = head.narrowed.find(n => n.item === item)
+            // Its own width: as the page gave it, or as it was before it was narrowed.
+            const own = narrowed ? narrowed.width : item.width
+            if (x > 0 && x + own > (first ? width - keep : width)) {
                 y += tallest + row.spacing
                 x = 0
                 tallest = 0
                 first = false
+            }
+            const room = Math.max(0, (first ? width - keep : width) - x)
+            if (own > room) {
+                if (!narrowed)
+                    head.narrowed.push({ item: item, width: item.width, implicit: item.width === item.implicitWidth })
+                item.width = room
+            } else if (narrowed) {
+                head.narrowed = head.narrowed.filter(n => n.item !== item)
+                if (narrowed.implicit)
+                    item.width = Qt.binding(() => item.implicitWidth)
+                else
+                    item.width = narrowed.width
             }
             item.x = x
             item.y = y

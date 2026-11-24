@@ -24,11 +24,11 @@ T.Button {
     id: control
 
     // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette then.
-    readonly property var sioulTheme: control.Window.window ? control.Window.window.theme : undefined
+    readonly property var shownIn: control.Window.window
+    readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
     readonly property bool selected: control.checked || control.highlighted
-    // One line that can be chosen among several: a ✓ before its words when chosen.
-    readonly property bool choice: control.autoExclusive
-        || (control.checkable && control.parent !== null && Array.prototype.some.call(control.parent.children, c => c !== control && c.checkable === true && c.flat !== undefined))
+    // One line chosen among several, said by the page (`autoExclusive`, or a ButtonGroup): a ✓ before its words.
+    readonly property bool choice: control.autoExclusive || (control.checkable && control.T.ButtonGroup.group !== null)
     readonly property bool ownColours: control.sioulTheme !== undefined && control.sioulTheme.ownColours(control.icon.name)
     readonly property font boldFont: Qt.font(control.font.pixelSize > 0
         ? { family: control.font.family, pixelSize: control.font.pixelSize, italic: control.font.italic, capitalization: control.font.capitalization, weight: Font.DemiBold }
@@ -60,7 +60,7 @@ T.Button {
         icon.width: control.icon.width
         icon.height: control.icon.height
         icon.cache: control.icon.cache
-        icon.color: control.ownColours ? "transparent" : control.enabled ? control.icon.color : control.ink
+        icon.color: control.ownColours ? "transparent" : control.enabled && !control.selected ? control.icon.color : control.ink
         text: control.selected && control.choice ? "✓  " + control.text : control.text
         font: control.selected ? control.boldFont : control.font
         color: control.ink
@@ -74,7 +74,7 @@ T.Button {
         radius: theme ? theme.radius : 0
         visible: control.selected || control.down || control.visualFocus || (control.hovered && control.enabled)
         color: control.down ? control.palette.mid
-            : control.selected ? (theme ? theme.chosen : Color.blend(control.palette.window, control.palette.dark, 0.16))
+            : control.selected ? (theme ? theme.chosenTint : Color.blend(control.palette.window, control.palette.dark, 0.16))
             : control.hovered ? (theme ? theme.hover : control.palette.light) : "transparent"
         border.color: control.visualFocus ? control.palette.highlight : theme ? theme.accent : control.palette.dark
         border.width: control.visualFocus || control.selected ? 2 : 0

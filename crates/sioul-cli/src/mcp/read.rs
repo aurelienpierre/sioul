@@ -1380,7 +1380,7 @@ pub fn list_projects(s: &Session, args: &Args) -> Result<Answer, String> {
             })
             .collect();
         if lines.is_empty() {
-            lines.push(if closed > 0 { "No project is open to agents: the person opens one on its page in Sioul, or in Settings ▸ AI agents.".to_string() } else { s.tr.text("project-none", None) });
+            lines.push(if closed > 0 { "No project is open to agents: the person opens one on its page in Sioul.".to_string() } else { s.tr.text("project-none", None) });
         }
         if closed > 0 && !rows.is_empty() {
             lines.push(format!("({closed} more {} closed to agents: left out on purpose, not named.)", if closed == 1 { "project is" } else { "projects are" }));

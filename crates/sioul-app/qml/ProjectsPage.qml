@@ -569,7 +569,8 @@ Item {
                         required property var modelData
                         required property int index
                         // "Coming" over the first of what is to come, "Before" over the first of what was.
-                        readonly property bool turns: moment.index === 0 || page.shown.moments[moment.index - 1].coming !== moment.modelData.coming
+                        // A project closed (`shown` null) or changed leaves the rows a moment before they go: none read then.
+                        readonly property bool turns: moment.index === 0 || page.shown === null || (page.shown.moments[moment.index - 1] || moment.modelData).coming !== moment.modelData.coming
 
                         Layout.fillWidth: true
                         padding: 4

@@ -37,6 +37,7 @@ fn main() {
         "qml/AgendaPage.qml",
         "qml/AgendaFilter.qml",
         "qml/AgendasSetup.qml",
+        "qml/TaskListsSetup.qml",
         "qml/SubscribeForm.qml",
         "qml/VacationsCalendars.qml",
         "qml/LinkLine.qml",
@@ -224,9 +225,8 @@ fn main() {
         "qml/VaultUnlock.qml",
         // A phone's site screen asking the window for a login (sitefill.rs).
         "qml/SiteFill.qml",
-        // Bitwarden in Accounts: the password manager's card, its form, "From Bitwarden…".
+        // Bitwarden in Accounts: the password manager's card, which holds its form; "From Bitwarden…".
         "qml/VaultCard.qml",
-        "qml/VaultForm.qml",
         "qml/VaultFill.qml",
         "qml/VaultHeld.qml",
         "qml/AccountPassword.qml",
@@ -289,6 +289,7 @@ fn main() {
         "qml/BareButton.qml",
         // Sioul's overrides of the Basic style, which cpp/style.cpp gives in place of Basic's own.
         "qml/style/StyleButton.qml",
+        "qml/style/StyleToolButton.qml",
         "qml/style/StyleTextField.qml",
         "qml/style/StyleTextArea.qml",
         "qml/style/StyleCheckBox.qml",

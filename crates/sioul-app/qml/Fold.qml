@@ -66,6 +66,8 @@ ColumnLayout {
     readonly property alias item: holder.item
     // Its line, for a page that gives it the focus.
     readonly property alias line: foldLine
+    // The window it is shown in, for its font's size (a SioulWindow's).
+    readonly property var shownIn: fold.Window.window
 
     // Its line pressed (or its keys): unfolded or folded, as asked.
     signal toggled(bool open)
@@ -102,7 +104,7 @@ ColumnLayout {
         leftPadding: 4
         // Its words and arrow, as tests and screen readers read them; drawn below.
         text: (fold.open ? "▾  " : "▸  ") + fold.title
-        font.pixelSize: fold.titleSize > 0 ? fold.titleSize : fold.framed ? 17 : foldLine.Window.window && foldLine.Window.window.font ? foldLine.Window.window.font.pixelSize : 15
+        font.pixelSize: fold.titleSize > 0 ? fold.titleSize : fold.framed ? 17 : fold.shownIn && fold.shownIn.font ? fold.shownIn.font.pixelSize : 15
         font.weight: Font.DemiBold
         Accessible.name: fold.name
         Accessible.role: Accessible.Button

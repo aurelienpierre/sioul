@@ -5,8 +5,8 @@
 //! may read, and write into (docs/ai.md, "Consent per project"; docs/mcp.md).
 //!
 //! **Every project is closed until you open it** (`ai = true` on its entry in
-//! `sioul-projects.toml`, `projects::set_ai`): the switch on its page, in its form,
-//! or in Settings ▸ AI agents. The sharing carries the entry, so the choice
+//! `sioul-projects.toml`, `projects::set_ai`): the switch on its page, or in the
+//! form that makes it. The sharing carries the entry, so the choice
 //! holds on every device. **Things in no project** (the Porch's other mail,
 //! tasks of no project, general notes, the agenda, contacts, the phone's
 //! messages and calls, papers) follow one setting, `[mcp] outside_projects`,

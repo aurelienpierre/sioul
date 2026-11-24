@@ -91,7 +91,7 @@ SafeDialog {
     readonly property string legLine: dialog.legOf === "" ? "" : dialog.sioul.textArgs(dialog.legSide === "after" ? "leg-after" : "leg-before", JSON.stringify({ appointment: dialog.legTitle, time: dialog.clockOf(dialog.legSide === "after" ? dialog.legUntil : dialog.legAt) }))
 
     // An instant (ms) as a date whose own clock reads the time zone Sioul shows
-    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
+    // (`zone::current`, Settings ▸ Hours ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
     function wall(ms) {
         return new Date(ms + (typeof dialog.sioul.zoneOffset === "function" ? dialog.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }
@@ -406,7 +406,7 @@ SafeDialog {
             startDay.date = day
             endDay.date = day
             startTime.text = dialog.pad(hour) + ":00"
-            // As long as a new event lasts (Settings ▸ Agenda), within its day.
+            // As long as a new event lasts (Agenda ⚙), within its day.
             const end = Math.min(hour * 60 + dialog.newLength(), 23 * 60 + 59)
             endTime.text = dialog.pad(Math.floor(end / 60)) + ":" + dialog.pad(end % 60)
             dialog.measureLength()
@@ -433,7 +433,7 @@ SafeDialog {
         title.forceActiveFocus()
     }
 
-    // How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+    // How long a new event lasts, in minutes (Agenda ⚙; 30 unset).
     function newLength() {
         const minutes = typeof dialog.sioul.newEventMinutes === "function" ? dialog.sioul.newEventMinutes() : 30
         return minutes > 0 ? minutes : 30
@@ -930,7 +930,7 @@ SafeDialog {
                 }
 
                 // After 300 ms without typing: the places you used before, then, with
-                // three characters and the switch on (Settings ▸ Agenda), the service's.
+                // three characters and the switch on (Agenda ⚙), the service's.
                 Timer {
                     id: placePause
 

@@ -10,11 +10,11 @@
 // (address, then the server found, then the password, tested before
 // anything is kept), contacts and calendars on a CalDAV/CardDAV server, or
 // Google (signed in on Google's page); Microsoft's mail signs in on
-// Microsoft's page (MicrosoftMail.qml), or Bitwarden, your password manager
-// (VaultForm.qml). Encryption: your keys. At the top of Yours, the password
-// manager's card (VaultCard.qml): Bitwarden's account, open or locked, the
-// lock after a time; every password field of the forms takes a password
-// from it (VaultFill.qml). Who may reach you, and when, is Settings ▸ What
+// Microsoft's page (MicrosoftMail.qml). Encryption: your keys. At the top of
+// Yours, the password manager's card (VaultCard.qml), Bitwarden's one place:
+// its account added and changed there, open or locked, the lock after a
+// time; every password field of the forms takes a password from it
+// (VaultFill.qml). Who may reach you, and when, is Settings ▸ What
 // reaches you's (ReachesTab.qml). Sites are not accounts: they are on the
 // Sites page.
 
@@ -63,10 +63,12 @@ Item {
     property VaultCard vaultCard: null
 
     onVisibleChanged: {
-        if (page.visible)
+        if (page.visible) {
             page.readVault()
-        else
+            page.readShared()
+        } else {
             vaultHeld.release()
+        }
     }
     Component.onCompleted: page.readVault()
 
@@ -79,13 +81,22 @@ Item {
             page.vaultCard.unlock()
     }
 
-    // Add an account ▸ Bitwarden, in view.
-    function addVault() {
-        tabs.currentIndex = 1
-        Qt.callLater(() => {
-            if (addTab.item)
-                addTab.item.showVault()
-        })
+    // What every address shares (`settings::for_view("accounts")`): how often mail is
+    // fetched, at the top of Your accounts; the AI's key, under the cards. Read again as
+    // the page shows and as the accounts change, so that a change made on another device
+    // (`fetch_minutes` travels with the settings) shows here.
+    property var sharedRows: JSON.parse(page.sioul.settings("accounts") || "[]")
+
+    function readShared() {
+        page.sharedRows = JSON.parse(page.sioul.settings("accounts") || "[]")
+    }
+
+    function saveShared(key, value, shown) {
+        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
+        if (problem === "")
+            page.readShared()
+        else
+            page.sioul.status = problem
     }
 
     readonly property var accounts: page.sioul.accounts ? JSON.parse(page.sioul.accounts) : []
@@ -142,6 +153,11 @@ Item {
                 addTab.item.davFor(name, false)
                 page.addMailFor(name)
             }
+        }
+
+        // An address added, changed or taken out, here or by the sharing: what they share read again.
+        function onAccountsChanged() {
+            page.readShared()
         }
     }
 
@@ -362,7 +378,6 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         keys: page.vaultKeys
-                        onAddAsked: page.addVault()
                         onChanged: page.readVault()
                         // For the page's doors (`openSettings`).
                         Component.onCompleted: page.vaultCard = vaultCard
@@ -405,6 +420,22 @@ Item {
                         wrapMode: Text.Wrap
                         color: page.theme.muted
                         font.pixelSize: 13
+                    }
+                    // How often mail is fetched, beside how far back: what every address follows
+                    // unless its card says its own (its one place, 24 November 2026: Mail ⚙ had it).
+                    Repeater {
+                        model: page.sharedRows.filter(r => r.key === "fetch_minutes")
+
+                        delegate: SettingRow {
+                            required property var modelData
+
+                            objectName: "setting:fetch_minutes"
+                            Layout.fillWidth: true
+                            setting: modelData
+                            sioul: page.sioul
+                            theme: page.theme
+                            onSave: (key, value, shown) => page.saveShared(key, value, shown)
+                        }
                     }
 
                     Item {
@@ -582,13 +613,12 @@ Item {
                     width: yoursScroll.width
                     spacing: page.theme.gap
 
-                    // What all addresses share: the key for the AI that reads hostile mail, when one allows it.
+                    // What all addresses share, under them: the key for the AI that reads hostile mail,
+                    // when one allows it (how often they are fetched is at the top, beside how far back).
                     Repeater {
                         id: shared
 
-                        property var rows: JSON.parse(page.sioul.settings("accounts") || "[]")
-
-                        model: shared.rows
+                        model: page.sharedRows.filter(r => r.key !== "fetch_minutes")
 
                         delegate: SettingRow {
                             required property var modelData
@@ -598,13 +628,7 @@ Item {
                             setting: modelData
                             sioul: page.sioul
                             theme: page.theme
-                            onSave: (key, value, shown) => {
-                                const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                if (problem === "")
-                                    shared.rows = JSON.parse(page.sioul.settings("accounts") || "[]")
-                                else
-                                    page.sioul.status = problem
-                            }
+                            onSave: (key, value, shown) => page.saveShared(key, value, shown)
                         }
                     }
                     Item {
@@ -623,6 +647,7 @@ Item {
                     ScrollView {
                         id: addScroll
 
+                        objectName: "addAccountTab"
                         contentWidth: availableWidth
                         clip: true
 
@@ -680,10 +705,6 @@ Item {
                             }
                             function showGoogle() {
                                 Qt.callLater(() => addScroll.contentItem.contentY = Math.max(0, googlePanel.y - page.theme.gap))
-                            }
-                            function showVault() {
-                                const flick = addScroll.contentItem as Flickable
-                                Qt.callLater(() => flick.contentY = Math.max(0, Math.min(vaultForm.y - page.theme.gap, flick.contentHeight - flick.height)))
                             }
 
                         ColumnLayout {
@@ -1280,21 +1301,6 @@ Item {
                                         color: page.theme.forged
                                     }
                                 }
-                            }
-
-                            // Bitwarden, your password manager: one account for the whole app.
-                            VaultForm {
-                                id: vaultForm
-
-                                Layout.fillWidth: true
-                                sioul: page.sioul
-                                theme: page.theme
-                                vault: page.vault
-                                onAdded: {
-                                    page.readVault()
-                                    page.openSettings(true, "bitwarden_vault")
-                                }
-                                onCardAsked: page.openSettings(true, "")
                             }
 
                             Item {

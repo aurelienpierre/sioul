@@ -3,8 +3,9 @@
 
 // The password manager's card at the top of Accounts ▸ Your accounts
 // (AccountsPage.qml, VaultCard.qml), on a stand-in for Sioul that holds no
-// vault, in its three states: no account set, one line and a button that
-// opens Add an account at Bitwarden's form; locked, the account, its
+// vault, in its three states: no account set, one line, the account's
+// e-mail and server and Add, which opens the vault there (Add an account
+// lists no Bitwarden: the card is its one place); locked, the account, its
 // server, the lock after a time and Unlock, which opens the vault's dialog;
 // open, Lock, which locks it. A link by key (SettingDoor.qml) shows the
 // card. Made-up account; nothing asks Bitwarden. Run by tools/qml-test.sh.
@@ -148,23 +149,31 @@ Item {
             wait(50)
         }
 
-        function test_no_account_one_line_and_a_button_to_add_one() {
+        function test_no_account_the_card_asks_for_it() {
+            // Add an account lists no Bitwarden: the card is its one place.
+            page.showTab(1)
+            tryVerify(() => named(page, "addAccountTab") !== null, 2000)
+            compare(walk(named(page, "addAccountTab"), i => typeof i.objectName === "string" && i.objectName.startsWith("vault"), []).length, 0, "nothing of Bitwarden in Add an account")
             set("missing", "")
             const shown = card()
             verify(shown !== null && shown.visible, "at the top of Your accounts")
             verify(named(shown, "vaultCardNone").visible)
-            compare(walk(shown, i => i instanceof SettingRow, []).length, 0, "nothing else")
+            compare(walk(shown, i => i instanceof SettingRow, []).length, 0, "no row before an account")
             const add = named(shown, "vaultCardAdd")
-            verify(add.visible)
-            add.clicked()
-            tryVerify(() => named(page, "vaultForm") !== null && named(page, "vaultForm").visible, 2000, "Add an account, at Bitwarden's form")
+            verify(add.visible && !add.enabled, "nothing to add before an address")
+            verify(named(shown, "vaultCardServer").visible)
             mock.status = ""
-            // Added there: the card shows it, locked, and opens the vault.
-            const form = named(page, "vaultForm")
-            named(form, "vaultFormEmail").text = "camille@example.org"
-            named(form, "vaultFormAdd").clicked()
+            // Added on the card itself: it shows it, locked, and opens the vault at once.
+            named(shown, "vaultCardEmail").text = "camille@example.org"
+            verify(add.enabled)
+            add.clicked()
             compare(mock.email, "camille@example.org")
-            tryVerify(() => card() !== null && card().visible && card().vault === "locked", 2000, "back on Your accounts, locked")
+            tryVerify(() => card().vault === "locked", 2000, "the account set, locked")
+            verify(!named(shown, "vaultCardEmail").visible && !add.visible, "the form gone once set")
+            compare(walk(shown, i => i instanceof SettingRow, []).map(r => r.setting.key), ["bitwarden.email", "bitwarden.server", "bitwarden_vault", "bitwarden.lock_after"])
+            tryCompare(shown.unlockDialog, "opened", true, 2000, "the vault's dialog, at once")
+            shown.unlockDialog.close()
+            tryCompare(shown.unlockDialog, "visible", false, 2000)
         }
 
         function test_locked_its_account_and_unlock() {
@@ -208,8 +217,8 @@ Item {
         // once an account is set (the mail form's waits for its server to be found).
         function test_the_forms_offer_the_vault_once_it_is_set() {
             set("missing", "")
-            page.addVault()
-            tryVerify(() => named(page, "vaultForm") !== null)
+            page.showTab(1)
+            tryVerify(() => named(page, "addAccountTab") !== null)
             const fills = () => walk(page, i => i instanceof VaultFill, [])
             verify(fills().length >= 3, "under the mail's, the calendars' and Google's key's fields")
             compare(fills().filter(f => f.visible).length, 0, "none without an account")

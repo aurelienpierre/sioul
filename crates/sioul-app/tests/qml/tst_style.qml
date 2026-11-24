@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Fields and buttons that stand out (Theme.qml's `field`, `edge`,
-// `focusEdge` and `chosen`, and Sioul's overrides of the Basic style in
+// `focusEdge` and `chosenTint`, and Sioul's overrides of the Basic style in
 // qml/style/, which cpp/style.cpp gives in place of Basic's own;
 // BareButton.qml). In both themes: the text on a field reads at 4.5:1 or
 // better, its placeholder too; the field's fill is not the cards'; the edge
@@ -15,8 +15,10 @@
 // accent's frame, the tint, bold words and, one choice among several, a ✓,
 // and is as wide selected as not; disabled, none is filled and its words are
 // muted; a symbolic icon is tinted as the words, a colour one keeps its own
-// colours; an icon or an arrow alone stays bare, as does a BareButton, which
-// takes the selected look when chosen; a text field, a text area one can
+// colours; a lone arrow (◂ ▸) is outlined, an icon or a cross alone stays
+// bare with a light ground under the pointer, as does a BareButton, which
+// takes the selected look when chosen; a tool button follows the same rules
+// at Basic's own size (StyleToolButton.qml); a text field, a text area one can
 // type in, a number box and the boxes to tick have the field's fill and the
 // edge, a read-only text area none; with the focus, a field's edge is 2 points
 // of the focused edge; every size is Basic's; a field's menu (cut, copy,
@@ -35,8 +37,11 @@ Item {
     width: 600
     height: 400
 
+    // As main.qml makes it: its own `chosen` (the light or dark choice) beside the theme's colours.
     Theme {
         id: light
+
+        readonly property string chosen: ""
     }
     Theme {
         id: dark
@@ -73,6 +78,8 @@ Item {
             StyleButton {
                 id: iconAlone
 
+                // Hover as on a computer (the offscreen platform says none).
+                hoverEnabled: true
                 text: "Delete"
                 flat: true
                 icon.name: "edit-delete"
@@ -83,6 +90,11 @@ Item {
 
                 text: "▸"
                 flat: true
+            }
+            StyleButton {
+                id: crossAlone
+
+                text: "×"
             }
             BareButton {
                 id: bare
@@ -96,14 +108,45 @@ Item {
                     text: "Week"
                     flat: true
                     checkable: true
+                    autoExclusive: true
                     checked: true
+                    // A page's own icon colour, which the selected tint would not read: the words' instead.
+                    icon.name: "view-calendar"
+                    icon.color: "#fbfaf7"
                 }
                 StyleButton {
                     id: otherChoice
 
                     text: "Month"
                     checkable: true
+                    autoExclusive: true
                 }
+            }
+            // Two toggles side by side, not one choice: no ✓.
+            Row {
+                StyleButton {
+                    id: toggleOne
+
+                    text: "Filters"
+                    checkable: true
+                    checked: true
+                }
+                StyleButton {
+                    id: toggleTwo
+
+                    text: "Select"
+                    checkable: true
+                    checked: true
+                }
+            }
+            // A state that a page also calls `highlighted`: drawn selected, not as the main action.
+            StyleButton {
+                id: checkedAndHighlighted
+
+                text: "Shown"
+                checkable: true
+                checked: true
+                highlighted: true
             }
             StyleButton {
                 id: toggle
@@ -135,6 +178,35 @@ Item {
 
                 text: "Open the site"
                 icon.name: "internet-web-browser"
+            }
+            // Apart: a checked tool button beside the toggle above would make it one choice among several.
+            Row {
+                StyleToolButton {
+                    id: toolIcon
+
+                    text: "Settings"
+                    icon.name: "settings-configure"
+                    display: T.AbstractButton.IconOnly
+                }
+                StyleToolButton {
+                    id: toolWords
+
+                    text: "Aa"
+                }
+                StyleToolButton {
+                    id: toolChecked
+
+                    text: "?"
+                    checkable: true
+                    checked: true
+                }
+                Basic.ToolButton {
+                    id: basicTool
+
+                    text: "Settings"
+                    icon.name: "settings-configure"
+                    display: T.AbstractButton.IconOnly
+                }
             }
             BareButton {
                 id: bareChosen
@@ -245,11 +317,11 @@ Item {
             verify(contrast(t.focusEdge, t.edge) >= 3, "the focused edge against the edge at rest: " + contrast(t.focusEdge, t.edge).toFixed(2))
             verify(contrast(t.focusEdge, t.field) >= 3, "the focused edge against the fill: " + contrast(t.focusEdge, t.field).toFixed(2))
             // Selected: its words on its tint, its frame against the tint and the page; the main action's words on the accent.
-            verify(contrast(t.text, t.chosen) >= 4.5, "text on a selected button: " + contrast(t.text, t.chosen).toFixed(2))
-            verify(contrast(t.accent, t.chosen) >= 3, "the selected frame against its tint: " + contrast(t.accent, t.chosen).toFixed(2))
+            verify(contrast(t.text, t.chosenTint) >= 4.5, "text on a selected button: " + contrast(t.text, t.chosenTint).toFixed(2))
+            verify(contrast(t.accent, t.chosenTint) >= 3, "the selected frame against its tint: " + contrast(t.accent, t.chosenTint).toFixed(2))
             verify(contrast(t.accent, t.background) >= 3, "the selected frame against the page: " + contrast(t.accent, t.background).toFixed(2))
             verify(contrast(t.accentText, t.accent) >= 4.5, "the main action's words: " + contrast(t.accentText, t.accent).toFixed(2))
-            verify(!Qt.colorEqual(t.chosen, t.field), "a selected button is not a field")
+            verify(!Qt.colorEqual(t.chosenTint, t.field), "a selected button is not a field")
         }
 
         function test_every_button_with_words_is_outlined() {
@@ -280,22 +352,42 @@ Item {
 
         function test_selected_is_not_the_main_action() {
             const background = flatChecked.background
-            verify(Qt.colorEqual(background.color, light.chosen), "the tint")
+            verify(Qt.colorEqual(background.color, light.chosenTint), "the tint")
             compare(background.border.width, 2)
             verify(Qt.colorEqual(background.border.color, light.accent), "the accent's frame")
             verify(!Qt.colorEqual(background.color, mainAction.background.color), "not the main action's fill")
             const label = flatChecked.contentItem.children[0]
             compare(label.font.weight, Font.DemiBold)
-            compare(label.text, "✓  Week", "a ✓: one choice among two")
+            compare(label.text, "✓  Week", "a ✓: one choice among two, said by `autoExclusive`")
             verify(Qt.colorEqual(label.color, light.text), "the window's words")
-            // A toggle alone: selected, no ✓.
+            verify(Qt.colorEqual(label.icon.color, light.text), "its icon in the words' colour, not the page's")
+            // A toggle alone, or toggles side by side: selected, no ✓.
             compare(toggle.contentItem.children[0].text, "Filters")
+            compare(toggleOne.contentItem.children[0].text, "Filters")
+            compare(toggleTwo.contentItem.children[0].text, "Select")
+            // Checked and highlighted: a state, drawn selected.
+            verify(Qt.colorEqual(checkedAndHighlighted.background.color, light.chosenTint), "checked wins over highlighted")
+            compare(checkedAndHighlighted.background.border.width, 2)
             // As wide chosen as not: the row does not move.
             const before = otherChoice.implicitWidth
             otherChoice.checked = true
             compare(otherChoice.contentItem.children[0].text, "✓  Month")
             compare(otherChoice.implicitWidth, before, "the same width")
+            // autoExclusive unticked the other: both as they were.
             otherChoice.checked = false
+            flatChecked.checked = true
+        }
+
+        // A tool button: Basic's grey square retired; an icon alone bare, words outlined, checked selected; Basic's size.
+        function test_a_tool_button_follows_the_buttons() {
+            filled.forceActiveFocus()
+            verify(!toolIcon.background.visible, "an icon alone: bare at rest")
+            verify(toolWords.background.visible && toolWords.background.color.a === 0, "words: no fill")
+            compare(toolWords.background.border.width, 1, "words: outlined")
+            verify(Qt.colorEqual(toolChecked.background.color, light.chosenTint), "checked: the selected tint")
+            compare(toolChecked.background.border.width, 2)
+            compare(toolIcon.implicitWidth, basicTool.implicitWidth)
+            compare(toolIcon.implicitHeight, basicTool.implicitHeight)
         }
 
         function test_a_colour_icon_keeps_its_colours() {
@@ -308,9 +400,16 @@ Item {
 
         function test_an_icon_an_arrow_and_a_bare_button_stay_bare() {
             verify(!iconAlone.background.visible, "an icon alone: no outline")
-            verify(!arrowAlone.background.visible, "an arrow alone: no outline")
+            verify(!crossAlone.background.visible, "a cross alone (×, a sign, not a letter): no outline")
+            verify(arrowAlone.background.visible && arrowAlone.background.border.width === 1, "a lone arrow: outlined, a button, not a bullet")
+            // Under the pointer, an icon alone shows a light ground.
+            mouseMove(iconAlone, iconAlone.width / 2, iconAlone.height / 2)
+            tryVerify(() => iconAlone.hovered, 1000, "hovered")
+            verify(iconAlone.background.visible, "a ground under the pointer")
+            verify(Qt.colorEqual(iconAlone.background.color, light.hover), "the theme's hover")
+            mouseMove(filled, 2, 2)
             verify(!bare.background.visible, "a fold line: no outline")
-            verify(Qt.colorEqual(bareChosen.background.color, light.chosen), "a bare button chosen: the selected look")
+            verify(Qt.colorEqual(bareChosen.background.color, light.chosenTint), "a bare button chosen: the selected look")
             compare(bareChosen.background.border.width, 2)
             compare(bare.implicitWidth, basicBare.implicitWidth, "a bare button's size is a button's")
             compare(bare.implicitHeight, basicBare.implicitHeight)

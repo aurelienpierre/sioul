@@ -149,8 +149,8 @@ Item {
         // chooser's login, as LoginChooser's `chosen` gives it.
         function fillAll() {
             mock.vault = "unlocked"
-            page.addVault()
-            tryVerify(() => named(page, "vaultForm") !== null)
+            page.showTab(1)
+            tryVerify(() => named(page, "addAccountTab") !== null)
             page.readVault()
             for (const fill of fills())
                 fill.take("one")
@@ -201,8 +201,8 @@ Item {
 
         function test_a_typed_password_stays_and_a_held_one_is_never_shown_closed() {
             mock.vault = "unlocked"
-            page.addVault()
-            tryVerify(() => named(page, "vaultForm") !== null)
+            page.showTab(1)
+            tryVerify(() => named(page, "addAccountTab") !== null)
             page.readVault()
             const typed = walk(page, i => i instanceof PasswordField, [])[0]
             typed.text = "typed-by-hand"
@@ -230,8 +230,8 @@ Item {
         // One field filled from the vault, in view and focused, its eye as asked.
         function oneFilled(shown) {
             mock.vault = "unlocked"
-            page.addVault()
-            tryVerify(() => named(page, "vaultForm") !== null)
+            page.showTab(1)
+            tryVerify(() => named(page, "addAccountTab") !== null)
             page.readVault()
             const fill = fills().find(f => f.visible)
             verify(fill, "a From Bitwarden… in view")
@@ -311,13 +311,13 @@ Item {
             one.field.selectAll()
             keyClick(Qt.Key_Delete)
             page.openSettings(true, "")
-            page.addVault()
+            page.showTab(1)
             compare(undoRedo(one.field), ["", ""], "the form left")
             one = oneFilled(false)
             one.field.selectAll()
             keyClick(Qt.Key_T)
             mock.accountAdded()
-            page.addVault()
+            page.showTab(1)
             const after = undoRedo(one.field)
             verify(after.every(t => t.indexOf("made-up-secret") < 0), "the account added: " + after)
         }

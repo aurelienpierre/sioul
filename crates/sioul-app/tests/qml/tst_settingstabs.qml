@@ -61,18 +61,18 @@ Item {
                 "settings-tab-invoices": "Invoices",
                 "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "AI agents",
-                "settings-about-look": "Language, colours, the places' names, passwords as you type.",
-                "settings-about-hours": "Working hours, hours for your admin, meals and the night, time off.",
+                "settings-about-look": "Language, colours, the places' names, passwords as you type, how long text reads.",
+                "settings-about-hours": "Time zone, working hours, hours for your admin, meals and the night, time off.",
                 "settings-about-attention": "Who reaches you, and when; Sioul's own notices; do not disturb on every device.",
                 "settings-about-rules": "When something happens, what Sioul does: your rules, and those kept with your projects, budgets, filters and topics.",
                 "settings-about-words": "The words Sioul looks for in mail, papers, calls and tasks, in your languages.",
-                "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed, and notifications gathered.",
+                "settings-about-reminders": "Reminders of dates asked, with Sioul's window closed too.",
                 "settings-about-pauses": "Free time and the pause: when work ends, what helps you, the pause's screen.",
                 "settings-about-files": "Your devices in step, through a folder or a server, sealed; what each part carries.",
                 "settings-about-devices": "Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.",
                 "settings-about-invoices": "Who issues your invoices, their numbers, VAT, bank and legal lines.",
                 "settings-about-extensions": "Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.",
-                "settings-about-ai": "What AI agents may use, project by project."
+                "settings-about-ai": "What AI agents may use: what is in no project, texts, the spam filter."
             },
             "fr": {
                 "ui-parameters": "Paramètres",
@@ -88,30 +88,32 @@ Item {
                 "settings-tab-invoices": "Factures",
                 "settings-tab-extensions": "Extensions",
                 "settings-tab-ai": "Agents d’IA",
-                "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie.",
-                "settings-about-hours": "Heures de travail, heures pour vos démarches, repas et nuit, congés.",
+                "settings-about-look": "Langue, couleurs, nom des lieux, mots de passe pendant la saisie, lecture des longs textes.",
+                "settings-about-hours": "Fuseau horaire, heures de travail, heures pour vos démarches, repas et nuit, congés.",
                 "settings-about-attention": "Qui vous joint, et quand ; les avis de Sioul ; « Ne pas déranger » sur tous vos appareils.",
                 "settings-about-rules": "Quand quelque chose arrive, ce que fait Sioul : vos règles, et celles gardées avec vos projets, vos budgets, vos filtres et vos thèmes.",
                 "settings-about-words": "Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.",
-                "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.",
+                "settings-about-reminders": "Rappels des dates demandées, fenêtre de Sioul fermée aussi.",
                 "settings-about-pauses": "Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.",
                 "settings-about-files": "Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.",
                 "settings-about-devices": "Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.",
                 "settings-about-invoices": "Qui émet vos factures, leurs numéros, la TVA, la banque et les mentions légales.",
                 "settings-about-extensions": "Des programmes à part de Sioul qui apportent un agenda d’un service qu’il ne parle pas lui-même, comme l’emploi du temps d’une école.",
-                "settings-about-ai": "Ce que les agents d’IA peuvent utiliser, projet par projet."
+                "settings-about-ai": "Ce que les agents d’IA peuvent utiliser : ce qui n’est dans aucun projet, les SMS, le filtre à indésirables."
             }
         })
 
         function text(key) {
             return mock.words[mock.language][key] || key
         }
-        // Three rows of Display under two headings, one of Hours.
+        // Three rows of Display under two headings (how text reads its own, 24 November 2026),
+        // what this device is in no tab (its card in Devices reads it), one row of Hours.
         function settings(view) {
             return JSON.stringify([
                 { key: "places_named", section: "look", group: "Language and appearance", kind: "bool", label: "Show the places' names beside their icons", help: "", value: false },
                 { key: "passwords_shown", section: "look", group: "Language and appearance", kind: "bool", label: "Show passwords as you type", help: "", value: false },
-                { key: "device_kind", section: "look", group: "This device", kind: "bool", label: "What this device is", help: "", value: false },
+                { key: "reading.size", section: "look", group: "How text reads", kind: "bool", label: "Size", help: "", value: false },
+                { key: "device_kind", section: "device", group: "", kind: "bool", label: "What this device is", help: "", value: false },
                 { key: "time_off", section: "hours", group: "Working hours and quiet time", kind: "bool", label: "Time off", help: "", value: false }
             ])
         }
@@ -262,7 +264,8 @@ Item {
             compare(column.width, computerTheme.readable, "a legible width")
             fuzzyCompare(column.x, (column.room - column.width) / 2, 1, "centred")
             const headings = walk(column, i => i.visible && i.Accessible.role === Accessible.Heading, [])
-            compare(headings.map(h => h.text).join(" | "), "Language and appearance | This device", "a frame per heading")
+            compare(headings.map(h => h.text).join(" | "), "Language and appearance | How text reads", "a frame per heading")
+            compare(walk(column, i => i.visible && i.objectName === "setting:device_kind", []).length, 0, "what this device is: its card in Devices, never Display")
             // Devices pressed: shown, the whole width.
             tabs[wide.sections.indexOf("devices")].clicked()
             compare(wide.section, "devices")

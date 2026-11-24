@@ -19,7 +19,7 @@ SafePopup {
 
     required property var sioul
     required property var theme
-    // "porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "time", "general".
+    // "porch", "mail", "agenda", "tasks", "notes", "contacts", "time", "general".
     property string view: ""
     property var rows: []
     property string problem: ""
@@ -195,6 +195,9 @@ SafePopup {
                     required property var modelData
                     required property int index
 
+                    // A group with no heading whose rows draw nothing (Mail ⚙'s row that leaves the
+                    // lists of the mail you called spam, while there are none): no empty frame.
+                    visible: group.title !== "" || rowsShown.count !== 1 || rowsShown.itemAt(0) === null || !(rowsShown.itemAt(0) as SettingRow).blank
                     Layout.fillWidth: true
                     Layout.topMargin: group.index === 0 ? 6 : 12
                     theme: panel.theme
@@ -202,6 +205,8 @@ SafePopup {
                     body.spacing: 12
 
                     Repeater {
+                        id: rowsShown
+
                         model: group.modelData.rows
 
                         delegate: SettingRow {
@@ -215,8 +220,6 @@ SafePopup {
                             onSave: (key, value, shown) => panel.save(key, value, shown)
                             onGoTo: key => panel.scrollTo(key)
                             onChangedElsewhere: panel.reload()
-                            // A link followed: its place shows, not this panel over it.
-                            onFollowed: panel.close()
                         }
                     }
                 }
