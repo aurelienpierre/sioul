@@ -725,6 +725,21 @@ Item {
                 wrapMode: Text.Wrap
                 color: page.theme.warm
             }
+            // No Bitwarden account to fill from: the sentence names its one place, the
+            // password manager's card in Accounts, and this opens it there.
+            Button {
+                objectName: "siteVaultAdd"
+                visible: page.problem !== "" && page.problem === page.sioul.text("bitwarden-missing")
+                implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                flat: true
+                icon.name: "go-next"
+                icon.color: page.theme.text
+                text: page.sioul.text("vault-card-add")
+                onClicked: {
+                    page.problem = ""
+                    page.window.showParameters("bitwarden")
+                }
+            }
             Label {
                 visible: page.opened === null && page.sites.length > 0
                 Layout.fillWidth: true

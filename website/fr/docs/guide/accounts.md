@@ -23,13 +23,15 @@ Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](no
 ## Vos comptes {#your-accounts}
 
 <figure markdown="span">
-  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : « Ce que ce serveur offre » en haut, son service de courriel avec son serveur, un interrupteur et Retirer, « Réglages de cette adresse », replié, sa priorité, « Nom et signature… », sa couleur, et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
+  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne, les champs de l’adresse et du serveur et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines, et « Relever toutes les », 5 minutes ; en dessous, la fiche d’une adresse : « Ce que ce serveur offre » en haut, son service de courriel avec son serveur, un interrupteur et Retirer, « Réglages de cette adresse », replié, sa priorité, « Nom et signature… », sa couleur, et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
   <figcaption>Une fiche par adresse, chacun de ses services avec un interrupteur.</figcaption>
 </figure>
 
 **Vos comptes** est l’onglet sur lequel la page s’ouvre. En haut, **Gestionnaire de mots de passe** : votre compte Bitwarden, un seul pour toute l’application ([plus bas](#your-password-manager)).
 
 Puis **Jusqu’où remontent les courriels et l’agenda** : d’une semaine à un an, ou tout. Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps, et de la place sur le disque.
+
+Puis **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés, pour chaque adresse dont la fiche ne dit rien d’autre, de 1 à 240 minutes, 5 tant que vous ne la changez pas. La boîte de réception arrive dès que le serveur signale du nouveau.
 
 Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **Agendas, tâches et contacts** ; **Google : agendas, contacts et tâches**. Chacun a :
 
@@ -47,7 +49,7 @@ Sioul remplit les identifiants des sites et les mots de passe des comptes depuis
 - **Bitwarden sur cet appareil** : « Bitwarden est ouvert. » avec **Verrouiller**, ou « Bitwarden est verrouillé. » avec **Déverrouiller**. Déverrouiller ouvre le coffre pour la session : avec votre seule clé de sécurité, ou avec votre mot de passe principal et la deuxième étape que demande votre compte ([Sites](sites.md#logins-from-bitwarden) dit chacune). Sur un téléphone, par le mot de passe principal et un code : celui d’une application d’authentification, d’un courriel, d’une YubiKey, un code de récupération.
 - **Verrouiller Bitwarden** : après un temps sans usage, de cinq minutes à quatre heures, comme les applications de Bitwarden ; tant que vous n’avez pas choisi, il reste ouvert jusqu’à la fermeture de Sioul.
 
-Sans compte, la fiche tient une ligne et **Ajouter votre compte Bitwarden**, qui ouvre son formulaire dans [Ajouter un compte](#add-an-account). Le compte suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md) ; le coffre lui-même ne quitte jamais l’appareil qui l’a ouvert. Sur un ordinateur, la page Sites remplit ses identifiants depuis le même coffre, et son ⚙ a un bouton vers cette fiche ; sur Android, où les sites s’ouvrent dans le navigateur, le coffre ne sert qu’aux mots de passe des comptes.
+Sans compte, la fiche le demande elle-même : une ligne, l’adresse de votre compte Bitwarden, son serveur quand ce n’est pas bitwarden.com, et **Ajouter votre compte Bitwarden**, qui ouvre aussitôt le coffre. Il se règle et se change sur cette seule fiche. Le compte suit vos réglages sur vos autres appareils, quand vous les [partagez](sharing.md) ; le coffre lui-même ne quitte jamais l’appareil qui l’a ouvert. Sur un ordinateur, la page Sites remplit ses identifiants depuis le même coffre (un identifiant demandé avant qu’un compte soit réglé le dit, avec un bouton vers cette fiche) ; sur Android, où les sites s’ouvrent dans le navigateur, le coffre ne sert qu’aux mots de passe des comptes.
 
 ### Une adresse électronique {#a-mail-address}
 
@@ -55,7 +57,7 @@ Sur sa fiche, **Réglages de cette adresse**, replié tant que vous ne l’ouvre
 
 - **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Ses courriels sont notifiés aux heures de ce à quoi elle sert ; ceux de vos expéditeurs sûrs s’affichent sur le Porche à leurs moments et sont notifiés quand ces heures commencent, et ceux des personnes qui passent toujours viennent tout de suite. Sans rien de coché, elle compte comme du travail, pour que les courriels des autres n’atteignent jamais vos soirées ; ceux de vos expéditeurs sûrs sont toujours notifiés à leurs moments. Voir [Les heures](hours.md).
 - **Jusqu’où remonter** : combien de semaines des courriels de cette adresse ses dossiers montrent, ou comme les autres adresses.
-- **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses, dont le rythme est **Relever toutes les** dans le ⚙ de la page Courriels. Une adresse publique peut être relevée deux fois par jour (720 minutes).
+- **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses, dont le rythme est **Relever toutes les** en haut de Vos comptes. Une adresse publique peut être relevée deux fois par jour (720 minutes).
 - **Protégée contre le harcèlement**, et une fois cette protection activée, **Laisser l’IA le lire d’abord** (pas proposé pour une adresse Microsoft professionnelle ou scolaire : sa fiche dit pourquoi). Voir [le Porche](porch.md#a-public-address-protected).
 
 Toujours en vue en dessous :
@@ -88,12 +90,11 @@ Le compte de courriel Outlook.com, Hotmail, Live, MSN ou Microsoft 365 connecté
 
 ## Ajouter un compte {#add-an-account}
 
-L’onglet **Ajouter un compte** tient quatre formulaires, l’un après l’autre (une fois un compte ajouté, la page revient à **Vos comptes**) :
+L’onglet **Ajouter un compte** tient trois formulaires, l’un après l’autre (une fois un compte ajouté, la page revient à **Vos comptes**) :
 
 - **Ajouter un compte de courriel** : votre adresse, **Trouver le serveur**, votre mot de passe, **Se connecter et ajouter**. Pour Gmail et Google Workspace, **Utiliser un mot de passe d’application** ou **Se connecter avec Google** au lieu d’un mot de passe (pour Workspace, la connexion est la façon fiable : Google peut ne pas lui proposer de mot de passe d’application) ; pour Yahoo Mail, un mot de passe d’application comme mot de passe (**Créer un mot de passe d’application** ouvre la page de sécurité de votre compte Yahoo) ; pour Outlook.com, Hotmail, Live, MSN et Microsoft 365, **Se connecter avec Microsoft**. Quand rien n’est trouvé pour une adresse professionnelle ou scolaire gardée chez Microsoft 365, **Cette adresse est chez Microsoft**, sous le formulaire, amène la connexion de Microsoft. Pour un domaine à vous gardé chez un hébergeur, Sioul cherche le serveur de l’hébergeur ; s’il n’en trouve pas, le formulaire s’ouvre vide pour le nom de serveur que donne votre hébergeur, et **Serveur d’envoi, s’il ne se trouve pas** prend un autre serveur pour l’envoi ([Votre propre domaine chez un hébergeur](first-steps.md#your-own-domain-at-a-host)).
 - **Ajouter des contacts et agendas** : depuis un serveur CalDAV et CardDAV, comme Nextcloud, Fastmail, iCloud ou votre hébergeur : votre adresse, son mot de passe, **Se connecter et ajouter** ; **Adresse du serveur, s’il ne se trouve pas**, replié, prend l’adresse du serveur et son identifiant. Ses carnets d’adresses et ses agendas se gèrent ensuite là où ils servent : Contacts ⚙ ▸ **Carnets d’adresses** ([Les contacts](contacts.md#address-books)) et Agenda ⚙ ▸ **Vos agendas** ([L’agenda](agenda.md#agendas-on-their-servers)). Un agenda lu par son adresse web (l’emploi du temps d’un établissement scolaire, les jours fériés) n’est pas un compte : on s’y abonne là, avec **S’abonner à un agenda…** ([Les agendas par leur adresse](agenda.md#calendars-by-their-address)).
 - **Agendas, contacts et tâches Google** : **Se connecter avec Google**, sur la page de Google elle-même.
-- **Bitwarden** : l’adresse de votre gestionnaire de mots de passe, et son serveur quand ce n’est pas bitwarden.com ; **Ajouter** le montre en haut de **Vos comptes** et y ouvre le coffre. Un seul compte pour toute l’application : une fois réglé, ce formulaire dit lequel.
 
 Chaque champ de mot de passe de ces formulaires a **Depuis Bitwarden…** en dessous, une fois votre gestionnaire de mots de passe réglé : le coffre s’ouvre s’il est verrouillé, puis ses identifiants sont listés par le nom avec lequel le compte se connecte, et celui que vous choisissez donne son mot de passe ; le bouton dit alors de quel identifiant il vient. Ce mot de passe ne reste dans le champ que tant que le coffre est ouvert et le formulaire à l’écran : verrouiller le coffre (ou son temps sans usage), quitter Ajouter un compte, ou ajouter le compte vide le champ, et Annuler comme Rétablir n’en ramènent rien, même après que vous l’avez vidé à la main. Si vous avez tapé votre propre mot de passe par-dessus, le vôtre reste, sans celui du coffre derrière lui. Un champ que le coffre n’a jamais rempli garde ce que vous y avez tapé.
 

@@ -1304,19 +1304,8 @@ Item {
                 MoreButton {
                     visible: !page.draftsShown && !page.searchBelow && !page.searchOpen
                 }
-                CheckBox {
-                    id: realtime
-
-                    text: page.sioul.text("ui-realtime")
-                    checked: page.sioul.realtime
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.sioul.text("ui-realtime-help")
-                    ToolTip.delay: 400
-                    onToggled: {
-                        page.sioul.setRealtimeMode(checked)
-                        realtime.checked = Qt.binding(() => page.sioul.realtime)
-                    }
-                }
+                // Mail every minute is the status line's card's alone (What reaches you now):
+                // a state of now, for Mail and the Porch alike (24 November 2026).
                 SettingsButton {
                     id: mailSettings
 

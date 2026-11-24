@@ -156,6 +156,11 @@ ColumnLayout {
         setup.read()
     }
 
+    // A list of tasks alone (it takes no events): renamed and removed in Tasks ⚙ (TaskListsSetup.qml), not here.
+    function tasksOnly(agenda) {
+        return agenda.tasks === true && agenda.events !== true
+    }
+
     // What may be chosen of what you may do with it: never writing where its server keeps it read only.
     function accessChoices(agenda) {
         return agenda.server_read_only ? ["read", "availability"] : ["write", "read", "availability"]
@@ -559,14 +564,7 @@ ColumnLayout {
                         Accessible.name: setup.sioul.text("subscribe-holidays")
                         onActivated: index => setup.saveSubscription(feed.sub.id, "holidays", kinds[index])
                     }
-                    WrapCheckBox {
-                        objectName: "subscriptionDaysOff"
-                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays !== ""
-                        Layout.fillWidth: true
-                        text: setup.sioul.text("subscribe-days-off")
-                        checked: feed.sub !== null && feed.sub.days_off === true
-                        onToggled: setup.saveSubscription(feed.sub.id, "days_off", checked ? "true" : "false")
-                    }
+                    // Whether its days count as your days off is Settings ▸ Hours' alone (VacationsCalendars.qml).
                     // Its events mark you busy and hold your time only when you say they are yours (F41):
                     // the same words, and the same line under them, as an extension agenda's switch.
                     WrapCheckBox {
@@ -627,9 +625,11 @@ ColumnLayout {
                     }
                 }
                 // On its server (part 5): yours renamed, recoloured, removed; someone else's stopped showing.
+                // A list of tasks alone is renamed and removed (or stopped showing) in Tasks ⚙ ▸ Task
+                // lists, its one place, by the same calls (TaskListsSetup.qml).
                 TextField {
                     objectName: "agendaRename"
-                    visible: one.modelData.server && one.modelData.server.own === true
+                    visible: one.modelData.server && one.modelData.server.own === true && !setup.tasksOnly(one.modelData)
                     Layout.fillWidth: true
                     text: one.modelData.name
                     Accessible.name: setup.sioul.text("agenda-new-name")
@@ -672,7 +672,7 @@ ColumnLayout {
                 }
                 Button {
                     objectName: "agendaRemove"
-                    visible: one.modelData.server && one.modelData.server.server !== undefined && (one.modelData.server.own === true || one.modelData.server.server !== "local") && setup.removing !== one.modelData.id
+                    visible: one.modelData.server && one.modelData.server.server !== undefined && (one.modelData.server.own === true || one.modelData.server.server !== "local") && !setup.tasksOnly(one.modelData) && setup.removing !== one.modelData.id
                     text: setup.sioul.text(one.modelData.server && one.modelData.server.own === true ? "agenda-remove" : "agenda-stop-showing")
                     onClicked: setup.askRemoval(one.modelData.id)
                 }

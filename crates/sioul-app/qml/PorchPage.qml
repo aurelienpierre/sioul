@@ -14,7 +14,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Item {
@@ -370,16 +369,6 @@ Item {
     // How mail is sorted, every lane: for the window's images.
     function openSettings(open) {
         settingsButton.show(open)
-    }
-
-    // A scan of a paper letter, chosen and copied into the folder scans are
-    // read from (the New menu's "A paper letter (scan)…"); without a folder,
-    // where one is chosen: Settings.
-    function addScan() {
-        if (page.sioul.lettersFolder() === "")
-            page.window.showParameters("case_store")
-        else
-            scanPicker.open()
     }
 
     function grabSettings(path) {
@@ -1736,8 +1725,8 @@ Item {
         }
     }
 
-    // A section's help, once, and what changes it (each setting read by its
-    // file, SettingRow.qml, which the Porch then does not load at its start).
+    // A section's help, once: how mail lands there, and where what changes it
+    // is set, said (the senders you know are Porch ⚙'s alone: 24 November 2026).
     Later {
         id: helpPopup
 
@@ -1746,11 +1735,9 @@ Item {
                 id: help
 
                 property var lane: null
-                property var rows: []
 
                 function show(lane) {
                     help.lane = lane
-                    help.rows = lane.settings ? JSON.parse(page.sioul.settings(lane.settings)) : []
                     help.open()
                 }
 
@@ -1791,35 +1778,6 @@ Item {
                                 color: page.theme.text
                             }
                         }
-                        Repeater {
-                            model: help.rows
-
-                            delegate: Loader {
-                                id: ruleRow
-
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                Layout.topMargin: 6
-                                Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
-
-                                Connections {
-                                    target: ruleRow.item
-
-                                    function onSave(key, value, shown) {
-                                        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                        if (problem === "")
-                                            help.rows = JSON.parse(page.sioul.settings(help.lane.settings))
-                                        else
-                                            page.sioul.status = problem
-                                    }
-                                    // A link followed (Filed's, to the automatic senders' words): its place shows, not this over it.
-                                    function onFollowed() {
-                                        help.close()
-                                    }
-                                }
-                            }
-                        }
                         Button {
                             Layout.alignment: Qt.AlignRight
                             text: page.sioul.text("ui-close")
@@ -1829,16 +1787,5 @@ Item {
                 }
             }
         }
-    }
-
-    // PDF and pictures, the kinds Sioul reads; several at once. Each copied,
-    // the chosen file left where it was; what happened said on the status line.
-    FileDialog {
-        id: scanPicker
-
-        title: page.sioul.text("letters-add-scan-title")
-        fileMode: FileDialog.OpenFiles
-        nameFilters: [page.sioul.text("letters-add-scan-filter") + " (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.webp)"]
-        onAccepted: page.sioul.status = page.sioul.lettersAdd(JSON.stringify(Array.from(scanPicker.selectedFiles, f => f.toString())))
     }
 }

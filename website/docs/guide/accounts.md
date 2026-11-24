@@ -23,13 +23,15 @@ Who may reach you, and when, is in Settings ▸ [What reaches you](notifications
 ## Your accounts
 
 <figure markdown="span">
-  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: "What this server offers" at its top, its mail service with its server, a switch and Remove, "Settings for this address", folded, its priority, "Name and signature…", its colour, and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
+  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line, the e-mail and server fields and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks, and "Fetch every", 5 minutes; below, an address's card: "What this server offers" at its top, its mail service with its server, a switch and Remove, "Settings for this address", folded, its priority, "Name and signature…", its colour, and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
   <figcaption>One card per address, each of its services with a switch.</figcaption>
 </figure>
 
 **Your accounts** is the tab the page opens on. At the top, **Password manager**: your Bitwarden account, one for the whole app ([below](#your-password-manager)).
 
 Then **How far back mail and the agenda reach**: from one week to one year, or everything. Older mail is fetched at the next round; "Everything" can take a while, and room on disk.
+
+Then **Fetch every**: how often the folders other than the inbox are fetched, for every address whose card says nothing else, from 1 to 240 minutes, 5 unless you change it. The inbox comes as soon as the server says something arrived.
 
 Then one card per address, with each of its services: **Mail**; **Calendars, tasks and contacts**; **Google: calendars, contacts and tasks**. Each has:
 
@@ -47,7 +49,7 @@ Sioul fills sites' logins and accounts' passwords from your Bitwarden vault, rea
 - **Bitwarden on this device**: "Bitwarden is open." with **Lock**, or "Bitwarden is locked." with **Unlock**. Unlock opens the vault for the session: with your security key alone, or with your master password and the second step your account asks for ([Sites](sites.md#logins-from-bitwarden) says each). On a phone, by the master password and a code: an authenticator app's, an e-mail's, a YubiKey's, a recovery code.
 - **Lock Bitwarden**: after a time without use, from five minutes to four hours, as Bitwarden's own apps do; until you choose, it stays open until Sioul closes.
 
-Without an account, the card has one line and **Add your Bitwarden account**, which opens its form in [Add an account](#add-an-account). The account travels with your settings to your other devices, when you [share them](sharing.md); the vault itself never leaves the device that opened it. On a computer, the Sites page fills logins from the same vault, and its ⚙ has a button to this card; on Android, where sites open in the browser, the vault serves the accounts' passwords alone.
+Without an account, the card asks for it itself: one line, your Bitwarden account's e-mail, its server when it is not bitwarden.com, and **Add your Bitwarden account**, which opens the vault at once. It is set and changed on this card alone. The account travels with your settings to your other devices, when you [share them](sharing.md); the vault itself never leaves the device that opened it. On a computer, the Sites page fills logins from the same vault (a login asked before an account is set says so, with a button to this card); on Android, where sites open in the browser, the vault serves the accounts' passwords alone.
 
 ### A mail address
 
@@ -55,7 +57,7 @@ On its card, **Settings for this address**, folded until you open it:
 
 - **What this address is for**: work, your admin, leisure, any of them together. Its mail is told in the hours for what it is for; your safe senders' shows on the Porch at their times and is told when those hours begin, and your Always through people's comes at once. Nothing ticked counts as work, so that the others' mail never reaches your evenings; your safe senders' is still told at their times. See [Hours](hours.md).
 - **How far back**: how many weeks of this address's mail its folders show, or like the other addresses.
-- **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses, whose rhythm is **Fetch every** in the Mail page's ⚙. A public address can be fetched twice a day (720 minutes).
+- **Fetch every**: how often its folders other than the inbox are fetched; 0 follows the other addresses, whose rhythm is **Fetch every** at the top of Your accounts. A public address can be fetched twice a day (720 minutes).
 - **Protected against harassment**, and once it is on, **Let the AI read it first** (not offered for a work or school Microsoft address: its card says why). See [the Porch](porch.md#a-public-address-protected).
 
 Always in view below it:
@@ -88,12 +90,11 @@ Outlook.com, Hotmail, Live, MSN and Microsoft 365 mail signed in with Microsoft 
 
 ## Add an account
 
-The **Add an account** tab holds four forms, one after the other (once an account is added, the page returns to **Your accounts**):
+The **Add an account** tab holds three forms, one after the other (once an account is added, the page returns to **Your accounts**):
 
 - **Add a mail account**: your address, **Find the server**, your password, **Connect and add**. For Gmail and Google Workspace, **Use an app password** or **Sign in with Google** instead of a password (for Workspace, the sign-in is the dependable way: Google may not offer it an app password); for Yahoo Mail, an app password as the password (**Make an app password** opens your Yahoo account's security page); for Outlook.com, Hotmail, Live, MSN and Microsoft 365, **Sign in with Microsoft**. When nothing is found for a work or school address kept at Microsoft 365, **This address is at Microsoft**, under the form, brings Microsoft's sign-in. For a domain of your own kept at a host, Sioul looks for the host's server; when it finds none, the form opens empty for the server name your host gives, and **Sending server, when it cannot be found** takes another server for sending ([Your own domain at a host](first-steps.md#your-own-domain-at-a-host)).
 - **Add contacts and calendars**: from a CalDAV and CardDAV server, such as Nextcloud, Fastmail, iCloud or your host: your address, its password, **Connect and add**; **Server address, when it cannot be found**, folded, takes the server's address and its login. Its address books and its calendars are then managed where they are used: Contacts ⚙ ▸ **Address books** ([Contacts](contacts.md#address-books)) and Agenda ⚙ ▸ **Your agendas** ([Agenda](agenda.md#agendas-on-their-servers)). A calendar read by its web address (a school's timetable, public holidays) is not an account: it is subscribed there, with **Subscribe to a calendar…** ([Calendars by their address](agenda.md#calendars-by-their-address)).
 - **Google calendars, contacts and tasks**: **Sign in with Google**, on Google's own page.
-- **Bitwarden**: your password manager's e-mail, and its server when it is not bitwarden.com; **Add** shows it at the top of **Your accounts** and opens the vault there. One account for the whole app: once one is set, this form says which.
 
 Every password field of these forms has **From Bitwarden…** under it, once your password manager is set: the vault opens if it is locked, then its logins are listed by the name the account logs in with, and the one you choose gives its password; the button then says which login it was. That password stays in the field only while the vault is open and the form in view: locking the vault (or its time without use), leaving Add an account, or adding the account empties the field, and Undo and Redo bring nothing of it back, even after you emptied the field by hand. If you typed your own password over it, yours stays, without the vault's behind it. A field the vault never filled keeps what you typed.
 

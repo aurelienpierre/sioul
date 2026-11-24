@@ -60,7 +60,7 @@ Item {
         "hours-mark-office": "C’est un bureau, une boutique ou un cabinet",
         "hours-mark-why": "Sioul ne cherche des horaires que pour un bureau, une boutique ou un cabinet : le nom d’une personne n’est jamais envoyé nulle part.",
         "hours-holidays": "Fermé les jours fériés.",
-        "hours-holidays-unknown": "Fermé les jours fériés, mais Sioul n’en connaît encore aucun : ajoutez leur agenda dans Réglages ▸ Heures.",
+        "hours-holidays-unknown": "Fermé les jours fériés, mais Sioul n’en connaît encore aucun : abonnez-vous à leur agenda dans Paramètres ▸ Heures, sous Vacances et jours fériés.",
         "hours-phone-title": "Au téléphone",
         "hours-read-only": "Le carnet de cette fiche ne peut qu’être lu : ses horaires ne peuvent pas y être écrits ici."
     })

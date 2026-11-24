@@ -8,7 +8,7 @@
 //!
 //! - "Make it an appointment", on a task's block: the event form opens with
 //!   the task's title, place, notes and the block's time, in the calendar
-//!   Settings ▸ Agenda names for new events, or another chosen there. Saved,
+//!   Agenda ⚙ names for new events, or another chosen there. Saved,
 //!   the event is written and the task taken out, with its time blocks to
 //!   come and the block it was opened from, in one step of the move journal
 //!   (`vdir::replace_items`): never both, never neither.

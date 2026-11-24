@@ -6,8 +6,9 @@
 // computer's width and at a phone's (412): your vacations, each with its
 // kind; a new one saved with its kind (a vacation said by none); each
 // calendar of holidays with its switch, which says whether this device has
-// read it yet; "Subscribe to a calendar of holidays…" opens the Agenda's ⚙
-// (`settings:agendas.subscribe`). Fiction only. Run by tools/qml-test.sh.
+// read it yet; "Subscribe to a calendar of holidays…" opens the subscribe
+// form here, over Settings (never the Agenda's ⚙). Fiction only. Run by
+// tools/qml-test.sh.
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -41,6 +42,7 @@ Item {
         function holidaysCalendars() { return JSON.stringify({ calendars: mock.calendars }) }
         function setSubscriptionField(id, field, value) { mock.calls = mock.calls.concat([["field", id, field, value]]); return "" }
         function reminderOpened(kind, uri, key) { mock.calls = mock.calls.concat([["opened", kind]]) }
+        function subscribeOfficials() { return JSON.stringify({ home: "", countries: [], officials: [] }) }
     }
 
     readonly property var setting: ({ key: "time_off", kind: "timeoff", label: "set-time-off", help: "set-time-off-help", group: "set-time-off-group", section: "hours", choices: [], min: 0, max: 0, step: 1, unit: "", value: [
@@ -119,8 +121,12 @@ Item {
             compare(said[1].color, testTheme.warm, "not read here yet: said")
             mouseClick(switches[1])
             compare(mock.calls[0], ["field", "fr-school-zone-a", "days_off", "true"])
+            const block = root.named(row, "vacationsCalendars")[0]
             mouseClick(root.named(row, "holidaysSubscribe")[0])
-            compare(mock.calls[mock.calls.length - 1], ["opened", "settings:agendas.subscribe"])
+            tryVerify(() => block.subscribing, 2000, "the subscribe form, over Settings")
+            compare(mock.calls.filter(c => c[0] === "opened").length, 0, "never the Agenda's ⚙")
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !block.subscribing, 2000, "put away")
             const wide = root.all(row, c => c.visible && c.width > 0 && c.mapToItem(row, 0, 0).x + c.width > row.width + 1)
             compare(wide.length, 0, "nothing wider than the row")
         }
