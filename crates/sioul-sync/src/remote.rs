@@ -1528,6 +1528,9 @@ pub struct Pulled {
     pub differ: Vec<String>,
     /// Large files left for later on a metered or slow connection (`send`, `fetch_wanted`).
     pub paced: usize,
+    /// This device's own files left to the desktop sync app that carries the
+    /// folder too (`send`, `BESIDE_WAIT`).
+    pub beside: usize,
     /// Files that did not go (too slow, cut), held back until their backoff
     /// (`send`); sealed files fetched that did not open whole (`fetch_wanted`).
     pub held: usize,
@@ -3263,6 +3266,12 @@ pub struct Sending {
     /// for good (final review of 15 October 2026, RES-1).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub refused: BTreeSet<String>,
+    /// Beside a desktop sync app (`carried_beside`): this device's own files
+    /// left to it, by their path in the folder, and since when (Unix seconds),
+    /// so that one it has not carried for `BESIDE_LONGEST` goes all the same.
+    /// An older Sioul passes it over.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub beside: BTreeMap<String, i64>,
 }
 
 /// A failed send, in detail: what the panel and the log say of it.
@@ -3479,7 +3488,8 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         // And what it took out here of the devices that no longer count (`Sender::take_out_departed`).
         let departed = if lane == Lane::Main && check { Departed::load(memory, own) } else { Departed::default() };
         let outcome = Server::new(login, limits).map_err(Stop::Failed).and_then(|server| {
-            let ran = Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed, known: &state.files, unlisted: BTreeSet::new() }.run(&files, check, again);
+            let beside = lane == Lane::Main && carried_beside(folder);
+            let ran = Sender { server: &server, folder, memory, own, url: &state.url, sealed, sending: &mut sending, pulled: &mut pulled, now, frugal, lane, past, departed, known: &state.files, unlisted: BTreeSet::new(), beside }.run(&files, check, again);
             pulled.listed_bytes += server.listed_bytes();
             ran
         });
@@ -3519,6 +3529,8 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         if again {
             sending.again = Again { at: now, sent: pulled.sent, same: pulled.same, said: sending.said.clone() };
         }
+        // Files left to a desktop sync app: only those still here.
+        sending.beside.retain(|relative, _| files.contains(relative));
         // The urgent lane remembers only the media it carries now, never every message's for good.
         if lane == Lane::Urgent {
             sending.sent.retain(|relative, _| relative.strip_prefix("blobs/").is_none_or(|name| sealed.contains_key(name)));
@@ -3638,6 +3650,50 @@ enum Went {
     Held,
 }
 
+/// Beside a desktop sync app that carries the sharing folder (`beside`), a
+/// file of this device's own (its records, its notes to the others, its
+/// claims, its entry) written less than this ago is left to that app. The
+/// Nextcloud and ownCloud desktop clients send a file within seconds of its
+/// writing; Sioul sending it too, a minute later Sioul's next writing of it
+/// met, at the app's next look, a server copy the app had not seen (Sioul's,
+/// a new ETag) and bytes that differ: the app renamed the newer file here
+/// "(conflicted copy …)" and put the server's older copy in its place (seen
+/// 24 November 2026 on a computer: copies of its entry and of its doses'
+/// claim, a few a day, and now and then of its records, each then started
+/// again as a full round). A file left this long is one the app has had time
+/// to send; Sioul then finds it there (`412`, the same) and sends nothing.
+pub(crate) const BESIDE_WAIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Beside such an app, Sioul still sends a file of its own the app has not
+/// carried for this long while it kept changing (seconds; the app stopped,
+/// or not running): its copy there still the one Sioul last put or saw.
+const BESIDE_LONGEST: i64 = 15 * 60;
+
+/// How long whether a desktop sync app carries a folder is taken as last
+/// found (`carried_beside`).
+const BESIDE_LOOK_AGAIN: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Whether a desktop sync app carries `folder` beside Sioul's own sending: the
+/// Nextcloud or ownCloud desktop client, whose journal (`.sync_<hash>.db`,
+/// `._sync_<hash>.db`, an older one's `.csync_journal.db`) is in the folder
+/// it syncs, at or above this one. Never on a phone (its apps keep no journal
+/// there), nor where Sioul keeps the folder itself. Looked at again every ten
+/// minutes.
+pub(crate) fn carried_beside(folder: &Path) -> bool {
+    static FOUND: std::sync::Mutex<BTreeMap<PathBuf, (bool, std::time::Instant)>> = std::sync::Mutex::new(BTreeMap::new());
+    if let Some((found, at)) = FOUND.lock().ok().and_then(|all| all.get(folder).copied())
+        && at.elapsed() < BESIDE_LOOK_AGAIN
+    {
+        return found;
+    }
+    let journal = |name: &str| ((name.starts_with(".sync_") || name.starts_with("._sync_")) && name.ends_with(".db")) || name == ".csync_journal.db";
+    let found = folder.ancestors().take(16).any(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| journal(&e.file_name().to_string_lossy()) && e.file_type().is_ok_and(|t| t.is_file())));
+    if let Ok(mut all) = FOUND.lock() {
+        all.insert(folder.to_path_buf(), (found, std::time::Instant::now()));
+    }
+    found
+}
+
 /// One send beside the sync app.
 struct Sender<'a> {
     server: &'a Server,
@@ -3664,6 +3720,9 @@ struct Sender<'a> {
     known: &'a BTreeMap<String, Fetched>,
     /// The folders a check could not list (`list_own`).
     unlisted: BTreeSet<String>,
+    /// A desktop sync app carries the folder too (`carried_beside`): this
+    /// device's own plain files are left to it while it carries them (`BESIDE_WAIT`).
+    beside: bool,
 }
 
 /// What a device took out of its folder of the devices that no longer count
@@ -3913,6 +3972,21 @@ impl Sender<'_> {
             Some(there) if same_here && !again && there.as_ref().is_some_and(|t| t.etag == sent.as_ref().map_or("", |s| s.etag.as_str())) => return Ok(Went::Left),
             _ => {}
         }
+        // Beside a desktop sync app that carries the folder: a file of this
+        // device's own written a moment ago is left to that app, which sends it
+        // within seconds; sent too, the app's next look would meet Sioul's copy
+        // there and a newer one here, and keep the newer one aside as a
+        // conflicted copy (`BESIDE_WAIT`). One the app has not carried for
+        // `BESIDE_LONGEST` while it kept changing goes all the same. Never
+        // "Send everything again", which you asked for.
+        let beside = self.beside && blob.is_none() && !again;
+        if beside && meta.modified().ok().and_then(|t| t.elapsed().ok()).is_none_or(|age| age < BESIDE_WAIT) {
+            let since = *self.sending.beside.entry(relative.to_string()).or_insert(self.now);
+            if self.now - since < BESIDE_LONGEST {
+                self.pulled.beside += 1;
+                return Ok(Went::Left);
+            }
+        }
         // Held back after a failure: never tried before its backoff.
         if !again && self.sending.held.get(relative).is_some_and(|held| self.now < held.until) {
             return Ok(Went::Held);
@@ -3945,6 +4019,7 @@ impl Sender<'_> {
                 if self.same(relative, item, &bytes, &sha1)? {
                     self.sending.sent.insert(relative.to_string(), Sent { size, modified, etag: item.etag.clone() });
                     self.sending.held.remove(relative);
+                    self.sending.beside.remove(relative);
                     self.pulled.same += 1;
                     return Ok(Went::Done);
                 }
@@ -3958,6 +4033,18 @@ impl Sender<'_> {
                 if records && item.size > size {
                     self.sending.sent.insert(relative.to_string(), Sent { size: item.size, modified, etag: item.etag.clone() });
                     self.pulled.longer += 1;
+                    return Ok(Went::Left);
+                }
+                // Beside a desktop sync app: a copy there that this device
+                // neither put there nor saw there (another ETag) is the app's,
+                // sent since: it carries the file, a moment behind. Left to
+                // it, that copy's ETag kept as seen: this device goes over a
+                // copy there only once the app left it as it was for
+                // `BESIDE_LONGEST` (the app stopped).
+                if beside && sent.as_ref().is_none_or(|s| s.etag != item.etag) {
+                    self.sending.sent.insert(relative.to_string(), Sent { size: item.size.min(size), modified: 0, etag: item.etag.clone() });
+                    self.sending.beside.insert(relative.to_string(), self.now);
+                    self.pulled.beside += 1;
                     return Ok(Went::Left);
                 }
             }
@@ -3977,6 +4064,7 @@ impl Sender<'_> {
                 200 | 201 | 204 => {
                     self.sending.sent.insert(relative.to_string(), Sent { size, modified, etag: etag.unwrap_or_default() });
                     self.sending.held.remove(relative);
+                    self.sending.beside.remove(relative);
                     self.pulled.sent += 1;
                     self.pulled.bytes += size;
                     // The rate of the PUT that went, never the waits after a `423` (R2).
@@ -6850,11 +6938,42 @@ mod tests {
     /// and Sioul's send makes a conflicted copy here and puts the older copy
     /// back; the desk starts a new round with all it holds; the phone never
     /// takes a dose as known wrongly, never reads a copy, gets every dose.
+    /// Here the client's journal is not found above the folder (a desktop
+    /// sync app Sioul does not know), and Sioul sends right after each write:
+    /// the races are run.
     #[test]
     fn doses_are_never_known_wrongly_with_the_nextcloud_client_sending_too() {
-        let w = World::new("client-sends");
+        let (conflicts, cuts, _) = beside_the_client("client-sends", false);
+        assert!(conflicts > 0 && cuts > 0, "the races were run");
+    }
+
+    /// The same as the client keeps its journal (`.sync_<hash>.db`) in the
+    /// folder it syncs (24 November 2026: conflicted copies of a desk's own
+    /// entry, claim and records piled up there): Sioul leaves the desk's
+    /// files to the client while it carries them (`BESIDE_WAIT`), and the
+    /// client never meets a copy there it did not send. No conflicted copy,
+    /// no round started again, every dose comes.
+    #[test]
+    fn beside_the_nextcloud_client_s_journal_no_conflicted_copy_is_made() {
+        let (conflicts, cuts, beside) = beside_the_client("client-beside", true);
+        assert!(beside > 0, "the desk's files were left to the client");
+        assert_eq!((conflicts, cuts), (0, 0), "conflicted copies here, rounds started again");
+    }
+
+    /// Two and a half hours of doses marked on the desk, its folder carried by
+    /// the Nextcloud client (`Client`), the desk sending its own files too:
+    /// the conflicted copies the client made, the rounds the desk started
+    /// again, the desk's files Sioul left to the client. `journal`: the
+    /// client's journal in the folder it syncs, above the sharing folder.
+    fn beside_the_client(name: &str, journal: bool) -> (usize, usize, usize) {
+        let w = World::new(name);
         let desk_folder = w.base.join("desk-folder").join("Sioul");
         copy_dir(&w.server, &desk_folder);
+        if journal {
+            std::fs::write(w.base.join("desk-folder").join(".sync_0123456789ab.db"), b"").unwrap();
+        }
+        assert_eq!(carried_beside(&desk_folder), journal);
+        let mut beside = 0;
         State::choose(&w.desk.memory, |s| s.given = "Documents/Sioul".into()).unwrap();
         assert!(find_with(&w.desk.memory, &desk_folder, &[w.fake.login()], &[], DUE, TEST).confirmed_for(&desk_folder));
         let mut client = Client::default();
@@ -6890,6 +7009,7 @@ mod tests {
             }
             let sent = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), now + 1, false, TEST);
             assert!(sent.problem.is_none(), "minute {minute}: {sent:?}");
+            beside += sent.beside;
             if minute % 3 == 0 {
                 client.sync(&w.fake, &w.server, &desk_folder);
             }
@@ -6913,8 +7033,8 @@ mod tests {
             assert!(record.contains(dose.as_str()), "{dose} never came:\n{record}");
         }
         assert!(walk(&w.server).keys().all(|r| !r.contains("conflicted")), "a conflicted copy never goes up");
-        eprintln!("Nextcloud client beside Sioul: {} uploads, {} conflicted copies here, {} rounds started again", client.uploads, client.conflicts, cuts);
-        assert!(client.conflicts > 0 && cuts > 0, "the races were run");
+        eprintln!("Nextcloud client beside Sioul (its journal found: {journal}): {} uploads, {} conflicted copies here, {} rounds started again, {beside} files left to it", client.uploads, client.conflicts, cuts);
+        (client.conflicts, cuts, beside)
     }
 
     // ------------------------------------------------ a slow uplink, a text to send, the cost

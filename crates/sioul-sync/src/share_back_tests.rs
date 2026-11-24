@@ -3,7 +3,10 @@
 
 //! A device that ends before its memory is saved never sends back what it
 //! received, nor its own change again with a later clock (docs/database.md,
-//! "What an exchange wrote, noted first"). Two stand-in devices exchanging
+//! "What an exchange wrote, noted first"); and the sync apps' copies of a
+//! device's own files leave the folder once their content is said elsewhere,
+//! and files being written are named as no sync app sends them ("What the
+//! sync app must do"). Two stand-in devices exchanging
 //! through one folder; "ends" stops an exchange just before its memory is
 //! saved (`ENDS_BEFORE_SAVE`), everything else written, as the system ending
 //! the app (or a crash, or a save that failed) leaves a device. On 0.1.0,
@@ -261,4 +264,77 @@ fn a_change_made_over_a_received_note_after_the_end_still_goes() {
     let kept: Vec<Vec<u8>> = copies(&desk_notes, "lease").iter().map(|n| std::fs::read(desk_notes.join(n)).unwrap()).collect();
     assert!(kept.iter().all(|k| k == v1), "only the desk's version kept beside: {kept:?}");
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The sync apps' copies of a device's own files (the Nextcloud desktop
+/// client's "(conflicted copy …)", Syncthing's ".sync-conflict-…", Dropbox's
+/// in French) leave the folder once nothing in them is unsaid elsewhere: its
+/// entry's, its claim's and its notes' at once; a copy of one of its rounds
+/// that holds nothing past the round's file at once, one that holds more once
+/// a full round restated all (the cut that made it starts one at once). A
+/// copy of another device's round stays, as a copy holding more of a round
+/// before the full round came; nothing else is touched.
+#[test]
+fn copies_of_a_device_s_own_files_leave_once_known() {
+    let base = scratch("back-copies");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let desk = Computer::new(&base, "desk");
+    let senders = |n: usize| (0..n).map(|i| format!("sender{i}@example.org\n")).collect::<String>();
+    desk.write("config/known-senders.txt", &senders(40));
+    desk.exchange(&folder, &key, at(0));
+    let round = folder.join(format!("{}-1.jsonl", desk.id));
+    let bytes = std::fs::read(&round).unwrap();
+    let half = bytes[..bytes.len() / 2].iter().rposition(|b| *b == b'\n').unwrap() + 1;
+    let other = uuid::Uuid::new_v4().to_string();
+    let id = desk.id.clone();
+    let named = |relative: &str| folder.join(relative);
+    let mut longer = bytes.clone();
+    longer.extend_from_slice(b"{\"n\":999,\"c\":1,\"s\":\"AAAA\"}\n");
+    let going = [
+        (format!("{id}-1 (conflicted copy 2026-10-23 175457).jsonl"), bytes[..half].to_vec()),
+        (format!("devices/{id} (conflicted copy 2026-10-23 175457).device"), b"entry".to_vec()),
+        (format!("leases/health/{id} (conflicted copy 2026-10-23 175457).lease"), b"claim".to_vec()),
+        (format!("{id}.sync-conflict-20261023-175457-ABCDEFG.toml"), b"notes".to_vec()),
+    ];
+    let staying = [(format!("{other}-1 (conflicted copy 2026-10-23 175457).jsonl"), bytes.clone()), (format!("{id}-1 (copie en conflit de bureau 2026-10-23).jsonl"), longer.clone())];
+    for (relative, content) in going.iter().chain(staying.iter()) {
+        put(&folder, relative, content);
+    }
+    // A file of the desk's that is no copy, and the desk's own files, stay.
+    put(&folder, &format!("devices/{id}.device"), b"entry");
+    desk.exchange(&folder, &key, at(11));
+    for (relative, _) in &going {
+        assert!(!named(relative).exists(), "{relative} goes");
+    }
+    for (relative, _) in &staying {
+        assert!(named(relative).exists(), "{relative} stays");
+    }
+    assert!(round.exists() && named(&format!("devices/{id}.device")).exists());
+    // The client puts back an older copy of the round: a cut, a full round at once; then the longer copy goes too.
+    std::fs::write(&round, &bytes[..half]).unwrap();
+    let outcome = desk.exchange(&folder, &key, at(22));
+    assert!(outcome.problems.iter().any(|p| p == "share-own-cut"), "{:?}", outcome.problems);
+    assert!(!named(&staying[1].0).exists(), "restated by the full round: it goes");
+    assert!(named(&staying[0].0).exists(), "another device's copy stays");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A file being written is named beside its place, so that its rename stays
+/// within one file system, and begins with ".~", which the sync apps' own
+/// lists of what never travels leave out whatever they do with hidden files
+/// (the Nextcloud and ownCloud desktop clients' `*.~*`, Dropbox's `.~*`); a
+/// crash's leftover of it, or of the earlier form, is cleaned all the same.
+#[test]
+fn a_file_being_written_is_named_as_no_sync_app_sends_it() {
+    let path = Path::new("/somewhere/Sioul/devices/0f8fad5b-d9cb-469f-a165-70867728950e.device");
+    let (first, second) = (temporary(path), temporary(path));
+    assert_ne!(first, second, "never two writers in one");
+    for written in [&first, &second] {
+        assert_eq!(written.parent(), path.parent(), "beside its place: one file system");
+        let name = written.file_name().unwrap().to_string_lossy().to_string();
+        assert!(name.starts_with(".~0f8fad5b-d9cb-469f-a165-70867728950e.device.") && name.ends_with(TEMPORARY), "{name}");
+        assert!(is_leftover(&name) && made_by_tools(&name), "{name}");
+    }
+    assert!(is_leftover(".lease.md.4211-7.sioul.tmp"), "the earlier form is still cleaned");
 }

@@ -10,8 +10,13 @@
 //! settings, who may write to you, ties, time, drafts, health, lists kept
 //! on this computer. Each computer has a name, a UUID made once,
 //! and appends each change it finds in them, as one sealed record, to its own
-//! file in the folder (`<computer>-<round>.jsonl`): one writer per file, so
-//! the sync never makes conflicted copies.
+//! file in the folder (`<computer>-<round>.jsonl`): one writer per file. Beside
+//! a desktop sync app that carries the folder, Sioul's own sending stands
+//! back from this device's files (`remote::BESIDE_WAIT`): one uploader for
+//! each file. A sync app's copies of this device's own files ("conflicted
+//! copies") are taken out once nothing in them is unsaid elsewhere
+//! (`take_out_own_copies`). Files being written are named so that no sync
+//! app picks them up (`temporary`).
 //!
 //! What an exchange writes, the others' changes into the files here and its
 //! own to its records, is noted first in its journal (`journal`): ended
@@ -2558,12 +2563,23 @@ pub(crate) fn read_small(path: &Path) -> Option<String> {
 pub(crate) const SMALL_FILE: u64 = 64 << 10;
 
 /// A hidden name beside `path` for a file being written, never another's:
-/// two exchanges, two Sioul running, never write into one (".lease.md.4211-7.sioul.tmp").
+/// two exchanges, two Sioul running, never write into one
+/// (".~lease.md.4211-7.sioul.tmp"). Beside it, in the same folder: a rename
+/// is whole only within one file system, and the state folder may be on
+/// another than the sharing folder or the notes (always on Android: the
+/// app's own storage and the shared storage). Begun with ".~", which the
+/// sync apps' own lists of what never travels leave out whatever they are
+/// set to do with hidden files: the Nextcloud and ownCloud desktop clients'
+/// `*.~*`, Dropbox's `.~*`; eDrive and Syncthing's scans pass over a file
+/// that lives a moment. Until 24 November 2026 it began with "." alone, and
+/// a Nextcloud client set to sync hidden files ("Sync hidden files") tried
+/// to send each one and said an error for each as it vanished. A crash's
+/// leftovers of either form are cleaned the same way (`is_leftover`).
 pub(crate) fn temporary(path: &Path) -> PathBuf {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let name = path.file_name().map_or_else(|| "file".into(), |n| n.to_string_lossy().to_string());
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    path.with_file_name(format!(".{name}.{}-{n}{TEMPORARY}", std::process::id()))
+    path.with_file_name(format!(".~{name}.{}-{n}{TEMPORARY}", std::process::id()))
 }
 
 /// How the names of files being written end: what is left of them after a
@@ -7763,7 +7779,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.traffic.entry(part.to_string()).or_default().1 = now_ms / 1000;
     }
     // Now and then, the sealed files this computer's records point to looked for (`look_after_sealed`).
-    if sharing.files && !hurried() && now_ms - memory.checked >= 10 * MINUTE {
+    let looked_after = sharing.files && !hurried() && now_ms - memory.checked >= 10 * MINUTE;
+    if looked_after {
         look_after_sealed(sharing, stores, &mut memory, &found, &hurried, &mut outcome.problems, now_ms);
         memory.checked = now_ms;
     }
@@ -7993,6 +8010,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         }
     }
     remove_old_rounds(sharing, &memory, &reading);
+    // At the same pace, the sync apps' copies of this device's own files whose
+    // content it says elsewhere (`take_out_own_copies`).
+    if looked_after {
+        take_out_own_copies(sharing.folder, sharing.computer, memory.round, memory.full_round);
+    }
     // Still on format 1: what each whole list holds now, and what one took out (`Floor::removed` at the switch).
     if memory.format < 2 {
         note_whole_lists(originals, &mut memory);
@@ -10093,6 +10115,92 @@ fn remove_old_rounds(sharing: &Sharing, memory: &Memory, readers: &BTreeSet<Stri
             }
         }
     }
+}
+
+/// What a sync app's copy of one of this device's own files is a copy of, by
+/// the copy's name (`own_copy`): one of its rounds, or another of its files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CopyOf {
+    Round(u32),
+    File,
+}
+
+/// Whether a name in the sharing folder is a sync app's copy of one of this
+/// device's own files: it begins with this device's name (a UUID no other
+/// device has) and its round where it has one, it is none of the names Sioul
+/// writes, and it says a conflict the way the sync apps do, whatever their
+/// language: Nextcloud's and ownCloud's "(conflicted copy …)" and older
+/// "_conflict-…", Syncthing's ".sync-conflict-…", Dropbox's "(… conflicted
+/// copy …)" or "(… copie en conflit …)", "Konflikt", Seafile's "SFConflict".
+/// Hidden names (Sioul's own files being written) never.
+fn own_copy(name: &str, computer: &str, canonical: &[String]) -> Option<CopyOf> {
+    if name.starts_with('.') || canonical.iter().any(|c| c == name) {
+        return None;
+    }
+    let rest = name.strip_prefix(computer)?;
+    let lower = rest.to_lowercase();
+    if !["conflict", "conflit", "konflikt"].iter().any(|word| lower.contains(word)) {
+        return None;
+    }
+    // "<id>-<round>…": a round's copy; anything else after the name, its other files'.
+    match rest.strip_prefix('-') {
+        Some(after) => {
+            let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse().ok().map(CopyOf::Round)
+        }
+        None => Some(CopyOf::File),
+    }
+}
+
+/// The sync apps' copies of this device's own files in the sharing folder
+/// (`own_copy`), taken out once nothing is in them that this device does not
+/// say elsewhere: a copy of its notes to the others, an entry, a claim, its
+/// texts or replies to send, at once (it writes each again from what it holds,
+/// and the copy is a version of its own, older or replaced); a copy of one of
+/// its rounds once it holds nothing past that round's file here (the same
+/// bytes, or fewer), or once a full round came after that round, which
+/// restates every entry this device holds (a sync app that put an older copy
+/// of a round back here makes this device start a full round at once,
+/// `share-own-cut`). Never another device's file, nor a copy whose content
+/// is not known yet: left, and never read, as before. How many went.
+/// The Nextcloud desktop client never sends such copies up; one that a sync
+/// app carried to the others is taken out there too by that app.
+fn take_out_own_copies(folder: &Path, computer: &str, round: u32, full_round: u32) -> usize {
+    let full = if full_round == 0 { round } else { full_round };
+    let names = |dir: &Path| -> Vec<String> { std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect() };
+    let mut dirs: Vec<(PathBuf, Vec<String>)> = vec![(folder.to_path_buf(), vec![format!("{computer}.toml")]), (folder.join("devices"), vec![format!("{computer}.device")])];
+    for part in std::fs::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+        dirs.push((part.path(), vec![format!("{computer}.lease")]));
+    }
+    for (top, sub) in [("texts", "send"), ("phone-messages", "ask")] {
+        dirs.push((folder.join(top).join(sub), vec![format!("{computer}.jsonl")]));
+    }
+    let mut went = 0;
+    for (dir, canonical) in dirs {
+        for name in names(&dir) {
+            // This device's rounds are its own names too.
+            let round_name = |n: u32| format!("{computer}-{n}.jsonl");
+            if dir == folder && name.strip_prefix(computer).and_then(|r| r.strip_prefix('-')).and_then(|r| r.strip_suffix(".jsonl")).is_some_and(|n| n.parse::<u32>().is_ok()) {
+                continue;
+            }
+            let Some(of) = own_copy(&name, computer, &canonical) else { continue };
+            let known = match of {
+                CopyOf::File => true,
+                // Rounds are copied only beside the rounds, at the folder's top.
+                CopyOf::Round(_) if dir != folder => false,
+                CopyOf::Round(n) if n < full => true,
+                CopyOf::Round(n) => {
+                    // Nothing past the round's file here: the same bytes, or fewer.
+                    let (copy, file) = (std::fs::read(dir.join(&name)), std::fs::read(folder.join(round_name(n))));
+                    matches!((copy, file), (Ok(copy), Ok(file)) if file.starts_with(&copy))
+                }
+            };
+            if known && std::fs::remove_file(dir.join(&name)).is_ok() {
+                went += 1;
+            }
+        }
+    }
+    went
 }
 
 /// The round below which a computer's rounds are past their time: every
