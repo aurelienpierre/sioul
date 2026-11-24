@@ -83,7 +83,21 @@ QtObject {
     // Fingers rather than a mouse (a phone, or the runner's phone size): what is
     // tapped is kept a fingertip wide (CostTiles.qml).
     property bool touch: false
+    // The spacings, by what they part (docs/qt-quick.md, "The look of each kind
+    // of thing", rule 17); a page uses these names, never a number of its own.
+    // Around a page and between its sections, cards and columns.
     readonly property int gap: compact ? 10 : 16
+    // Between two sections of a card or a column.
+    readonly property int sectionGap: gap
+    // Between the rows of a group (a section's fields, a list's lines in a card).
+    readonly property int rowGap: 8
+    // Between a label and the control it names, beside or above it.
+    readonly property int labelGap: 6
+    // Inside a card or a section's frame, on every side (Panel.qml, Section.qml).
+    readonly property int cardPadding: compact ? 10 : 14
+    // One step of indentation: what a fold holds sits under its words, past its
+    // arrow (Fold.qml); a level nested under another, one step more.
+    readonly property int indent: 24
     readonly property int radius: 6
     // A page's column of text and forms (PageColumn.qml): a legible width, centred.
     readonly property int readable: 720

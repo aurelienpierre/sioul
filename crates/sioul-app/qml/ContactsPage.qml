@@ -1116,141 +1116,147 @@ Item {
                                     }
                                 }
 
-                                // The rest, folded.
-                                BareButton {
-                                    readonly property bool any: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0 || page.hoursUnderMore)
-
-                                    visible: any
-                                    flat: true
-                                    text: (page.moreShown ? "▾  " : "▸  ") + page.sioul.text("ui-more-details")
-                                    onClicked: page.moreShown = !page.moreShown
-                                }
-                                GridLayout {
-                                    visible: page.moreShown && page.person !== null
+                                // The rest, folded, made the first time it unfolds (Fold.qml).
+                                Fold {
+                                    objectName: "contactMore"
+                                    // Folded again for each contact shown (`moreShown`, the page's).
+                                    controlled: true
+                                    open: page.moreShown
+                                    onToggled: open => page.moreShown = open
+                                    visible: page.person !== null && (page.person.addresses.length > 0 || page.person.birthday !== "" || page.person.notes !== "" || page.person.urls.length > 0 || page.hoursUnderMore)
                                     Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    columns: 2
-                                    columnSpacing: 12
-                                    rowSpacing: 6
+                                    theme: page.theme
+                                    title: page.sioul.text("ui-more-details")
 
-                                    // Each postal address, its label, then the address with Directions (AddressLine.qml).
-                                    Repeater {
-                                        model: page.person && page.moreShown ? page.person.addresses.reduce((all, a) => all.concat([{ text: page.sioul.text("contact-address") + (a.label ? " · " + page.labelText(a.label) : ""), address: "" }, { text: a.value, address: a.value }]), []) : []
+                                    ColumnLayout {
+                                        spacing: page.theme.rowGap
 
-                                        delegate: AddressLine {
-                                            id: addressCell
+                                        GridLayout {
+                                            visible: page.person !== null
+                                            Layout.fillWidth: true
+                                            columns: 2
+                                            columnSpacing: 12
+                                            rowSpacing: 6
 
-                                            required property var modelData
+                                            // Each postal address, its label, then the address with Directions (AddressLine.qml).
+                                            Repeater {
+                                                model: page.person && page.moreShown ? page.person.addresses.reduce((all, a) => all.concat([{ text: page.sioul.text("contact-address") + (a.label ? " · " + page.labelText(a.label) : ""), address: "" }, { text: a.value, address: a.value }]), []) : []
 
-                                            Layout.fillWidth: addressCell.address !== ""
-                                            Layout.alignment: Qt.AlignTop
-                                            theme: page.theme
-                                            sioul: page.sioul
-                                            text: addressCell.modelData.text
-                                            address: addressCell.modelData.address
-                                        }
-                                    }
-                                    Label {
-                                        visible: page.person !== null && page.person.birthday !== ""
-                                        text: page.sioul.text("contact-birthday")
-                                        color: page.theme.muted
-                                    }
-                                    Label {
-                                        visible: page.person !== null && page.person.birthday !== ""
-                                        Layout.fillWidth: true
-                                        text: page.person ? page.person.birthday : ""
-                                        textFormat: Text.PlainText
-                                        color: page.theme.text
-                                    }
-                                    Label {
-                                        visible: page.person !== null && page.person.notes !== ""
-                                        Layout.alignment: Qt.AlignTop
-                                        text: page.sioul.text("contact-notes")
-                                        color: page.theme.muted
-                                    }
-                                    Label {
-                                        visible: page.person !== null && page.person.notes !== ""
-                                        Layout.fillWidth: true
-                                        text: page.person ? page.person.notes : ""
-                                        textFormat: Text.PlainText
-                                        wrapMode: Text.Wrap
-                                        color: page.theme.text
-                                    }
-                                    Repeater {
-                                        model: page.person && page.moreShown ? page.person.urls.reduce((all, u) => all.concat([page.sioul.text("contact-web"), u]), []) : []
+                                                delegate: AddressLine {
+                                                    id: addressCell
 
-                                        // A web address of the card (which comes from a server, or from
-                                        // anyone's vCard): a link only when it is a web page, its text
-                                        // escaped, so that it cannot bring markup or remote pictures in.
-                                        delegate: Label {
-                                            id: urlCell
+                                                    required property var modelData
 
-                                            required property string modelData
-                                            required property int index
-                                            readonly property bool link: urlCell.index % 2 === 1 && /^https?:\/\//i.test(urlCell.modelData)
+                                                    Layout.fillWidth: addressCell.address !== ""
+                                                    Layout.alignment: Qt.AlignTop
+                                                    theme: page.theme
+                                                    sioul: page.sioul
+                                                    text: addressCell.modelData.text
+                                                    address: addressCell.modelData.address
+                                                }
+                                            }
+                                            Label {
+                                                visible: page.person !== null && page.person.birthday !== ""
+                                                text: page.sioul.text("contact-birthday")
+                                                color: page.theme.muted
+                                            }
+                                            Label {
+                                                visible: page.person !== null && page.person.birthday !== ""
+                                                Layout.fillWidth: true
+                                                text: page.person ? page.person.birthday : ""
+                                                textFormat: Text.PlainText
+                                                color: page.theme.text
+                                            }
+                                            Label {
+                                                visible: page.person !== null && page.person.notes !== ""
+                                                Layout.alignment: Qt.AlignTop
+                                                text: page.sioul.text("contact-notes")
+                                                color: page.theme.muted
+                                            }
+                                            Label {
+                                                visible: page.person !== null && page.person.notes !== ""
+                                                Layout.fillWidth: true
+                                                text: page.person ? page.person.notes : ""
+                                                textFormat: Text.PlainText
+                                                wrapMode: Text.Wrap
+                                                color: page.theme.text
+                                            }
+                                            Repeater {
+                                                model: page.person && page.moreShown ? page.person.urls.reduce((all, u) => all.concat([page.sioul.text("contact-web"), u]), []) : []
 
-                                            Layout.fillWidth: urlCell.index % 2 === 1
-                                            // rich on purpose: a link, its address escaped; any other line is plain text.
-                                            text: urlCell.link ? '<a style="color:' + page.theme.accent + '" href="' + page.escaped(urlCell.modelData) + '">' + page.escaped(urlCell.modelData) + '</a>' : urlCell.modelData
-                                            textFormat: urlCell.link ? Text.RichText : Text.PlainText
-                                            elide: Text.ElideRight
-                                            color: urlCell.index % 2 === 0 ? page.theme.muted : page.theme.text
-                                            onLinkActivated: link => {
-                                                if (/^https?:\/\//i.test(link))
-                                                    Qt.openUrlExternally(link)
+                                                // A web address of the card (which comes from a server, or from
+                                                // anyone's vCard): a link only when it is a web page, its text
+                                                // escaped, so that it cannot bring markup or remote pictures in.
+                                                delegate: Label {
+                                                    id: urlCell
+
+                                                    required property string modelData
+                                                    required property int index
+                                                    readonly property bool link: urlCell.index % 2 === 1 && /^https?:\/\//i.test(urlCell.modelData)
+
+                                                    Layout.fillWidth: urlCell.index % 2 === 1
+                                                    // rich on purpose: a link, its address escaped; any other line is plain text.
+                                                    text: urlCell.link ? '<a style="color:' + page.theme.accent + '" href="' + page.escaped(urlCell.modelData) + '">' + page.escaped(urlCell.modelData) + '</a>' : urlCell.modelData
+                                                    textFormat: urlCell.link ? Text.RichText : Text.PlainText
+                                                    elide: Text.ElideRight
+                                                    color: urlCell.index % 2 === 0 ? page.theme.muted : page.theme.text
+                                                    onLinkActivated: link => {
+                                                        if (/^https?:\/\//i.test(link))
+                                                            Qt.openUrlExternally(link)
+                                                    }
+                                                }
+                                            }
+                                            // Its address book here when there is one alone; with several, in the card's main part.
+                                            Label {
+                                                visible: !page.manyBooks
+                                                text: page.sioul.text("contact-book")
+                                                color: page.theme.muted
+                                            }
+                                            Label {
+                                                visible: !page.manyBooks && page.person !== null && page.person.read_only === true
+                                                Layout.fillWidth: true
+                                                text: page.person ? page.person.book : ""
+                                                textFormat: Text.PlainText
+                                                elide: Text.ElideRight
+                                                color: page.theme.text
+                                            }
+                                            // Another address book moves the contact there, asked first
+                                            // when it would not keep everything (Google's keeps less).
+                                            PlainComboBox {
+                                                id: bookChoice
+
+                                                objectName: "contactBookMore"
+                                                visible: !page.manyBooks && page.person !== null && page.person.read_only !== true
+                                                Layout.fillWidth: true
+                                                Accessible.name: page.sioul.text("contact-book")
+                                                model: page.cardBooks.map(b => page.theme.plain(b.name))
+                                                // The card's own book, by its place ("account/id"), never by a name two books may share.
+                                                currentIndex: page.cardBookIndex
+                                                Keys.onPressed: event => page.keyOnBook(bookChoice, event)
+                                                onActivated: index => {
+                                                    page.moveTo(page.cardBooks[index], false)
+                                                    bookChoice.currentIndex = Qt.binding(() => page.cardBookIndex)
+                                                }
                                             }
                                         }
-                                    }
-                                    // Its address book here when there is one alone; with several, in the card's main part.
-                                    Label {
-                                        visible: !page.manyBooks
-                                        text: page.sioul.text("contact-book")
-                                        color: page.theme.muted
-                                    }
-                                    Label {
-                                        visible: !page.manyBooks && page.person !== null && page.person.read_only === true
-                                        Layout.fillWidth: true
-                                        text: page.person ? page.person.book : ""
-                                        textFormat: Text.PlainText
-                                        elide: Text.ElideRight
-                                        color: page.theme.text
-                                    }
-                                    // Another address book moves the contact there, asked first
-                                    // when it would not keep everything (Google's keeps less).
-                                    PlainComboBox {
-                                        id: bookChoice
+                                        // Under More, on a card not known as an organisation's and without hours yet.
+                                        Loader {
+                                            active: page.hoursUnderMore
+                                            visible: active
+                                            Layout.fillWidth: true
 
-                                        objectName: "contactBookMore"
-                                        visible: !page.manyBooks && page.person !== null && page.person.read_only !== true
-                                        Layout.fillWidth: true
-                                        Accessible.name: page.sioul.text("contact-book")
-                                        model: page.cardBooks.map(b => page.theme.plain(b.name))
-                                        // The card's own book, by its place ("account/id"), never by a name two books may share.
-                                        currentIndex: page.cardBookIndex
-                                        Keys.onPressed: event => page.keyOnBook(bookChoice, event)
-                                        onActivated: index => {
-                                            page.moveTo(page.cardBooks[index], false)
-                                            bookChoice.currentIndex = Qt.binding(() => page.cardBookIndex)
-                                        }
-                                    }
-                                }
-                                // Under More, on a card not known as an organisation's and without hours yet.
-                                Loader {
-                                    active: page.moreShown && page.hoursUnderMore
-                                    visible: active
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-
-                                    sourceComponent: Component {
-                                        OpeningHours {
-                                            sioul: page.sioul
-                                            theme: page.theme
-                                            window: page.window
-                                            key: page.openKey
-                                            onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
-                                            onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
-                                            onCalledBack: answer => page.problem = answer.error || ""
-                                            onMarked: answer => page.problem = answer.error || ""
+                                            sourceComponent: Component {
+                                                OpeningHours {
+                                                    sioul: page.sioul
+                                                    theme: page.theme
+                                                    window: page.window
+                                                    key: page.openKey
+                                                    onChangeAsked: shown => (hoursForm.now() as OpeningHoursForm).edit(page.openKey, shown)
+                                                    onLookUpAsked: shown => (hoursLookup.now() as OpeningHoursLookup).begin(page.openKey, shown)
+                                                    onCalledBack: answer => page.problem = answer.error || ""
+                                                    onMarked: answer => page.problem = answer.error || ""
+                                                }
+                                            }
                                         }
                                     }
                                 }

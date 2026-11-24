@@ -7,7 +7,7 @@
 // with its thin border, so that the fields on it stand out (Theme.qml's
 // `field`). What it holds goes in its column, one under the other. Without
 // its frame (`framed`), the group lies flat on what holds it: a device's
-// Details on its card (CardFold.qml).
+// Details on its card (Fold.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -31,7 +31,8 @@ ColumnLayout {
     // Its frame drawn: a card's surface, its thin border, room inside; else the group alone.
     property bool framed: true
 
-    spacing: 6
+    // Between its heading and its frame: a label's gap (Theme.qml).
+    spacing: section.theme.labelGap
 
     RowLayout {
         visible: section.title !== ""
@@ -64,7 +65,7 @@ ColumnLayout {
         id: frame
 
         Layout.fillWidth: true
-        padding: section.framed ? (section.theme.compact ? 10 : 14) : 0
+        padding: section.framed ? section.theme.cardPadding : 0
 
         background: Rectangle {
             visible: section.framed
@@ -78,7 +79,7 @@ ColumnLayout {
             id: body
 
             width: frame.availableWidth
-            spacing: 8
+            spacing: section.theme.rowGap
         }
     }
 }

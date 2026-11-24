@@ -15,7 +15,7 @@
 // Android's accesses are set on that phone; on a computer, it lists each app,
 // conversation and site with times of its own, read and changed there too
 // (AppNotesSetup.qml's part "lists"). The card is in the device's Details
-// (DevicesTab.qml); at every width each section folds (CardFold.qml), and is
+// (DevicesTab.qml); at every width each section folds (Fold.qml), and is
 // made only once opened, then kept. A door lands in one card's part
 // (`reveal`; DevicesTab.qml chooses the card and opens its Details): Settings
 // ▸ Devices ▸ Calls ("settings:devices.calls"), each app by time
@@ -65,7 +65,7 @@ ColumnLayout {
     function reveal(part) {
         const name = part === "calls" ? "foldCalls" : part === "restricted" ? "foldRestricted" : part === "allow" ? "foldAllow" : "fold-lists"
         for (let i = 0; i < card.children.length; i++) {
-            const fold = card.children[i] as CardFold
+            const fold = card.children[i] as Fold
             if (fold && fold.objectName === name && fold.visible) {
                 fold.open = true
                 return fold
@@ -76,13 +76,14 @@ ColumnLayout {
 
     spacing: 10
 
-    CardFold {
+    Fold {
         id: callsFold
 
         objectName: "foldCalls"
         visible: card.calls !== null
         Layout.fillWidth: true
         theme: card.theme
+        framed: true
         title: card.sioul.text("phone-calls-title")
 
         Loader {
@@ -127,13 +128,14 @@ ColumnLayout {
         color: card.theme.muted
     }
 
-    CardFold {
+    Fold {
         id: allowFold
 
         objectName: "foldAllow"
         visible: card.phoneHere
         Layout.fillWidth: true
         theme: card.theme
+        framed: true
         title: card.sioul.text("phone-allow-title")
 
         Loader {
@@ -158,13 +160,14 @@ ColumnLayout {
             }
         }
     }
-    CardFold {
+    Fold {
         id: restrictedFold
 
         objectName: "foldRestricted"
         visible: card.phoneHere && card.own.restricted !== null && card.own.restricted !== undefined
         Layout.fillWidth: true
         theme: card.theme
+        framed: true
         title: card.sioul.text("restricted-title")
 
         Loader {
@@ -188,7 +191,7 @@ ColumnLayout {
     Repeater {
         model: card.blocks === "" ? [] : card.blocks.split(" ")
 
-        delegate: CardFold {
+        delegate: Fold {
             id: block
 
             required property string modelData
@@ -196,6 +199,7 @@ ColumnLayout {
             objectName: "fold-" + block.modelData
             Layout.fillWidth: true
             theme: card.theme
+            framed: true
             title: card.sioul.text("phone-card-" + block.modelData)
 
             Loader {

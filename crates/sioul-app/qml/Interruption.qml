@@ -104,11 +104,6 @@ SafeDialog {
                     onClicked: dialog.move(0, when.text)
                 }
             }
-            Button {
-                flat: true
-                text: dialog.block !== null && dialog.block.skipped ? dialog.sioul.text("need-unskip") : dialog.sioul.text("needs-not-today")
-                onClicked: dialog.skip()
-            }
         }
         // Where you stopped: one line, for when you are back.
         Label {
@@ -136,19 +131,24 @@ SafeDialog {
         }
     }
 
-    footer: DialogButtonBox {
-        Button {
-            text: dialog.sioul.text("ui-ok")
-            highlighted: true
-            onClicked: {
-                dialog.keepLine()
-                dialog.close()
-            }
-        }
-        Button {
-            text: dialog.sioul.text("ui-cancel")
-            DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+    // The dialog's foot (DialogFoot.qml): Not today at the left, as what sets aside;
+    // Cancel, then what the main action does, at the right.
+    footer: DialogFoot {
+        sioul: dialog.sioul
+        theme: dialog.theme
+        // Stopping now, as the block asks; or, alone, keeping the line.
+        mainText: dialog.block !== null ? dialog.sioul.text("need-stop-now") : dialog.sioul.text("stopped-keep")
+        onAccepted: {
+            dialog.keepLine()
+            dialog.close()
         }
         onRejected: dialog.close()
+
+        Button {
+            objectName: "needNotToday"
+            visible: dialog.block !== null
+            text: dialog.block !== null && dialog.block.skipped ? dialog.sioul.text("need-unskip") : dialog.sioul.text("needs-not-today")
+            onClicked: dialog.skip()
+        }
     }
 }

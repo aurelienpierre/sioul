@@ -114,19 +114,27 @@ Item {
             return all(cell, i => i.objectName === "areaFilter")[0]
         }
 
+        // Words drawn in a cell's drop-down (its value), not a time's name above the cells.
+        function inFilter(item) {
+            for (let up = item; up; up = up.parent)
+                if (up.objectName === "areaFilter")
+                    return true
+            return false
+        }
+
         // In a wide window: one matrix, the times' names above, each cell in
         // words, a changed cell framed, an older Sioul said in one sentence.
         function test_the_cells_line_up_as_one_matrix() {
             const grid = made(true, 1000)
             waitForRendering(grid)
-            const titles = all(grid, i => i.visible && root.times.indexOf(i.text) >= 0 && i.font && i.font.pixelSize === 12)
+            const titles = all(grid, i => i.visible && root.times.indexOf(i.text) >= 0 && i.font && i.font.pixelSize === 12 && !inFilter(i))
             compare(titles.map(t => t.text), root.times)
             const work = cellOf(grid, "desk", "work")
             verify(work !== null)
-            compare(buttonOf(work).text, "Travail  ▾")
+            compare(buttonOf(work).text, "Travail")
             compare(buttonOf(work).Accessible.name, "Bureau de travail, Travail : Travail")
-            compare(buttonOf(cellOf(grid, "desk", "leisure")).text, "Rien  ▾")
-            compare(buttonOf(cellOf(grid, "phone", "work")).text, "Travail · Loisirs  ▾")
+            compare(buttonOf(cellOf(grid, "desk", "leisure")).text, "Rien")
+            compare(buttonOf(cellOf(grid, "phone", "work")).text, "Travail · Loisirs")
             // Each time's cells under its name: one column.
             for (let t = 0; t < 5; ++t) {
                 const id = ["work", "admin", "leisure", "meals", "sleep"][t]
@@ -193,10 +201,10 @@ Item {
             const tops = lines.map(c => Math.round(c.mapToItem(grid, 0, 0).y))
             for (let i = 1; i < tops.length; ++i)
                 verify(tops[i] > tops[i - 1], "line " + i + ": " + tops)
-            const titles = all(grid, i => i.visible && root.times.indexOf(i.text) >= 0)
+            const titles = all(grid, i => i.visible && root.times.indexOf(i.text) >= 0 && !inFilter(i))
             compare(titles.map(t => t.text), root.times)
-            compare(buttonOf(lines[0]).text, "Travail · Loisirs  ▾")
-            compare(buttonOf(lines[3]).text, "Rien  ▾")
+            compare(buttonOf(lines[0]).text, "Travail · Loisirs")
+            compare(buttonOf(lines[3]).text, "Rien")
             mouseClick(buttonOf(lines[0]))
             tryVerify(() => named(lines[0], "areaFilterHelp") !== null)
             mouseClick(named(lines[0], "areaFilterHelp"))

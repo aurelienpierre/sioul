@@ -573,11 +573,12 @@ pub(crate) fn set_step_areas(areas: Option<sioul_core::areas::Area>) -> String {
     })
 }
 
-/// The steps' filter as its button shows it: the areas ticked, "Every area"
-/// when all are, and whether they differ from what now is for on this device
-/// (`areafilter::hours_say`), so that "As the hours say" is offered.
+/// The steps' filter as its button shows it: the areas ticked, "All areas"
+/// when all are (`areafilter::label`, as every page's filter), and whether they
+/// differ from what now is for on this device (`areafilter::hours_say`), so
+/// that "As the hours say" is offered.
 fn steps_filter(ticked: sioul_core::areas::Area, mode: &sioul_core::quiet::Mode) -> sioul_core::areafilter::Shown {
-    let label = if ticked == sioul_core::areas::Area::ALL { tr().text("area-filter-all", None) } else { sioul_core::areafilter::label(tr(), ticked) };
+    let label = sioul_core::areafilter::label(tr(), ticked);
     sioul_core::areafilter::Shown { work: ticked.work, admin: ticked.admin, leisure: ticked.leisure, label, own: ticked != sioul_core::areafilter::hours_say(mode), device: String::new() }
 }
 

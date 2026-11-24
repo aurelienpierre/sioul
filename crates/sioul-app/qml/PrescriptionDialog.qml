@@ -369,34 +369,20 @@ SafeDialog {
         }
     }
 
-    // The buttons inside an Item, as the medicine's: saving that fails keeps the form open.
-    footer: Item {
-        implicitWidth: buttons.implicitWidth
-        implicitHeight: buttons.implicitHeight
+    // The dialog's foot (DialogFoot.qml): Remove at the left; Cancel, then Save, at the
+    // right. Saving that fails keeps the form open.
+    footer: DialogFoot {
+        sioul: form.sioul
+        theme: form.theme
+        mainText: form.sioul.text("ui-save")
+        onAccepted: form.save()
+        onRejected: form.close()
 
-        DialogButtonBox {
-            id: buttons
-
-            anchors.fill: parent
-
-            Button {
-                text: form.sioul.text("ui-save")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            }
-            Button {
-                text: form.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            Button {
-                visible: form.prescriptionId !== ""
-                flat: true
-                text: form.sioul.text("health-remove")
-                DialogButtonBox.buttonRole: DialogButtonBox.ActionRole
-                onClicked: removeAsk.now().ask(what.text, form.sioul.text("health-remove-prescription-ask"), form.sioul.text("health-remove"))
-            }
-            onAccepted: form.save()
-            onRejected: form.close()
+        Button {
+            objectName: "prescriptionRemove"
+            visible: form.prescriptionId !== ""
+            text: form.sioul.text("health-remove")
+            onClicked: removeAsk.now().ask(what.text, form.sioul.text("health-remove-prescription-ask"), form.sioul.text("health-remove"))
         }
     }
 
