@@ -20,6 +20,13 @@ Sioul's own icons, drawn for it and kept in the same folders (`OWN`), are
 never removed: they stay, and icons.qrc lists them. Nothing else in the folder
 is touched; a Breeze icon no longer used goes, as icons.qrc listed it.
 
+It then writes, into the window's Theme.qml (between its "own-colour
+icons" marks), the bundled icons drawn in colours of their own at a
+button's size: any file of 22 points or more whose drawing holds a colour
+beside `currentColor`, or a gradient. Buttons draw these untinted, since
+Qt's tint would make each a solid shape (docs/qt-quick.md, "Sioul's
+overrides of the Basic style"); that list is not read as names in use.
+
 Run again after using a new icon: tools/bundle-icons.py. The test of the
 bundled icons (crates/sioul-app/tests/icons.rs) fails on a name it missed.
 """
@@ -45,9 +52,15 @@ SIZES = ["16", "22", "32"]
 # Sioul's own icons, not Breeze's: kept as they are, in each theme and size they are in.
 OWN = {"sioul-web.svg", "sioul-texts.svg"}
 
+THEME_QML = APP / "qml" / "Theme.qml"
+# The list of colour icons in Theme.qml, which this script writes: not names in use.
+OWN_COLOURS = re.compile(r"(// own-colour icons: begin\n).*?(\n *// own-colour icons: end)", re.S)
+
 names = set()
 for source in SOURCES:
     text = source.read_text(encoding="utf-8")
+    if source == THEME_QML:
+        text = OWN_COLOURS.sub("", text)
     names.update(re.findall(r'"([a-z][a-z0-9]*(?:-[a-z0-9]+)+)"', text))
     # Names of one word ("chronometer") where an icon is named: icon.name, iconName, an object's icon.
     names.update(re.findall(r'(?:icon(?:\.name|Name)|\bicon)\s*:\s*"([a-z][a-z0-9]*)"', text))
@@ -114,8 +127,32 @@ for old in sorted(before - now):
     path.unlink()
     if not any(path.parent.iterdir()):
         path.parent.rmdir()
+
+
+def coloured(svg):
+    """Whether a drawing holds colours of its own: a gradient, or a paint beside
+    `currentColor` (a symbolic icon is drawn in `currentColor`, or in one colour)."""
+    body = re.sub(r"<style[^>]*>.*?</style>", "", svg, flags=re.S)
+    body = re.sub(r"<sodipodi:namedview.*?(/>|</sodipodi:namedview>)", "", body, flags=re.S)
+    body = re.sub(r"<metadata.*?</metadata>", "", body, flags=re.S)
+    paints = {v.lower() for v in re.findall(r'(?<![\w-])(?:fill|stroke|stop-color)\s*[:=]\s*"?([^;"\s>]+)', body)}
+    literal = {v for v in paints if v not in ("none", "currentcolor", "inherit") and not v.startswith("url(")}
+    current = "currentcolor" in body.lower()
+    return bool(re.search(r"<(linear|radial)Gradient", body)) or len(literal) > 1 or (len(literal) == 1 and current)
+
+
+# The icons a button draws in their own colours, in Theme.qml.
+own_colours = sorted({f.stem for f in files if f.suffix == ".svg" and f.parent.name.isdigit() and int(f.parent.name) >= 22 and coloured((OUT / f).read_text(encoding="utf-8"))})
+theme_text = THEME_QML.read_text(encoding="utf-8")
+listed = "    readonly property var ownColourIcons: [" + ", ".join(f'"{n}"' for n in own_colours) + "]"
+theme_new, count = OWN_COLOURS.subn(lambda m: m.group(1) + listed + m.group(2), theme_text)
+if count != 1:
+    sys.exit(f"{THEME_QML}: its own-colour icons' marks not found")
+if theme_new != theme_text:
+    THEME_QML.write_text(theme_new, encoding="utf-8")
+
 qrc = ['<!DOCTYPE RCC><RCC version="1.0">', '<qresource prefix="/icons">']
 qrc += [f"    <file>{f.as_posix()}</file>" for f in sorted(set(files))]
 qrc += ["</qresource>", "</RCC>", ""]
 QRC.write_text("\n".join(qrc), encoding="utf-8")
-print(f"{len(names)} names looked at, {len(set(files))} files bundled in {OUT.relative_to(ROOT)}")
+print(f"{len(names)} names looked at, {len(set(files))} files bundled in {OUT.relative_to(ROOT)}, {len(own_colours)} in their own colours")
