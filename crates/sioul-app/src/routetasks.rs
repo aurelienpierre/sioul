@@ -16,7 +16,7 @@ use sioul_core::porch::Gate;
 use sioul_core::projects::{self, Model, ModelValue, ProjectStore, RouteValue};
 use sioul_core::routetasks::{self, Making, Outcome, Workdays};
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 /// The projects as this device keeps them, their mail ties aside.
