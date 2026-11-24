@@ -7953,6 +7953,8 @@ mod tests {
     #[test]
     fn past_rounds_left_on_the_server_go_at_the_next_listing() {
         let w = World::new("past-rounds");
+        // Its sends with a slow stand-in's limits: a debug build under load takes longer than `TEST` allows (24 November 2026).
+        let phone_sends = |w: &World, now: i64, again: bool| send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), now, again, SLOW_STAND_IN);
         assert!(w.find(DUE).confirmed_for(&w.phone_folder));
         let mut edrive = EDrive::default();
         edrive.scan(&w.fake, &w.server, &w.phone_folder);
@@ -8298,7 +8300,7 @@ mod tests {
                 w.phone.exchange_all_parts(&w.phone_folder, now + 60, &pn);
                 age_sealed(&w.phone_folder);
                 phone_floor = crate::share::rounds_past(&w.phone_folder, &w.phone.memory, &w.phone.id, (now + 60) * 1000).unwrap();
-                let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &crate::share::own_sealed(&w.phone.memory, &w.phone.id), now + 61, false, TEST);
+                let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &crate::share::own_sealed(&w.phone.memory, &w.phone.id), now + 61, false, SLOW_STAND_IN);
                 assert!(sent.problem.is_none(), "day {day}: {sent:?}");
                 taken_out += sent.taken_out;
                 edrive.scan(&w.fake, &w.server, &w.phone_folder);
