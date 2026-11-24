@@ -75,11 +75,11 @@ Un courriel qui emprunte le nom d’une banque, d’un service public ou de votr
 
 **Chaque lien dit où il mène avant de s’ouvrir** : son site en gras et son adresse complète, sous le courriel, tant que le pointeur est dessus. Sur un écran tactile, le premier toucher montre l’adresse et le second l’ouvre. Seuls les liens web et de courriel s’ouvrent ; un lien de courriel ouvre un nouveau courriel dans Sioul, vers cette seule adresse.
 
-Au-dessus du courriel, toujours au même endroit :
+Au-dessus du courriel, chacune avec son mot (sur un ordinateur, une ligne trop étroite pour toutes passe sur une deuxième ; sur un téléphone, celles qui n’y ont pas de place attendent dans son **⋮**, avec leurs mots, Répondre, Archiver et Supprimer restant sur la ligne) :
 
 - **Répondre**, **Répondre à tous** (seulement quand il y a d’autres personnes à qui répondre), **Transférer** ;
 - **Ajouter ▾** (une tâche, un événement, une note, une réponse, l’expéditeur dans vos contacts) et **Lier à…** (tout le reste : une tâche, une note, un projet) ;
-- **Archiver** (absent des archives elles-mêmes), **Supprimer**, **Indésirable** (sur un téléphone, dans le ⋮) ;
+- **Archiver** (absent des archives elles-mêmes), **Supprimer**, **Indésirable** ;
 - **Se désabonner**, sur une infolettre ou le courriel d’une liste qui dit comment la quitter ([plus bas](#unsubscribing)).
 
 Archiver, supprimer et mettre aux indésirables se font tout de suite, avec **Annuler** dans la ligne d’état pendant dix secondes ; le serveur n’est prévenu qu’après. Il n’y a pas de « Voulez-vous vraiment ? ». Dans la corbeille, **Supprimer définitivement** supprime pour de bon, avec les mêmes dix secondes.

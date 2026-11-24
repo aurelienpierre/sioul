@@ -238,6 +238,49 @@ Item {
             verify(x >= 0 && x + item.width <= root.width + 0.5, item.objectName + ": " + x + " + " + item.width + " within " + root.width)
         }
 
+        // A card open in a computer's window narrower than 860 points (24 November 2026:
+        // the list's ⋮ and ⚙ ended under the card, every list action out of reach): the
+        // search, ⚙ and each list action stay inside the list's column, each with its
+        // word, the actions on a line of their own under the search when they do not fit
+        // beside it; none in ⋮ (a computer folds nothing).
+        function test_a_computer_s_list_head_beside_a_card() {
+            shell.compact = false
+            const page = createTemporaryObject(pageComponent, root, { width: 800, height: 700 })
+            page.open(root.jeanne.key)
+            waitForRendering(page)
+            const head = shown(page, "contactsHead")
+            verify(head !== undefined, "the list's head")
+            const right = head.mapToItem(root, head.width, 0).x
+            const column = head.parent
+            verify(right <= column.mapToItem(root, column.width, 0).x + 0.5, "the head within its column")
+            for (const name of ["contactsSettings", "contactsNew"]) {
+                const item = shown(page, name)
+                verify(item !== undefined, name + " shown")
+                const edge = item.mapToItem(root, item.width, 0).x
+                verify(edge <= right + 0.5, name + " within the column: " + edge + " > " + right)
+            }
+            const plus = shown(page, "contactsNew")
+            compare(plus.display, AbstractButton.TextBesideIcon, "New contact in words on a computer")
+            verify(shown(page, "contactsMore") === undefined, "nothing in ⋮ on a computer")
+            verify(plus.mapToItem(root, 0, 0).y > shown(page, "contactsSettings").mapToItem(root, 0, 0).y + 1, "the actions on their own line, under the search")
+            shell.compact = true
+        }
+
+        // On a phone: "+" for New contact stays on the row, one tap; the others in ⋮ with their words.
+        function test_a_phone_s_list_head() {
+            testTheme.touch = true
+            const page = createTemporaryObject(pageComponent, root)
+            waitForRendering(page)
+            const plus = shown(page, "contactsNew")
+            verify(plus !== undefined, "+ on the row")
+            compare(plus.display, AbstractButton.IconOnly, "+ alone, as the rules allow")
+            compare(plus.iconName, "list-add")
+            verify(shown(page, "contactsMore") !== undefined, "the others in ⋮")
+            within(shown(page, "contactsSettings"))
+            within(shown(page, "contactsMore"))
+            testTheme.touch = false
+        }
+
         // Delete beside Edit, pressed: the card closed, its deletion asked of the
         // backend (which waits ten seconds with Undo in the status line, as the row
         // menu's Delete does). A card of a book you only read offers neither.

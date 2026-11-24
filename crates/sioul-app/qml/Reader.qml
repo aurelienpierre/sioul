@@ -115,12 +115,15 @@ Panel {
     // A message to settle, Spam or Not spam: your filter flagged it where it
     // lies, a mailbox's row says spam, or it lies in a junk folder.
     readonly property bool settles: reader.role === "junk" || (reader.item !== null && !reader.item.server && !reader.item.review && (typeof reader.item.spam === "string" && reader.item.spam !== "" || !!reader.item.flag))
-    // The actions keep their words; those the row has no room for wait in its ⋮,
-    // with their words too (ActionFolds.qml), the least used first: on a phone,
-    // Reply, Archive and Delete stay in the row.
+    // The actions keep their words. On a phone those the row has no room for wait in
+    // its ⋮, with their words too (ActionFolds.qml), the least used first: Reply,
+    // Archive and Delete stay in the row. On a computer each stays one press away:
+    // a row too narrow wraps them onto a second line.
     readonly property ActionFolds folds: ActionFolds {
+        folding: reader.theme.touch
         actions: [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton, unsubscribeButton]
-        room: reader.availableWidth - moreButton.implicitWidth - actionRow.spacing
+        // Less ⋮ and the two gaps around the space between the two groups.
+        room: reader.availableWidth - moreButton.implicitWidth - 2 * actionRow.spacing
         spacing: actionRow.spacing
     }
 
@@ -289,16 +292,24 @@ Panel {
         anchors.fill: parent
         spacing: 8
 
-        // What you can do with it, always in the same place. Its width never
-        // widens the column: the text below keeps the panel's width.
-        RowLayout {
+        // What you can do with it: replying at the left, filing at the right, on one line
+        // while they fit, else wrapped onto a second (a computer; a phone folds into ⋮).
+        // Its width never widens the column: the text below keeps the panel's width.
+        Flow {
             id: actionRow
+
+            // The actions shown, side by side, ⋮ included: the space between the two
+            // groups takes the rest of a line they fit on, nothing once they wrap.
+            readonly property real used: {
+                const shown = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton, unsubscribeButton, moreButton].filter(b => b.visible)
+                return shown.reduce((sum, b) => sum + b.implicitWidth, 0) + shown.length * actionRow.spacing
+            }
 
             objectName: "readerActions"
             // A message not here has nothing to do with it (review of 1017fa4, L6).
             visible: !reader.missing && !reader.waiting
             Layout.fillWidth: true
-            Layout.minimumWidth: 0
+            Layout.preferredWidth: 0
             spacing: 4
 
             ActionButton {
@@ -363,7 +374,9 @@ Panel {
                 }
             }
             Item {
-                Layout.fillWidth: true
+                objectName: "readerActionsGap"
+                width: Math.max(0, actionRow.width - actionRow.used - 1)
+                height: 1
             }
             ActionButton {
                 id: archiveButton
@@ -484,8 +497,11 @@ Panel {
                     text: reader.theme.plain(modelData.label)
                     icon.name: modelData.iconName
                     icon.color: reader.theme.text
-                    // Unsubscribe while nothing may be contacted: dimmed, as in the row.
-                    enabled: modelData.enabled && modelData.opacity === 1
+                    enabled: modelData.enabled
+                    // Unsubscribe while nothing may be contacted: dimmed, as in the row, and
+                    // still pressable: the press says why in the status line.
+                    opacity: modelData.opacity
+                    Accessible.description: modelData === unsubscribeButton && unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
                     onTriggered: modelData.clicked()
                 }
                 onObjectAdded: (index, item) => more.insertItem(index, item)
