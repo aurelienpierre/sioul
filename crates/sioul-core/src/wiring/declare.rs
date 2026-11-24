@@ -777,12 +777,12 @@ const fn preset(id: &'static str, entry: &'static str, when: (&'static str, &'st
 const PRESETS: &[PresetDecl] = &[
     PresetDecl { with: &[("project", "from:project")], ..preset("conversation-follows-project", "A.2", ("message", "arrives"), ("message", "tie-to-project"), 3) },
     PresetDecl { conditions: &[("sender-domain", "is", &["github.com"])], setting: Some("github.enabled"), ..preset("github-mail", "A.4", ("message", "arrives"), ("message", "tie-to-task"), 3) },
-    PresetDecl { conditions: &[("spam", "is", &["spam"])], setting: Some("spam.action_spam"), ..preset("spam-filter-moves", "A.8", ("message", "arrives"), ("message", "junk"), 4) },
+    PresetDecl { conditions: &[("spam", "is", &["spam"])], setting: Some("spam.actions"), ..preset("spam-filter-moves", "A.8", ("message", "arrives"), ("message", "junk"), 4) },
     PresetDecl { conditions: &[("folder", "is", &["junk"]), ("circle", "is", &["known"])], with: &[("folder", "inbox")], ..preset("proven-mail-brought-back", "A.9", ("message", "arrives"), ("message", "move-to-folder"), 4) },
     PresetDecl { with: &[("topic", "from:topic")], ..preset("topics-given", "A.11", ("message", "arrives"), ("message", "give-topic"), 4) },
     PresetDecl { conditions: &[("kind", "is", CODES)], with: &[("level", "now")], ..preset("codes-told", "A.12", ("message", "arrives"), ("none", "tell"), 1) },
     PresetDecl { with: &[("level", "now")], setting: Some("reminders.mail"), params: &[("newsletters", "reminders.mail_newsletters")], ..preset("new-mail-told", "A.14", ("message", "arrives"), ("none", "tell"), 3) },
-    preset("spam-leaves-list", "A.6", ("message", "is-said-spam"), ("message", "leave-list"), 4),
+    PresetDecl { setting: Some("mail.leave_on_spam"), ..preset("spam-leaves-list", "A.6", ("message", "is-said-spam"), ("message", "leave-list"), 4) },
     PresetDecl { conditions: &[("kind", "is", &["invitation"])], ..preset("invitation-replies-read", "D.5", ("message", "arrives"), ("event", "answer"), 3) },
     PresetDecl { conditions: &[("kind", "is", MONEY)], with: &[("amount", "from:amount")], ..preset("money-mail-planned", "F.1", ("message", "arrives"), ("movement", "plan"), 3) },
     PresetDecl { conditions: &[("kind", "is", MONEY)], ..preset("money-mail-joined", "F.2", ("message", "arrives"), ("movement", "join"), 3) },
@@ -807,7 +807,7 @@ const PRESETS: &[PresetDecl] = &[
     preset("do-not-disturb-by-reasons", "C.7", ("clock", "moment-begins"), ("none", "do-not-disturb"), 3),
     PresetDecl { with: &[("level", "now")], ..preset("work-hours-over", "C.11", ("clock", "moment-begins"), ("none", "tell"), 3) },
     PresetDecl { with: &[("level", "now")], ..preset("books-thresholds", "C.12", ("invoice", "is-issued"), ("none", "tell"), 3) },
-    PresetDecl { setting: Some("screening"), ..preset("calls-screened", "E.1", ("call", "rings"), ("call", "decline"), 3) },
+    preset("calls-screened", "E.1", ("call", "rings"), ("call", "decline"), 3),
     preset("missed-call-task", "E.2", ("call", "is-missed"), ("task", "make"), 3),
     preset("call-closes-task", "E.2", ("call", "is-answered"), ("task", "mark-done"), 3),
     preset("bank-line-joined", "F.3", ("movement", "appears"), ("movement", "join"), 3),
@@ -875,20 +875,38 @@ pub fn example(file: &std::path::Path, config: &crate::config::Config) -> Option
     if super::engine::held(&judged) {
         return None;
     }
-    let seen = super::message::seen(&judged, &senders, store.as_ref(), &crate::words::Words::of(config), None);
+    let words = crate::words::Words::of(config);
+    let seen = super::message::seen(&judged, &senders, store.as_ref(), &words, None);
     let mut conditions = Vec::new();
+    // Its sender's domain, or its address when the domain is a provider millions
+    // share (a friend at a webmail) or the sender is someone you have a card for:
+    // the rule then reads "from this person", never "from everyone there".
     if seen.proven()
         && let Some(domain) = seen.card().sender_domain()
     {
-        conditions.push(Condition { field: "sender-domain".into(), test: "is".into(), value: vec![domain.to_ascii_lowercase()], until: String::new() });
+        conditions.push(sender_condition(&domain, seen.sender(), &words.brands.shared, !seen.cards.is_empty()));
     }
-    if let Some(kind) = seen.kinds.first() {
+    // What it is rather than how it is sent: a bill, a payment, an order before "a newsletter".
+    if let Some(kind) = seen.kinds.iter().find(|k| **k != "newsletter").or(seen.kinds.first()) {
         conditions.push(Condition { field: "kind".into(), test: "is".into(), value: vec![(*kind).to_string()], until: String::new() });
     }
     if let Some(project) = seen.projects.first() {
         conditions.push(Condition { field: "project".into(), test: "is".into(), value: vec![project.clone()], until: String::new() });
     }
     Some(Rule { on: false, when: When { kind: "message".into(), event: "arrives".into(), conditions, ..When::default() }, then: Then::default(), ..Rule::default() })
+}
+
+/// Who a rule made from an example is about: the sender's domain, or its
+/// address when the domain is a provider millions share (a friend at a
+/// webmail) or the sender is someone you keep a card for, so that the rule
+/// reads "from this person", never "from everyone there".
+fn sender_condition(domain: &str, address: Option<String>, shared: &[String], has_card: bool) -> super::store::Condition {
+    let domain = domain.to_ascii_lowercase();
+    let common = shared.iter().any(|p| super::message::domain_matches(&domain, p));
+    match address.filter(|_| common || has_card) {
+        Some(address) => super::store::Condition { field: "sender".into(), test: "is".into(), value: vec![address], until: String::new() },
+        None => super::store::Condition { field: "sender-domain".into(), test: "is".into(), value: vec![domain], until: String::new() },
+    }
 }
 
 // ---------------------------------------------------------------- the editor's choices
@@ -983,6 +1001,35 @@ mod tests {
             }
         }
         assert_eq!(of("task").and_then(|t| t.action("make")).and_then(|a| a.param("title")).map(|p| p.from), Some(&["subject"][..]));
+    }
+
+    /// From an example, a friend at a webmail, or someone with a card, is
+    /// named by their address; an office by its domain.
+    #[test]
+    fn an_example_names_a_person_by_address_and_an_office_by_domain() {
+        let shared = vec!["gmail.com".to_string()];
+        let friend = sender_condition("gmail.com", Some("ann@gmail.com".into()), &shared, false);
+        assert_eq!((friend.field.as_str(), friend.value.join(",")), ("sender", "ann@gmail.com".to_string()));
+        let known = sender_condition("smallshop.example", Some("bob@smallshop.example".into()), &shared, true);
+        assert_eq!(known.field, "sender");
+        let office = sender_condition("Impots.Example", Some("no-reply@impots.example".into()), &shared, false);
+        assert_eq!((office.field.as_str(), office.value.join(",")), ("sender-domain", "impots.example".to_string()));
+    }
+
+    /// Every setting a preset names, its own switch or a parameter's, is one
+    /// Sioul declares on some page (`settings::for_view`): a preset's link to
+    /// where it is set never points at nothing (the view's review, must-fix 8).
+    #[test]
+    fn every_preset_s_setting_is_declared() {
+        let config: crate::config::Config = toml::from_str("case_store = \"~/Notes\"\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\n").unwrap();
+        let tr = crate::i18n::Translator::new("en");
+        let pages = ["accounts", "agenda", "bitwarden", "contacts", "general", "letters", "mail", "money", "notes", "papers", "parameters", "porch", "reading", "senders", "sites", "supplies", "tasks", "texts"];
+        let declared: std::collections::BTreeSet<String> = pages.iter().flat_map(|page| crate::settings::for_view(page, &config, &tr, &[("acct/plan".into(), "Plan".into())], None)).map(|s| s.key).collect();
+        let named: Vec<(&str, &str)> = presets().iter().flat_map(|p| p.setting.iter().copied().chain(p.params.iter().map(|q| q.key)).map(move |key| (p.id, key)).collect::<Vec<_>>()).collect();
+        assert!(!named.is_empty());
+        for (preset, key) in named {
+            assert!(declared.contains(key), "{preset}: {key} is declared on no page");
+        }
     }
 
     /// Every name the catalogue gives exists in English and French.

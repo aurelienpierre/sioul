@@ -644,6 +644,26 @@ fn plain(table: &Table) -> Option<toml::Table> {
     read.get("x")?.as_table().cloned()
 }
 
+/// Why a typed value cannot be read as what its test asks, a message id;
+/// none when it reads.
+fn shape(value: Value, text: &str) -> Option<&'static str> {
+    let fine = match value {
+        Value::Domains => !text.contains('@') && text.contains('.') && !text.contains(char::is_whitespace),
+        Value::Addresses => text.contains('@') && !text.contains(char::is_whitespace),
+        Value::Time => crate::rules::time(text).is_some(),
+        Value::Date => crate::rules::day(text).is_some(),
+        Value::Size => crate::rules::size(text).is_some(),
+        _ => true,
+    };
+    (!fine).then_some(match value {
+        Value::Domains => "rules-problem-domain",
+        Value::Addresses => "rules-problem-address",
+        Value::Time => "rules-problem-time",
+        Value::Date => "rules-problem-date",
+        _ => "rules-problem-size",
+    })
+}
+
 /// What a rule as JSON or TOML says, without its place: to know whether it changed.
 fn print(rule: &Rule) -> String {
     serde_json::to_string(&(&rule.id, &rule.when, &rule.then, &rule.preset)).unwrap_or_default()
@@ -685,6 +705,11 @@ impl Rule {
             }
             if c.test == "between" && c.until.trim().is_empty() {
                 return Some("rules-problem-value");
+            }
+            // A value of the wrong shape never matches: an address under a domain, "18" for a time.
+            let typed = c.value.iter().chain((c.test == "between").then_some(&c.until)).map(|v| v.trim()).filter(|v| !v.is_empty());
+            if let Some(why) = typed.filter_map(|v| shape(test.value, v)).next() {
+                return Some(why);
             }
             if test.value == Value::Choice && c.value.iter().any(|v| field.choice(v.trim()).is_some_and(|choice| !declare::available(choice.phase))) {
                 return Some("rules-problem-coming");

@@ -748,12 +748,12 @@ pub fn fold(text: &str) -> String {
 }
 
 /// A day as a condition writes it: "2026-10-01".
-fn day(text: &str) -> Option<jiff::civil::Date> {
+pub(crate) fn day(text: &str) -> Option<jiff::civil::Date> {
     text.trim().parse().ok()
 }
 
 /// A time of day as a condition writes it: "18:00", "8:30".
-fn time(text: &str) -> Option<jiff::civil::Time> {
+pub(crate) fn time(text: &str) -> Option<jiff::civil::Time> {
     let (hours, minutes) = text.trim().split_once([':', 'h', 'H'])?;
     let (hours, minutes): (i8, i8) = (hours.trim().parse().ok()?, if minutes.trim().is_empty() { 0 } else { minutes.trim().parse().ok()? });
     jiff::civil::Time::new(hours, minutes, 0, 0).ok()
