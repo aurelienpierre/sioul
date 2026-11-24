@@ -69,6 +69,17 @@ impl Whose {
     pub fn parse(text: &str) -> Option<Whose> {
         Whose::ALL.into_iter().find(|w| w.id() == text.trim().to_ascii_lowercase())
     }
+
+    /// Another person's own agenda: a partner's, another parent's. Its events
+    /// are theirs: they tell you nothing (`reminders`, but an invitation in it
+    /// you accepted) and are never your present moment nor your day (`now`,
+    /// the Porch, the home card); the Agenda and that person's page show them.
+    /// Never a shared agenda's: a calendar its server keeps read only is
+    /// shared by default (a contacts' birthdays, a club's), and its alarms
+    /// still come; nor a child's, whose holder is told (`holders`).
+    pub fn another_person(self) -> bool {
+        matches!(self, Whose::Partner | Whose::Parent)
+    }
 }
 
 /// What you may do with an agenda.
@@ -439,6 +450,8 @@ pub struct Marks {
     pub outside_work: bool,
     /// A child's agenda.
     pub child: bool,
+    /// Another person's own agenda: a partner's, another parent's (`Whose::another_person`).
+    pub other_person: bool,
     /// For availability, its events' titles shown by your word (`Agenda::titles`).
     pub titles: bool,
 }
@@ -449,7 +462,7 @@ pub fn marks_of(collection: &Collection) -> Marks {
     let agenda = agenda_of(collection, &config);
     // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
     let transparent = vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id));
-    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, titles: agenda.titles }
+    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, other_person: agenda.whose.another_person(), titles: agenda.titles }
 }
 
 /// Whether you chose to keep an agenda from every writer: read only, or its
@@ -1460,6 +1473,8 @@ mod tests {
         assert_eq!((home.whose, home.area, home.reaches, home.access, home.reach()), (Whose::Yours, Area::PERSONAL, Reaches::AllDay, Access::Write, Reach::Always), "a mail address left unsaid makes nothing work here");
         let shared = of("home", true, true, &Said::default());
         assert_eq!((shared.whose, shared.access, shared.theirs()), (Whose::Shared, Access::Read, true), "read only, with details");
+        // Shared is nobody's own: a contacts' birthdays, a club's (their alarms still come, `reminders`).
+        assert_eq!(Whose::ALL.map(Whose::another_person), [false, false, true, true, false], "a partner's and another parent's alone");
         let busy = of("home", true, false, &Said::default());
         assert_eq!((busy.whose, busy.access, busy.busy()), (Whose::Shared, Access::Availability, true), "read only, no details: availability only");
         // What you say wins; read and write is never more than the server allows.
@@ -1723,6 +1738,7 @@ mod tests {
         let b = &busy[0];
         assert_eq!((b.summary.as_str(), b.location.as_str(), b.notes.as_str(), b.organizer.as_str()), ("Sam's busy times", "", "", ""), "its name, nothing more");
         assert!(b.attendees.is_empty() && b.alarms.is_empty() && b.margins == crate::demands::Margins::default() && b.busy && b.theirs && b.read_only && !b.holds_time());
+        assert!(b.other_person && b.another_persons() && !b.child, "another parent's: it tells you nothing (`reminders`)");
         assert!(crate::agenda::file_occurrences(&free, &now(&calendar), 4_000_000_000, 4_200_000_000, &zone).is_empty(), "its free time left out");
         // Its switch (part 4): what its events say shown, its title alone; off again, its name.
         set_field(&config, &place(&calendar), "titles", "shown").unwrap();

@@ -179,10 +179,15 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
     let Some(path) = crate::pim::ours(key) else { return String::new() };
     let Some(calendar) = crate::pim::collection_of(&path) else { return String::new() };
     let zone = sioul_core::zone::current();
-    let found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
+    let mut found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
+    // Your answers: an invitation you accepted in another person's agenda is yours too.
+    if found.iter().any(|o| o.other_person) {
+        sioul_core::agenda::mark_answers(&mut found, &sioul_core::agenda::own_addresses());
+    }
     // A whole day is reminded the working day before only: nothing to say or choose here. A
     // child's event reminds nobody itself: whoever takes it is reminded by their stand-in (part 3).
-    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day && !o.child) else { return String::new() };
+    // Another person's own agenda reminds you of nothing (`reminders`): nothing to say or choose either.
+    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day && !o.child && !o.another_persons()) else { return String::new() };
     let config = load_config();
     let line = match reminders::before_at(event, config.reminders.before_event).and_then(|at| jiff::Timestamp::from_second(at).ok()) {
         Some(at) => {

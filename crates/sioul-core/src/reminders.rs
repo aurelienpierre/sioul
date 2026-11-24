@@ -504,8 +504,11 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
     let own: Vec<String> = config.every_account().filter_map(|a| a.address.clone()).collect();
 
     // A child's event reminds its holder through their stand-in (`holders`), never itself: the
-    // other parent's Sioul shows it with its holder's name, and nothing more.
-    for event in events.iter().filter(|e| !e.cancelled && !declined(e, &own) && !e.child) {
+    // other parent's Sioul shows it with its holder's name, and nothing more. Another person's
+    // own agenda (a partner's, another parent's) reminds you of nothing, neither Sioul's usual
+    // reminder nor an alarm its events carry, but an invitation there you accepted: it is yours
+    // too. A shared agenda is never one: a contacts' birthdays, a club's, keep their alarms.
+    for event in events.iter().filter(|e| !e.cancelled && !declined(e, &own) && !e.child && !e.another_persons()) {
         let Some(start) = at(event.start) else { continue };
         let when = if event.all_day { tr.day(start.date()) } else { tr.date(&start, true) };
         let place = |text: String| if event.location.is_empty() { text } else if text.is_empty() { event.location.clone() } else { format!("{text} · {}", event.location) };
@@ -1515,6 +1518,40 @@ mod tests {
         assert_eq!(told.iter().map(|r| r.key.as_str()).collect::<std::collections::BTreeSet<_>>().len(), 3, "each its own, told once each");
         assert_eq!(told[1].title, "19:30 · Choir, earlier, in 30 minutes");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Another person's own agenda (a partner's, another parent's) reminds
+    /// you of nothing: neither Sioul's usual reminder nor an alarm its events
+    /// carry; an invitation there you accepted is yours too, and tells. A
+    /// shared calendar its server keeps read only (a contacts' birthdays) is
+    /// nobody's own: its alarm still comes. A child's, as before: its holder
+    /// is told through their stand-in.
+    #[test]
+    fn another_person_s_agenda_reminds_you_of_nothing() {
+        let en = Translator::new("en");
+        let mut config = config();
+        config.accounts = toml::from_str::<Config>("[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"me@example.net\"\n").unwrap().accounts;
+        let now = at("2026-10-07T08:00");
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        let partner = |o: Occurrence| Occurrence { agenda: "a/sam-work".into(), theirs: true, other_person: true, ..o };
+        // A partner's appointment, with an alarm of its own: nothing at all.
+        let appointment = partner(event("client", "2026-10-07T14:00", vec![-3600]));
+        assert!(befores(&config, &en, &now, std::slice::from_ref(&appointment)).is_empty(), "neither before nor alarm");
+        assert!(befores(&config, &en, &now, &[Occurrence { remind: "30".into(), ..appointment.clone() }]).is_empty(), "nor a number written in it");
+        // An invitation there you accepted: yours too, told as any of yours.
+        let guest = |answer: &str| Occurrence { attendees: vec![crate::agenda::Attendee { name: "Me".into(), address: "me@example.net".into(), answer: answer.into() }], ..appointment.clone() };
+        let mut answered = vec![guest("accepted"), Occurrence { uid: "asked".into(), ..guest("needs-action") }];
+        crate::agenda::mark_answers(&mut answered, &["me@example.net".to_string()]);
+        let told = befores(&config, &en, &now, &answered);
+        assert_eq!(told.iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-07T13:00")), (Kind::Before, stamp("2026-10-07T13:45"))], "the accepted one alone");
+        assert!(told.iter().all(|r| r.key.contains(":client:")));
+        // A shared calendar kept read only by its server (a contacts' birthdays: a whole day, free, 09:00): its alarm comes.
+        let birthday = Occurrence { all_day: true, transparent: true, read_only: true, theirs: true, agenda: "a/contact_birthdays".into(), ..event("birthday", "2026-10-08T00:00", vec![9 * 3600]) };
+        assert_eq!(befores(&config, &en, &now, std::slice::from_ref(&birthday)).iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-08T09:00"))]);
+        // A child's: none, as before (its holder's stand-in tells them).
+        assert!(befores(&config, &en, &now, &[Occurrence { child: true, theirs: true, ..event("swim", "2026-10-07T17:00", vec![-1800]) }]).is_empty());
+        // The same appointment in an agenda of yours: told.
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { other_person: false, theirs: false, ..appointment }]).len(), 2);
     }
 
     #[test]
