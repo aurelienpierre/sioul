@@ -6589,17 +6589,18 @@ SioulWindow {
                 return 0
             }
 
-            // Every fold under `root` opened, three rounds (what a fold opens may fold too); kept to fold again.
+            // Every fold under `root` opened, three rounds (what a fold opens may fold too), the last
+            // one waited for; kept to fold again.
             function tourUnfold(root) {
-                const round = () => {
+                const round = wait => () => {
                     const base = typeof root === "function" ? root() : root
                     const folds = base ? grabber.tourFind(base, grabber.tourIsFold) : []
                     for (const fold of folds)
                         fold.clicked()
                     grabber.tourOpened = grabber.tourOpened.concat(folds)
-                    return 1
+                    return wait
                 }
-                return [round, round, round]
+                return [round(0), round(0), round(1)]
             }
             // What the tour unfolded, folded again, the innermost first.
             function tourRefold() {
@@ -6731,10 +6732,11 @@ SioulWindow {
                     const name = place[1]
                     acts = acts.concat(grabber.tourGo(place[0]), [() => {
                         const page = window.shownPage
-                        // Money's ⚙ is made by its own call (and is in the window's bar on a phone).
+                        // Money's ⚙ is made by its own call; on a phone its button is hidden, the window's bar
+                        // opening its panel (`barSettings`).
                         if (name === "money")
                             page.openSettings(false)
-                        const buttons = grabber.tourFind(window.contentItem, grabber.tourIsSettingsButton).filter(b => name === "money" || grabber.tourWithin(b, page))
+                        const buttons = grabber.tourFind(window.contentItem, grabber.tourIsSettingsButton, name === "money").filter(b => grabber.tourWithin(b, page))
                         if (buttons.length === 0) {
                             console.warn("tour: " + name + " has no ⚙")
                             return 0
