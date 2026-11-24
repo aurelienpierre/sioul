@@ -1350,8 +1350,10 @@ Item {
                     let used = 0
                     for (let i = 0; i < boxChips.children.length; i++) {
                         const child = boxChips.children[i]
-                        if (!child.visible || child.width === undefined)
+                        if (!child.visible)
                             continue
+                        // An address by the width it would take named, never by its own: that one
+                        // follows this very choice.
                         const width = child.namedWidth !== undefined ? child.namedWidth : child.implicitWidth
                         if (width > 0)
                             used += width + boxChips.spacing
