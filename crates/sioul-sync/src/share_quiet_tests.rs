@@ -1436,7 +1436,8 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
 /// as an older Sioul (0.1.0) never says: kept on the desk, neither sent nor
 /// read on the phone; once the phone says so, the next exchanges bring the
 /// desk's rules and its record of acts there, the phone's own log beside it,
-/// and a rule a newer Sioul wrote travels byte for byte, never run.
+/// and a rule a newer Sioul wrote travels with every key, never run (the
+/// sharing writes the file in its own layout: comments do not travel).
 #[test]
 fn your_rules_wait_for_a_device_that_has_them() {
     let base = scratch("rules-gate");
@@ -1470,8 +1471,10 @@ fn your_rules_wait_for_a_device_that_has_them() {
     rounds(&mut now);
     let read = sioul_core::wiring::store::Rules::load(&phone.path(RULES)).unwrap();
     assert_eq!(read.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["r1", "r2"], "{}", phone.read(RULES));
-    assert!(phone.read(RULES).contains(newer), "a newer Sioul's rule, byte for byte: {}", phone.read(RULES));
-    assert!(!read.rules[1].unknown.is_empty() && read.running().map(|r| r.id.as_str()).collect::<Vec<_>>() == ["r1"], "never run here");
+    // Every key of the newer rule, as the desk wrote it, whatever the layout.
+    let entry = |text: &str| toml::from_str::<toml::Table>(text).unwrap()["rule"].as_array().unwrap().iter().find(|r| r["id"].as_str() == Some("r2")).cloned().unwrap();
+    assert_eq!(entry(&phone.read(RULES)), entry(&rules), "a newer Sioul's rule, every key: {}", phone.read(RULES));
+    assert!(read.rules[1].unknown.iter().any(|u| u == "colour") && read.running().map(|r| r.id.as_str()).collect::<Vec<_>>() == ["r1"], "never run here: {:?}", read.rules[1].unknown);
     assert_eq!(phone.read(&desk_log), line, "the desk's acts, on the phone");
     assert!(sioul_core::wiring::acts::Acts::read(&phone.path(RULES_ACTS)).touched("r1", "mid:a@example.org"));
     let _ = std::fs::remove_dir_all(&base);
