@@ -219,7 +219,7 @@ One setting, one place. What belongs to a page is behind the ⚙ at the end of t
 | [Papers](papers.md#where-papers-live) | the papers' folder |
 | [Letters](papers.md#setting-it-up) | the letters' folder, where scans arrive |
 | [Texts](texts.md#pictures-and-files) | the multimedia messages sent from here, on a device without telephony |
-| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours; a button to your Bitwarden account, in [Accounts](accounts.md#your-password-manager); none on a phone, whose Sites page opens each site in the browser |
+| [Sites](sites.md#colours) | the sites' colours: this screen's own, calmer colours (your Bitwarden account is in [Accounts](accounts.md#your-password-manager) alone); none on a phone, whose Sites page opens each site in the browser |
 | [Health](health.md#prescriptions) | where the errands go, the pause to move, the limit on chats; a button to the usual meals, naps and night, in [Hours](#hours) |
 
 The ⚙ opens them on the page's right, the page staying beside them: two fifths of the window and a little more, from 520 to 760 pixels; in a window under 720 pixels wide (a phone's, a tablet's in split screen), over the whole window. Escape or a click outside closes them.

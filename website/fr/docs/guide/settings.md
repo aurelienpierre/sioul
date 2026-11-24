@@ -219,7 +219,7 @@ Un réglage, un seul endroit. Ce qui appartient à une page est derrière le ⚙
 | [Papiers](papers.md#where-papers-live) | le dossier des papiers |
 | [Courrier](papers.md#setting-it-up) | le dossier des courriers, où arrivent les scans |
 | [SMS](texts.md#pictures-and-files) | les messages multimédias envoyés d’ici, sur un appareil sans téléphonie |
-| [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes ; un bouton vers votre compte Bitwarden, dans [Comptes](accounts.md#your-password-manager) ; aucun sur un téléphone, dont la page Sites ouvre chaque site dans le navigateur |
+| [Sites](sites.md#colours) | les couleurs des sites : celles de cet écran, des couleurs plus calmes (votre compte Bitwarden est dans [Comptes](accounts.md#your-password-manager) seulement) ; aucun sur un téléphone, dont la page Sites ouvre chaque site dans le navigateur |
 | [Santé](health.md#prescriptions) | où vont les démarches, la pause pour bouger, la limite des discussions ; un bouton vers les repas, siestes et nuit habituels, dans [Heures](#hours) |
 
 Le ⚙ les ouvre à droite de la page, qui reste à côté : deux cinquièmes de la fenêtre et un peu plus, de 520 à 760 pixels ; dans une fenêtre de moins de 720 pixels de large (celle d’un téléphone, d’une tablette en écran partagé), sur toute la fenêtre. Échap ou un clic à côté les ferme.

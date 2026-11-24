@@ -4541,15 +4541,11 @@ SioulWindow {
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
                 () => sitesPage.bitwardenUnlock.close(),
-                // Where Bitwarden is set: the password manager's card at the top of Accounts
-                // (none set on a demo profile), then its form in Add an account.
+                // Where Bitwarden is set: the password manager's card at the top of Accounts,
+                // which holds its form while none is set (none on a demo profile).
                 () => window.showParameters("bitwarden"),
                 () => {},
                 () => grabber.save("vault-card-none"),
-                () => accountsPage.addVault(),
-                () => {},
-                () => {},
-                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no

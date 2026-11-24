@@ -10,11 +10,11 @@
 // (address, then the server found, then the password, tested before
 // anything is kept), contacts and calendars on a CalDAV/CardDAV server, or
 // Google (signed in on Google's page); Microsoft's mail signs in on
-// Microsoft's page (MicrosoftMail.qml), or Bitwarden, your password manager
-// (VaultForm.qml). Encryption: your keys. At the top of Yours, the password
-// manager's card (VaultCard.qml): Bitwarden's account, open or locked, the
-// lock after a time; every password field of the forms takes a password
-// from it (VaultFill.qml). Who may reach you, and when, is Settings ▸ What
+// Microsoft's page (MicrosoftMail.qml). Encryption: your keys. At the top of
+// Yours, the password manager's card (VaultCard.qml), Bitwarden's one place:
+// its account added and changed there, open or locked, the lock after a
+// time; every password field of the forms takes a password from it
+// (VaultFill.qml). Who may reach you, and when, is Settings ▸ What
 // reaches you's (ReachesTab.qml). Sites are not accounts: they are on the
 // Sites page.
 
@@ -77,15 +77,6 @@ Item {
         yoursScroll.positionViewAtBeginning()
         if (open && key === "bitwarden_vault" && page.vaultCard !== null)
             page.vaultCard.unlock()
-    }
-
-    // Add an account ▸ Bitwarden, in view.
-    function addVault() {
-        tabs.currentIndex = 1
-        Qt.callLater(() => {
-            if (addTab.item)
-                addTab.item.showVault()
-        })
     }
 
     readonly property var accounts: page.sioul.accounts ? JSON.parse(page.sioul.accounts) : []
@@ -362,7 +353,6 @@ Item {
                         sioul: page.sioul
                         theme: page.theme
                         keys: page.vaultKeys
-                        onAddAsked: page.addVault()
                         onChanged: page.readVault()
                         // For the page's doors (`openSettings`).
                         Component.onCompleted: page.vaultCard = vaultCard
@@ -623,6 +613,7 @@ Item {
                     ScrollView {
                         id: addScroll
 
+                        objectName: "addAccountTab"
                         contentWidth: availableWidth
                         clip: true
 
@@ -680,10 +671,6 @@ Item {
                             }
                             function showGoogle() {
                                 Qt.callLater(() => addScroll.contentItem.contentY = Math.max(0, googlePanel.y - page.theme.gap))
-                            }
-                            function showVault() {
-                                const flick = addScroll.contentItem as Flickable
-                                Qt.callLater(() => flick.contentY = Math.max(0, Math.min(vaultForm.y - page.theme.gap, flick.contentHeight - flick.height)))
                             }
 
                         ColumnLayout {
@@ -1280,21 +1267,6 @@ Item {
                                         color: page.theme.forged
                                     }
                                 }
-                            }
-
-                            // Bitwarden, your password manager: one account for the whole app.
-                            VaultForm {
-                                id: vaultForm
-
-                                Layout.fillWidth: true
-                                sioul: page.sioul
-                                theme: page.theme
-                                vault: page.vault
-                                onAdded: {
-                                    page.readVault()
-                                    page.openSettings(true, "bitwarden_vault")
-                                }
-                                onCardAsked: page.openSettings(true, "")
                             }
 
                             Item {
