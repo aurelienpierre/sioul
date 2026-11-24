@@ -150,7 +150,7 @@ ItemDelegate {
             enabled: !row.task.read_only
             Accessible.name: circle.bySteps !== "" ? circle.bySteps : row.sioul ? row.sioul.text(row.done ? "task-open-again" : "task-done") : ""
             ToolTip.visible: circle.bySteps !== "" && circle.hovered
-            ToolTip.text: circle.bySteps
+            ToolTip.text: row.theme.plain(circle.bySteps)
             ToolTip.delay: 400
             onClicked: {
                 if (circle.bySteps !== "")
@@ -267,7 +267,7 @@ ItemDelegate {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: listDot.named
                     ToolTip.visible: listHover.hovered
-                    ToolTip.text: listDot.named
+                    ToolTip.text: row.theme.plain(listDot.named)
                     ToolTip.delay: 400
 
                     HoverHandler {
