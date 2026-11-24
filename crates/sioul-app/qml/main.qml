@@ -679,6 +679,30 @@ SioulWindow {
         routeTask.now().forMail(key)
     }
 
+    // A message's ⋮ ▸ "Make a rule from this…" (the reader's menu, the Porch's
+    // row's): the rule's editor filled from the message (its sender's proven
+    // domain, what Sioul recognises in it, its project; docs/rules.md), over
+    // the page where it was asked; saved, the status line says the rule.
+    function ruleFromMail(key) {
+        const draft = JSON.parse(sioul.ruleFromMessage(key) || "null")
+        if (draft === null || draft.error) {
+            sioul.status = draft ? draft.error : ""
+            return
+        }
+        ruleEditor.now().edit(draft)
+    }
+
+    // Mail ⚙ at one of its settings ("mail.filter", "topics.list"): where a
+    // rule kept in Mail (a filter, a topic's senders) is changed.
+    function openMailSetting(key) {
+        cardHost.leave()
+        window.page = 2
+        if (!mailPage)
+            return
+        mailPage.openSettings(true)
+        Qt.callLater(() => mailPage.scrollSettings(key))
+    }
+
     // The search's "Make it a filter…" (MailSearch.qml): a new mail filter with
     // its conditions ({conditions, match}, as the filters write them), last in
     // the list, its editor open in Mail ▸ ⚙ to choose what it does.
@@ -961,6 +985,9 @@ SioulWindow {
             window.page = 4
             Qt.callLater(() => agendaPage.askSubscribe())
         }
+        // A rule kept in Mail ⚙ (Settings ▸ Rules): "mail-settings:mail.filter", "mail-settings:topics.list".
+        else if (item.kind.startsWith("mail-settings:"))
+            window.openMailSetting(item.kind.slice("mail-settings:".length))
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
@@ -1441,6 +1468,18 @@ SioulWindow {
         }
     }
 
+    // A rule made from a message (RuleEditor.qml): made the first time it is asked for.
+    Later {
+        id: ruleEditor
+
+        sourceComponent: Component {
+            RuleEditor {
+                sioul: sioul
+                theme: theme
+            }
+        }
+    }
+
     // The end of the work day ("Done for today") or of the day before sleep
     // (DayReview.qml, docs/reviews.md): made the first time it is asked for.
     Later {
@@ -1530,7 +1569,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps, "notes-find": grabber.notesFindSteps, "search-tabs": grabber.searchTabSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "rules": grabber.rulesSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps, "notes-find": grabber.notesFindSteps, "search-tabs": grabber.searchTabSteps })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -5811,6 +5850,123 @@ SioulWindow {
             // Settings ▸ Words (docs/words.md): the lines, a line's page, a word
             // added and one taken away, a brand of your own, back to the defaults,
             // German read too, and the way there from the Filed lane's ⚙.
+            // Settings ▸ Rules (docs/rules.md): the list with your rules and those kept elsewhere
+            // (the demo's routes, a route that makes tasks, its budgets' mail rules, its filters, its
+            // topics' senders), what a rule did lately, the editor at each step and its preview, a
+            // rule from a message, "Add a rule…", the presets and a preset's card.
+            function rulesTab() {
+                return parametersPage ? parametersPage.rules : null
+            }
+            function rulesEditor() {
+                const tab = grabber.rulesTab()
+                return tab ? tab.editor : null
+            }
+            // On the demo profile (its project "taxes-2026"), not on a copy of a real one, whose own
+            // filters and rules the pictures show as they are.
+            function rulesOnDemo() {
+                return JSON.parse(sioul.rulesChoices()).project.some(p => p.id === "taxes-2026")
+            }
+            // Two rules of the demo's own, the first with the id its record of acts names (make-demo.py).
+            function demoRules() {
+                if (!grabber.rulesOnDemo())
+                    return
+                const fr = sioul.text("qt-locale").indexOf("fr") === 0
+                const tax = fr ? "impots.example.org" : "tax-office.example.org"
+                const when = conditions => ({ type: "message", event: "arrives", if: conditions })
+                sioul.saveRule(JSON.stringify({ id: "demo-taxes", on: true, when: when([{ field: "sender-domain", test: "is", value: [tax] }, { field: "subject", test: "has-words", value: [fr ? "avis" : "notice"] }]), then: { type: "message", action: "tie-to-project", with: { project: "taxes-2026" } } }), false)
+                sioul.saveRule(JSON.stringify({ id: "demo-taxes-tell", on: false, when: when([{ field: "sender-domain", test: "is", value: [tax] }, { field: "subject", test: "has-words", value: [fr ? "avis" : "notice"] }]), then: { type: "none", action: "tell", with: { level: "now" } } }), false)
+            }
+            readonly property var rulesSteps: [
+                () => window.page = 2,
+                () => {
+                    if (grabber.rulesOnDemo())
+                        sioul.status = sioul.setMailFilters(JSON.stringify(grabber.demoFilters()), "")
+                },
+                () => grabber.demoRules(),
+                () => window.showParameters("rules"),
+                () => {},
+                () => {},
+                () => grabber.save("rules-list"),
+                // What the first rule did lately, unfolded.
+                () => {
+                    const line = grabber.rulesTab().line("demo-taxes")
+                    const fold = line ? grabber.named(line, "ruleLately") : null
+                    if (fold)
+                        fold.want(true)
+                },
+                () => {},
+                () => grabber.save("rules-lately"),
+                () => parametersPage.scrollBy(0.5),
+                () => {},
+                () => grabber.save("rules-list-more"),
+                () => parametersPage.scrollBy(1),
+                () => {},
+                () => grabber.save("rules-list-end"),
+                // The editor, new, then at each step.
+                () => grabber.rulesTab().edit(null),
+                () => {},
+                () => grabber.saveWindow("rules-editor-new"),
+                () => {
+                    const fr = sioul.text("qt-locale").indexOf("fr") === 0
+                    const form = grabber.rulesEditor()
+                    form.addCondition()
+                    form.setValue(0, [fr ? "ondea.example.org" : "wavecell.example.org"])
+                    form.addCondition()
+                    form.setField(1, "kind")
+                    form.setValue(1, ["bill"])
+                },
+                () => {},
+                () => grabber.saveWindow("rules-editor-when"),
+                () => grabber.rulesEditor().setAction("task", "make"),
+                () => {},
+                () => grabber.saveWindow("rules-editor-then"),
+                // The first model there is: the demo's "Check the statement", or one of the profile's own.
+                () => {
+                    const form = grabber.rulesEditor()
+                    const models = JSON.parse(sioul.rulesChoices()).model
+                    if (models.length > 0)
+                        form.setParam("model", models[0].id)
+                    form.setParam("title", { from: "subject" })
+                    form.setParam("days", 3)
+                },
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("rules-editor-preview"),
+                () => grabber.rulesEditor().close(),
+                // From a message: its first one of the last 30 days.
+                () => {
+                    const offered = JSON.parse(sioul.rulesStarts())
+                    window.ruleFromMail(offered.messages.length > 0 ? offered.messages[0].key : "")
+                },
+                () => {},
+                () => {},
+                () => grabber.saveWindow("rules-from-message"),
+                () => ruleEditor.close(),
+                // "Add a rule…": three starts.
+                () => grabber.rulesTab().add(),
+                () => {},
+                () => grabber.saveWindow("rules-start"),
+                () => {
+                    const start = grabber.named(frame.Overlay.overlay, "ruleStart")
+                    if (start)
+                        start.close()
+                },
+                // The presets, and one's card.
+                () => {
+                    parametersPage.scrollBy(-2)
+                    grabber.rulesTab().part = "presets"
+                },
+                () => {},
+                () => grabber.save("rules-presets"),
+                () => parametersPage.scrollBy(0.6),
+                () => {},
+                () => grabber.save("rules-presets-more"),
+                () => grabber.rulesTab().openPreset("new-mail-told"),
+                () => {},
+                () => grabber.saveWindow("rules-preset-card"),
+                () => window.close()
+            ]
             readonly property var wordsSteps: [
                 () => window.showParameters("words"),
                 () => {},

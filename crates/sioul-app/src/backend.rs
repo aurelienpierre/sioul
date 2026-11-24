@@ -2512,6 +2512,67 @@ pub mod qobject {
         #[qinvokable]
         fn new_mail_filter(self: Pin<&mut Sioul>, given: &QString) -> QString;
 
+        /// Settings ▸ Rules (wiring.rs, docs/rules.md): the one list, grouped
+        /// by what happens, your rules and those kept elsewhere, each in
+        /// words, what each did lately; the presets the same way; as JSON.
+        #[qinvokable]
+        fn rules_view(self: &Sioul) -> QString;
+
+        /// What a rule can be made of: the core's declarations, in your words (JSON).
+        #[qinvokable]
+        fn rules_catalogue(self: &Sioul) -> QString;
+
+        /// What a rule's values choose among, by the value's kind (JSON).
+        #[qinvokable]
+        fn rules_choices(self: &Sioul) -> QString;
+
+        /// A rule being edited (JSON) in words: {sentence, problem}.
+        #[qinvokable]
+        fn rule_sentence(self: &Sioul, rule: &QString) -> QString;
+
+        /// What a rule (JSON) would have done in the last 30 days, found off
+        /// the window's thread; `rules_previewed` brings it.
+        #[qinvokable]
+        fn rule_preview(self: Pin<&mut Sioul>, rule: &QString);
+
+        /// A rule (JSON) saved; `also`: for the last 30 days too, once each.
+        /// Returns {id, error} as JSON.
+        #[qinvokable]
+        fn save_rule(self: Pin<&mut Sioul>, rule: &QString, also: bool) -> QString;
+
+        /// A rule turned on or off, said in the status line.
+        #[qinvokable]
+        fn set_rule_on(self: Pin<&mut Sioul>, id: &QString, on: bool);
+
+        /// A rule removed, with Undo in the status line.
+        #[qinvokable]
+        fn remove_rule(self: Pin<&mut Sioul>, id: &QString);
+
+        /// One act of a rule (JSON, as `rules_view` gave it) undone.
+        #[qinvokable]
+        fn undo_rule_act(self: Pin<&mut Sioul>, act: &QString);
+
+        /// "Not for this one": the rule leaves that object alone from now on.
+        #[qinvokable]
+        fn rule_not_for_this_one(self: Pin<&mut Sioul>, rule: &QString, object: &QString);
+
+        /// A rule drafted from a message (its file): JSON, or {error}.
+        #[qinvokable]
+        fn rule_from_message(self: &Sioul, key: &QString) -> QString;
+
+        /// A rule drafted from a preset (its id): JSON, or {error}.
+        #[qinvokable]
+        fn rule_from_preset(self: &Sioul, id: &QString) -> QString;
+
+        /// What "Add a rule…" offers to start from: {messages, presets}, as JSON.
+        #[qinvokable]
+        fn rules_starts(self: &Sioul) -> QString;
+
+        /// A general model of task (JSON: {id, name, prefix, list, business_days}) kept
+        /// with the rules; returns {id, error} as JSON.
+        #[qinvokable]
+        fn save_rule_model(self: Pin<&mut Sioul>, model: &QString) -> QString;
+
         /// The other devices' files fetched from the server too, or not, on
         /// this device (docs/database.md); returns what went wrong, else "".
         #[qinvokable]
@@ -3444,6 +3505,10 @@ pub mod qobject {
         /// The lists of the mail you called spam, as JSON (`leave::Found`).
         #[qsignal]
         fn leave_spam_found(self: Pin<&mut Sioul>, found: QString);
+
+        /// What a rule would have done in the last 30 days, as JSON {asked, count, text, lines}.
+        #[qsignal]
+        fn rules_previewed(self: Pin<&mut Sioul>, found: QString);
 
         /// A message read for the reading pane (`read_message`): its key, the
         /// message laid out for reading as JSON (`view::MessageView`; empty
@@ -9541,6 +9606,7 @@ impl qobject::Sioul {
         // the setup of the demo's software security key and a message signed at Send with it (docs/client.md),
         // "calls" the calls a phone declined on a computer's Porch and a person's calls of the month (docs/porch.md),
         // "words" Settings ▸ Words, a line's lists changed and taken back (docs/words.md),
+        // "rules" Settings ▸ Rules, its editor at each step, a rule from a message, its presets (docs/rules.md),
         // "health-gpg" a prescription's medicines and their takes as rows, and the security key's
         // GnuPG steps as buttons with their commands to copy (docs/health.md, docs/client.md),
         // "movetask" one of the demo's tasks moved to its other list (docs/tasks.md), "steps" a
@@ -9605,7 +9671,7 @@ impl qobject::Sioul {
         // their text, a note's outline, the dated lists and one type (pictures alone; docs/tasks.md),
         // "search-tabs" Tasks ▸ List and Search, the Agenda's Search and a calendar unticked there
         // (pictures alone; docs/tasks.md, "Search"), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household", "notes-find", "search-tabs"].contains(&steps.as_str()) && offline()) {
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "rules", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household", "notes-find", "search-tabs"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")
@@ -9900,6 +9966,62 @@ impl qobject::Sioul {
 
     fn new_mail_filter(self: Pin<&mut Self>, given: &QString) -> QString {
         QString::from(&crate::filters::new_from(&given.to_string()))
+    }
+
+    fn rules_view(&self) -> QString {
+        QString::from(&crate::wiring::view(&self.shared()))
+    }
+
+    fn rules_catalogue(&self) -> QString {
+        QString::from(&crate::wiring::catalogue())
+    }
+
+    fn rules_choices(&self) -> QString {
+        QString::from(&crate::wiring::choices(&self.shared()))
+    }
+
+    fn rule_sentence(&self, rule: &QString) -> QString {
+        QString::from(&crate::wiring::said(&rule.to_string()))
+    }
+
+    fn rule_preview(self: Pin<&mut Self>, rule: &QString) {
+        crate::wiring::preview(self.qt_thread(), rule.to_string());
+    }
+
+    fn save_rule(self: Pin<&mut Self>, rule: &QString, also: bool) -> QString {
+        QString::from(&crate::wiring::save(&self.qt_thread(), &self.shared(), &rule.to_string(), also))
+    }
+
+    fn set_rule_on(self: Pin<&mut Self>, id: &QString, on: bool) {
+        crate::wiring::set_on(&self.qt_thread(), &self.shared(), &id.to_string(), on);
+    }
+
+    fn remove_rule(self: Pin<&mut Self>, id: &QString) {
+        crate::wiring::remove(&self.qt_thread(), &self.shared(), &id.to_string());
+    }
+
+    fn undo_rule_act(self: Pin<&mut Self>, act: &QString) {
+        crate::wiring::undo_act(&self.qt_thread(), &self.shared(), &act.to_string());
+    }
+
+    fn rule_not_for_this_one(self: Pin<&mut Self>, rule: &QString, object: &QString) {
+        crate::wiring::not_for_this_one(&self.qt_thread(), &self.shared(), &rule.to_string(), &object.to_string());
+    }
+
+    fn rule_from_message(&self, key: &QString) -> QString {
+        QString::from(&crate::wiring::from_message(&key.to_string()))
+    }
+
+    fn rule_from_preset(&self, id: &QString) -> QString {
+        QString::from(&crate::wiring::from_preset(&id.to_string()))
+    }
+
+    fn rules_starts(&self) -> QString {
+        QString::from(&crate::wiring::starts(&self.shared()))
+    }
+
+    fn save_rule_model(self: Pin<&mut Self>, model: &QString) -> QString {
+        QString::from(&crate::wiring::save_model(&model.to_string()))
     }
 
     fn set_share_backup(self: Pin<&mut Self>, on: bool) -> QString {

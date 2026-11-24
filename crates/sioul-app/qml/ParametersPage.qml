@@ -3,7 +3,8 @@
 
 // What belongs to Sioul as a whole rather than to one page: language and
 // colours, working hours, the usual meals and sleep and days off, what
-// reaches you and when (ReachesTab.qml), the words Sioul looks for
+// reaches you and when (ReachesTab.qml), the rules, "when this happens, do
+// that" (RulesTab.qml), the words Sioul looks for
 // (WordsTab.qml), reminders, the pauses, your folder and sharing, your
 // devices (DevicesTab.qml: each phone's card, with what sets it up),
 // invoices, extensions (ExtensionsTab.qml). What one page alone reads is behind that page's ⚙ (SettingDoor.qml
@@ -36,6 +37,8 @@ Item {
     readonly property var share: shareLoader.item
     // The devices' tab, while it is shown.
     readonly property var devices: devicesLoader.item
+    // The rules' tab, while it is shown (the window's pictures).
+    readonly property var rules: rulesLoader.item
     property bool shareMade: page.section === "files"
     onSectionChanged: {
         if (page.section === "files")
@@ -51,7 +54,7 @@ Item {
     // What a phone sets up (its calls, what Android must allow, other apps'
     // notifications, its texts) is in its own card in Devices (design of 18
     // November 2026: the tab "This phone" merged into it).
-    readonly property var sections: ["look", "hours", "attention", "words", "reminders", "pauses", "files", "devices", "invoices", "extensions", "ai"]
+    readonly property var sections: ["look", "hours", "attention", "rules", "words", "reminders", "pauses", "files", "devices", "invoices", "extensions", "ai"]
     // On Android. The system's; the layout test of the tabs sets it to
     // measure a phone's row (tst_settingstabs.qml).
     property bool android: Qt.platform.os === "android"
@@ -69,6 +72,8 @@ Item {
             return page.sioul.text("settings-about-hours")
         case "attention":
             return page.sioul.text("settings-about-attention")
+        case "rules":
+            return page.sioul.text("settings-about-rules")
         case "words":
             return page.sioul.text("settings-about-words")
         case "reminders":
@@ -91,10 +96,10 @@ Item {
     // The pause's screen tried from its setup (main.qml shows it, nothing held).
     signal tryPause
     property string section: "look"
-    // What reaches you and the words draw their own rows (ReachesTab.qml,
-    // WordsTab.qml): none listed here.
+    // What reaches you, the rules and the words draw their own rows (ReachesTab.qml,
+    // RulesTab.qml, WordsTab.qml): none listed here.
     // On a phone's list, none: the section's rows are made when it is opened.
-    readonly property var shown: page.listed || page.section === "attention" || page.section === "words" ? [] : page.rows.filter(r => r.section === page.section)
+    readonly property var shown: page.listed || page.section === "attention" || page.section === "rules" || page.section === "words" ? [] : page.rows.filter(r => r.section === page.section)
     // A view of What reaches you asked for before its tab was made: shown once it is.
     property string reachesAsked: ""
     // A list of the words asked for ("words.voicemail.operators") before its tab was made: its line opened once it is.
@@ -538,6 +543,22 @@ Item {
                                 if (item && flick)
                                     flick.contentY = Math.max(0, Math.min(item.mapToItem(column, 0, 0).y - 12, flick.contentHeight - flick.height))
                             }
+                        }
+                    }
+                }
+
+                // The rules, "when this happens, do that" (docs/rules.md): one list, made when first shown.
+                Loader {
+                    id: rulesLoader
+
+                    active: page.section === "rules"
+                    visible: active
+                    Layout.fillWidth: true
+
+                    sourceComponent: Component {
+                        RulesTab {
+                            sioul: page.sioul
+                            theme: page.theme
                         }
                     }
                 }

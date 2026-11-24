@@ -1674,9 +1674,15 @@ Item {
                             message.modelData.spam_word || "", message.modelData.attachments.length > 0 ? page.sioul.text("notice-attached") : ""].filter(t => !!t)
                     note: message.modelData.summary || ""
                     source: page.sourceOf(message.modelData)
+                    // A rule made from it (docs/rules.md): never from mail the Porch set aside or holds for review.
+                    more: message.modelData.hidden === true || !!message.modelData.review ? [] : [{ id: "rule", text: page.sioul.text("rules-from-this"), icon: "" }]
                     onOpened: page.openKey = message.modelData.key
                     onReadPressed: page.say("read", page.mailRow(message.modelData))
                     onDismissPressed: page.say("dismiss", page.mailRow(message.modelData))
+                    onChosen: id => {
+                        if (id === "rule")
+                            page.window.ruleFromMail(message.modelData.key)
+                    }
 
                     // In the review queue: your word, Spam or Not spam, ten seconds to undo.
                     Flow {

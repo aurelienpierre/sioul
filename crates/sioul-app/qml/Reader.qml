@@ -501,6 +501,14 @@ Panel {
                 text: reader.sioul.text("routetasks-like-this")
                 onTriggered: reader.window.routeTaskFromMail(reader.key)
             }
+            // One rule, "when such a message arrives, do that", from this one (docs/rules.md);
+            // never from mail the Porch set aside, which no rule sees.
+            MenuItem {
+                visible: reader.reading !== null && !(reader.item && reader.item.hidden === true)
+                height: visible ? implicitHeight : 0
+                text: reader.sioul.text("rules-from-this")
+                onTriggered: reader.window.ruleFromMail(reader.key)
+            }
             MenuSeparator {}
             MenuItem {
                 visible: reader.reading !== null && !!reader.reading.from_address
