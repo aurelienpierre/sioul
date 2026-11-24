@@ -41,7 +41,12 @@
    "code de validation",
    "code d'identification",
    "double authentification",
-   "authentification a deux facteurs"
+   "authentification a deux facteurs",
+   "pin code",
+   "temporary code",
+   "provisional code",
+   "code pin",
+   "code provisoire"
   ],
   "codes.pointing": [
    "following code",
@@ -50,6 +55,13 @@
    "enter the code",
    "use the code",
    "copy the code",
+   "utilise le code",
+   "saisis le code",
+   "entre le code",
+   "tapez le code",
+   "avec le code",
+   "use code",
+   "enter code",
    "type the code",
    "code suivant",
    "ce code",
@@ -63,6 +75,11 @@
    "copiez le code"
   ],
   "codes.sign_in": [
+   "transaction",
+   "paiement",
+   "achat",
+   "payment",
+   "purchase",
    "sign in",
    "sign-in",
    "signin",
@@ -95,6 +112,19 @@
    "inscription"
   ],
   "codes.not_yours": [
+   "qr",
+   "retrait",
+   "livraison",
+   "consigne",
+   "batiment",
+   "interphone",
+   "escalier",
+   "parcel",
+   "package",
+   "delivery",
+   "pickup",
+   "entry",
+   "apartment",
    "zip",
    "postal",
    "post",
@@ -389,11 +419,14 @@
    "ton"
   ],
   "codes.owned_after": [
+   "est le",
+   "is the",
    "is your",
    "est votre",
    "est ton"
   ],
   "codes.linking": [
+   "est le",
    "is",
    "est"
   ],
@@ -420,7 +453,15 @@
    "for"
   ],
   "codes.noun": [
-   "code"
+   "code",
+   "pin"
+  ],
+  "codes.password_label": [
+   "mot de passe",
+   "mdp",
+   "password",
+   "pwd",
+   "passwd"
   ],
   "codes.unit_minutes": [
    "min"

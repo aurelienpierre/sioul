@@ -5020,7 +5020,8 @@ pub(crate) fn notify_codes(files: &[PathBuf]) {
     let senders = porch::Senders::load(&config);
     // Codes are decided before projects and screening: neither is needed here.
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
-    for code in view::codes(&judged, tr()) {
+    // A code set aside as forged is said too, never shown (`view::set_aside_codes`).
+    for code in view::codes(&judged, tr()).into_iter().chain(view::set_aside_codes(&judged, tr())) {
         let notice = code.notice(&tr().text("notify-copy", None), &tr().text("notify-open-message", None));
         // Read or dismissed on any device, or read here: settled.
         let told = sioul_core::notices::Told { at: 0, ids: vec![code.notice.id.clone()], items: vec![code.key.clone()] };
@@ -5046,7 +5047,7 @@ fn code_notices(files: &[PathBuf], pierce: bool) {
     let now = sioul_core::zone::now().timestamp().as_second();
     let senders = porch::Senders::load(&config);
     let judged = porch::judge(files, &config.mail_sources(), None, &KnownSenders::default(), &senders, now);
-    for code in view::codes(&judged, tr()) {
+    for code in view::codes(&judged, tr()).into_iter().chain(view::set_aside_codes(&judged, tr())) {
         let notice = code.notice(&tr().text("notify-copy", None), &tr().text("notify-open-message", None));
         if notice.about.is_empty() || !crate::eventalarms::code_note(&notice, pierce) {
             continue;
@@ -8632,6 +8633,8 @@ impl qobject::Sioul {
         // (left out when a save's exchange just did it: `share::exchange_tick`).
         crate::share::exchange_tick(&self.qt_thread(), &self.shared());
         crate::share::nudge_tick(&self.qt_thread(), &self.shared());
+        // A code your phone let through, told here once (`phonemsgs::tell_codes`), off the window's thread.
+        std::thread::spawn(crate::phonemsgs::tell_codes);
         // Invoices stay with the computer that makes them: its claim renewed,
         // off the window's thread (it reads and writes the sharing folder).
         let shared_invoices = self.shared();

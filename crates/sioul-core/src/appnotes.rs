@@ -302,10 +302,7 @@ pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
     if p.redacted {
         return true;
     }
-    let mut body = vec![p.text.as_str(), p.big.as_str(), p.sub.as_str()];
-    body.extend(p.lines.iter().map(String::as_str));
-    body.extend(p.messages.iter().map(|m| m.text.as_str()));
-    let body = body.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n");
+    let body = words_of(p);
     if crate::codes::detect(&words.codes, &p.title, &body).is_some() {
         return true;
     }
@@ -317,6 +314,26 @@ pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
     }
     let channel: Vec<char> = crate::text::fold(&format!("{} {}", p.channel.replace(['_', '.'], " "), p.channel_name));
     approvals.channels.iter().any(|word| crate::text::find_word(&channel, word, 0).is_some())
+}
+
+/// What a notification says, its title aside: its text, its expanded text,
+/// its sub-text, its lines and its messages, one per line: what `is_code`
+/// reads with the title.
+fn words_of(p: &Posted) -> String {
+    let mut body = vec![p.text.as_str(), p.big.as_str(), p.sub.as_str()];
+    body.extend(p.lines.iter().map(String::as_str));
+    body.extend(p.messages.iter().map(|m| m.text.as_str()));
+    body.into_iter().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n")
+}
+
+/// The code a notification hands over, as `is_code` reads it
+/// (`codes::detect`); none for an approval, a channel named for codes or a
+/// copy Android redacted, which say a code came without giving it.
+pub fn code_of(p: &Posted, words: &crate::words::Words) -> Option<crate::codes::OneTimeCode> {
+    if p.redacted {
+        return None;
+    }
+    crate::codes::detect(&words.codes, &p.title, &words_of(p))
 }
 
 /// A browser's site the notification is from, as its host: Chromium's
@@ -2718,6 +2735,51 @@ mod tests {
         assert_eq!(decide(&shop, None, false, &at_once, &ask(&evening, &clock, None, None)), Decision::through(Why::AtOnce));
         let waking = decide(&shop, None, false, &at_once, &ask(&night, &clock, None, None));
         assert_eq!((waking.why, until_of(waking).as_str()), (Why::AtOnce, "2026-10-07T07:00:00"));
+    }
+
+    /// The text of 24 November 2026 (its shape, an invented code, amount and
+    /// shop): a payment service's code from a short number, the code before
+    /// its word. A code: let through at every time, in a pause, in Free time
+    /// and under do-not-disturb, whatever its conversation's, its app's or a
+    /// person's rows say; never gathered as a short number's text. A text from
+    /// the same short number that only looks like a code is gathered as before.
+    #[test]
+    fn a_payment_code_from_a_short_number_comes_at_every_time() {
+        let payment = r#"{"key":"0|foundation.e.message|7|null|10123","package":"foundation.e.message","app":"Message","channel":"notifications_default","category":"msg","title":"36123","text":"ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous","sms_app":true,"intercepted":true}"#;
+        let english = payment.replace("est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous", "is the code for your transaction of 23.90 EUR at Example Shop. Keep this code to yourself");
+        let parcel = payment.replace("ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous", "Votre colis 48291357 sera livré demain entre 9 h et 13 h.");
+        let words = crate::words::Words::builtin_ref();
+        let clock = TestClock::new();
+        let paused = TestClock { overrides: Overrides { paused_since: Some(at("2026-10-06T08:00[Europe/Paris]").timestamp().as_second()), ..Overrides::default() } };
+        let free = TestClock { overrides: Overrides { free_since: Some(at("2026-10-06T15:00[Europe/Paris]").timestamp().as_second()), free_nothing: Some(true), ..Overrides::default() } };
+        // Every app and conversation row saying no: the app an automaton's, its conversation never.
+        let mut chosen = Choices::default();
+        chosen.app.insert("foundation.e.message".into(), AppChoice { kind: AppKind::Automaton, ..AppChoice::default() });
+        for json in [payment, english.as_str()] {
+            let p = posted(json);
+            assert!(super::is_code(&p, words), "{json}");
+            assert_eq!(code_of(&p, words).and_then(|c| c.code).as_deref(), Some("482913"));
+            for choices in [&Choices::default(), &chosen] {
+                let kind = classify(&p, choices);
+                assert_eq!(kind, Kind::Code);
+                // Work, leisure in the evening, sleep, the night, a meal, a pause, Free time's "Nothing at all".
+                for (time, clock) in [("2026-10-06T10:00", &clock), ("2026-10-06T21:40", &clock), ("2026-10-06T23:30", &clock), ("2026-10-06T03:00", &clock), ("2026-10-06T12:30", &clock), ("2026-10-06T21:40", &paused), ("2026-10-06T16:00", &free)] {
+                    let now = at(&format!("{time}[Europe/Paris]"));
+                    for dnd in [false, true] {
+                        for who in [None, Some(Who::Stranger), Some(Who::Restricted)] {
+                            assert_eq!(decide(&kind, who, false, choices, &ask(&now, clock, None, dnd.then_some(Gate { until: None }))), Decision::through(Why::Code), "{time} do-not-disturb {dnd} {who:?}");
+                        }
+                    }
+                }
+            }
+        }
+        // The same short number, no code: an automaton's, gathered until 09:00 at night.
+        let p = posted(&parcel);
+        assert!(!super::is_code(&p, words));
+        let kind = classify(&p, &Choices::default());
+        assert_eq!(kind, Kind::Automaton { site: String::new() });
+        let held = decide(&kind, None, false, &Choices::default(), &ask(&at("2026-10-06T21:40[Europe/Paris]"), &clock, None, None));
+        assert_eq!((held.why, until_of(held).as_str()), (Why::Gathered, "2026-10-07T09:00:00"));
     }
 
     #[test]

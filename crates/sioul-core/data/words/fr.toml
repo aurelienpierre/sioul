@@ -14,20 +14,23 @@ code = [
     "activation code", "2fa", "verification pin", "code de verification", "code de securite", "code de confirmation",
     "code d'authentification", "code d'acces", "code de connexion", "code d'activation", "code a usage unique",
     "mot de passe a usage unique", "code temporaire", "code de validation", "code d'identification",
-    "double authentification", "authentification a deux facteurs",
+    "double authentification", "authentification a deux facteurs", "code pin", "code provisoire",
 ]
 # Points at a code without naming it ("enter the code below"): counts only in a message about signing in.
 pointing = [
     "code suivant", "ce code", "code ci-dessous", "code ci dessous", "saisissez le code", "entrez le code",
-    "utilisez le code", "indiquez le code", "renseignez le code", "copiez le code",
+    "utilisez le code", "indiquez le code", "renseignez le code", "copiez le code", "utilise le code", "saisis le code",
+    "entre le code", "tapez le code", "avec le code",
 ]
 # Says the message is about signing in or checking who you are, somewhere in it.
 sign_in = [
+    "transaction", "paiement", "achat",
     "login", "verification", "authentication", "connexion", "connecter", "connectez", "identifier", "identification",
     "verifier", "confirmer", "identite", "authentifier", "authentification", "inscription",
 ]
 # Words between "your" and "code" that make it no secret of yours ("your zip code").
 not_yours = [
+    "postal", "qr", "retrait", "livraison", "consigne", "batiment", "interphone", "escalier",
     "promo", "coupon", "gift", "voucher", "client", "swift", "bic", "iban", "wifi", "wi-fi", "promotionnel", "cadeau",
     "avantage", "reduction", "parrainage", "suivi", "colis", "commande", "adherent", "membre", "produit", "article",
     "erreur", "vestimentaire", "porte", "portail", "immeuble", "casier", "banque", "guichet", "naf", "ape", "insee",
@@ -81,15 +84,17 @@ giving = ["votre code", "ton code"]
 # Grammar: whose code, a few words before "code" ("your Instagram code").
 owners = ["votre", "ton"]
 # Grammar: says a code is yours, right after it ("123456 is your code").
-owned_after = ["est votre", "est ton"]
+owned_after = ["est votre", "est ton", "est le"]
 # Grammar: may stand between a phrase and its code ("is").
-linking = ["est"]
+linking = ["est", "est le"]
 # A link or a code that works once.
 once = ["une seule fois", "usage unique", "qu'une fois"]
 # Words before a validity ("valid 10 minutes").
 expiry_context = ["valable", "expire", "pendant", "dans"]
-# The word for a code itself.
-noun = ["code"]
+# The word for a code itself; as a label too, the code after its colon ("Code : 4821", "PIN: 4821").
+noun = ["code", "pin"]
+# The word for a password, as a label: the password after its colon ("MDP : …", "Password: …").
+password_label = ["mot de passe", "mdp"]
 # Starts of a unit of minutes, after a number.
 unit_minutes = ["min"]
 # Starts of a unit of hours, after a number.

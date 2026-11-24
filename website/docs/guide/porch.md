@@ -36,11 +36,12 @@ Mail keeps arriving in the background all the while. The Porch only decides when
 
 ## Codes and links come at once {#codes-and-links-come-at-once}
 
-One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…), and tells them at once but while you sleep:
+One-time codes, temporary passwords, password resets, sign-in links and links to confirm an address come from something you just asked a site for, and they expire. So Sioul shows them at once, whatever the hour, even when they come from a site's automatic address (no-reply…), and tells them at once, sleep included: no setting holds one back, by mail or by text, on your phone and on your computers alike:
 
-- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read; none while you sleep: the card waits here, unless you choose **At once** for codes during sleep, in Settings ▸ What reaches you ▸ What comes when;
-- on Android, one notification to act on, with **Copy the code** and **Open the message**; on the lock screen its title alone, never the code, whatever the phone's own setting, and **Copy the code** only once the phone is unlocked; it goes once the code is copied, expires or its message is read; none while you sleep;
-- its row on top of the Porch, in **Right now**, with **Copy**; on Android, on Sioul's card on your home screen too.
+- on a computer, one notification, without sound, with the code, a button to copy it (on Linux), and how long it stays valid; a click on it opens its message; it stays until the code is copied, expires or its message is read;
+- on Android, one notification to act on, with **Copy the code** and **Open the message**; on the lock screen its title alone, never the code, whatever the phone's own setting, and **Copy the code** only once the phone is unlocked; it goes once the code is copied, expires or its message is read;
+- its row on top of the Porch, in **Right now**, with **Copy**; on Android, on Sioul's card on your home screen too;
+- **a code by text** comes on your phone as your texting app shows it, at once, whoever sent it, a short number included; when your phone's do-not-disturb keeps that app silent (your sleep, a pause), Sioul rings once with a notification of its own, with the code and **Copy the code**, the lock screen showing only who sent it; each of your computers says at once that a code came to your phone, the code itself staying on the phone.
 
 Nothing else opens with it. Once it has expired, it is hidden, and the message goes to its lane. It expires when the message says, else when its kind usually does: a code after 30 minutes, a sign-in link after an hour, a password reset after two hours, a link to confirm an address after a day, a temporary password after a week.
 

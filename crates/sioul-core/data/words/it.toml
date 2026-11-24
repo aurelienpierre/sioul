@@ -11,15 +11,20 @@ checked = "2026-11-10"
 [codes]
 # Names a code: a code right beside it is taken.
 code = [
+    "codice pin",
     "codice di verifica", "codice di sicurezza", "codice di conferma", "codice di accesso", "codice di autenticazione",
     "codice di attivazione", "codice monouso", "password monouso", "codice otp", "codice di convalida",
 ]
 # Points at a code without naming it: counts only in a message about signing in.
 pointing = ["il seguente codice", "questo codice", "inserisci il codice", "usa il codice", "copia il codice"]
 # Says the message is about signing in or checking who you are, somewhere in it.
-sign_in = ["accedi", "accesso", "accedere", "login", "registrazione", "verifica", "verificare", "conferma", "identità", "autenticazione"]
+sign_in = [
+    "transazione", "pagamento", "acquisto",
+    "accedi", "accesso", "accedere", "login", "registrazione", "verifica", "verificare", "conferma", "identità", "autenticazione",
+]
 # Words between "your" and "code" that make it no secret of yours.
 not_yours = [
+    "qr", "errore", "pacco", "porta", "portone",
     "postale", "promozionale", "sconto", "coupon", "regalo", "ordine", "cliente", "tracking", "prenotazione", "fiscale",
     "wifi", "iban", "swift", "bic",
 ]
@@ -53,17 +58,19 @@ confirm = [
 # Grammar: hands a code over, the code right after.
 giving = ["il tuo codice", "il suo codice"]
 # Grammar: whose code, a few words before "code".
-owners = ["tuo", "suo", "vostro"]
+owners = ["tuo", "suo", "vostro", "tua", "sua", "vostra"]
 # Grammar: says a code is yours, right after it ("123456 è il tuo codice").
-owned_after = ["è il tuo", "è il suo"]
+owned_after = ["è il tuo", "è il suo", "è il"]
 # Grammar: may stand between a phrase and its code.
 linking = ["è"]
 # A link or a code that works once.
 once = ["una sola volta", "solo una volta", "monouso"]
 # Words before a validity ("valido per 10 minuti").
 expiry_context = ["valido", "scade", "entro"]
-# The word for a code itself.
-noun = ["codice"]
+# The word for a code itself; as a label too, the code after its colon ("Code : 4821", "PIN: 4821").
+noun = ["codice", "pin"]
+# The word for a password, as a label: the password after its colon ("MDP : …", "Password: …").
+password_label = ["password"]
 # Starts of a unit of minutes, after a number.
 unit_minutes = ["min"]
 # Starts of a unit of hours, after a number ("ora", "ore").

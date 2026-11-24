@@ -514,9 +514,10 @@ impl Level {
 /// The usual cell of a row: what Sioul does unless you change it. Today's
 /// behaviour, with the decisions of 7 October 2026 (docs/attention.md,
 /// §9): Always through at once everywhere (mail shown, not told, in sleep and
-/// a pause); messages from people held in sleep and a pause; codes at once in
-/// every time but sleep, where they wait on the Porch (the notifications'
-/// decision 5 of 13 November 2026); calls carry the layers; groups a row of
+/// a pause); messages from people held in sleep and a pause; codes at once at
+/// every time, sleep included, fixed (the owner's word of 24 November 2026,
+/// which replaces the notifications' decision 5 of 13 November: a code waited
+/// on the Porch while you slept); calls carry the layers; groups a row of
 /// their own.
 pub fn usual(row: Row, column: Column) -> Level {
     use Column::*;
@@ -564,8 +565,8 @@ pub fn usual(row: Row, column: Column) -> Level {
         Row::People(Channel::Calls, Person::Stranger) => if column == Slot { Now } else { Later },
         Row::People(_, _) => Later,
         Row::Own(kind) => match kind {
-            // Codes wait on the Porch while you sleep: "On the Porch only" (decision 5).
-            Kind::Codes => if column == Sleep { Never } else { Now },
+            // A code you asked for comes at once at every time, sleep included (24 November 2026).
+            Kind::Codes => Now,
             Kind::Doses | Kind::Wake | Kind::Time => Now,
             Kind::Alarms | Kind::Before => if matches!(column, Sleep | Free) { Event } else { Now },
             Kind::DayBefore | Kind::Dates => if rests { Later } else { Now },
@@ -596,8 +597,7 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
         Row::People(Channel::Messages, _) if matches!(column, Column::Work | Column::Admin | Column::Leisure | Column::Meals) => &[Now, Gathered, Later],
         Row::People(_, _) => &[Now, Later],
         Row::Own(kind) => match kind {
-            Kind::Codes if column == Column::Sleep => &[Never, Now],
-            Kind::Codes => &[Now, Never],
+            Kind::Codes => &[Now],
             Kind::Doses => &[Now, Later],
             Kind::Wake => &[Now],
             Kind::Alarms | Kind::Before if column.ends() => &[Now, Event, Later],
@@ -613,14 +613,14 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
 
 /// Why a cell is fixed, as the id of its sentence; none when it can change.
 /// A dose comes at its time but in sleep and a pause, your choice; a code you
-/// just asked for at once, but in sleep, where it waits on the Porch unless
-/// you choose At once; an event's alarms in a pause and under do-not-disturb, as both
-/// promise; the alarm at waking always; the blocked never.
+/// just asked for at once, always, sleep included (no setting holds it: a held
+/// code only breaks what you started); an event's alarms in a pause and under
+/// do-not-disturb, as both promise; the alarm at waking always; the blocked never.
 pub fn lock(row: Row, column: Column) -> Option<&'static str> {
     match row {
         Row::People(_, Person::Blocked) => Some("attention-lock-blocked"),
         Row::Own(Kind::Doses) if !matches!(column, Column::Sleep | Column::Pause) => Some("attention-lock-doses"),
-        Row::Own(Kind::Codes) if column != Column::Sleep => Some("attention-lock-codes"),
+        Row::Own(Kind::Codes) => Some("attention-lock-codes"),
         Row::Own(Kind::Alarms) if matches!(column, Column::Pause | Column::Dnd) => Some("attention-lock-alarms"),
         Row::Own(Kind::Wake) => Some("attention-lock-wake"),
         _ => None,
@@ -1404,7 +1404,7 @@ pub enum Source {
 pub enum Lane {
     /// Told as its row says.
     Usual,
-    /// A code asked for: on top of the Porch at any time; told as the Codes row says.
+    /// A code asked for: on top of the Porch at any time; told at once (the Codes row, fixed).
     Code,
     /// What you sent yourself: among People at any hour, never told.
     Own,
@@ -2932,7 +2932,7 @@ mod tests {
             ("messages.stranger", "●●◎◎○○○●○"),
             ("messages.groups", "●●●●○○○●◑"),
             ("messages.blocked", "–––––––––"),
-            ("codes", "●●●●–●●●●"),
+            ("codes", "●●●●●●●●●"),
             ("doses", "●●●●●●●●●"),
             ("wake", "●●●●●●●●●"),
             ("alarms", "●●●●◐●◐●●"),
@@ -2981,7 +2981,7 @@ mod tests {
         assert!(a.set(row("doses"), Column::Sleep, Level::Never).is_err(), "a dose is never dropped");
         assert!(a.set(row("doses"), Column::Pause, Level::Later).is_ok());
         assert!(a.set(row("codes"), Column::Pause, Level::Never).is_err(), "a code in a pause comes, fixed");
-        assert!(a.set(row("codes"), Column::Sleep, Level::Now).is_ok(), "At once stays a choice for sleep, where codes wait on the Porch as usual");
+        assert!(a.set(row("codes"), Column::Sleep, Level::Never).is_err(), "a code while you sleep comes, fixed");
         assert!(a.set(row("alarms"), Column::Pause, Level::Later).is_err() && a.set(row("alarms"), Column::Dnd, Level::Later).is_err());
         assert!(a.set(row("mail.blocked"), Column::Work, Level::Now).is_err(), "the blocked never");
         assert!(a.set(row("mail.always"), Column::Work, Level::Through).is_err(), "☆ is a layer's");
@@ -3068,7 +3068,8 @@ mod tests {
         let a = Attention::of(&config);
         // Read leniently: French words, a value not offered left aside (gathered mail), a fixed cell kept.
         assert_eq!(a.words(row("mail.neutral")), ["work", "admin", "leisure", "meals:quiet", "sleep:never", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]);
-        assert_eq!((a.cell(row("codes"), Column::Sleep), a.cell(row("codes"), Column::Pause)), (Level::Never, Level::Now));
+        // Codes are fixed at once everywhere (24 November 2026): an older "sleep:never" is left aside.
+        assert_eq!((a.cell(row("codes"), Column::Sleep), a.cell(row("codes"), Column::Pause)), (Level::Now, Level::Now));
         assert_eq!((a.cell(row("messages.always"), Column::Dnd), a.cell(row("messages.always"), Column::Sleep)), (Level::Through, Level::As));
         assert_eq!(a.cell(row("day-before"), Column::Free), Level::Now);
         // A row that is no list is left aside, never the configuration.
@@ -3190,10 +3191,10 @@ mod tests {
                     assert_eq!(listed.told, !(m.sleeps() || m.paused()), "listed {who:?} {said}");
                     assert_eq!(listed.pierce, listed.told, "Always through mail passes the system's do-not-disturb {said}");
                 }
-                // Kinds of Sioul's own, as notify's usual decided, but codes at once in a pause (Q6); in
-                // sleep they wait on the Porch again (decision 5 of 13 November 2026, as notify had them).
+                // Kinds of Sioul's own, as notify's usual decided, but codes at once at every time, sleep
+                // and a pause included (Q6; the owner's word of 24 November 2026).
                 let comes = |kind: Kind| a.decide(&Event::own(kind), &now).told;
-                assert_eq!(comes(Kind::Codes), !m.sleeps() || m.paused(), "codes {said}");
+                assert!(comes(Kind::Codes), "codes {said}");
                 assert!(comes(Kind::Doses) && comes(Kind::Wake) && comes(Kind::Time), "{said}");
                 let quiet_ish = m.sleeps() || m.free() || m.paused();
                 assert_eq!(comes(Kind::Move), !quiet_ish && !slot && !dnd, "move {said}");
@@ -3576,16 +3577,20 @@ mod tests {
         let mut meeting = Now::time(Column::Work);
         meeting.holds.meeting = true;
         assert_eq!(a.decide(&Event::own(Kind::Needs), &meeting).step, Step::Hold);
-        // Codes: on top of the Porch, told as their row: in sleep, on the Porch only (decision 5
-        // of 13 November 2026), told in a pause and at every other time; your own mail never told.
+        // Codes: on top of the Porch, told at once at every time, through every layer (the owner's
+        // word of 24 November 2026: asleep too); your own mail never told.
         let code = |now: &Now| a.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }), now);
         let asleep = code(&Now::of(&mode(Time::Sleep, Reason::Sleep)));
-        assert!(asleep.shown && !asleep.told && !asleep.pierce);
+        assert!(asleep.shown && asleep.told && asleep.pierce);
         let paused = code(&Now::of(&mode(Time::Sleep, Reason::Paused)));
         assert!(paused.shown && paused.told && paused.pierce);
-        let mut chose = Attention::usual();
-        chose.set(row("codes"), Column::Sleep, Level::Now).unwrap();
-        assert!(chose.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }), &Now::of(&mode(Time::Sleep, Reason::Sleep))).told, "At once stays a choice in sleep");
+        // A row an older Sioul wrote ("sleep:never") is read as fixed: at once.
+        let mut older = Attention::usual();
+        assert!(older.set(row("codes"), Column::Sleep, Level::Never).is_err(), "no setting holds a code");
+        let config: crate::config::Config = toml::from_str("[attention]\ncodes = [\"work\", \"admin\", \"leisure\", \"meals\", \"sleep:never\", \"pause\", \"free\", \"slot\", \"dnd\"]\n").unwrap();
+        older = Attention::of(&config);
+        assert_eq!(older.cell(row("codes"), Column::Sleep), Level::Now);
+        assert!(older.decide(&Event::of(Source::Mail { who: Who::Stranger, circle: false, always: false, lane: Lane::Code }), &Now::of(&mode(Time::Sleep, Reason::Sleep))).told);
         let own = a.decide(&Event::of(Source::Mail { who: Who::Safe, circle: false, always: false, lane: Lane::Own }), &Now::time(Column::Work));
         assert!(own.shown && !own.told);
     }
@@ -3811,8 +3816,8 @@ mod tests {
         assert!(apply(&path, &config, "attention.sites", &SettingValue::Texts(vec!["work:event".into()])).is_err());
         assert!(apply(&path, &config, "attention.mail.safe", &SettingValue::Texts(vec!["teatime".into()])).is_err());
         assert!(apply(&path, &config, "attention.mail.hidden", &SettingValue::Texts(vec!["work".into()])).is_err());
-        // Back to the usual (codes wait on the Porch in sleep, decision 5 of 13 November 2026): the row taken out.
-        apply(&path, &config, "notify.codes", &SettingValue::Texts(vec!["sleep:never".into()])).unwrap();
+        // Back to the usual (codes at once at every time, fixed since 24 November 2026): the row taken out.
+        apply(&path, &config, "notify.codes", &SettingValue::Texts(vec!["sleep".into()])).unwrap();
         let config = Config::load(&path).unwrap();
         assert!(config.attention.as_ref().unwrap().words("codes").is_none());
         // The senders' older ticks: unticked waits, ticked comes (mail shown, not told, in sleep).
@@ -4084,7 +4089,7 @@ mod tests {
                 }
             }
             let codes = grid.rows.iter().find(|r| r.id == "codes").unwrap();
-            assert!(codes.cells[4].locked.is_empty() && !codes.cells[5].locked.is_empty(), "sleep free, the pause fixed");
+            assert!(codes.cells.iter().all(|c| !c.locked.is_empty()), "every cell fixed, sleep included (24 November 2026)");
             let always = grid.rows.iter().find(|r| r.id == "mail.always").unwrap();
             assert_eq!(always.choices.iter().find(|c| c.id == "now").unwrap().mark, "★");
             assert!(!list_choice(&tr, Who::Neutral, &a, true).contains('{'));

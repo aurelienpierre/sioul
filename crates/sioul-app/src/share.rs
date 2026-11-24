@@ -2634,6 +2634,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             *watched = Some(sioul_sync::trigger::Stamps::of(&stores));
         }
         drop(busy);
+        // A code your phone let through, come with this exchange: told here at once (a computer's).
+        std::thread::spawn(crate::phonemsgs::tell_codes);
         // What was marked here goes up now, not at the sync app's next look:
         // Sioul keeping the folder itself sends it, its entry with it; beside
         // a sync app, Sioul sends this device's files too, then the sync app

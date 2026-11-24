@@ -113,8 +113,10 @@ pub struct Codes {
     pub once: Vec<String>,
     /// Words before a validity ("valid 10 minutes").
     pub expiry_context: Vec<String>,
-    /// The word for a code itself.
+    /// The word for a code itself; as a label too, the code after its colon ("Code : 4821").
     pub noun: Vec<String>,
+    /// The word for a password, as a label: the password after its colon ("MDP : …", "Password: …").
+    pub password_label: Vec<String>,
     /// Starts of the units of a validity, after its number.
     pub unit_minutes: Vec<String>,
     pub unit_hours: Vec<String>,

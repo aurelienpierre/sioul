@@ -65,7 +65,7 @@ Leisure set as hours by an earlier Sioul (its "free time") is left in your setti
 | Admin | your admin; work too, while work has no hours | leisure |
 | Leisure | leisure, and nothing else | work and admin |
 | A meal | leisure: a meal is a break | work and admin |
-| Sleep | nothing notifies but doses and your Always through people; leisure, if you open Sioul, the codes you asked for on the Porch | everything else |
+| Sleep | nothing notifies but doses, the codes you asked for and your Always through people; leisure, if you open Sioul | everything else |
 | No working or admin hours set at all | everything, as before any were set (meals and sleep keep their time) | nothing |
 
 The status line (the window's title bar on a computer, the line at the bottom on a phone) says what now is, and until when: "Admin time until 19:00: offices, bills, letters.", "Meal until 13:00.", "Leisure until 22:00: what you enjoy.", "Winding down: nothing disturbs until 07:00."
@@ -167,7 +167,7 @@ One sentence in the status line says until when: "Work comes back tomorrow at 09
 From winding down to waking, and during a nap, nothing disturbs:
 
 - **almost no notification**, unless you change it ([What reaches you, and when](notifications.md#by-time)): no site, no reminder before a date, no pause to move, no meal or nap notice, no message, no call but your Always through people's. What still makes sense when you wake comes then;
-- **codes you just asked for wait on the Porch**, without a notification: their card shows them there, and the night stays quiet. To have them told while you sleep, choose **At once** in the **Sleep** cell of the row **Codes and links you asked for**, in Settings ▸ What reaches you ▸ [What comes when](notifications.md#by-time);
+- **codes you just asked for come at once**, as at every hour: you asked for one, and it lasts minutes ([The Porch](porch.md#codes-and-links-come-at-once));
 - **doses come all the same**: you set their times, and a dose at 05:00 is meant to wake you. To keep them silent while you sleep, choose **Doses at waking** under **What you set or asked for**, in Settings ▸ What reaches you ▸ [Sioul's own notices](notifications.md#doses): they come when you wake. Sioul never silences a dose without that choice;
 - if you open Sioul, the Porch shows what your lists let through now, nothing about money or paper letters; a message about a project comes among the people you know;
 - every address folds on the Mail page; only the sites for leisure are listed;

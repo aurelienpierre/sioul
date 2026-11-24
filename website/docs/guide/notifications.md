@@ -135,7 +135,7 @@ Two **layers** hold on top of the time, never instead of it; of the time and a l
 
 | Group | What it holds | Your choice |
 |---|---|---|
-| What you set or asked for | codes and links, doses, the alarm at waking, an event's alarms | doses and the alarm at waking at once; codes on the Porch while you sleep; an event's alarms during sleep and Free time when their event falls then. **Doses while you sleep** or **Doses at waking** sets the doses' cell for sleep, nothing else |
+| What you set or asked for | codes and links, doses, the alarm at waking, an event's alarms | doses, codes and the alarm at waking at once; an event's alarms during sleep and Free time when their event falls then. **Doses while you sleep** or **Doses at waking** sets the doses' cell for sleep, nothing else |
 | Reminders | before an event, the working day before, dates, waits, payments, papers | **When awake** or **Off** |
 | Care | meals, naps and the night; the pause to move; "Work hours are over"; the time running | a switch each |
 | Sites and apps | your sites' news on a computer, apps' automatic notifications on a phone | **At once** or **At the gathered times**, and the gathered times |
@@ -144,7 +144,7 @@ A group set cell by cell in What comes when says **Your own**, and no choice is 
 
 Each notification comes once, never repeated. What each kind does, unless you change its row:
 
-- **Codes and links you just asked a site for**: at once, at any time but while you sleep, a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid; it stays until the code is copied, expires or its message is read. While you sleep, the card waits on top of the Porch, untold (**On the Porch only**, unless you choose **At once** there). On Android, the card shows on the Porch and on the home screen, and a notification to act on comes with it ([below](#to-know-or-to-do)). A code or an approval in another app is never held either. See [The Porch](porch.md#codes-and-links-come-at-once).
+- **Codes and links you just asked a site for**: at once, at any time, sleep and a pause included, even from a site's automatic address: the code, with **Copy the code** on Linux, and how long it stays valid; it stays until the code is copied, expires or its message is read. On Android, the card shows on the Porch and on the home screen, and a notification to act on comes with it ([below](#to-know-or-to-do)). A code or an approval in another app is never held either, a text's from a short number included; when your phone's do-not-disturb keeps that app silent, Sioul rings once with its own notification of the code, and your computers say a code came to your phone. See [The Porch](porch.md#codes-and-links-come-at-once).
 - **Doses**: one notification per dose, within half an hour of its time, with **Taken**, at any time, sleep included, unless you hold them in sleep or a pause ([below](#doses)). See [Health](health.md#reminders).
 - **The alarm at waking**, on Android: always ([Health](health.md#meals-rest-and-sleep)).
 - **An event's alarms**, at their time: at once, and in the night or in Free time when the event itself falls then. On a computer, and on a phone where Sioul rings them. Where your phone's calendar app rings them, Sioul's modes let them through only where this row says **At once** (a pause, as usual): where it says later, or when the event falls then, Android keeps them silent in the shade, and they never ring after. Under do-not-disturb outside work time they stay silent too: Android cannot tell a work agenda's alarm, which waits then, from another.
@@ -160,7 +160,7 @@ Each notification comes once, never repeated. What each kind does, unless you ch
 **Fixed**, greyed, for your safety; press one to read why:
 
 - **Doses**: at once, but in sleep and a pause, where you may hold them until you wake or come back. Never "not at all".
-- **The codes you asked for**: at once, but in sleep, where they wait on the Porch unless you choose At once. You just asked, and a code lasts minutes.
+- **The codes you asked for**: at once, at every hour, by mail or by text; no setting holds them. You just asked, and a code lasts minutes.
 - **An event's alarms**: at once during a pause and do-not-disturb, as both promise.
 - **The alarm at waking**: always.
 
@@ -299,7 +299,7 @@ Your phone can show your computers the messages its notifications bring, texts f
 - **Their answer to your answer** comes at once for 20 minutes, on the phone and on the computer you answered from, unless you are in a pause.
 - **Who may ask your phone**: a reply travels sealed with your passphrase and names the computer that wrote it, and your phone takes it only from a device your sharing counts. That rests on the passphrase: any device that knows it can ask, and a device you forgot counts again as soon as it shares anything new. Only a new passphrase cuts a device off ([Sharing](sharing.md)).
 - **On the phone**, under each app in Settings ▸ Devices ▸ this phone's card ▸ Messages on your computers, **Answer from your computers** is on unless you switch it off.
-- **Never sent**: codes and approvals ("A code came from your bank at 09:12. It stays on your phone."), pictures ("a picture"), a blocked sender's messages, a conversation set to **Never**, notifications an app keeps secret, ongoing ones, Sioul's own.
+- **Never sent**: codes and approvals ("A code came from your bank at 09:12. It stays on your phone.": each computer says it at once with a notification, the code staying on the phone), pictures ("a picture"), a blocked sender's messages, a conversation set to **Never**, notifications an app keeps secret, ongoing ones, Sioul's own.
 - **Kept** a week. The words travel encrypted with your passphrase and sit in Sioul's files on each computer that shows them: choose the apps with that in mind.
 
 ### Sites, events, Health's days {#sites-events-health}

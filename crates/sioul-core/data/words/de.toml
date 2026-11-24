@@ -11,6 +11,7 @@ checked = "2026-11-10"
 [codes]
 # Names a code: a code right beside it is taken.
 code = [
+    "pin-code", "pin code",
     "bestätigungscode", "sicherheitscode", "verifizierungscode", "verifikationscode", "anmeldecode", "zugangscode",
     "aktivierungscode", "einmalcode", "einmal-code", "einmalpasswort", "einmal-passwort", "tan", "sms-tan", "mobile-tan",
 ]
@@ -18,11 +19,12 @@ code = [
 pointing = ["folgenden code", "folgender code", "diesen code", "code unten", "den code ein", "geben sie den code", "gib den code"]
 # Says the message is about signing in or checking who you are, somewhere in it.
 sign_in = [
+    "transaktion", "zahlung",
     "anmelden", "anmeldung", "einloggen", "login", "log-in", "registrierung", "bestätigen", "verifizieren", "verifizierung",
     "identität", "authentifizierung",
 ]
 # Words between "your" and "code" that make it no secret of yours.
-not_yours = ["promo", "rabatt", "gutschein", "geschenk", "tracking", "wlan", "wifi", "post", "kunden"]
+not_yours = ["qr", "fehler", "paket", "tür", "tor", "promo", "rabatt", "gutschein", "geschenk", "tracking", "wlan", "wifi", "post", "kunden"]
 # A shop's code: the message hands over no secret.
 promo = ["rabatt", "gutschein", "aktionscode", "rabattcode", "gutscheincode", "% rabatt"]
 # Hands a password over.
@@ -51,17 +53,19 @@ confirm = [
 # Grammar: hands a code over, the code right after.
 giving = ["ihr code", "dein code"]
 # Grammar: whose code, a few words before "code".
-owners = ["ihr", "dein"]
+owners = ["ihr", "dein", "ihre", "deine"]
 # Grammar: says a code is yours, right after it ("123456 ist Ihr Code").
-owned_after = ["ist ihr", "ist dein"]
+owned_after = ["ist ihr", "ist dein", "ist der"]
 # Grammar: may stand between a phrase and its code.
 linking = ["ist", "lautet"]
 # A link or a code that works once.
 once = ["nur einmal", "einmalig", "einmal verwendbar", "einmal gültig"]
 # Words before a validity ("gültig 10 Minuten").
 expiry_context = ["gültig", "läuft", "innerhalb"]
-# The word for a code itself.
-noun = ["code"]
+# The word for a code itself; as a label too, the code after its colon ("Code : 4821", "PIN: 4821").
+noun = ["code", "pin"]
+# The word for a password, as a label: the password after its colon ("MDP : …", "Password: …").
+password_label = ["passwort", "kennwort"]
 # Starts of a unit of minutes, after a number.
 unit_minutes = ["min"]
 # Starts of a unit of hours, after a number.

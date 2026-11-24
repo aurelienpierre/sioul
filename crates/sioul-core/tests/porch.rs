@@ -154,3 +154,42 @@ fn mail_said_not_spam_leaves_set_aside() {
     assert!(!said.reasons.iter().any(Reason::is_spam));
     assert_eq!(stored(format!("S{}{}", maildir::JUNK, maildir::NOT_JUNK)).lane, Lane::SetAside);
 }
+
+/// A code always goes through (24 November 2026): a message carrying one
+/// that the Porch set aside as forged (DMARC failing) is said by a notice,
+/// from its address, never with its code nor its words; a forged message
+/// without a code says nothing; a code that passed its checks is told whole.
+#[test]
+fn a_forged_code_is_said_never_shown() {
+    sioul_core::config::stand_ins_only();
+    let known = KnownSenders::default();
+    let ids = vec!["mx.example.net".to_string()];
+    let senders = porch::Senders::default();
+    let ctx = Context { projects: None, known: &known, senders: &senders, trusted_ids: &ids, now: None, priority: Default::default(), own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+    let message = |dmarc: &str, body: &str| {
+        let raw = format!(
+            "From: Service <codes@service.example>\r\nTo: you@example.org\r\nSubject: Votre code\r\nMessage-ID: <code-{dmarc}@service.example>\r\n\
+             Authentication-Results: mx.example.net; spf={dmarc} smtp.mailfrom=service.example; dkim={dmarc} header.d=service.example; dmarc={dmarc} (p=reject) header.from=service.example\r\n\
+             Content-Type: text/plain; charset=UTF-8\r\n\r\n{body}\r\n"
+        );
+        porch::triage(sioul_core::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx)
+    };
+    let tr = Translator::new("en");
+    let forged = message("fail", "Votre code de vérification : 551204. Il expire dans 10 minutes.");
+    assert_eq!((forged.lane.clone(), forged.trust), (Lane::SetAside, Trust::Forged));
+    let said = sioul_core::view::set_aside_codes(std::slice::from_ref(&forged), &tr);
+    assert_eq!(said.len(), 1);
+    assert_eq!(said[0].title, "Code from codes@service.example (forged)");
+    assert_eq!(said[0].code, None);
+    assert!(!said[0].body().contains("551204") && !said[0].notice.what.contains("551204"), "{:?}", said[0].body());
+    let notice = said[0].notice("Copy", "Open the message");
+    assert!(notice.actions.iter().all(|a| !matches!(a.act, sioul_core::notice::Act::Copy(_))), "nothing to copy");
+    assert!(sioul_core::view::codes(std::slice::from_ref(&forged), &tr).is_empty(), "never among the codes shown");
+    // Forged, no code: nothing said.
+    assert!(sioul_core::view::set_aside_codes(&[message("fail", "Bonjour, voici la facture.")], &tr).is_empty());
+    // Passing: told whole, among the codes.
+    let proven = message("pass", "Votre code de vérification : 551204. Il expire dans 10 minutes.");
+    assert_eq!(proven.lane, Lane::RightNow);
+    assert!(sioul_core::view::set_aside_codes(std::slice::from_ref(&proven), &tr).is_empty());
+    assert_eq!(sioul_core::view::codes(std::slice::from_ref(&proven), &tr)[0].code.as_deref(), Some("551204"));
+}

@@ -230,9 +230,9 @@ struct Frame {
     porch: Option<PorchLines>,
     /// The next step, in work or admin time.
     step: Option<Step>,
-    /// Codes may show: as their row of the matrix says (as usual at once,
-    /// asleep too; "On the Porch only" a choice for sleep), never on the
-    /// pause's card, which shows the pause alone.
+    /// Codes may show: at every time, asleep too (their row of the matrix,
+    /// fixed at once since 24 November 2026), never on the pause's card,
+    /// which shows the pause alone.
     codes: bool,
     /// Doses may show: not in a pause; asleep only when doses remind during sleep.
     doses: bool,
@@ -2136,12 +2136,12 @@ mod tests {
         assert_eq!((evening.kind.as_str(), evening.status.as_str()), ("leisure", "Leisure until 19:00: what you enjoy."));
         assert!(evening.step.is_none() && evening.porch.is_some());
         // Winding down from 22:00, then the night from bedtime: the sleep's line alone, as the window says it;
-        // doses remind during sleep by default; codes you asked for wait on the Porch asleep,
-        // off the card (the notifications' decision 5; before, Q6, they came at once).
+        // doses remind during sleep by default; codes you asked for show asleep too (the owner's
+        // word of 24 November 2026, which replaced the notifications' decision 5).
         assert_eq!(made.at("2026-10-05T22:15[Europe/Paris]").status, "Winding down: nothing disturbs until tomorrow at 07:00.");
         let night = made.at("2026-10-05T23:30[Europe/Paris]");
         assert_eq!((night.kind.as_str(), night.status.as_str()), ("sleep", "Sleep: nothing disturbs until tomorrow at 07:00."));
-        assert!(night.porch.is_none() && night.step.is_none() && !night.codes && night.doses);
+        assert!(night.porch.is_none() && night.step.is_none() && night.codes && night.doses);
         // Past midnight "tomorrow" is today: a frame ends at each midnight.
         assert!(made.card.frames.iter().any(|f| f.from == at("2026-10-06T00:00[Europe/Paris]").timestamp().as_millisecond()));
         assert_eq!(made.at("2026-10-06T05:00[Europe/Paris]").status, "Sleep: nothing disturbs until 07:00.");
@@ -2689,13 +2689,14 @@ mod tests {
         let card = snapshot(&moment, None, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
         assert!(!night.doses, "doses during sleep: stay silent");
-        assert!(!night.codes, "codes you asked for wait on the Porch while you sleep, off the card (the notifications' decision 5; before, Q6, they came at once)");
-        // As the matrix of what reaches you says (Settings ▸ What reaches you): doses held in sleep, codes on the Porch only then.
+        assert!(night.codes, "codes you asked for show while you sleep (24 November 2026)");
+        // As the matrix of what reaches you says (Settings ▸ What reaches you): doses held in sleep; codes
+        // at once whatever an older Sioul wrote for them ("sleep:never" is no longer a choice).
         let mut grid = config();
         grid.attention = toml::from_str::<Config>("[attention]\ndoses = [\"sleep:later\"]\ncodes = [\"sleep:never\"]\n").unwrap().attention;
         let card = snapshot(&Moment { config: &grid, ..moment }, None, None, None, &doses);
         let night = card.frames.iter().find(|f| f.kind == "sleep").unwrap();
-        assert!(!night.doses && !night.codes);
+        assert!(!night.doses && night.codes);
         // In French, with its typography.
         let fr = make("2026-10-05T10:00[Europe/Paris]", &Overrides::default(), true, "fr", &doses);
         assert_eq!(fr.card.doses[0].check, "Magnesium · 300 mg, 09:45\u{202f}: vérifiez avant de la prendre.");
