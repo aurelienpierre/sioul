@@ -3,8 +3,9 @@
 
 // A preset, a rule that comes with Sioul (Settings ▸ Rules ▸ Presets;
 // docs/rules.md, "Presets"): what Sioul does by itself today, in the same
-// sentence as a rule. Its card: the sentence; its switch and its details
-// where they are settings today (a list, a number of days, a level), each
+// sentence as a rule. Its card: the sentence; its details where they are
+// settings today (a list, a number of days, a level; its switch stays on
+// its line in the list, beside its sentence), each
 // drawn and saved as that setting is everywhere (SettingRow.qml): one truth,
 // the setting itself, never a copy; a line when its details cannot be
 // changed yet (it moves into the rules' engine in a later version); "Copy
@@ -28,6 +29,8 @@ SafeDialog {
 
     // The preset's line as the list gives it: {id, sentence, preset: {offered, …}, settings: [rows]}.
     property var line: null
+    // Its details: its settings but the switch the list already shows beside its sentence.
+    readonly property var details: card.line ? (card.line.settings || []).filter(r => !(r.kind === "bool" && card.line.preset && r.key === card.line.preset.setting)) : []
     property string problem: ""
 
     // A setting changed: the list reads its presets again.
@@ -84,17 +87,17 @@ SafeDialog {
                 color: card.theme.warm
             }
 
-            // Its switch and its details, as the settings they are today.
+            // Its details, as the settings they are today.
             Section {
                 objectName: "presetSettings"
-                visible: card.line !== null && (card.line.settings || []).length > 0
+                visible: card.details.length > 0
                 Layout.fillWidth: true
                 theme: card.theme
                 title: card.sioul.text("rules-preset-details")
                 body.spacing: card.theme.rowGap
 
                 Repeater {
-                    model: card.line ? card.line.settings || [] : []
+                    model: card.details
 
                     delegate: SettingRow {
                         required property var modelData

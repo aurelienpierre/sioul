@@ -73,7 +73,10 @@ ColumnLayout {
             text: slot.value.join(slot.listed ? ", " : "")
             placeholderText: slot.sioul.text("rules-value-" + (slot.typed ? slot.kind : "text"))
             Accessible.name: slot.name
+            // Each control speaks only for the kind it is shown for: the others are hidden, never asked.
             onEditingFinished: {
+                if (!slot.typed)
+                    return
                 const read = slot.read(typedField.text)
                 if (JSON.stringify(read) !== JSON.stringify(slot.value))
                     slot.edited(read, slot.until)
@@ -93,7 +96,7 @@ ColumnLayout {
             placeholderText: slot.sioul.text("rules-value-" + (slot.typed ? slot.kind : "text"))
             Accessible.name: slot.sioul.textWith("rules-value-until", "name", slot.name)
             onEditingFinished: {
-                if (untilField.text.trim() !== slot.until)
+                if (slot.typed && slot.between && untilField.text.trim() !== slot.until)
                     slot.edited(slot.value, untilField.text.trim())
             }
         }
@@ -113,7 +116,10 @@ ColumnLayout {
             locale: Qt.locale(slot.sioul.text("qt-locale"))
             date: slot.value.length > 0 ? slot.value[0] : ""
             Accessible.name: slot.name
-            onEdited: slot.edited(dateField.date === "" ? [] : [dateField.date], slot.until)
+            onEdited: {
+                if (slot.kind === "date")
+                    slot.edited(dateField.date === "" ? [] : [dateField.date], slot.until)
+            }
         }
         Label {
             visible: slot.between
@@ -131,7 +137,10 @@ ColumnLayout {
             locale: Qt.locale(slot.sioul.text("qt-locale"))
             date: slot.until
             Accessible.name: slot.sioul.textWith("rules-value-until", "name", slot.name)
-            onEdited: slot.edited(slot.value, untilDate.date)
+            onEdited: {
+                if (slot.kind === "date" && slot.between)
+                    slot.edited(slot.value, untilDate.date)
+            }
         }
     }
 
@@ -168,7 +177,10 @@ ColumnLayout {
         editable: true
         value: slot.value.length > 0 ? Number(slot.value[0]) : 0
         Accessible.name: slot.name
-        onValueModified: slot.edited([number.value], slot.until)
+        onValueModified: {
+            if (slot.kind === "number" && Number.isFinite(number.value))
+                slot.edited([number.value], slot.until)
+        }
     }
 
     // A choice among declared things, or among your own.
@@ -187,6 +199,8 @@ ColumnLayout {
         implicitContentWidthPolicy: ComboBox.WidestText
         Accessible.name: slot.name
         onActivated: index => {
+            if (!slot.chosen)
+                return
             const thing = slot.things[index]
             if (thing && thing.available !== false)
                 slot.edited([thing.id], slot.until)

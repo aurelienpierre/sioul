@@ -1439,6 +1439,18 @@ def write_topics(p: Profile, mails: list[Mail]):
     p.write(p.state / "topics" / "day-one.toml", f"started = [{toml_string(t('Bank', 'Banque'))}, {toml_string(t('Taxes', 'Impôts'))}]\n")
 
 
+def write_rule_acts(p: Profile, mails: list[Mail]):
+    """What a rule of yours did, as the rules' record of acts keeps it
+    (crates/sioul-core/src/wiring/acts.rs): the rule "demo-taxes" (made by
+    the window's pictures, tools/demo/run.sh … rules) tied the tax office's
+    notice to its project. Only its address and the project: never a word
+    of the mail."""
+    acts = [{"at": int(m.when.timestamp() * 1000) + 60_000, "rule": "demo-taxes", "object": "mid:" + m.message_id.strip("<>"),
+             "act": "tie", "result": "sioul:project/taxes-2026", "wrote": True, "depth": 1}
+            for m in mails if m.message_id and m.sender[1] == f"no-reply@{W.tax}"]
+    p.write(p.state / "rules" / "acts" / "demo-device.jsonl", "".join(json.dumps(a) + "\n" for a in acts[:1]))
+
+
 def write_mail(p: Profile, mails: list[Mail]):
     counters: dict[tuple[str, str], int] = {}
     numbered = sorted(enumerate(mails), key=lambda pair: pair[1].when)
@@ -2321,6 +2333,14 @@ files = {toml_list([W.tax_note])}
 from_domains = ["{W.tax}"]
 [[project.route]]
 from_domains = ["{W.accounts}"]
+subject_contains = [{toml_string(t("statement", "relevé"))}]
+makes = "check"
+[[project.model]]
+id = "check"
+name = {toml_string(t("Check the statement", "Vérifier le relevé"))}
+prefix = {toml_string(t("Check:", "Vérifier :"))}
+business_days = 3
+estimate = 15
 
 [[project]]
 id = "choir"
@@ -3491,6 +3511,7 @@ def main():
         write_view_flags(profile)
     write_mail(profile, mails)
     write_topics(profile, mails)
+    write_rule_acts(profile, mails)
     moving_note(profile)
     if args.bulk:
         write_bulk(profile, args.bulk)

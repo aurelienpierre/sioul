@@ -5910,6 +5910,7 @@ SioulWindow {
                     const fr = sioul.text("qt-locale").indexOf("fr") === 0
                     const form = grabber.rulesEditor()
                     form.addCondition()
+                    form.setField(0, "sender-domain")
                     form.setValue(0, [fr ? "ondea.example.org" : "wavecell.example.org"])
                     form.addCondition()
                     form.setField(1, "kind")
@@ -5947,11 +5948,7 @@ SioulWindow {
                 () => grabber.rulesTab().add(),
                 () => {},
                 () => grabber.saveWindow("rules-start"),
-                () => {
-                    const start = grabber.named(frame.Overlay.overlay, "ruleStart")
-                    if (start)
-                        start.close()
-                },
+                () => grabber.rulesTab().closeStart(),
                 // The presets, and one's card.
                 () => {
                     parametersPage.scrollBy(-2)

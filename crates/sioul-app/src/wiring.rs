@@ -33,6 +33,7 @@ use sioul_core::projects::ProjectStore;
 use sioul_core::wiring::acts::{self, Act, Acts};
 use sioul_core::wiring::store::{self, Rule, Rules};
 use sioul_core::wiring::{declare, engine, readers, words};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 /// What a rule did lately, shown: this many acts at most.
@@ -41,6 +42,8 @@ const LATELY: usize = 5;
 const DAYS: u32 = 30;
 /// Messages the preview names, the rest counted.
 const NAMED: usize = 5;
+/// The newest messages "Add a rule…" offers to start from, before what the Porch sets aside is left out.
+const STARTS: usize = 60;
 
 fn now() -> i64 {
     sioul_core::zone::now().timestamp().as_second()
@@ -209,7 +212,11 @@ fn kept_of(source: &readers::Source, names: &words::Names) -> (String, Option<Op
             tr().text("rules-open-project", None),
         ),
         "budgets" => (say("rules-kept-budget", &[("budget", named(&names.budgets, &source.budget))]), Some(Open { kind: "budget".into(), uri: String::new(), key: source.budget.clone() }), tr().text("rules-open-budget", None)),
-        "mail-filters" => (tr().text("rules-kept-filters", None), Some(Open { kind: "mail-settings:mail.filter".into(), uri: String::new(), key: String::new() }), tr().text("rules-open-filters", None)),
+        "mail-filters" => (
+            tr().text(if source.stop { "rules-kept-filters-stop" } else { "rules-kept-filters" }, None),
+            Some(Open { kind: "mail-settings:mail.filter".into(), uri: String::new(), key: String::new() }),
+            tr().text("rules-open-filters", None),
+        ),
         "topics" => (say("rules-kept-topics", &[("topic", named(&names.topics, &source.topic))]), Some(Open { kind: "mail-settings:topics.list".into(), uri: String::new(), key: String::new() }), tr().text("rules-open-topics", None)),
         _ => (String::new(), None, String::new()),
     }
@@ -561,9 +568,9 @@ struct Start {
     day: String,
 }
 
-/// What "Add a rule…" offers to start from: the messages of the last 30
-/// days the window knows (none of your own), newest first; the presets the
-/// engine runs now, by their sentences.
+/// What "Add a rule…" offers to start from: the newest messages of the last
+/// 30 days the window knows (none of your own, none the Porch sets aside),
+/// newest first; the presets the engine runs now, by their sentences.
 pub(crate) fn starts(shared: &Shared) -> String {
     let config = load_config();
     let own = sioul_core::porch::own_addresses(&config.mail_sources());
@@ -583,7 +590,11 @@ pub(crate) fn starts(shared: &Shared) -> String {
         })
         .unwrap_or_default();
     found.sort_by_key(|(date, _)| std::cmp::Reverse(*date));
-    found.truncate(300);
+    found.truncate(STARTS);
+    // Never what the Porch sets aside (a rule never sees it): judged as the engine judges.
+    let files: Vec<std::path::PathBuf> = found.iter().map(|(_, s)| std::path::PathBuf::from(&s.key)).collect();
+    let admitted: BTreeSet<std::path::PathBuf> = engine_here(&config).judge(&files).iter().filter(|t| !engine::set_aside(t)).filter_map(|t| t.card.path.clone()).collect();
+    found.retain(|(_, s)| admitted.contains(std::path::Path::new(&s.key)));
     let projects = project_store(&config);
     let list = rules().unwrap_or_default();
     let names = names(&config, projects.as_ref(), &list, Some(shared));

@@ -6,7 +6,7 @@
 // days, found by a few words of its subject or its sender (the same draft
 // as its menu's "Make a rule from this…": its sender's proven domain, what
 // Sioul recognises in it, its project); from a preset the engine can run
-// now, said by its sentence. A choice closes the card and says
+// now, said by its sentence (none yet: one quiet line says it comes later). A choice closes the card and says
 // `chosen(kind, id)`; the tab opens the editor on it. Made the first time
 // it opens (RulesTab.qml).
 
@@ -131,6 +131,18 @@ SafeDialog {
                         }
                     }
                 }
+            }
+
+            // No preset the engine runs yet: said once, quietly, where they would be.
+            Label {
+                objectName: "ruleStartPresetsLater"
+                visible: (start.offered.presets || []).length === 0
+                Layout.fillWidth: true
+                text: start.sioul.text("rules-start-preset-later")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                font.pixelSize: 13
+                color: start.theme.muted
             }
 
             Section {

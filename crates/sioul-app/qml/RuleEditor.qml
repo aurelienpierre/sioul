@@ -205,7 +205,7 @@ SafeDialog {
     }
     // A parameter fixed (a value) or taken from what triggered the rule ({from: field}); undefined: unset.
     function setParam(id, value) {
-        if (value === undefined || value === "" || (Array.isArray(value) && value.length === 0))
+        if (value === undefined || value === null || value === "" || (typeof value === "number" && !isFinite(value)) || (Array.isArray(value) && value.length === 0))
             delete form.draft.then.with[id]
         else
             form.draft.then.with[id] = value
@@ -528,7 +528,7 @@ SafeDialog {
                             things: param.modelData.choices ? param.modelData.choices : form.choices[param.modelData.value] || []
                             value: param.given === undefined || param.fromIt ? [] : Array.isArray(param.given) ? param.given : [param.given]
                             name: param.modelData.name
-                            onEdited: (value, until) => form.setParam(param.modelData.id, param.modelData.value === "number" ? (value.length > 0 ? Number(value[0]) : undefined) : value.length > 0 ? value[0] : undefined)
+                            onEdited: (value, until) => form.setParam(param.modelData.id, value.length === 0 ? undefined : param.modelData.value === "number" ? Number(value[0]) : value[0])
                         }
                         RuleCombo {
                             sioul: form.sioul

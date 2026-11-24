@@ -78,6 +78,11 @@ ColumnLayout {
         startLater.now().ask()
     }
 
+    // "Add a rule…" closed, if it was ever opened (the window's pictures).
+    function closeStart() {
+        startLater.close()
+    }
+
     // A preset's card, by its id (the window's pictures).
     function openPreset(id) {
         const line = tab.presetLine(id)
