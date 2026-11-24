@@ -272,6 +272,15 @@ Item {
                                         color: row.attention ? page.theme.warm : page.theme.muted
                                     }
                                     Label {
+                                        // Kept by a rule where no antivirus could check it (a phone): said in plain words.
+                                        visible: row.modelData.unchecked === true
+                                        Layout.fillWidth: true
+                                        text: page.sioul.text("papers-unchecked")
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 13
+                                        color: page.theme.warm
+                                    }
+                                    Label {
                                         visible: row.modelData.file !== "" && !row.modelData.file_there
                                         Layout.fillWidth: true
                                         text: page.sioul.text("papers-file-missing")

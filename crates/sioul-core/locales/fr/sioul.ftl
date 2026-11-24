@@ -11036,3 +11036,4 @@ rules-runs-filter = Agit sur le serveur à chaque relève, sur l’appareil qui 
 rules-runs-topic = Lue chaque fois que les sujets du courrier sont donnés.
 rules-file-type-any = Toutes les pièces jointes
 rules-for-me = Vous
+papers-unchecked = Pas vérifié par un antivirus.

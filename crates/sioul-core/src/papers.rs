@@ -225,6 +225,13 @@ pub struct Paper {
     /// Sioul rewriting the wallet drops it, the paper then "other".
     #[serde(default)]
     pub measure: String,
+    /// Its file was kept by a rule where no antivirus could check it (a
+    /// phone): shown "Not checked by an antivirus" until a device with one
+    /// reads it, which takes the mark off, or takes the paper out on every
+    /// device when it refuses the file (docs/rules.md, "Attachments kept as
+    /// papers"). An older Sioul rewriting the wallet drops the mark.
+    #[serde(default)]
+    pub unchecked: bool,
 }
 
 /// Where a paper stands, today.
@@ -451,6 +458,9 @@ impl Wallet {
             }
             if let Some(d) = paper.added {
                 table["added"] = date(d);
+            }
+            if paper.unchecked {
+                table["unchecked"] = toml_edit::value(true);
             }
             list.push(table);
         }

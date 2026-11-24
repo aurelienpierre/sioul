@@ -41,6 +41,8 @@ struct PaperView {
     renewal: String,
     /// Renewing can be planned: it is renewed, it has an end, no task yet.
     can_renew: bool,
+    /// Kept by a rule where no antivirus could check its file: said so on it.
+    unchecked: bool,
 }
 
 #[derive(Serialize)]
@@ -103,6 +105,7 @@ fn view_of(wallet: &Wallet, paper: &Paper, holders: &sioul_core::persons::Holder
         line,
         renewal: paper.renewal.clone(),
         can_renew: paper.renewal.is_empty() && paper.renew_from().is_some(),
+        unchecked: paper.unchecked,
     }
 }
 
@@ -215,6 +218,8 @@ fn save_edit(id: &str, edit: &PaperEdit) -> Result<String, String> {
     // Set over the wallet as the file holds it now (the file copied first), under its lock, which the sharing takes too.
     let saved = Wallet::change(&wallet.root, |wallet| {
         let old = wallet.get(id).cloned().unwrap_or_default();
+        // Kept by a rule without an antivirus: still so while its file is the same one.
+        let unchecked = old.unchecked && file == old.file;
         let paper = Paper {
             id: old.id.clone(),
             kind,
@@ -229,6 +234,7 @@ fn save_edit(id: &str, edit: &PaperEdit) -> Result<String, String> {
             added: old.added.or_else(|| Some(sioul_core::zone::now().date())),
             // Written by the wallet from the kind (`Kind::newer`).
             measure: String::new(),
+            unchecked,
         };
         wallet.put(paper)
     });

@@ -10650,3 +10650,4 @@ rules-runs-filter = Runs on the server at each fetch, on whichever device fetche
 rules-runs-topic = Read each time mail's topics are given.
 rules-file-type-any = Every attachment
 rules-for-me = You
+papers-unchecked = Not checked by an antivirus.
