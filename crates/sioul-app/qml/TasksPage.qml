@@ -235,7 +235,7 @@ Item {
 
 
     // "Done for today": the end of the work day's review first (DayReview.qml,
-    // docs/reviews.md); its "Close the work day" closes the day as this button
+    // docs/reviews.md); its "Work done for today" closes the day as this button
     // always did, then `showClosing` says where everything went.
     function stopForToday() {
         page.window.reviewDay("work")

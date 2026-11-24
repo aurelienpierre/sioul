@@ -11,7 +11,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 ## The window
 
 <figure markdown="span">
-  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and at the bottom, Close the work day and Close the whole day, then Accounts, Settings and Refresh everything; on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
+  [![Sioul's window: across the top, its title bar, the status line with the keys, the sound button, the weather, Free time and Pause, then the window's buttons; on the left, a narrow column of icons, New (a plus), then the places from Porch to Health, the one shown marked, and at the bottom, Work done for today and Day done, before sleep, then Accounts, Settings and Refresh everything; on the right, the Porch.](../assets/screens/porch.png){ loading=lazy }](../assets/screens/porch.png "Open the picture at full size")
 </figure>
 
 **At the top**, across the whole window, the status line is its title bar. It says one sentence about what happened last. After anything is moved, deleted or sent, "Undo" waits there for ten seconds. In quiet time, it says when work comes back; once the day's hours are over, it offers to close the work day, and in the evening the day. Further along are the keys, [do-not-disturb](notifications.md#do-not-disturb-on-every-device), the sound button ([sounds to focus or rest by](tasks.md#sounds)), the weather at a place you choose, and at its end [**Free time** and **Pause**](pauses.md).
@@ -24,7 +24,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 
 - **New ▾**, the **+**, makes something of any kind: a message, a task, an event, a contact, a note, a project, time spent, a budget movement, a paper, a paper letter's scan (on a computer: [Letters](papers.md#paper-letters)); and **Where I stopped…** leaves one line on where you were ([Tasks](tasks.md#starting-and-stopping)).
 - **The places**, one icon each: Porch (an inbox tray), Tasks (a checklist), Mail (an envelope), Texts (a speech bubble; on a computer, and on a tablet without a SIM), Sites (a globe and its meridians), Agenda (a calendar), Contacts (a person and lines), Notes (a notepad), Projects (a folder), Time (a clock), Budgets (a wallet), Papers (a card), Letters (an open envelope, its letter showing), Health (a heart). The place shown is marked by a soft tint and a short bar.
-- **Apart at the bottom**: **Close the work day** (a ticked list) and, under it, **Close the whole day** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
+- **Apart at the bottom**: **Work done for today** (a ticked list) and, under it, **Day done, before sleep** (a moon), at any hour ([the end of the day](tasks.md#the-end-of-the-day)); then three icons, side by side when the names show: Accounts (a person), Settings (sliders), and Refresh everything, which fetches mail, the agenda, tasks and contacts again at once.
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
 
@@ -199,7 +199,7 @@ On the **Sites** page, **Usual sites ▾** lists about 400 of them by country, o
 
 ## Keep Sioul open
 
-On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. Its icon in the system tray shows or hides the window: closing the window hides it there, and Sioul goes on behind it, mail, reminders and medicines included. **Quit Sioul** is in the icon's menu, or ++ctrl+q++; the menu also has **Close the work day** and **Close the whole day**. Without a system tray (GNOME without its extension), closing the window quits.
+On a computer, Sioul opens maximized; ++f11++ shows it full screen, and back. Its icon in the system tray shows or hides the window: closing the window hides it there, and Sioul goes on behind it, mail, reminders and medicines included. **Quit Sioul** is in the icon's menu, or ++ctrl+q++; the menu also has **Work done for today** and **Day done, before sleep**. Without a system tray (GNOME without its extension), closing the window quits.
 
 While its window is open, Sioul keeps each inbox open on the server: a code or a sign-in link you asked a site for reaches you within seconds, as one quiet notification, whatever the hour.
 

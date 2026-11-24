@@ -37,7 +37,7 @@ Le moment présent est toujours l’un de ces cinq :
 | **Démarches** | vos heures pour vos démarches | [Paramètres ▸ Heures](settings.md#hours) |
 | **Repas** | chaque repas, de sa préparation à sa fin | [Paramètres ▸ Heures](settings.md#hours), [Repas, repos et sommeil](health.md#meals-rest-and-sleep) |
 | **Sommeil** | la nuit, du moment de se détendre au réveil ; chaque sieste, avec ses minutes pour revenir | [Paramètres ▸ Heures](settings.md#hours), [Repas, repos et sommeil](health.md#meals-rest-and-sleep) |
-| **Loisirs** | tout le reste du temps : les soirées, les jours sans heures, les congés, le reste d’une journée close avec **Fini pour aujourd’hui** | rien à régler |
+| **Loisirs** | tout le reste du temps : les soirées, les jours sans heures, les congés, le reste d’une journée close avec **Travail fini pour aujourd’hui** | rien à régler |
 
 **Quand ils se chevauchent**, le sommeil passe d’abord, puis les repas, puis les heures : un déjeuner pendant vos heures de travail est un repas tant qu’il dure ; **Travailler encore quatre heures** qui déborde sur la nuit laisse la nuit au sommeil. Les heures de travail et de démarches peuvent se chevaucher : ce que chacune apporte vient alors, tout ensemble.
 
@@ -148,7 +148,7 @@ Au 17 novembre 2026, d’après les pages d’aide de Google et de Slack. Les au
 
 ## Le calme {#quiet-time}
 
-Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
+Le calme, c’est chaque fois que ce n’est pas le moment du travail : les loisirs (la soirée, les jours sans heures de travail, les congés, le reste d’une journée close avec **Travail fini pour aujourd’hui**), les heures de démarches, un repas, le sommeil. Le travail se repose jusqu’à son retour :
 
 - le Porche montre les codes, et les courriels que vos listes laissent passer à ce moment ;
 - les adresses de travail se replient sur la page Courriels, sans leurs points, et **Toutes les adresses** ne coche que ce que les heures apportent ([Courriels](mail.md#all-addresses)) ;
@@ -158,7 +158,7 @@ Le calme, c’est chaque fois que ce n’est pas le moment du travail : les lo
 
 Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revient demain à 09:00. »
 
-**Clore est proposé, jamais imposé.** Une fois vos dernières heures du jour finies, la ligne d’état propose **Clore la journée de travail** ([Tâches](tasks.md#the-end-of-the-day)) ; le soir, **Clore toute la journée** ([Santé](health.md#before-sleep)). Sur un petit écran, la proposition prend la place de la phrase tant qu’elle est là. Rien pendant le sommeil.
+**Clore est proposé, jamais imposé.** Une fois vos dernières heures du jour finies, la ligne d’état propose **Travail fini pour aujourd’hui** ([Tâches](tasks.md#the-end-of-the-day)) ; le soir, **Journée finie, avant de dormir** ([Santé](health.md#before-sleep)). Sur un petit écran, la proposition prend la place de la phrase tant qu’elle est là. Rien pendant le sommeil.
 
 **Le chemin du retour n’est jamais suggéré.** Il est là si vous en avez besoin : la phrase de la ligne d’état ouvre un menu, avec **Travailler encore une demi-heure**, une heure, deux heures, quatre heures ; **Revenir aux heures habituelles** ; ou, le jour où vous l’avez close, **Reprendre le plan du jour**. Pendant un repas ou le sommeil, la phrase n’ouvre pas de menu : ils passent d’abord.
 

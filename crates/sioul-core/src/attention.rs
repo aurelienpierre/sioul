@@ -175,7 +175,7 @@ pub enum Kind {
     Needs,
     /// The pause to move.
     Move,
-    /// "Work hours are over", with "Close the work day".
+    /// "Work hours are over", with "Work done for today".
     WorkOver,
     /// The time running: a focus session's own notification.
     Time,

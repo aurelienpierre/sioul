@@ -28,7 +28,7 @@ Quand le temps libre prend une part de vos heures de travail, la fin du travail 
 - **Jamais au-delà** d’une heure avant de vous préparer à dormir, de votre fin du travail au plus tard (deux heures après votre fin habituelle, sauf si vous réglez **Fin du travail au plus tard** dans [Paramètres ▸ Pauses](settings.md#pauses)), de la place qu’il faut au temps pour vous du soir avant la nuit, ou de minuit. Elle contourne les événements, les repas et les heures de démarches du soir.
 - **Seulement des étapes légères** après votre fin habituelle ; la journée ne tient pas plus qu’avant : ce qui n’y tient plus va aux jours suivants, comme le plan le place toujours.
 - **Garder ma fin habituelle**, à côté de cette phrase ou dans le menu de la ligne d’état, laisse la fin où elle était, sans raison demandée : « Le travail finit à 17:00, comme d’habitude. » Désactivez **La fin du travail se décale** dans les paramètres pour qu’il en soit toujours ainsi.
-- **Sioul y met fin** : à la fin décalée, le travail se repose, comme après toute journée de travail. **Fini pour aujourd’hui** y met fin plus tôt, comme n’importe quel jour.
+- **Sioul y met fin** : à la fin décalée, le travail se repose, comme après toute journée de travail. **Travail fini pour aujourd’hui** y met fin plus tôt, comme n’importe quel jour.
 - Rien n’est compté : pas d’heures dues, pas de compte à rebours, aucun relevé de vos pauses.
 
 ## La pause {#pause}
@@ -60,10 +60,10 @@ La fenêtre de Sioul est couverte de quelques lignes : « En pause. Sioul ga
 « Vous êtes de retour. Rien n’a été perdu. » Le reste de la journée est comme vous l’avez choisi dans les réglages :
 
 - **Allégé, comme un jour de brume**, sauf autre choix : aujourd’hui ne tient pas plus qu’un jour de brume ([Comment est aujourd’hui ?](tasks.md#how-is-today)), moins de place et une étape lourde au plus. « Le reste de la journée est allégé. », tant que le travail du jour n’est pas fini.
-- **Plus de travail aujourd’hui** : la journée de travail se clôt, comme avec **Fini pour aujourd’hui**. « Le travail attend jusqu’à demain à 09:00. »
+- **Plus de travail aujourd’hui** : la journée de travail se clôt, comme avec **Travail fini pour aujourd’hui**. « Le travail attend jusqu’à demain à 09:00. »
 - **Comme prévu** : rien ne change.
 
-Quand demain est un jour travaillé, « Demain peut aussi être plus léger. », avec **Alléger demain**, qui rend demain plus léger, comme un jour de brume ; ne rien faire ne change rien. **Continuer** montre Sioul de nouveau. Ce qui attendait revient doucement : le Porche ouvre à vos prochaines heures de démarches (sinon vos prochaines heures de travail, sinon demain matin), ou quand vous l’ouvrez. Rien ne demande ce qui s’est passé, rien ne le note, et Clore la journée, le soir, n’en parle pas.
+Quand demain est un jour travaillé, « Demain peut aussi être plus léger. », avec **Alléger demain**, qui rend demain plus léger, comme un jour de brume ; ne rien faire ne change rien. **Continuer** montre Sioul de nouveau. Ce qui attendait revient doucement : le Porche ouvre à vos prochaines heures de démarches (sinon vos prochaines heures de travail, sinon demain matin), ou quand vous l’ouvrez. Rien ne demande ce qui s’est passé, rien ne le note, et **Journée finie, avant de dormir** n’en parle pas.
 
 Pendant dix secondes, la ligne d’état propose **Annuler** : comme si la pause n’avait pas été lancée.
 

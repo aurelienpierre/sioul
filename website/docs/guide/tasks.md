@@ -197,7 +197,7 @@ Anything can become a task: a message, a line of a note, an event to prepare.
 
 ## The end of the day {#the-end-of-the-day}
 
-**Done for today**, at the foot of Now, ends the work day, early or not. It opens a short sheet first:
+**Work done for today**, at the foot of Now, ends the work day, early or not. It opens a short sheet first:
 
 - what you said of the morning, and what the plan did with it: "This morning: haze. The plan kept a lighter day.";
 - **The day felt:** light, usual, heavy, or gave back;
@@ -205,7 +205,7 @@ Anything can become a task: a message, a line of a note, an event to prepare.
 - a note if you like, in Markdown, with **Preview**;
 - your notes on the last days, folded, in the words you used then.
 
-Every answer is optional. **Close the work day** closes it with no answer as well as with one; **Not now** changes nothing. Nothing asks whether to stop, and nothing compares what was planned with what was done. "Undo" waits in the status line.
+Every answer is optional. **Work done for today** closes it with no answer as well as with one; **Not now** changes nothing. Nothing asks whether to stop, and nothing compares what was planned with what was done. "Undo" waits in the status line.
 
 Then a short screen, read in ten seconds, says:
 
@@ -218,11 +218,11 @@ Then a short screen, read in ten seconds, says:
 
 There is no count of what was not done. The next working day opens on that first step. Until then, work rests ([quiet time](hours.md#quiet-time)). A thought that comes in the evening can be noted in one line; it waits, out of sight, for work to come back.
 
-**At the end of your hours**, the status line offers **Close the work day**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux and on Android, the notification has **Close the work day** too; on a Mac and on Windows it has no button, and a click on it brings Sioul forward (on Windows, opens the same sheet). Pressed once the day turned (05:00), it opens nothing. On Android it comes on time only with "Alarms & reminders" allowed (Settings ▸ Devices, this phone's card, or This tablet): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
+**At the end of your hours**, the status line offers **Work done for today**, and one quiet notification says "Work hours are over", once, never while you sleep or during a meeting. On Linux and on Android, the notification has **Work done for today** too; on a Mac and on Windows it has no button, and a click on it brings Sioul forward (on Windows, opens the same sheet). Pressed once the day turned (05:00), it opens nothing. On Android it comes on time only with "Alarms & reminders" allowed (Settings ▸ Devices, this phone's card, or This tablet): without it, it mostly does not come. A day that ends without the button closes as usual; its review stays offered until the evening.
 
-**At any hour**, two buttons at the bottom of the places close the work day, **Close the work day** (a ticked list), and the whole day, **Close the whole day** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a small screen in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
+**At any hour**, two buttons at the bottom of the places close the work day, **Work done for today** (a ticked list), and the whole day, **Day done, before sleep** (a moon), one under the other. The status line offers each only at its time; these buttons are always there, on a small screen in the places' drawer. On a computer, the menu of Sioul's icon in the system tray (on a Mac, in the menu bar) has the same two.
 
-**Before sleep**, **Close the whole day** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
+**Before sleep**, **Day done, before sleep** looks back over the whole day: work, admin and leisure ([Health](health.md#before-sleep)).
 
 Your answers stay on your devices, in plain files, and travel sealed with the sharing's **Time** part. The mix is what the plan learns from: which days went fine, which were too much. Nothing is shown as a score.
 
@@ -309,7 +309,7 @@ A task tagged `joy` is offered under **If you want**, never proposed as the next
 - **Steps** of a task come together, in the order you gave them: the first one you can do now is the next step. The order never makes you wait: you can tick a later step first, and nothing says it was out of order. To make a step wait for another, give it a wait. A step without its own length counts five minutes, and short steps of one task that follow each other are laid back to back, with one pause after them. Other programs that know this order (Nextcloud Tasks, Tasks.org) show your steps in it too. A task without a length of its own is done with its last step: "Done. “Going to the doctor” is done too.", with **Undo**. One with a length of its own keeps its own tick.
 - **The days**: each task goes into the first days with room. The room is your hours, each kind for its own tasks: working hours for work, hours for your admin for your admin; leisure has no hours, so what is only for leisure takes no room and waits for none ([Hours](hours.md)). Events are taken out of it, with their **Before** and **After**, and five minutes before and after each; not an event marked free in its calendar (shown as available), nor an invitation you declined, which still show in the agenda; each step leaves five minutes after it. A task's own **Before** and **After** take room with it. Your meals, naps and night are kept free too ([Health](health.md#meals-rest-and-sleep)). A step of up to an hour is never cut; a longer one is cut into parts of a quarter of an hour at least. A task with a **Before** or an **After** is never cut: it goes whole on a day whose room holds it, or gets a day of its own. Without any hours set, the room is Monday to Friday, 9:00 to 17:00. Each task takes its corrected length ([How long things take](time.md#how-long-things-take)), and each day keeps some time free for steps running long, and half an hour for you. Today's room starts now, and haze or fog make it smaller. Days off, and today once closed, have none.
 - **Your dates stay yours.** The days the plan gives are worked out again each time, and never written into your tasks. Only what you set is kept: a day to start, a date asked, an order, and the times you pin tasks to, as events in your calendar.
-- **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
+- **Always up to date**: the plan is made again at once whenever something it depends on changes (a task, its estimate or the time noted for it, an event, a meal or the night, your hours or days off, the day's weather, **Work done for today**, what your other devices or a sync bring), as well as when Sioul starts, every twelve hours and at midnight.
 - **When a date will not hold**, the task says so once: "At this pace, the plan ends after 30 October. Doing it sooner, making it smaller or handing it over would keep the date." Near a date asked, Now says how much fits: "Until Wednesday 7 October: about 30 min of steps, 3 h of room."
 
 A reminder comes, once, two working days before a date asked (**Dates asked: working days before**, in Settings ▸ Reminders), and when a wait is over (**A wait over**, in the Tasks ⚙). A computer tells these two while Sioul is open or, if you ask, with its window closed, and a tablet tells them too; a phone does not, and its card on the home screen lists them instead ([Settings](settings.md#reminders)).
