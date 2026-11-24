@@ -129,6 +129,12 @@ fn read(w: &Codes, subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode>
     let secret = |kind, code| Some(OneTimeCode { kind, code, expires_minutes });
     // A code phrase without a code nearby ("never share your security
     // code", a heading) is no code: the next phrase is read, and so on.
+    // A code named before its word in its own sentence ("482913 est le code de votre transaction de …")
+    // is read before the promotions' gate: a shop's name further on ("… chez Pneus Discount", "Promo …")
+    // never undoes it; a promotion in its own sentence does (`not_yours`: "… de votre bon d'achat").
+    if let Some(code) = named_after(w, &folded, &codes(&original)) {
+        return secret(CodeKind::Code, Some(code));
+    }
     if !promotion && let Some(code) = code_in(w, &original, &folded) {
         return secret(CodeKind::Code, Some(code));
     }
@@ -203,13 +209,27 @@ fn code_in(w: &Codes, original: &[char], folded: &[char]) -> Option<String> {
     // One token of a code's shape after its colon, nothing more on its line or in its sentence.
     let one_code = |end: usize| found.iter().find(|f| f.start >= end).is_some_and(|f| ties(w, &folded[end..f.start], true) && alone_after(original, f.end));
     hits.extend(labelled(w, original, folded, &w.noun, false).into_iter().filter(|&(_, end)| one_code(end)).map(|(start, end)| (start, end, true)));
-    // "Enter the code below", only in a message about signing in or checking who you are.
+    // "Enter the code below", only in a message about signing in, checking who you are or paying; never
+    // before a shop's code ("avec le code EXEMPLE20", "use code SAVE10": `shop_code_after`).
     if first_hit(folded, &w.sign_in).is_some() {
-        hits.extend(every_hit(folded, &w.pointing).into_iter().map(|(start, end)| (start, end, false)));
+        hits.extend(every_hit(folded, &w.pointing).into_iter().filter(|&(_, end)| !shop_code_after(original, end)).map(|(start, end)| (start, end, false)));
     }
     hits.sort_unstable();
     // A code said to be yours right after it is the surest reading: first.
     named_after(w, folded, &found).or_else(|| hits.into_iter().find_map(|(start, end, giving)| code_beside(w, folded, &found, (start, end), giving)))
+}
+
+/// Whether the first token after a pointing phrase, on its line, is a shop's
+/// code: neither digits nor any lowercase letter ("EXEMPLE20", "SAVE10",
+/// "NOEL"). Digits ("le code 551204"), a colon, the line's end or ordinary
+/// words ("le code suivant pour…") are not.
+fn shop_code_after(original: &[char], end: usize) -> bool {
+    let mut at = end;
+    while at < original.len() && on_line(original[at]) {
+        at += 1;
+    }
+    let token: Vec<char> = original[at..].iter().copied().take_while(|c| c.is_alphanumeric() || *c == '-').collect();
+    !token.is_empty() && !token.iter().all(char::is_ascii_digit) && !token.iter().any(|c| c.is_lowercase())
 }
 
 /// Whether a folded word is one of a list's, the list's words folded too.
@@ -1030,6 +1050,40 @@ mod tests {
             "48291357 is the code of your parcel.",
         ] {
             assert_eq!(detect("", body), None, "{body}");
+        }
+    }
+
+    /// Review of 25 November 2026, must-fixes 1 and 2: a shop's code after a
+    /// pointing phrase is no one-time code, whatever the message says of a
+    /// purchase; a shop's name further on never undoes a code named before
+    /// its word; a promotion in the code's own sentence does.
+    #[test]
+    fn a_shop_s_code_is_none_and_a_shop_s_name_undoes_nothing() {
+        for (title, body) in [
+            ("36111", "Boutique Exemple: -20% dès 60E d'achat avec le code EXEMPLE20 jusqu'au 30/11 en magasin et sur boutique.example STOP 36111"),
+            ("36111", "Boutique Exemple: -20% ce week-end avec le code NOEL sur votre achat en ligne. STOP au 36111"),
+            ("Shop", "Use code SAVE10 at checkout to get $10 off your next purchase."),
+            ("Shop", "Enter code WELCOME at checkout to save on your first purchase."),
+            ("Boutique", "Merci pour votre achat : saisissez ce code CADEAU15 lors de votre prochaine commande."),
+            ("Boutique", "4821 est le code de votre bon d'achat."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+        assert_eq!(detect_message(&bulk("Derniers jours : -20 % avec le code NOEL20", "Jusqu'à dimanche, dès 50 € d'achat sur tout le site.")), None);
+        for (title, body, code) in [
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Pneus Discount Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Promo Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Exemple Coupon. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Exemple Voucher. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Réduction Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 is the code for your transaction of 23.90 EUR at Example Discount Shop. Keep this code to yourself", "482913"),
+            // Still codes: digits after a pointing phrase, in a message about paying or signing in.
+            ("BANQUE", "Pour valider votre achat de 49,90 EUR, saisissez le code 551204.", "551204"),
+            ("Bank", "Use code 551204 to approve your payment of 49.90 EUR at Example Shop.", "551204"),
+            ("Service", "Utilisez le code 551204 pour vous connecter à Exemple.", "551204"),
+            ("Vérification", "Saisissez le code suivant pour vérifier votre identité :\n\n4829 1357", "48291357"),
+        ] {
+            assert_eq!(detect(title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
         }
     }
 

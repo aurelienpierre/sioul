@@ -253,6 +253,12 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         Kind::People(talk) => who_of(&talk.sender, &senders, &People::load(&People::default_path()), &config),
         _ => (None, false, false),
     };
+    // A code from someone you blocked gains nothing of Sioul's: no notice of its own through
+    // do-not-disturb, no line for your computers (its sender read as the notification would be
+    // without its code). Whether its app's own notification is held too is the owner's to decide.
+    let blocked_code = matches!(kind, Kind::Code)
+        && !posted.redacted
+        && matches!(appnotes::classify(&posted, &choices, &sioul_core::words::Words::default()), Kind::People(talk) if who_of(&talk.sender, &senders, &People::load(&People::default_path()), &config).0 == Some(Who::Blocked));
     // The person's own rows it reads, after its conversation's and before its app's (decision 16):
     // by the card's UID, each number's key, each address; by name only as the phone's address book names.
     let persons = match &kind {
@@ -384,7 +390,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     given_back_by_hand(&posted, stamp);
     // The phone's messages on your computers: its lines written when its app sends them (`phonemsgs`);
     // a reply from a computer handed lately, looked for in it as shown (`replies`).
-    let shared = crate::phonemsgs::note(json, &posted, &kind, who, circle, admitted, &decision) | crate::replies::heard(json, &posted);
+    let shared = crate::phonemsgs::note(json, &posted, &kind, if blocked_code { Some(Who::Blocked) } else { who }, circle, admitted, &decision) | crate::replies::heard(json, &posted);
     let hold = decision.until.map_or(0, |until| (until - stamp).max(1) * 1000);
     let why = if machine && decision.why == Why::Gathered { MACHINE } else { decision.why.id() };
     // A channel that rang while held, Sioul making the gathered apps silent itself: Java asks what to change now.
@@ -397,6 +403,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
     if matches!(kind, Kind::Code)
         && posted.intercepted
         && decision.until.is_none()
+        && !blocked_code
         && let Some(notice) = code_notice(&posted, &sioul_core::words::Words::of(&config), stamp)
     {
         answer["code"] = notice;
@@ -2291,16 +2298,56 @@ mod tests {
         let code = &decided["code"];
         assert_eq!(code["tag"], json!(format!("code:{}", appnotes::key_hash("0|foundation.e.message|7|null|10123"))), "{decided}");
         assert_eq!((code["class"].as_str(), code["pierce"].as_bool(), code["kind"].as_str()), (Some("actionable"), Some(true), Some("codes")), "{code}");
-        assert_eq!(code["title"], json!("Code from Message"), "the short number may hold a code: the app's name");
+        // In the window's language, as this process read it once (`backend::tr`): not always the test configuration's.
+        let title = crate::backend::say("appnotes-code-title", &[("sender", "Message".to_string())]);
+        assert_eq!(code["title"], json!(title), "the short number may hold a code: the app's name");
         assert_eq!(code["body"], json!("482913"));
-        assert_eq!(code["actions"], json!([{ "label": "Copy the code", "copy": "482913" }]));
-        assert_eq!(code["public"], json!({ "title": "Code from Message", "body": "" }), "never the code on the lock screen");
+        assert_eq!(code["actions"], json!([{ "label": tr().text("notify-copy", None), "copy": "482913" }]));
+        assert_eq!(code["public"], json!({ "title": title, "body": "" }), "never the code on the lock screen");
         assert!(code["ends"].as_i64().is_some_and(|ends| ends > 0), "{code}");
         // Not silenced by do-not-disturb: the app's own notification sounds; nothing of Sioul's.
         let heard = PAYMENT.replace("\"intercepted\":true", "\"intercepted\":false");
         let decided: serde_json::Value = serde_json::from_str(&decide_at(&heard, &evening)).unwrap();
         assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("code")), "{decided}");
         assert!(decided.get("code").is_none(), "{decided}");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_file(Ledger::default_path());
+        crate::everywhere::files_cleared();
+    }
+
+    /// Review of 25 November 2026, must-fix 3: a blocked number's text worded
+    /// as a code gains nothing of Sioul's: under do-not-disturb, no notice of
+    /// Sioul's own; no line for the computers (the decision handed to
+    /// `phonemsgs::note` names them blocked). Its app's own notification is
+    /// let through as before (the owner's decision 4).
+    #[test]
+    fn a_blocked_number_s_code_gains_nothing() {
+        sioul_core::config::stand_ins_only();
+        let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::everywhere::files_cleared();
+        let _ = std::fs::remove_file(Ledger::default_path());
+        let dir = sioul_core::config::data_dir().join(format!("codes-blocked-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let blocked = dir.join("blocked-senders.txt");
+        std::fs::write(&blocked, "tel:+33199001234\n").unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, format!("language = \"en\"\nblocked_senders = \"{}\"\n\n[words]\nlanguages = [\"fr\", \"en\"]\n\n[[window]]\nday = \"tuesday\"\nstart = \"09:00\"\nend = \"17:00\"\n", blocked.display())).unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        const BLOCKED: &str = r#"{"key":"0|foundation.e.message|9|null|10123","package":"foundation.e.message","app":"Message","category":"msg","title":"+33 1 99 00 12 34","text":"Code : 4821","sms_app":true,"contacts":true,"intercepted":true,"importance":4,"alerted":true}"#;
+        let evening: Zoned = "2026-10-06T21:40:00+02:00[Europe/Paris]".parse().unwrap();
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(BLOCKED, &evening)).unwrap();
+        assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("code")), "{decided}");
+        assert!(decided.get("code").is_none(), "no notice of Sioul's own for a blocked number: {decided}");
+        // The same words from a number nobody blocked: Sioul's notice, through do-not-disturb.
+        let free = BLOCKED.replace("+33 1 99 00 12 34", "+33 1 99 00 56 78");
+        let decided: serde_json::Value = serde_json::from_str(&decide_at(&free, &evening)).unwrap();
+        assert_eq!(decided["code"]["body"], json!("4821"), "{decided}");
+        // And `phonemsgs::note`'s rule: no line of a blocked sender's.
+        let posted: Posted = serde_json::from_str(BLOCKED).unwrap();
+        let words = sioul_core::words::Words::of(&load_config());
+        let notice = sioul_core::phonemsgs::Notice { posted: &posted, extra: &sioul_core::phonemsgs::Extra::default(), kind: &Kind::Code, who: Some(Who::Blocked), circle: false, listed: false, decision: &Decision::through(Why::Code), send: sioul_core::phonemsgs::Send::Words, now_ms: evening.timestamp().as_millisecond(), region: None, words: &words };
+        assert!(sioul_core::phonemsgs::lines_of(&notice).is_empty());
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(Ledger::default_path());

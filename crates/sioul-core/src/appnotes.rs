@@ -303,7 +303,7 @@ pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
         return true;
     }
     let body = words_of(p);
-    if crate::codes::detect(&words.codes, &p.title, &body).is_some() {
+    if crate::codes::detect(&words.codes, subject_of(p), &body).is_some() {
         return true;
     }
     let folded: Vec<char> = crate::text::fold(&format!("{}\n{body}", p.title)).into_iter().map(|c| if c == '\n' { ' ' } else { c }).collect();
@@ -333,7 +333,17 @@ pub fn code_of(p: &Posted, words: &crate::words::Words) -> Option<crate::codes::
     if p.redacted {
         return None;
     }
-    crate::codes::detect(&words.codes, &p.title, &words_of(p))
+    crate::codes::detect(&words.codes, subject_of(p), &words_of(p))
+}
+
+/// What a notification gives the detector as its subject: its title; but a
+/// texting app's title that is only a number (a short number, a phone
+/// number) names who wrote, never a code (`36123` taken for the code beside
+/// "ce code").
+fn subject_of(p: &Posted) -> &str {
+    let texting = p.sms_app || SMS_APPS.contains(&p.package.as_str());
+    let title = p.title.trim();
+    if texting && (short_code(title) || number_in(title).is_some()) { "" } else { p.title.as_str() }
 }
 
 /// A browser's site the notification is from, as its host: Chromium's
@@ -2780,6 +2790,24 @@ mod tests {
         assert_eq!(kind, Kind::Automaton { site: String::new() });
         let held = decide(&kind, None, false, &Choices::default(), &ask(&at("2026-10-06T21:40[Europe/Paris]"), &clock, None, None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Gathered, "2026-10-07T09:00:00"));
+    }
+
+    /// Review of 25 November 2026, must-fix 1 (b): a texting app's title that
+    /// is only a number names who wrote, never a code: beside "ce code" or a
+    /// code's phrase with no code, the short number is not taken for one.
+    #[test]
+    fn a_short_number_is_never_the_code() {
+        for text in ["Merci pour votre achat. Conservez ce code de suivi : 6A12345678901.", "ExamplePay : ne communiquez jamais votre code de sécurité."] {
+            for title in ["36123", "+33 6 12 34 56 78"] {
+                let json = serde_json::json!({ "key": "0|foundation.e.message|7|null|10123", "package": "foundation.e.message", "app": "Message", "category": "msg", "title": title, "text": text, "sms_app": true }).to_string();
+                let p = posted(&json);
+                assert!(!is_code(&p), "{title}: {text}");
+                assert_eq!(code_of(&p, crate::words::Words::builtin_ref()), None, "{title}: {text}");
+            }
+        }
+        // Another app's title still reads as it did: a chat's subject may hold its code.
+        let chat = posted(r#"{"key":"k","package":"org.example.chat","title":"482913 est votre code Exemple","text":"Bienvenue"}"#);
+        assert!(is_code(&chat));
     }
 
     #[test]

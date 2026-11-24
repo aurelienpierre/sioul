@@ -112,6 +112,7 @@
    "inscription"
   ],
   "codes.not_yours": [
+   "bon",
    "qr",
    "retrait",
    "livraison",

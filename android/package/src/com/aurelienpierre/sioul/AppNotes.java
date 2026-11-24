@@ -816,6 +816,8 @@ public final class AppNotes extends NotificationListenerService
         Notices.Said notice = Notices.Said.of(said);
         if (notice.tag.isEmpty() || PauseMode.actChannelNow(context, Notices.word(context, notice.words, "act-pause")) == null)
             return;
+        // The listener reads the reminders' words, never writes them (EventAlarms.keepWords): an older copy could replace them.
+        notice.words = null;
         Notification n = sbn.getNotification();
         notice.tap = n == null ? null : n.contentIntent;
         codeNotices.put(sbn.getKey(), notice.tag);

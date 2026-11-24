@@ -3,7 +3,7 @@
 # Your own changes go in config.toml under [words], never here: a newer Sioul's words still reach you.
 
 language = "en"
-checked = "2026-11-10"
+checked = "2026-11-25"
 
 
 # One-time codes, passwords, password resets, sign-in links and addresses to confirm (codes.rs).
