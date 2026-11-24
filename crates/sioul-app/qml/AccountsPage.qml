@@ -63,10 +63,12 @@ Item {
     property VaultCard vaultCard: null
 
     onVisibleChanged: {
-        if (page.visible)
+        if (page.visible) {
             page.readVault()
-        else
+            page.readShared()
+        } else {
             vaultHeld.release()
+        }
     }
     Component.onCompleted: page.readVault()
 
@@ -80,13 +82,19 @@ Item {
     }
 
     // What every address shares (`settings::for_view("accounts")`): how often mail is
-    // fetched, at the top of Your accounts; the AI's key, under the cards.
+    // fetched, at the top of Your accounts; the AI's key, under the cards. Read again as
+    // the page shows and as the accounts change, so that a change made on another device
+    // (`fetch_minutes` travels with the settings) shows here.
     property var sharedRows: JSON.parse(page.sioul.settings("accounts") || "[]")
+
+    function readShared() {
+        page.sharedRows = JSON.parse(page.sioul.settings("accounts") || "[]")
+    }
 
     function saveShared(key, value, shown) {
         const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
         if (problem === "")
-            page.sharedRows = JSON.parse(page.sioul.settings("accounts") || "[]")
+            page.readShared()
         else
             page.sioul.status = problem
     }
@@ -145,6 +153,11 @@ Item {
                 addTab.item.davFor(name, false)
                 page.addMailFor(name)
             }
+        }
+
+        // An address added, changed or taken out, here or by the sharing: what they share read again.
+        function onAccountsChanged() {
+            page.readShared()
         }
     }
 

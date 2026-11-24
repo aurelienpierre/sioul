@@ -23,7 +23,7 @@ Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](no
 ## Vos comptes {#your-accounts}
 
 <figure markdown="span">
-  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne, les champs de l’adresse et du serveur et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines ; en dessous, la fiche d’une adresse : « Ce que ce serveur offre » en haut, son service de courriel avec son serveur, un interrupteur et Retirer, « Réglages de cette adresse », replié, sa priorité, « Nom et signature… », sa couleur, et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
+  [![L’onglet « Vos comptes » : en haut, la fiche « Gestionnaire de mots de passe », avec une ligne, les champs de l’adresse et du serveur et « Ajouter votre compte Bitwarden » ; puis « Jusqu’où remontent les courriels et l’agenda », réglé sur 2 semaines, et « Relever toutes les », 5 minutes ; en dessous, la fiche d’une adresse : « Ce que ce serveur offre » en haut, son service de courriel avec son serveur, un interrupteur et Retirer, « Réglages de cette adresse », replié, sa priorité, « Nom et signature… », sa couleur, et « Serveur et dossiers », replié.](../assets/screens/fr/accounts.png){ loading=lazy }](../assets/screens/fr/accounts.png "Ouvrir l’image en grand")
   <figcaption>Une fiche par adresse, chacun de ses services avec un interrupteur.</figcaption>
 </figure>
 

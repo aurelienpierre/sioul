@@ -195,6 +195,9 @@ SafePopup {
                     required property var modelData
                     required property int index
 
+                    // A group with no heading whose rows draw nothing (Mail ⚙'s row that leaves the
+                    // lists of the mail you called spam, while there are none): no empty frame.
+                    visible: group.title !== "" || rowsShown.count !== 1 || rowsShown.itemAt(0) === null || !(rowsShown.itemAt(0) as SettingRow).blank
                     Layout.fillWidth: true
                     Layout.topMargin: group.index === 0 ? 6 : 12
                     theme: panel.theme
@@ -202,6 +205,8 @@ SafePopup {
                     body.spacing: 12
 
                     Repeater {
+                        id: rowsShown
+
                         model: group.modelData.rows
 
                         delegate: SettingRow {

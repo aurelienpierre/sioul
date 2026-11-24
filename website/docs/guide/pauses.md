@@ -44,7 +44,7 @@ In [Settings ▸ Pauses](settings.md#pauses), take your time:
 - **Numbers for**: the country whose emergency number and crisis line show during a pause; unless you choose, the country of your phone numbers.
 - **Try the pause screen** shows it as it will be. Nothing is held.
 
-**What comes during a pause** is What reaches you's, not this tab's: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. The table **What comes when**, in Settings ▸ [What reaches you](notifications.md#by-time), says it in its **Pause** column; there, **Later** in the **Doses** row makes dose reminders wait until you come back, reminded once then.
+**What comes during a pause** is set in What reaches you: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. The table **What comes when**, in Settings ▸ [What reaches you](notifications.md#by-time), says it in its **Pause** column; there, **Later** in the **Doses** row makes dose reminders wait until you come back, reminded once then.
 
 ### Press it {#press-it}
 

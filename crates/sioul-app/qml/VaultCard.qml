@@ -138,6 +138,15 @@ Section {
             onAccepted: if (addButton.enabled) card.add()
         }
     }
+    // How the vault is read, as the account's row says it once set: only when asked, never kept.
+    Label {
+        visible: card.vault === "missing"
+        Layout.fillWidth: true
+        text: card.sioul.text("set-bitwarden-email-help")
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: card.theme.muted
+    }
     Label {
         visible: card.vault === "missing"
         Layout.fillWidth: true

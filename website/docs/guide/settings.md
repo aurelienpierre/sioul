@@ -11,7 +11,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 The Settings page has a tab for each of the sections below, from **Display** to **AI agents**, across the top of the page. What sets a phone up is on its card in **Devices**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
 
 <figure markdown="span">
-  [![Settings on a computer, on its first tab: across the top, the tabs Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents; under Display, "Language and appearance" with Language, Colours, Show the places' names beside their icons and Show passwords as you type, each with its sentence; then "This device" and What this device is.](../assets/screens/settings-tabs.png){ loading=lazy }](../assets/screens/settings-tabs.png "Open the picture at full size")
+  [![Settings on a computer, on its first tab: across the top, the tabs Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents; under Display, "Language and appearance" with Language, Colours, Show the places' names beside their icons and Show passwords as you type, each with its sentence; then "How text reads" with Font, Size and Line spacing.](../assets/screens/settings-tabs.png){ loading=lazy }](../assets/screens/settings-tabs.png "Open the picture at full size")
   <figcaption>A tab for each section, across the top.</figcaption>
 </figure>
 

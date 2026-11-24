@@ -44,7 +44,7 @@ Dans [Paramètres ▸ Pauses](settings.md#pauses), prenez votre temps :
 - **Numéros pour** : le pays dont le numéro d’urgence et la ligne d’écoute s’affichent pendant une pause ; sauf choix de votre part, le pays de vos numéros de téléphone.
 - **Essayer l’écran de pause** le montre tel qu’il sera. Rien n’est mis en attente.
 
-**Ce qui vient pendant une pause** se règle dans Ce qui vous joint, pas dans cet onglet : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. Le tableau **Ce qui vient quand**, dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time), le dit dans sa colonne **En pause** ; là, **Plus tard** sur la ligne **Prises** fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
+**Ce qui vient pendant une pause** se règle dans Ce qui vous joint : les prises, les alarmes de vos événements et, sur un téléphone, les rappels de Sioul avant eux, les codes demandés, et les appels et les messages des personnes qui passent toujours ; le reste attend votre retour. Sur un ordinateur, seul ce qui est à faire vient alors ([Ce qui vous joint](notifications.md#to-know-or-to-do)) : l’agenda montre le reste. Le tableau **Ce qui vient quand**, dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-time), le dit dans sa colonne **En pause** ; là, **Plus tard** sur la ligne **Prises** fait attendre les rappels de prises jusqu’à votre retour, rappelés une fois à ce moment-là.
 
 ### Appuyer {#press-it}
 

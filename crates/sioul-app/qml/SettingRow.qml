@@ -43,6 +43,10 @@ ColumnLayout {
     // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
     signal unlockAsked()
 
+    // Nothing drawn at all: the row that leaves the lists of the mail you called spam while
+    // there are none (its panel then shows no frame for it, SettingsPanel.qml).
+    readonly property bool blank: field.setting.kind === "leavespam" && !(leaveSpam.item !== null && leaveSpam.item.found.count > 0)
+
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
         return JSON.stringify(a) === JSON.stringify(b)
@@ -280,6 +284,8 @@ ColumnLayout {
     // Leaving the lists of the mail you called spam (LeaveSpam.qml): a row when there are
     // some, and with no list left yet the section's title, which the panel then shows none of.
     Loader {
+        id: leaveSpam
+
         active: field.setting.kind === "leavespam"
         visible: active && item !== null && item.found.count > 0
         Layout.fillWidth: true

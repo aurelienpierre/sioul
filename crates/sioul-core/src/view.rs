@@ -212,13 +212,12 @@ impl LaneInfo {
     }
 }
 
-/// The lanes' rules that say where a setting is (an address's shield and
-/// rank in Accounts, a project's routes in Projects, who is blocked, what the
-/// spam filter does with each verdict, the senders you know, listed in Porch
-/// ⚙ itself since the lanes' help no longer edits them): said in the lane's
+/// The lanes' rules that say where another page's setting is (an address's
+/// shield and rank in Accounts, a project's routes in Projects, who is
+/// blocked, what the spam filter does with each verdict): said in the lane's
 /// help, by the mail it explains, never in the Porch's settings, which hold
 /// only what they set (one canonical place per setting, 24 November 2026).
-pub const RULES_ELSEWHERE: &[&str] = &["rule-where-shield", "rule-where-rank", "rule-where-routes", "rule-where-blocked", "rule-review-where", "rule-low-none", "rule-where-known"];
+pub const RULES_ELSEWHERE: &[&str] = &["rule-where-shield", "rule-where-rank", "rule-where-routes", "rule-where-blocked", "rule-review-where", "rule-low-none"];
 
 /// Every lane mail can land in, in the order the Porch shows them (the
 /// Porch's own sections come between: docs/porch.md): projects, public
@@ -256,7 +255,7 @@ pub fn lanes(config: &Config, store: Option<&ProjectStore>, tr: &Translator) -> 
     }
     let known = crate::porch::SenderList::load(&config.known_senders_path()).entries().len();
     lanes.push(lane("yourself", tr.text("lane-yourself", None), Lane::People, false, tr.text("lane-about-yourself", None), vec![tr.text("rule-yourself", None)]));
-    lanes.push(lane("people", tr.text("lane-people", None), Lane::People, false, tr.text("lane-about-people", None), vec![say("rule-people", &[("n", known.to_string())]), tr.text("rule-where-known", None)]));
+    lanes.push(lane("people", tr.text("lane-people", None), Lane::People, false, tr.text("lane-about-people", None), vec![say("rule-people", &[("n", known.to_string())])]));
     let words = crate::words::Words::of(config).senders.automatic.clone();
     lanes.push(lane("filed", tr.text("lane-filed", None), Lane::Filed, true, tr.text("lane-about-filed", None), vec![say("rule-filed", &[("words", words.join(", "))])]));
     lanes.push(lane("screener", tr.text("lane-screener", None), Lane::Screener, false, tr.text("lane-about-screener", None), vec![tr.text("rule-screener", None)]));

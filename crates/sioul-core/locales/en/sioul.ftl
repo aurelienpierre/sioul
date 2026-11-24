@@ -2427,7 +2427,7 @@ set-blocked-help = Their mail is set aside for good: never shown, never counted.
 set-senders-add = Add an address or @domain
 set-senders-add-number = Add an address, a number or @domain
 set-fetch-minutes = Fetch every
-set-fetch-minutes-help = For every address whose card says nothing else. The inbox comes as soon as the server says something arrived; the other folders are fetched this often.
+set-fetch-minutes-help = Every address follows this unless its card says otherwise. The inbox comes as soon as the server says something arrived; the other folders are fetched this often.
 set-account-name = Your name
 set-account-name-help = As recipients see it in the From line.
 set-account-signature = Signature
@@ -3781,7 +3781,7 @@ topic-donation = a donation
 topic-other = something else
 tone-calm = calm
 tone-hostile = hostile
-shield-none = No address is shielded: set “shield = true” on an account, or turn on its shield on its card in Accounts.
+shield-none = No address is shielded: set “shield = true” on an account, or switch its shield on, on its card in Accounts.
 shield-read = The AI read { $n } { $n ->
     [one] message
    *[other] messages
@@ -3868,7 +3868,6 @@ rule-where-shield = An address's shield is set on its card in Accounts.
 rule-where-rank = An address's rank is set on its card in Accounts.
 rule-where-blocked = Blocked senders are in Settings, under What reaches you ▸ Who is in which circle.
 rule-where-routes = Its routes are set on its page in Projects.
-rule-where-known = The senders you know are listed in the Porch's settings (⚙).
 hostile-someone = Someone
 hostile-someone-at = Someone at { $domain }
 hostile-subject = A message set aside as hostile
@@ -3993,7 +3992,7 @@ settings-about-files = Your devices in step, through a folder or a server, seale
 settings-about-devices = Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.
 settings-about-invoices = Who issues your invoices, their numbers, VAT, bank and legal lines.
 settings-about-extensions = Programs apart from Sioul that bring an agenda from a service it does not speak, such as a school's timetable.
-settings-about-ai = What AI agents may use outside your projects: mail in no project, texts, the spam filter.
+settings-about-ai = What AI agents may use: what is in no project, texts, the spam filter.
 # Settings ▸ Extensions (docs/extensions.md): programs apart from Sioul, run in a sandbox, that bring an agenda.
 extensions-intro = An extension brings data from a service Sioul does not speak to itself, such as a pupil's timetable from a school's platform. Each runs apart, given only what its list says, and writes into a calendar or an address book of yours that you choose, what it writes marked as its own. Its list is signed: Sioul refuses one that is not.
 extensions-reading = Reading the list of extensions…

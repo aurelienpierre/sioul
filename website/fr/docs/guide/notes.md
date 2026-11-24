@@ -28,7 +28,7 @@ Choisissez votre coffre Obsidian, ou le dossier **Notes** que Nextcloud Notes ga
 Une partie de ce que dessine Obsidian, Sioul le montre comme le texte que c’est : les encadrés, les surlignages, les notes de bas de page, les formules et les diagrammes. Une note intégrée dans une autre (`![[une autre note]]`) s’affiche comme un lien vers elle ; les images s’affichent sur place.
 
 <figure markdown="span">
-  [![La page Notes : un champ de recherche, Nouvelle note et les autres boutons, puis Voir et Type sur une ligne au-dessus de toutes les notes dans leurs dossiers, Projets déplié ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, Modifier et Aa à côté, son texte avec des liens et l’image d’un croquis ; à droite, Ajouter et Lier à…, ce qui lui est lié (des tâches, un courriel, d’autres notes) avec Les voir tous, et ses lignes non cochées.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
+  [![La page Notes : un champ de recherche, Nouvelle note et les autres boutons, puis Voir et Type sur une ligne au-dessus de toutes les notes dans leurs dossiers, Projets déplié ; une note ouverte au milieu, son chemin et ses étiquettes sous son titre, Modifier à côté, son texte avec des liens et l’image d’un croquis ; à droite, Ajouter et Lier à…, ce qui lui est lié (des tâches, un courriel, d’autres notes) avec Les voir tous, et ses lignes non cochées.](../assets/screens/fr/notes.png){ loading=lazy }](../assets/screens/fr/notes.png "Ouvrir l’image en grand")
   <figcaption>Une note, en lecture, avec ce qui lui est lié sur le côté.</figcaption>
 </figure>
 

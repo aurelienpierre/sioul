@@ -23,7 +23,7 @@ Who may reach you, and when, is in Settings ▸ [What reaches you](notifications
 ## Your accounts
 
 <figure markdown="span">
-  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line, the e-mail and server fields and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks; below, an address's card: "What this server offers" at its top, its mail service with its server, a switch and Remove, "Settings for this address", folded, its priority, "Name and signature…", its colour, and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
+  [![The "Your accounts" tab: at the top, the "Password manager" card, with one line, the e-mail and server fields and "Add your Bitwarden account"; then "How far back mail and the agenda reach", set to 2 weeks, and "Fetch every", 5 minutes; below, an address's card: "What this server offers" at its top, its mail service with its server, a switch and Remove, "Settings for this address", folded, its priority, "Name and signature…", its colour, and "Server and folders", folded.](../assets/screens/accounts.png){ loading=lazy }](../assets/screens/accounts.png "Open the picture at full size")
   <figcaption>One card per address, each of its services with a switch.</figcaption>
 </figure>
 
