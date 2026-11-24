@@ -472,8 +472,9 @@ Item {
                 readonly property real given: listColumn.given
                 // ⚙, and ⋮ when something waits in it, at the row's end.
                 readonly property real ends: contactsSettings.implicitWidth + (listMore.visible ? listMore.implicitWidth + headRow.spacing : 0)
-                // The search's least width: 200 points, or all the column has beside its ends.
-                readonly property real searchWidth: Math.max(0, Math.min(listHead.searchLeast, listHead.given - listHead.ends - headRow.spacing))
+                // The search's least width: 200 points, or all the column has beside its ends
+                // and the actions that stand beside it ("+" on a tablet beside a card).
+                readonly property real searchWidth: Math.max(0, Math.min(listHead.searchLeast, listHead.given - listHead.ends - headRow.spacing - (listHead.oneLine && listHead.actionsWidth > 0 ? listHead.actionsWidth + headRow.spacing : 0)))
                 // The actions beside the search (a phone always: what does not fit folds).
                 readonly property bool oneLine: listFolds.folding || !listFolds.wraps
                 // The actions shown, side by side: the width they take beside the search.
