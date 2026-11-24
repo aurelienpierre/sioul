@@ -4,8 +4,9 @@
 // A project: its name, and for work done for someone, who it is for, what
 // an hour costs and which budget its invoices are expected in; what it is
 // for, by the three switches used everywhere (AreaSwitches.qml: work, your
-// admin, leisure; nothing ticked, work's, docs/areas.md); whether AI agents
-// may read it and add to it (closed until opened, docs/ai.md).
+// admin, leisure; nothing ticked, work's, docs/areas.md); for a new one,
+// whether AI agents may read it and add to it (closed until opened,
+// docs/ai.md), changed afterwards on its page alone.
 
 pragma ComponentBehavior: Bound
 
@@ -181,14 +182,19 @@ SafeDialog {
                 color: dialog.theme.muted
             }
         }
-        // Closed to AI agents until opened; what opening means, in one sentence.
+        // Closed to AI agents until opened; what opening means, in one sentence. Asked once, as
+        // the project is made: then changed on its page alone (its one place, 24 November 2026);
+        // Change… keeps what the page says.
         Switch {
             id: openToAi
 
+            objectName: "projectOpenToAi"
+            visible: dialog.projectId === ""
             Layout.columnSpan: 2
             text: dialog.sioul.text("project-ai")
         }
         Label {
+            visible: dialog.projectId === ""
             Layout.columnSpan: 2
             Layout.fillWidth: true
             text: dialog.sioul.text("project-ai-help")

@@ -2,7 +2,8 @@
 // Copyright © 2026 Aurélien Pierre
 
 // The small button that opens a page's settings, at the end of its first
-// row; "Aa" opens how long text reads.
+// row. How long text reads is Settings ▸ Look's alone (24 November 2026: the
+// "Aa" this button also was, in Notes, is gone).
 
 import QtQuick
 import QtQuick.Controls.Basic
@@ -17,16 +18,12 @@ ToolButton {
     // The page whose settings it opens: "tasks", "mail", "agenda"… (the core's
     // `settings::for_view`).
     property string view: ""
-    // "Aa": the reading settings, wherever long text is.
-    property bool reading: false
 
-    icon.name: button.reading ? "" : "settings-configure"
+    icon.name: "settings-configure"
     icon.color: button.theme.text
-    text: button.reading ? "Aa" : ""
-    font.weight: Font.DemiBold
-    display: button.reading ? AbstractButton.TextOnly : AbstractButton.IconOnly
+    display: AbstractButton.IconOnly
     ToolTip.visible: button.hovered
-    ToolTip.text: button.reading ? button.sioul.text("ui-reading") : button.sioul.text("ui-settings")
+    ToolTip.text: button.sioul.text("ui-settings")
     ToolTip.delay: 300
     Accessible.name: ToolTip.text
     onClicked: button.show(true)
@@ -35,7 +32,7 @@ ToolButton {
     function show(open) {
         if (open) {
             if (panel.item === null)
-                panel.setSource("SettingsPanel.qml", { sioul: button.sioul, theme: button.theme, view: button.reading ? "reading" : button.view })
+                panel.setSource("SettingsPanel.qml", { sioul: button.sioul, theme: button.theme, view: button.view })
             panel.item.open()
         } else if (panel.item !== null) {
             panel.item.close()
@@ -88,7 +85,7 @@ ToolButton {
             target: panel.item
             when: panel.item !== null
             property: "view"
-            value: button.reading ? "reading" : button.view
+            value: button.view
         }
     }
 }

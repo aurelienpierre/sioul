@@ -112,8 +112,7 @@ Ouvrir un courriel le marque comme lu, comme le fait tout logiciel de courriel. 
 
 Un thème est un mot discret sur un courriel, comme Santé, Impôts ou Chorale : une façon de regarder votre courrier, jamais un dossier. Rien ne bouge, et rien ne vous demande de ranger quoi que ce soit.
 
-- **Thème…**, sous la ligne de l’expéditeur dans la lecture, dans le menu d’un courriel, ou dans la barre au-dessus d’une sélection, donne un thème à un courriel ou à plusieurs à la fois, le change ou le retire, dans **Toutes les adresses** comme dans les dossiers de chaque adresse. Choisissez-en plusieurs avec Ctrl et Maj, ou sur un écran tactile avec **Sélectionner** dans le menu d’une ligne (un appui long), puis un appui sur chacun. Le thème qu’ils ont en commun est coché. **Nouveau thème…** le crée et le donne d’un seul geste.
-- **Renommer ou retirer…**, au bout du même menu, fait du nom de chaque thème un champ : changez-le et appuyez sur Entrée, ou **Retirez**-le (son mot quitte chaque courriel, avec **Annuler**). **Terminé** revient en arrière.
+- **Thème…**, sous la ligne de l’expéditeur dans la lecture, dans le menu d’un courriel, ou dans la barre au-dessus d’une sélection, donne un thème à un courriel ou à plusieurs à la fois, le change ou le retire, dans **Toutes les adresses** comme dans les dossiers de chaque adresse. Choisissez-en plusieurs avec Ctrl et Maj, ou sur un écran tactile avec **Sélectionner** dans le menu d’une ligne (un appui long), puis un appui sur chacun. Le thème qu’ils ont en commun est coché. **Nouveau thème…** le crée et le donne d’un seul geste. Les thèmes eux-mêmes se renomment et se retirent dans le ⚙ de la page, sous **Thèmes** ([Réglages](#settings)).
 - **Toujours <thème> pour cet expéditeur**, ou **Jamais…**, dans le même menu : le courrier de l’expéditeur le prend, ou ne le prend jamais. Une réponse prend le thème que vous avez donné à sa conversation.
 - **Le filtre par thème**, à côté du filtre par usage, montre le courrier d’un seul thème. Le thème s’affiche discrètement après l’objet, dans **Toutes les adresses** comme dans chaque dossier, et dans la lecture avec ce qui le lui donne.
 - Chaque geste dit ce qu’il a fait, avec **Annuler**. Dans le ⚙ de la page Courriels, **Thèmes** les liste, les renomme et les retire, et sur un ordinateur ou une tablette **Groupes remarqués par Sioul** rassemble par leurs mots, quand vous appuyez sur **Chercher des groupes**, les courriels qu’aucun thème ne nomme encore : **Le nommer** donne un thème à tout le groupe, une fois mille courriels gardés ici, nommé quand un thème proposé ou un type de site en tient la plupart, et **Toujours un thème…** range tout le courrier d’un expéditeur qui vous écrit beaucoup sous le thème que vous nommez.
@@ -272,17 +271,15 @@ Sur Android, le bandeau demande d’abord le code PIN, tapé à chaque usage et 
 Le ⚙ en haut de la page Courriels :
 
 - **Par conversation** : les courriels groupés avec leurs réponses.
-- **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés, de 1 à 240 minutes, 5 tant que vous ne la changez pas. La boîte de réception arrive dès que le serveur signale du nouveau.
-- **Police**, **Taille**, **Interligne**, sous **Lecture du texte** : la lecture des courriels. Les trois mêmes sont dans le ⚙ du Porche, et derrière **Aa** dans les Notes.
 - **Thèmes** : vos thèmes, à renommer ou retirer, les thèmes que Sioul connaît, et les groupes remarqués par Sioul ([plus haut](#topics)).
 - **Listes quittées** : chaque liste quittée depuis un courriel, quand et comment, dès qu’il y en a une ; et la ligne qui quitte les listes des courriels que vous dites indésirables, quand il y en a ([plus haut](#unsubscribing)).
 - **Quand vous dites Indésirable, quitter aussi sa liste si elle propose le désabonnement en un clic**, sous Votre filtre à indésirables : activé tant que vous ne le décochez pas ([plus haut](#unsubscribing)).
 - **Filtres** : ce qui est fait aux courriels qui arrivent, sur leur serveur, selon des conditions ([plus haut](#filters)).
 - **Votre filtre à indésirables** : plus bas.
 
-Les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, à quel rythme elle est relevée, sa protection) sont sur sa fiche dans [Comptes](accounts.md#your-accounts).
+Le rythme auquel le courrier est relevé (pour toutes les adresses, en haut de Vos comptes, et pour chacune sur sa fiche) et les réglages propres à chaque adresse (à quoi elle sert, jusqu’où elle remonte, sa protection) sont dans [Comptes](accounts.md#your-accounts) ; la lecture des courriels (police, taille, interligne), dans [Paramètres ▸ Affichage](settings.md#display).
 
-**Temps réel**, en haut de la page, relève chaque dossier de chaque adresse toutes les minutes, et ouvre le Porche comme le fait **Montrer tous les courriels maintenant**, pour un code ou un mot de passe que vous attendez, jusqu’à la fin des heures où vous l’avez coché (une heure, coché la nuit). Le même interrupteur est **Le courrier chaque minute** dans la carte Ce qui vous joint maintenant ([Temps réel](porch.md#real-time)).
+**Le courrier chaque minute**, dans la carte Ce qui vous joint maintenant (le bouton au bout de la ligne d’état), relève chaque dossier de chaque adresse toutes les minutes, et ouvre le Porche comme le fait **Montrer tous les courriels maintenant**, pour un code ou un mot de passe que vous attendez, jusqu’à la fin des heures où vous l’avez coché (une heure, coché la nuit) ([Temps réel](porch.md#real-time)).
 
 #### Votre filtre à indésirables {#your-own-spam-filter}
 

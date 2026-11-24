@@ -7,8 +7,12 @@
 // holidays, off for school holidays), and what this device knows of it: a
 // device that has not read it yet does not know its days, and says so (the
 // calendar's events never travel between devices; `subscriptions::holidays`).
-// "Subscribe to a calendar of holidays…" opens Agenda ⚙ ▸ Your agendas, its
-// form open (`subscribeAsked`).
+// This switch is the calendar's days off's one place (Agenda ⚙ ▸ Your agendas
+// says what kind of holidays it holds, not whether they count: 24 November
+// 2026). "Subscribe to a calendar of holidays…" opens the subscribe form
+// (SubscribeForm.qml, the one Agenda ⚙ ▸ Your agendas shows) over Settings,
+// here, rather than sending you to the Agenda's ⚙: the act stays where the
+// need is, and the subscription lands in Your agendas all the same.
 
 pragma ComponentBehavior: Bound
 
@@ -24,8 +28,8 @@ ColumnLayout {
     // `subscriptions::holidays`: {calendars: [{id, name, holidays, days_off, after_class, known, line}]}.
     property var view: ({ calendars: [] })
     property string problem: ""
-
-    signal subscribeAsked
+    // The subscribe form open over Settings (its tests).
+    property bool subscribing: false
 
     function read() {
         try {
@@ -111,6 +115,49 @@ ColumnLayout {
     Button {
         objectName: "holidaysSubscribe"
         text: block.sioul.text("vacations-subscribe")
-        onClicked: block.subscribeAsked()
+        onClicked: subscribeDialog.now().ask()
+    }
+
+    // The subscribe form, over the window (made the first time it is asked for).
+    Later {
+        id: subscribeDialog
+
+        sourceComponent: Component {
+            SafePopup {
+                id: dialog
+
+                function ask() {
+                    dialog.open()
+                    form.begin()
+                }
+
+                objectName: "holidaysSubscribeDialog"
+                onAboutToShow: block.subscribing = true
+                onClosed: block.subscribing = false
+                parent: Overlay.overlay
+                anchors.centerIn: parent
+                modal: true
+                width: Math.min(560, dialog.roomWidth - 2 * block.theme.gap)
+                height: Math.min(implicitHeight, dialog.roomHeight - 2 * block.theme.gap)
+                padding: 16
+
+                contentItem: ScrollView {
+                    contentWidth: availableWidth
+
+                    SubscribeForm {
+                        id: form
+
+                        width: dialog.availableWidth
+                        sioul: block.sioul
+                        theme: block.theme
+                        onDone: id => {
+                            dialog.close()
+                            block.read()
+                        }
+                        onCancelled: dialog.close()
+                    }
+                }
+            }
+        }
     }
 }

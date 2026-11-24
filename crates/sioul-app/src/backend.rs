@@ -1834,7 +1834,7 @@ pub mod qobject {
         #[qinvokable]
         fn need_every_day(self: Pin<&mut Sioul>, edit: &QString) -> QString;
 
-        /// How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+        /// How long a new event lasts, in minutes (Agenda ⚙; 30 unset).
         #[qinvokable]
         fn new_event_minutes(self: &Sioul) -> i32;
 
@@ -3221,7 +3221,7 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
 

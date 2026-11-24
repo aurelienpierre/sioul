@@ -1052,12 +1052,6 @@ Item {
                             highlighted: true
                             onClicked: page.save()
                         }
-                        SettingsButton {
-                            visible: page.kind === "text"
-                            sioul: page.sioul
-                            theme: page.theme
-                            reading: true
-                        }
                     }
 
                     // On a phone and in a narrow window, the outline folds at the top of

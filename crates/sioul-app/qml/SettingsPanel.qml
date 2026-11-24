@@ -19,7 +19,7 @@ SafePopup {
 
     required property var sioul
     required property var theme
-    // "porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "time", "general".
+    // "porch", "mail", "agenda", "tasks", "notes", "contacts", "time", "general".
     property string view: ""
     property var rows: []
     property string problem: ""
@@ -215,8 +215,6 @@ SafePopup {
                             onSave: (key, value, shown) => panel.save(key, value, shown)
                             onGoTo: key => panel.scrollTo(key)
                             onChangedElsewhere: panel.reload()
-                            // A link followed: its place shows, not this panel over it.
-                            onFollowed: panel.close()
                         }
                     }
                 }

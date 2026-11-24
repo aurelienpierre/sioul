@@ -183,6 +183,24 @@ Item {
             verify(link.visible && !link.checked, "the link off until asked")
         }
 
+        // A list of tasks alone, yours on its server: renamed and removed in Tasks ⚙ ▸ Task lists,
+        // its one place (24 November 2026), so neither here; a calendar that also takes tasks is.
+        function test_a_list_of_tasks_alone_is_renamed_in_tasks() {
+            const setup = make()
+            setup.view = Object.assign({}, root.view, { agendas: [
+                Object.assign({}, root.row, { id: "cloud/chores", name: "Chores", place: "cloud.example.org", events: false, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: true } }),
+                Object.assign({}, root.row, { id: "cloud/home", name: "Home", place: "cloud.example.org", events: true, tasks: true, server: { server: "caldav", server_name: "cloud.example.org", own: true } })
+            ] })
+            test.waitForRendering(setup)
+            setup.toggle("cloud/chores")
+            setup.toggle("cloud/home")
+            wait(30)
+            const chores = line(setup, 0)
+            const home = line(setup, 1)
+            verify(!root.named(chores, "agendaRename")[0].visible && !root.named(chores, "agendaRemove")[0].visible, "Tasks ⚙'s")
+            verify(root.named(home, "agendaRename")[0].visible && root.named(home, "agendaRemove")[0].visible, "a calendar that takes tasks too: here")
+        }
+
         // Someone else's: nothing to change, "Stop showing…" asked the same
         // way; its sharing read but not changed. This computer's: no server asked.
         function test_someone_elses_and_this_computers() {

@@ -30,7 +30,7 @@ Un projet, c’est toute affaire que vous suivez : un travail pour un client, 
 - Sans cela, le projet est à vous.
 - **À quoi il sert** : travail, vos démarches, loisirs, plusieurs ensemble, les trois mêmes interrupteurs que partout ([Les heures](hours.md)). Les pages Projets et Temps le montrent à ces heures-là, et ses tâches y viennent sauf si elles disent les leurs. Rien de coché, le projet d’un client compte comme travail ; un autre suit ses tâches ouvertes, et s’affiche à toute heure s’il n’en a aucune.
 - **Où il en est** : ouvert, en attente ou fermé.
-- **Ouvert aux agents d’IA** : éteint tant que vous ne l’allumez pas ([Choisir ce qu’un agent voit](ai-agent.md#choosing-what-an-agent-sees)).
+- **Ouvert aux agents d’IA**, dans le formulaire d’un nouveau projet : éteint tant que vous ne l’allumez pas ([Choisir ce qu’un agent voit](ai-agent.md#choosing-what-an-agent-sees)). Ensuite, il se change sur la page du projet seulement.
 
 **Modifier**, en haut de la page d’un projet, rouvre ce formulaire. **Retirer de la liste**, au bas de ce formulaire, enlève le projet une fois que vous avez confirmé. Ses tâches, notes, courriels et temps restent où ils sont ; ils ne sont plus rassemblés sous lui.
 
@@ -92,7 +92,7 @@ Le bouton au-dessus de la liste dit ce qu’elle montre (« Loisirs ▾ ») 
 - **Une file sur le Porche** : **Projets montrés ici**, dans le ⚙ du Porche, donne à un projet sa propre file ([Le Porche](porch.md)).
 - **Sur un appareil pas encore mis à jour** : **Démarches** et **Loisirs** ensemble, et les trois sur le projet d’un client, s’écrivent comme l’ancienne case **À vous, hors travail**, qu’un Sioul plus ancien lit, et cette case se lit ici comme démarches et loisirs (à côté d’un client, les trois, comme le Sioul plus ancien la lisait). Les autres choix sont nouveaux pour un Sioul plus ancien : il les lit comme si rien n’était dit, et enregistrer le formulaire du projet là-bas les retire. Mettez chaque appareil à jour avant de vous en servir.
 - **À la main, si vous voulez** : la liste des projets est un fichier lisible, `sioul-projects.toml`, que vous pouvez modifier ; sa forme est [plus bas](#for-technical-readers).
-- **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) ne voit un projet qu’une fois que vous l’avez ouvert : **Ouvert aux agents d’IA**, sur sa page ou dans son formulaire. Il lit alors ce que la page du projet rassemble, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels, et peut y ajouter des tâches, des notes, des liens et des brouillons. D’un projet laissé fermé, il ne voit rien ([Choisir ce qu’un agent voit](ai-agent.md#choosing-what-an-agent-sees)).
+- **Un agent d’IA que vous connectez** ([Avec un agent d’IA](ai-agent.md)) ne voit un projet qu’une fois que vous l’avez ouvert : **Ouvert aux agents d’IA**, sur sa page (ou dans le formulaire qui le crée). Il lit alors ce que la page du projet rassemble, les codes à usage unique, les liens de connexion, les numéros de compte et de carte masqués dans ses courriels, et peut y ajouter des tâches, des notes, des liens et des brouillons. D’un projet laissé fermé, il ne voit rien ([Choisir ce qu’un agent voit](ai-agent.md#choosing-what-an-agent-sees)).
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}
 

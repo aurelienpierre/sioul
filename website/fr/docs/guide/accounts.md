@@ -31,6 +31,8 @@ Qui peut vous joindre, et quand, est dans Paramètres ▸ [Ce qui vous joint](no
 
 Puis **Jusqu’où remontent les courriels et l’agenda** : d’une semaine à un an, ou tout. Les courriels plus anciens arrivent au prochain relevé ; « Tout » peut prendre du temps, et de la place sur le disque.
 
+Puis **Relever toutes les** : la fréquence à laquelle les dossiers autres que la boîte de réception sont relevés, pour chaque adresse dont la fiche ne dit rien d’autre, de 1 à 240 minutes, 5 tant que vous ne la changez pas. La boîte de réception arrive dès que le serveur signale du nouveau.
+
 Puis une fiche par adresse, avec chacun de ses services : **Courriels** ; **Agendas, tâches et contacts** ; **Google : agendas, contacts et tâches**. Chacun a :
 
 - **un interrupteur** : éteint, le service garde ses réglages et n’est ni synchronisé ni montré ;
@@ -55,7 +57,7 @@ Sur sa fiche, **Réglages de cette adresse**, replié tant que vous ne l’ouvre
 
 - **À quoi sert cette adresse** : travail, vos démarches, loisirs, plusieurs à la fois. Ses courriels sont notifiés aux heures de ce à quoi elle sert ; ceux de vos expéditeurs sûrs s’affichent sur le Porche à leurs moments et sont notifiés quand ces heures commencent, et ceux des personnes qui passent toujours viennent tout de suite. Sans rien de coché, elle compte comme du travail, pour que les courriels des autres n’atteignent jamais vos soirées ; ceux de vos expéditeurs sûrs sont toujours notifiés à leurs moments. Voir [Les heures](hours.md).
 - **Jusqu’où remonter** : combien de semaines des courriels de cette adresse ses dossiers montrent, ou comme les autres adresses.
-- **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses, dont le rythme est **Relever toutes les** dans le ⚙ de la page Courriels. Une adresse publique peut être relevée deux fois par jour (720 minutes).
+- **Relever toutes les** : à quel rythme ses dossiers autres que la boîte de réception sont relevés ; 0 suit les autres adresses, dont le rythme est **Relever toutes les** en haut de Vos comptes. Une adresse publique peut être relevée deux fois par jour (720 minutes).
 - **Protégée contre le harcèlement**, et une fois cette protection activée, **Laisser l’IA le lire d’abord** (pas proposé pour une adresse Microsoft professionnelle ou scolaire : sa fiche dit pourquoi). Voir [le Porche](porch.md#a-public-address-protected).
 
 Toujours en vue en dessous :

@@ -79,6 +79,18 @@ Item {
             page.vaultCard.unlock()
     }
 
+    // What every address shares (`settings::for_view("accounts")`): how often mail is
+    // fetched, at the top of Your accounts; the AI's key, under the cards.
+    property var sharedRows: JSON.parse(page.sioul.settings("accounts") || "[]")
+
+    function saveShared(key, value, shown) {
+        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
+        if (problem === "")
+            page.sharedRows = JSON.parse(page.sioul.settings("accounts") || "[]")
+        else
+            page.sioul.status = problem
+    }
+
     readonly property var accounts: page.sioul.accounts ? JSON.parse(page.sioul.accounts) : []
     readonly property var found: page.sioul.found ? JSON.parse(page.sioul.found) : null
     // Google's or Microsoft's mail: never its password, its own sign-in (or Google's app password).
@@ -396,6 +408,22 @@ Item {
                         color: page.theme.muted
                         font.pixelSize: 13
                     }
+                    // How often mail is fetched, beside how far back: what every address follows
+                    // unless its card says its own (its one place, 24 November 2026: Mail ⚙ had it).
+                    Repeater {
+                        model: page.sharedRows.filter(r => r.key === "fetch_minutes")
+
+                        delegate: SettingRow {
+                            required property var modelData
+
+                            objectName: "setting:fetch_minutes"
+                            Layout.fillWidth: true
+                            setting: modelData
+                            sioul: page.sioul
+                            theme: page.theme
+                            onSave: (key, value, shown) => page.saveShared(key, value, shown)
+                        }
+                    }
 
                     Item {
                     Layout.preferredHeight: 1
@@ -572,13 +600,12 @@ Item {
                     width: yoursScroll.width
                     spacing: page.theme.gap
 
-                    // What all addresses share: the key for the AI that reads hostile mail, when one allows it.
+                    // What all addresses share, under them: the key for the AI that reads hostile mail,
+                    // when one allows it (how often they are fetched is at the top, beside how far back).
                     Repeater {
                         id: shared
 
-                        property var rows: JSON.parse(page.sioul.settings("accounts") || "[]")
-
-                        model: shared.rows
+                        model: page.sharedRows.filter(r => r.key !== "fetch_minutes")
 
                         delegate: SettingRow {
                             required property var modelData
@@ -588,13 +615,7 @@ Item {
                             setting: modelData
                             sioul: page.sioul
                             theme: page.theme
-                            onSave: (key, value, shown) => {
-                                const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                if (problem === "")
-                                    shared.rows = JSON.parse(page.sioul.settings("accounts") || "[]")
-                                else
-                                    page.sioul.status = problem
-                            }
+                            onSave: (key, value, shown) => page.saveShared(key, value, shown)
                         }
                     }
                     Item {

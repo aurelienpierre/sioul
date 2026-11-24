@@ -1725,8 +1725,8 @@ Item {
         }
     }
 
-    // A section's help, once, and what changes it (each setting read by its
-    // file, SettingRow.qml, which the Porch then does not load at its start).
+    // A section's help, once: how mail lands there, and where what changes it
+    // is set, said (the senders you know are Porch ⚙'s alone: 24 November 2026).
     Later {
         id: helpPopup
 
@@ -1735,11 +1735,9 @@ Item {
                 id: help
 
                 property var lane: null
-                property var rows: []
 
                 function show(lane) {
                     help.lane = lane
-                    help.rows = lane.settings ? JSON.parse(page.sioul.settings(lane.settings)) : []
                     help.open()
                 }
 
@@ -1778,31 +1776,6 @@ Item {
                                 wrapMode: Text.Wrap
                                 lineHeight: 1.25
                                 color: page.theme.text
-                            }
-                        }
-                        Repeater {
-                            model: help.rows
-
-                            delegate: Loader {
-                                id: ruleRow
-
-                                required property var modelData
-
-                                Layout.fillWidth: true
-                                Layout.topMargin: 6
-                                Component.onCompleted: ruleRow.setSource("SettingRow.qml", { setting: ruleRow.modelData, sioul: page.sioul, theme: page.theme })
-
-                                Connections {
-                                    target: ruleRow.item
-
-                                    function onSave(key, value, shown) {
-                                        const problem = page.sioul.changeSetting(key, JSON.stringify(shown), JSON.stringify(value))
-                                        if (problem === "")
-                                            help.rows = JSON.parse(page.sioul.settings(help.lane.settings))
-                                        else
-                                            page.sioul.status = problem
-                                    }
-                                }
                             }
                         }
                         Button {

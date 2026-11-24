@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // One setting: its name, the control that changes it, and a sentence on what
-// it does. Used in a page's settings panel and inside a Porch lane's "?".
+// it does. Used in a page's settings panel, Settings' tabs and a few cards.
 // Each kind's control is made for a setting of that kind only (a Loader
 // each): with every kind's controls in each row, hidden, the Porch's settings
 // panel alone took some 18 MB, and each page has its panel.
@@ -42,9 +42,6 @@ ColumnLayout {
     property string vaultState: ""
     // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
     signal unlockAsked()
-    // Another place opened from the row (Settings ▸ Hours' "Subscribe to a calendar of
-    // holidays…"): the panel it is in closes, that place shown (SettingsPanel.qml).
-    signal followed()
 
     // Whether two values are the same, compared as JSON.
     function same(a, b) {
@@ -1217,10 +1214,6 @@ ColumnLayout {
                     Layout.topMargin: 8
                     sioul: field.sioul
                     theme: field.theme
-                    onSubscribeAsked: {
-                        field.followed()
-                        field.sioul.reminderOpened("settings:agendas.subscribe", "", "")
-                    }
                 }
             }
         }
