@@ -4761,12 +4761,13 @@ remind-lead = { $minutes ->
        *[other] { $minutes } minutes
     }
 set-reminders-before = Avant un événement
-set-reminders-before-help = Un rappel discret, tant de temps avant chaque événement, compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien (Rappel, dans son formulaire). Pas pour les journées entières, ni pour les agendas que vous lisez seulement.
+set-reminders-before-help = Un rappel discret, tant de temps avant chaque événement qui prend votre temps, compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien (Rappel, dans son formulaire). Pas pour les journées entières, les événements qui vous laissent libre (Indisponible décoché), ni pour les agendas que vous lisez seulement ; une sortie dit toujours quand partir.
 set-reminders-before-none = Aucun
 set-reminders-before-exact = Sur { device-this }, ils viennent à l’heure, Sioul ouvert ou non.
 set-reminders-before-inexact = Sur { device-this }, Android ne laisse pas Sioul poser d’alarmes exactes : ces rappels peuvent arriver jusqu’à une heure en retard. Paramètres ▸ Applications ▸ Sioul ▸ Alarmes et rappels.
 event-remind = Rappel
 event-remind-usual = Comme d’habitude ({ $lead })
+event-remind-usual-free = Comme d’habitude : aucun, puisque cet événement vous laisse libre
 event-remind-none = Pas pour celui-ci
 event-remind-before = { $lead } avant
 event-reminds = Rappel : { $when }

@@ -119,13 +119,17 @@ Item {
             const event = mock.events[key]
             return event && (start === 0 || start === event.start) ? JSON.stringify(event) : "{}"
         }
-        function eventReminder(key, start) { return "{}" }
+        // A free event of yours (`remind::of_event`): no reminder as usual, its Remind writable.
+        function eventReminder(key, start) { return key === mock.remindKey ? JSON.stringify({ line: "event-reminds-none", remind: "", writable: true, free: mock.remindFree }) : "{}" }
+        property string remindKey: ""
+        property bool remindFree: true
         // Busy or free from the card (`pim::set_event_busy`): what was asked, recorded.
         function setEventBusy(key, busy, rid) {
             mock.calls.push({ what: "setEventBusy", key: key, busy: busy, rid: rid })
             return ""
         }
-        function reminderChoices(current) { return "[]" }
+        // As `remind::choices` gives them: "As usual" with its words for a free event beside.
+        function reminderChoices(current) { return JSON.stringify([{ value: "", label: "event-remind-usual", free: "event-remind-usual-free" }, { value: "none", label: "event-remind-none" }]) }
         function eventPairing(key) { return "null" }
         function related(uri) { return "[]" }
         function deleteEvent(key, start, onlyThis) {
@@ -1071,6 +1075,32 @@ Item {
             wait(20)
             const theirs = root.find(host.eventCard, "eventCardBusy")
             verify(theirs.visible && !theirs.enabled, "a meeting with others: shown, not written")
+        }
+
+        // "As usual" says what it gives for an event that leaves you free (none), in
+        // the card and in the form, while Busy is off; busy again, the usual words.
+        function test_as_usual_says_none_for_a_free_event() {
+            mock.remindKey = "/c/dentist.ics"
+            mock.remindFree = true
+            const host = makeHost()
+            verify(host.show({ kind: "event", srcKey: "/c/dentist.ics", srcStart: 4000000000 }))
+            wait(20)
+            const remind = root.find(host.eventCard, "eventCardRemind")
+            verify(remind !== null && remind.visible)
+            compare(remind.model[0].label, "event-remind-usual-free", "free: none as usual, said")
+            mock.remindFree = false
+            host.eventCard.readReminder()
+            compare(remind.model[0].label, "event-remind-usual", "busy: the usual words")
+            mock.remindKey = ""
+            const dialog = createTemporaryObject(dialogComponent, root, { keeper: keeper })
+            dialog.edit("/c/dentist.ics", "")
+            const usual = root.find(dialog.contentItem, "eventRemind")
+            compare(usual.model[0].label, "event-remind-usual", "busy")
+            const busy = root.find(dialog.contentItem, "eventBusy")
+            busy.toggle()
+            busy.toggled()
+            compare(usual.model[0].label, "event-remind-usual-free", "Busy off: none as usual, said")
+            dialog.close()
         }
 
         // Busy in an event's form: a time busy, a whole day free, unless the switch was

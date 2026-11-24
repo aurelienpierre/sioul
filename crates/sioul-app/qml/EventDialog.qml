@@ -1374,7 +1374,8 @@ SafeDialog {
                     onActivated: index => dialog.around = Object.assign({}, dialog.around, { after: dialog.marginChoices[index] })
                 }
                 // Its reminder: as usual (Settings ▸ Reminders and notifications),
-                // not this one, or so long before it and its time to get there.
+                // not this one, or so long before it and its time to get there. As
+                // usual, an event that leaves you free gets none: said so while Busy is off.
                 Label {
                     Layout.maximumWidth: 160
                     text: dialog.sioul.text("event-remind")
@@ -1382,9 +1383,10 @@ SafeDialog {
                     color: dialog.theme.muted
                 }
                 PlainComboBox {
+                    objectName: "eventRemind"
                     Layout.fillWidth: true
                     textRole: "label"
-                    model: dialog.reminds.map(c => ({ value: c.value, label: dialog.theme.plain(c.label) }))
+                    model: dialog.reminds.map(c => ({ value: c.value, label: dialog.theme.plain(c.value === "" && !dialog.busy && (c.free || "") !== "" ? c.free : c.label) }))
                     currentIndex: Math.max(0, dialog.reminds.findIndex(c => c.value === dialog.remind))
                     onActivated: index => dialog.remind = dialog.reminds[index].value
                 }

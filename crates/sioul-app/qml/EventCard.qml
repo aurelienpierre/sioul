@@ -551,12 +551,14 @@ CardFrame {
         wrapMode: Text.Wrap
         color: card.theme.muted
     }
+    // As usual, an event that leaves you free gets none (`reminders::before_at`): said so.
     PlainComboBox {
+        objectName: "eventCardRemind"
         visible: card.reminds.length > 0
         Layout.fillWidth: card.narrow
         Layout.preferredWidth: card.narrow ? -1 : 260
         textRole: "label"
-        model: card.reminds.map(c => ({ value: c.value, label: card.theme.plain(c.label) }))
+        model: card.reminds.map(c => ({ value: c.value, label: card.theme.plain(c.value === "" && card.reminder.free === true && (c.free || "") !== "" ? c.free : c.label) }))
         currentIndex: Math.max(0, card.reminds.findIndex(c => c.value === (card.reminder.remind || "")))
         Accessible.name: card.sioul.text("event-remind")
         onActivated: index => {

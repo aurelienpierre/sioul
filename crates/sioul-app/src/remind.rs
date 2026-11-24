@@ -163,8 +163,10 @@ fn choices_with(tr: &sioul_core::i18n::Translator, usual: u32, current: &str) ->
         minutes.push(own);
         minutes.sort_unstable();
     }
+    // "As usual" for an event that leaves you free: none (`reminders::usual_minutes`), its
+    // words beside the usual ones, which the form and the card show while it is free.
     let mut out = vec![
-        serde_json::json!({ "value": "", "label": lead("event-remind-usual", usual) }),
+        serde_json::json!({ "value": "", "label": lead("event-remind-usual", usual), "free": tr.text("event-remind-usual-free", None) }),
         serde_json::json!({ "value": "none", "label": tr.text("event-remind-none", None) }),
     ];
     out.extend(minutes.into_iter().map(|m| serde_json::json!({ "value": m.to_string(), "label": lead("event-remind-before", m) })));
@@ -172,9 +174,10 @@ fn choices_with(tr: &sioul_core::i18n::Translator, usual: u32, current: &str) ->
 }
 
 /// An event's reminder before it, as its details say it (AgendaPage.qml),
-/// the occurrence starting at `start`: {line, remind, writable}: "Reminder:
-/// 13:15" (with its day when another), or "No reminder before it"; its own
-/// choice; whether it can be changed here. "" when the event is not found.
+/// the occurrence starting at `start`: {line, remind, writable, free}:
+/// "Reminder: 13:15" (with its day when another), or "No reminder before
+/// it"; its own choice; whether it can be changed here; whether it leaves
+/// you free, when "As usual" gives none. "" when the event is not found.
 pub(crate) fn of_event(key: &str, start: i64) -> String {
     let Some(path) = crate::pim::ours(key) else { return String::new() };
     let Some(calendar) = crate::pim::collection_of(&path) else { return String::new() };
@@ -198,7 +201,7 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
         }
         None => tr().text("event-reminds-none", None),
     };
-    serde_json::json!({ "line": line, "remind": remind_word(&event.remind), "writable": !calendar.read_only }).to_string()
+    serde_json::json!({ "line": line, "remind": remind_word(&event.remind), "writable": !calendar.read_only, "free": event.transparent }).to_string()
 }
 
 /// An event's own reminder changed from its details, for every time it
@@ -496,6 +499,8 @@ mod tests {
         assert_eq!(values, ["", "none", "5", "10", "15", "30", "60", "120"]);
         let labels: Vec<&str> = offered.as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["As usual (15 minutes)", "Not this one", "5 minutes before", "10 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before"]);
+        // As usual, an event that leaves you free gets none: said beside, for the form and the card.
+        assert_eq!(offered[0]["free"], "As usual: none, since this event leaves you free");
         // Another time, set elsewhere, kept among them; the usual time none.
         let other = choices_with(&sioul_core::i18n::Translator::new("fr"), 0, "20");
         let values: Vec<&str> = other.as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect();
