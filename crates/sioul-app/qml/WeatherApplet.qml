@@ -124,6 +124,8 @@ LineButton {
             width: 360
             padding: 12
             modal: false
+            // Escape, and a phone's Back, close it first (SafePopup.qml).
+            focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
             onClosed: applet.choosing = false
 

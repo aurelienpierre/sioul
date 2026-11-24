@@ -112,6 +112,9 @@ LineButton {
             x: Math.min(0, applet.parent ? applet.parent.width - applet.x - width : 0)
             width: 300
             padding: 12
+            // Escape, and a phone's Back, close it first (SafePopup.qml: Qt's popups take
+            // Back only while they hold the focus).
+            focus: true
             closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
             background: Rectangle {

@@ -6821,21 +6821,13 @@ SioulWindow {
         onActivated: window.quitSioul()
     }
 
-    Rectangle {
+    // The keys' last stop too: a Back nothing took goes back here (BackFrame.qml).
+    BackFrame {
         id: frame
 
+        host: window
         anchors.fill: parent
         color: theme.background
-        // The keys' last stop: the keyboard's focus rests here when nothing else holds it,
-        // and every page's key that nothing took comes up to it. Back that reaches it found
-        // no popup to close it (one open beside a field that keeps the focus holds the
-        // window's Back shortcut): it goes back as the shortcut would, never leaving Sioul
-        // while something is open.
-        focus: true
-        Keys.onPressed: event => {
-            if (event.key === Qt.Key_Back && window.backTaken())
-                event.accepted = true
-        }
 
         // The places and the pages; on a computer, under the title bar.
         Item {

@@ -108,6 +108,58 @@ Item {
         }
     }
 
+    // The window's frame (main.qml's), on a stand-in for the window: whether something
+    // was open to go back from, and how many times Back was asked of it.
+    QtObject {
+        id: standIn
+
+        property bool open: true
+        property int asked: 0
+
+        function backTaken() {
+            standIn.asked += 1
+            return standIn.open
+        }
+    }
+
+    Component {
+        id: frameKind
+
+        BackFrame {
+            property alias field: field
+
+            host: standIn
+            anchors.fill: parent
+
+            TextField {
+                id: field
+
+                width: 200
+            }
+        }
+    }
+
+    Component {
+        id: fieldKind
+
+        TextField {
+            width: 200
+        }
+    }
+
+    // As a sounds' or a weather's popup on the status line (SoundsApplet.qml,
+    // WeatherApplet.qml): a plain Popup, not a SafePopup, which says its focus itself.
+    Component {
+        id: plainKind
+
+        Popup {
+            focus: true
+            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+            width: 200
+            height: 100
+        }
+    }
+
     Component {
         id: menuKind
 
@@ -179,6 +231,48 @@ Item {
             keyClick(Qt.Key_Escape)
             tryVerify(() => !menu.visible, 2000, "closed first")
             compare(root.heard.length, 0, "the page under it heard nothing")
+        }
+
+        function test_a_status_line_popup_takes_the_focus_and_closes_first() {
+            const popup = createTemporaryObject(plainKind, page)
+            popup.open()
+            tryVerify(() => popup.opened)
+            verify(popup.activeFocus, "the popup holds the focus")
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !popup.visible, 2000, "closed first")
+            compare(root.heard.length, 0, "the page under it heard nothing")
+        }
+
+        // The window's last stop (BackFrame.qml): a Back that nothing took, from a field
+        // holding the focus, goes back when something is open, and is left to Android
+        // (not accepted: it goes on up) when nothing is.
+        function test_the_frame_takes_a_back_nothing_took() {
+            standIn.asked = 0
+            standIn.open = true
+            const frame = createTemporaryObject(frameKind, page)
+            frame.field.forceActiveFocus()
+            keyClick(Qt.Key_Back)
+            compare(standIn.asked, 1, "the window asked to go back")
+            compare(root.heard.length, 0, "taken: it goes no further")
+            standIn.open = false
+            keyClick(Qt.Key_Back)
+            compare(standIn.asked, 2)
+            compare(root.heard, [Qt.Key_Back], "nothing open: left to go on, to Android")
+            standIn.open = true
+        }
+
+        // A popup opened from a field being typed into gives the focus back to it once closed.
+        function test_the_focus_goes_back_to_the_field() {
+            const field = createTemporaryObject(fieldKind, page)
+            field.forceActiveFocus()
+            verify(field.activeFocus)
+            const popup = createTemporaryObject(popupKind, root)
+            popup.open()
+            tryVerify(() => popup.opened && popup.activeFocus)
+            verify(!field.activeFocus, "the popup took it")
+            keyClick(Qt.Key_Escape)
+            tryVerify(() => !popup.visible)
+            tryVerify(() => field.activeFocus, 2000, "back on the field")
         }
 
         // Two at once (a dialog over a page's ⚙): the top one first, then the one under it.

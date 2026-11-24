@@ -32,6 +32,7 @@ fn main() {
         "qml/Icon.qml",
         "qml/ActionButton.qml",
         "qml/ActionFolds.qml",
+        "qml/BackFrame.qml",
         "qml/RailButton.qml",
         "qml/Places.qml",
         "qml/AddressField.qml",
