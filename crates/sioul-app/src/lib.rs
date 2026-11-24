@@ -133,6 +133,7 @@ mod appointments;
 // texts: what a computer attaches, made fit for a multimedia message (pictures with Qt: cpp/pictures.cpp).
 #[cfg(not(target_os = "android"))]
 mod attach;
+mod arrivals;
 mod attachments;
 mod backend;
 mod bank;

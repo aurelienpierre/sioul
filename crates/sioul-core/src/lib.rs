@@ -375,5 +375,7 @@ pub mod view;
 pub mod voicemail;
 pub mod weather;
 pub mod window;
+// The wiring: "when this happens, do that" (docs/rules.md).
+pub mod wiring;
 pub mod words;
 pub mod zone;

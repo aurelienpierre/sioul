@@ -2,8 +2,8 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Routes that make tasks, in the window (docs/notes-folder.md, "Routes that
-//! make tasks"): the tasks made of mail as it arrives (`arrived`), each said
-//! once in the status line; a project's models as its routes' lines say
+//! make tasks"): the tasks made of mail as it arrives (`arrivals`, which the
+//! core's one function makes on every device), each said once in the status line (`said`); a project's models as its routes' lines say
 //! them (`models`); the form of a route that makes a task of each message,
 //! opened from a project's route or from a message ("Make a task of mail
 //! like this…": `form`, `save`); and "Also for the 12 messages already here"
@@ -40,26 +40,9 @@ fn with_making<R>(shared: &Shared, f: impl FnOnce(&Making) -> R) -> R {
     f(&Making { config: &config, own: &own, lists: &lists, workdays: &workdays, known: &known, ties: &ties, zone: &zone, now: &now })
 }
 
-/// Mail just fetched (its files), after its ties to projects: the tasks its
-/// routes make, each once, said in the status line; their accounts told and
-/// the plan made again. Nothing at an address's first fetch (`first`): that
-/// is mail already here, which makes nothing unless asked.
-pub(crate) fn arrived(qt: &QtThread, shared: &Arc<Shared>, files: &[PathBuf], first: bool) {
-    if first || files.is_empty() {
-        return;
-    }
-    let Some(store) = store() else { return };
-    if !routetasks::any(&store) {
-        return;
-    }
-    let gate = Gate::load(&load_config(), sioul_core::zone::now().timestamp().as_second());
-    let out = with_making(shared, |making| routetasks::on_arrival(&gate, &store, files, making, &LocalLinks::default_path()));
-    said(qt, shared, &out);
-}
-
 /// What was made, said once: one task by its title, its list and its day;
 /// several by how many. Their accounts told, the plan made again.
-fn said(qt: &QtThread, shared: &Arc<Shared>, out: &Outcome) {
+pub(crate) fn said(qt: &QtThread, shared: &Arc<Shared>, out: &Outcome) {
     for problem in &out.problems {
         eprintln!("sioul: routetasks: {problem}");
     }

@@ -636,7 +636,27 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 let mut args = s.tr.counted(report.new.len());
                 args.set("account", id.clone());
                 let line = s.tr.text("sync-new", Some(&args));
-                println!("{}", s.say("watch-line", &[("time", time), ("line", line)]));
+                println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", line)]));
+                // Its ties to projects, the tasks the projects' routes make of it, and your rules,
+                // as the window and a phone's background step do them (docs/rules.md): never a task
+                // nor a rule's act at a first fetch. A rule's notice is told by the device that
+                // keeps the notices, never from here.
+                let config = Config::load(&s.config_path).unwrap_or_default();
+                let device = sioul_sync::share::Here::load(&sioul_core::config::state_dir()).id;
+                let scan = |file: &std::path::Path| sioul_sync::antivirus::for_rules(file, false);
+                let here = sioul_core::wiring::arrival::Here { config: &config, device: &device, tells_here: false, known: &|_| false, scan: &scan, tr: &s.tr };
+                let arrived = sioul_core::wiring::arrival::arrived(&here, &report.new, report.first);
+                let today = sioul_core::zone::now().date();
+                for made in &arrived.route_tasks.made {
+                    let line = s.say("routetasks-made", &[("title", made.title.clone()), ("list", made.list.clone()), ("day", s.tr.day_in(made.due, today))]);
+                    println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", line)]));
+                }
+                for done in arrived.rules.done.iter().filter(|d| d.act.wrote) {
+                    println!("{}", s.say("watch-line", &[("time", time.clone()), ("line", done.line.clone())]));
+                }
+                for problem in arrived.route_tasks.problems.iter().chain(&arrived.rules.problems) {
+                    eprintln!("{}", crate::plain_lines(problem));
+                }
                 if report.first {
                     continue;
                 }

@@ -57,6 +57,8 @@ pub(crate) fn heard(kind: Kind) -> Heard {
         Kind::Issued => (true, false, false),
         // The Supplies page and an open card read them again.
         Kind::Supplies => (true, false, false),
+        // Settings ▸ Rules reads them again; what a rule made says its own kind as it is written.
+        Kind::Rules => (true, false, false),
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
@@ -114,6 +116,7 @@ fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kin
         Kind::Topics => sioul.as_mut().topics_changed(),
         Kind::Invoices | Kind::Issued => sioul.as_mut().invoices_changed(),
         Kind::Supplies => sioul.as_mut().supplies_changed(),
+        Kind::Rules => sioul.as_mut().rules_changed(),
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => {}
     }
 }
@@ -134,6 +137,8 @@ pub(crate) fn kinds_of(store: &str) -> Vec<Kind> {
         "notes/sioul-clients.toml" => vec![Kind::Invoices],
         // The supplies' list and every device's movements.
         sioul_sync::share::SUPPLIES | sioul_sync::share::SUPPLY_MOVES => vec![Kind::Supplies],
+        // Your rules and what they did, as your other devices keep them.
+        sioul_sync::share::RULES | sioul_sync::share::RULES_ACTS => vec![Kind::Rules],
         "notes/sioul-budgets.toml" | "notes/sioul-bank.toml" | "notes/sioul-contracts.toml" | sioul_sync::share::MOVEMENTS => vec![Kind::Money],
         "notes/sioul-papers.toml" | "files/papers/" => vec![Kind::Papers],
         // The notes folder, paper letters and notes' own links in it.
@@ -257,6 +262,8 @@ mod tests {
         // The supplies and another device's movements of them: the page reads them again, the plan is made again.
         assert_eq!((kinds_of(sioul_sync::share::SUPPLIES), kinds_of(sioul_sync::share::SUPPLY_MOVES)), (vec![Kind::Supplies], vec![Kind::Supplies]));
         assert!(remade(&[Kind::Supplies].into_iter().collect()).work, "a supply low now may want its task to resupply");
+        // Your rules and what they did on another device: Settings ▸ Rules reads them again.
+        assert_eq!((kinds_of(sioul_sync::share::RULES), kinds_of(sioul_sync::share::RULES_ACTS)), (vec![Kind::Rules], vec![Kind::Rules]));
     }
 
     /// Each kind reaches its views: a signal for the views that read it

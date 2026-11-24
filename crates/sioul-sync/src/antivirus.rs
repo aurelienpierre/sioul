@@ -118,6 +118,26 @@ pub fn scan(file: &Path) -> Verdict {
     }
 }
 
+/// What a rule that keeps a file as a paper is told of it
+/// (`sioul_core::wiring::engine::Scanned`, docs/rules.md, "Attachments kept
+/// as papers"), as "Keep in papers" decides it by hand: on a phone no
+/// antivirus can be asked, and the file is kept unchecked, as by hand there;
+/// on a computer, the antivirus's verdict; one that could not read it (none
+/// there, none answering, too large) keeps it out, since a rule cannot ask.
+/// `phone`: Sioul runs the phone's way (the window's `attachments::phone`).
+pub fn for_rules(file: &Path, phone: bool) -> sioul_core::wiring::engine::Scanned {
+    use sioul_core::wiring::engine::Scanned;
+    if phone {
+        return Scanned::NoAntivirus;
+    }
+    match scan(file) {
+        Verdict::Clean => Scanned::Clean,
+        Verdict::Infected(what) => Scanned::Infected(what),
+        Verdict::TooBig => Scanned::Unanswered("too big".into()),
+        Verdict::Unavailable(detail) => Scanned::Unanswered(detail),
+    }
+}
+
 /// Whether there is an antivirus here, and its name, known without asking
 /// it. On Windows, what Windows Security Center says (kept a minute); on a
 /// phone, none; on Linux and macOS, ClamAV when one of the programs `scan`

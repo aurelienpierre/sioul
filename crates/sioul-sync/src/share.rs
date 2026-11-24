@@ -669,6 +669,33 @@ fn topics_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.topics >= TOPICS_SHARED))
 }
 
+/// Your rules (`sioul_core::wiring::store`, docs/rules.md): each `[[rule]]`
+/// and each `[[model]]` by its id, so that a rule turned off on the phone and
+/// another added on the computer both stay; the list's `version` whole.
+static RULES_RULES: Rules = Rules { keyed: &[keyed("rule", &["id"]), keyed("model", &["id"])], whole: &[], local: &[], next: None };
+
+/// The rules' list, in the data folder, with the settings.
+pub const RULES: &str = "data/rules.toml";
+
+/// What the rules did (`sioul_core::wiring::acts`): each device's own log
+/// (`<device>.jsonl`), a line per act, never rewritten, every device's read
+/// before a rule acts.
+pub const RULES_ACTS: &str = "state/rules/acts/";
+
+/// What a device's entry says once its Sioul has the rules' stores (`devices::Entry::rules`).
+pub const RULES_SHARED: u32 = 1;
+
+/// Whether the rules' list and their record of acts travel: at least one
+/// other device counts (`present`), and every one of them says in its sealed
+/// entry that its Sioul has the stores (`devices::Entry::rules`), as your word
+/// on topics waits (`topics_shared`): until then each device keeps its rules
+/// and runs them alone, and an older Sioul (0.1.0), which has no such store,
+/// never holds a record it would keep waiting nor reads a rule.
+fn rules_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.rules >= RULES_SHARED))
+}
+
 /// What a device's entry says of the shared tables (`devices::Entry::learns`,
 /// docs/spam-filter.md, "Every device trains its own"): its Sioul keeps its
 /// own table file whatever another device's record says of it. A take-out of
@@ -1038,6 +1065,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         // Your word on mail's topics, each device's own log, a line each, every device's read:
         // travels once every other device says it has the store (`topics_shared`).
         folder("settings", TOPICS, s.join("topics").join(sioul_core::topics::labels::FOLDER), Shape::Lines, &[]),
+        // Your rules and each device's record of what they did: travel once every other device
+        // says it has them (`rules_shared`).
+        file("settings", RULES, d.join(sioul_core::wiring::store::FILE), Shape::Toml(&RULES_RULES)),
+        folder("settings", RULES_ACTS, s.join("rules").join(sioul_core::wiring::acts::FOLDER), Shape::Lines, &[]),
         // The topics' table, the same way, in the spam part beside the spam
         // filter's table: both come from the weekly training, and their files
         // are sealed apart in a part every sweep knows of (`FILE_PARTS`).
@@ -3284,6 +3315,13 @@ struct Memory {
     /// not yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     topics_open: bool,
+    /// Your rules and their record of acts (`RULES`, `RULES_ACTS`) travelled
+    /// from here once every device said it has them (`rules_shared`): from
+    /// then on they stay in this device's exchanges, as `topics_open` keeps
+    /// your word on topics. Missing: not yet. An older Sioul reads a memory
+    /// with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    rules_open: bool,
     /// Sioul's own lines of meetings with others (`MEETING_LINES`) travelled
     /// from here once every device said it has the store
     /// (`meeting_lines_shared`): from then on it stays in this device's
@@ -6411,6 +6449,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if topics && !memory.topics_open && topics_shared(sharing, &memory, now_ms) {
         memory.topics_open = true;
     }
+    let rules = stores.iter().any(|s| s.name == RULES || s.name == RULES_ACTS);
+    if rules && !memory.rules_open && rules_shared(sharing, &memory, now_ms) {
+        memory.rules_open = true;
+    }
     let meeting_lines = stores.iter().any(|s| s.name == MEETING_LINES);
     if meeting_lines && !memory.meeting_lines_open && meeting_lines_shared(sharing, &memory, now_ms) {
         // What opens is in its present form: an older form's file would travel as lists of a
@@ -6426,6 +6468,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             || (s.name == CLIENTS && !memory.clients_open)
             || ((s.name == SUPPLIES || s.name == SUPPLY_MOVES) && !memory.supplies_open)
             || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open)
+            || ((s.name == RULES || s.name == RULES_ACTS) && !memory.rules_open)
     };
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
