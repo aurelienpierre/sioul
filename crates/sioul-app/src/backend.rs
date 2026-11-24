@@ -3373,6 +3373,10 @@ pub mod qobject {
         #[qsignal]
         fn supplies_changed(self: Pin<&mut Sioul>);
 
+        /// Your rules or what they did changed (`changes`): Settings ▸ Rules reads them again.
+        #[qsignal]
+        fn rules_changed(self: Pin<&mut Sioul>);
+
         /// Money changed (budgets, bank accounts and movements, contracts):
         /// the bank's and the contracts' sections and a person's page read it again.
         #[qsignal]
@@ -4764,13 +4768,14 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
     if let Ok(report) = &result {
         if !report.new.is_empty() {
             learn(qt, shared, &account.id);
-            tie_to_projects(&report.new);
         }
-        if !report.elsewhere.is_empty() {
-            tie_to_projects(&report.elsewhere);
-        }
-        // The tasks the projects' routes make of it, each once (never at an address's first fetch).
-        crate::routetasks::arrived(qt, shared, &report.new.iter().chain(&report.elsewhere).cloned().collect::<Vec<_>>(), report.first);
+        let arrived: Vec<PathBuf> = report.new.iter().chain(&report.elsewhere).cloned().collect();
+        // GitHub's notification mail, to its issue's task (this device's own list).
+        tie_github(&arrived);
+        // Its ties to projects, the tasks the projects' routes make of it, and your rules, each
+        // once: the one function every device runs when mail arrives (`arrivals`), the phone's
+        // background step and `sioul watch` too; never a task nor a rule's act at a first fetch.
+        crate::arrivals::in_window(qt, shared, &arrived, report.first);
         // Proven mail your provider put in Spam, as it arrives there: brought back as the
         // matrix's row says, with Undo (`mail::bring_back`); never at an address's first fetch.
         if !report.first && !report.elsewhere.is_empty() {
@@ -4904,33 +4909,18 @@ fn sort_on_server(qt: &QtThread, shared: &Arc<Shared>, account: &Account, new: V
     });
 }
 
-/// Mail just fetched that a project takes, by its routes or its conversation:
-/// tied to the project, so its page shows it whatever its routes need, and
-/// the replies that come later follow it.
-fn tie_to_projects(files: &[PathBuf]) {
+/// GitHub's notification mail, tied to its issue's task (`github::tie_mail`):
+/// only what this adds, under the file's lock. Ties to projects are made with
+/// every device's arrival (`arrivals`).
+fn tie_github(files: &[PathBuf]) {
+    if files.is_empty() {
+        return;
+    }
     let config = load_config();
     let path = sioul_core::links::LocalLinks::default_path();
     let mut ties = sioul_core::links::LocalLinks::load(&path);
     let before = ties.links.len();
-    // GitHub's notification mail, to its issue's task.
     crate::github::tie_mail(&config, files, &mut ties);
-    if let Some(store) = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties)) {
-        let senders = porch::Senders::load(&config);
-        for t in porch::judge(files, &config.mail_sources(), Some(&store), &KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second()) {
-            // By its Message-ID, else its digest in its account (`sioul:mail/…`).
-            let address = || match t.card.message_id.as_deref() {
-                Some(mid) => Some(sioul_core::links::mail_uri(mid)),
-                None => sioul_core::mailfind::address_of_file(t.card.account.as_deref()?, t.card.path.as_deref()?),
-            };
-            if let porch::Lane::Project(id) = &t.lane
-                && let Some(address) = address()
-            {
-                ties.add(&address, &sioul_core::links::project_uri(id), "project");
-            }
-        }
-    }
-    // Only what this added, written under the file's lock over the ties there
-    // now: a tie made meanwhile (the window, an agent, the sharing) stays.
     let _ = sioul_core::links::LocalLinks::add_all(&path, &ties.links[before..]);
 }
 

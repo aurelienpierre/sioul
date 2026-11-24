@@ -24,8 +24,9 @@
 //!    it (`DndReceiver`), where Android's modes of Sioul's are kept;
 //! 3. mail at its rhythm, the inbox only, fetched from the step's start
 //!    beside the exchange, every account at once, so that the step's network
-//!    comes in one burst (on mobile data, the radio woken once): what your
-//!    own spam filter moves as you chose, into the Junk folder
+//!    comes in one burst (on mobile data, the radio woken once): its ties to
+//!    projects, the tasks routes make of it and your rules, as the window
+//!    does them (`arrivals`, docs/rules.md); what your own spam filter moves as you chose, into the Junk folder
 //!    (`spam::after_fetch`); what your mail filters do, on the server, to the
 //!    arrivals still unread (`filters::after_fetch`); the rest handed to the
 //!    new-mail notifications (`mailnote`), told as soon as every account is
@@ -401,6 +402,9 @@ fn fetch_mail(config: &Config) -> bool {
                 match sioul_sync::inbox(account, &password) {
                     Ok(report) => {
                         let mut came = !report.new.is_empty();
+                        // Its ties to projects, the tasks routes make of it, your rules, as the
+                        // window does them (`arrivals`): before your spam filter moves anything.
+                        crate::arrivals::in_background(&report.new, report.first);
                         crate::spam::after_fetch(account, &report.new, report.first);
                         // Mail's topics: the new mail judged by the topics' table, then some of the mail kept (docs/topics.md, "The model").
                         crate::topics::after_fetch(account, &report.new);
