@@ -38,10 +38,10 @@
 #   (its bus, its Wayland and audio sockets);
 # - the profile's fonts, Noto Sans and Hack (fonts.conf), the light theme (DEMO_THEME=dark for the dark one), a
 #   test password standing in for the keyring;
-# - 400 seconds at most.
+# - 400 seconds at most (TIMEOUT=seconds for a longer list, such as "tour").
 # Afterwards it prints the log's lines from QML and its errors, and the
 # pictures taken. Exits with 1 when the window ended badly (a crash, or
-# stopped at 400 seconds) or its log holds a script error (TypeError,
+# stopped at its time) or its log holds a script error (TypeError,
 # ReferenceError).
 set -euo pipefail
 
@@ -56,6 +56,8 @@ if [[ $# -lt 3 || $# -gt 4 || ( $# -eq 4 && "$4" != "phone" ) ]]; then
     exit 2
 fi
 out=$1 language=$2 steps=$3 phone=${4:-}
+limit=${TIMEOUT:-400}
+[[ $limit =~ ^[0-9]+$ ]] || { echo "run.sh: TIMEOUT is a number of seconds" >&2; exit 2; }
 case "$language" in
     en) locale=en_US.UTF-8 ;;
     fr) locale=fr_FR.UTF-8 ;;
@@ -132,13 +134,13 @@ env -u DISPLAY -u WAYLAND_DISPLAY -u SESSION_MANAGER -u DBUS_SESSION_BUS_ADDRESS
     --bind "$profile/notes" "$home/Notes" --bind "$profile/documents" "$home/Documents" --bind "$out" "$out" --bind "$runtime" "$runtime" --chdir "$home" \
     env HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_DATA_HOME="$home/.local/share" \
         XDG_STATE_HOME="$home/.local/state" XDG_CACHE_HOME="$home/.cache" "${env[@]}" \
-        timeout 400 dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$shots/log" 2>&1 || status=$?
+        timeout "$limit" dbus-run-session -- sh -c 'DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" exec "$1"' sh "$app" > "$shots/log" 2>&1 || status=$?
 
 grep -E "qml:|TypeError|ReferenceError|OVERFLOW|WIDE|rror" "$shots/log" | grep -v "sioul-perf" | head -40 || true
 pictures=$(find "$shots" -name '*.png' | wc -l)
 echo "run.sh: $pictures pictures in $shots, the log in $shots/log"
 if [[ $status -eq 124 ]]; then
-    echo "run.sh: the window was still open after 400 seconds: stopped." >&2
+    echo "run.sh: the window was still open after $limit seconds: stopped." >&2
     exit 1
 elif [[ $status -ne 0 ]]; then
     echo "run.sh: the window ended with status $status." >&2

@@ -4198,6 +4198,9 @@ pub(crate) fn offline() -> bool {
     std::env::var_os("SIOUL_DEMO").is_some()
 }
 
+/// The window's step lists that take pictures of the whole window on any profile (`grab_steps`).
+const TOUR_LISTS: [&str; 8] = ["tour", "tour-pages", "tour-panels", "tour-settings", "tour-reach", "tour-accounts", "tour-cards", "tour-health"];
+
 /// Where the forecast is kept between fetches (the phone's card reads it too, `homecard`).
 pub(crate) fn weather_cache() -> PathBuf {
     config::state_dir().join("weather.json")
@@ -9522,6 +9525,16 @@ impl qobject::Sioul {
         // SIOUL_DEVICE_KIND), Android's lack of a title bar and its touch stood in for (main.qml's
         // `tabletGrab`): pictures alone, to see that a tablet gets a computer's layout.
         if steps == "tablet" {
+            return QString::from(&steps);
+        }
+        // "tour" and its parts ("tour-pages" each place and its tabs, "tour-panels" each place's ⚙,
+        // "tour-settings" each section of Settings with its folds and Details open, "tour-reach" What
+        // reaches you's tabs and one of each of its editors, "tour-accounts" each account and the first
+        // step of adding each kind, "tour-cards" one card of each type of thing, "tour-health" Health):
+        // pictures alone of the whole window, for a review of it (main.qml's `tourPlan`). They open,
+        // look and close, never save, send, delete nor change a setting, and name nothing of the demo's:
+        // allowed in every build, on any profile (docs/building.md, "The tour").
+        if TOUR_LISTS.contains(&steps.as_str()) {
             return QString::from(&steps);
         }
         // The other steps archive, delete and send mail, answer invitations:
