@@ -39,6 +39,7 @@ Item {
 
         signal rulesChanged
         signal rulesPreviewed(string found)
+        signal rulesStartsFound(string found)
 
         property var calls: []
         property string status: ""
@@ -59,6 +60,7 @@ Item {
                       { id: "tie-to-project", name: "tie it to a project", available: true, phase: 1, params: [{ id: "project", name: "the project", value: "project", required: true, fixed: true, from: [] }] },
                       { id: "trash", name: "move it to the trash", available: false, phase: 4, params: [] }
                   ] },
+                { id: "none", name: "Sioul", available: true, phase: 1, events: [], fields: [], actions: [{ id: "tell", name: "tell you", available: true, phase: 1, params: [] }] },
                 { id: "task", name: "A task", available: true, phase: 2, events: [{ id: "is-done", name: "is done", available: false, phase: 2 }], fields: [],
                   actions: [{ id: "make", name: "make a task from a model", available: true, phase: 1, params: [
                       { id: "model", name: "the model", value: "model", required: true, fixed: true, from: [] },
@@ -68,21 +70,25 @@ Item {
         property var choices: ({ project: [{ id: "taxes", name: "Taxes 2025", available: true }], model: [{ id: "pay", name: "Pay a bill", available: true }], topic: [], contact: [] })
         // The list, as `rulesView` gives it.
         property var view: ({
-            readOnly: false, note: "", count: 2,
+            readOnly: false, note: "", count: 3,
             groups: [{ heading: "When a message arrives", sets: [
-                { when: "When a message arrives from impots.example:", rules: [
-                    { id: "r1", own: true, on: true, sentence: "When a message arrives from impots.example: tie it to the project Taxes 2025.", then: "tie it to the project Taxes 2025", problem: "", unknown: false, kept: "", open: null, openText: "",
+                { when: "When a message arrives from anyone at impots.example:", rules: [
+                    { id: "r1", own: true, on: true, sentence: "When a message arrives from anyone at impots.example: tie it to the project Taxes 2025.", then: "tie it to the project Taxes 2025", problem: "", unknown: false, off: "",
                       rule: { id: "r1", on: true, when: { type: "message", event: "arrives", if: [{ field: "sender-domain", test: "is", value: ["impots.example"] }] }, then: { type: "message", action: "tie-to-project", with: { project: "taxes" } } },
-                      lately: [{ line: "Tue 24 Nov 09:12: “Notice” tied to the project Taxes 2025.", act: { at: 1, rule: "r1", object: "mid:a@impots.example", act: "tie" }, object: "mid:a@impots.example", undone: false }] },
-                    { id: "r2", own: true, on: true, sentence: "When a message arrives from impots.example: make a task from the model “Pay a bill”.", then: "make a task from the model “Pay a bill”", problem: "", unknown: false, kept: "", open: null, openText: "", rule: { id: "r2" }, lately: [] }] },
-                { when: "When a message arrives from shop.example:", rules: [
-                    { id: "read:route:1", own: false, on: true, sentence: "When a message arrives from shop.example: tie it to the project Shop.", then: "tie it to the project Shop", problem: "", unknown: false, kept: "Kept with the project Shop, among its routes; changed on its page.", open: { kind: "project", uri: "sioul:project/shop", key: "shop" }, openText: "Open the project", rule: {}, lately: [] }] }
-            ] }],
-            presets: [{ heading: "When a message arrives", sets: [{ when: "x", rules: [
-                { id: "codes-told", own: false, on: true, sentence: "When a message holds a code: tell you.", preset: { id: "codes-told", offered: true }, settings: [] },
-                { id: "new-mail-told", own: false, on: true, sentence: "When a message arrives: tell you.", preset: { id: "new-mail-told", setting: "reminders.mail", offered: false }, settings: [{ key: "reminders.mail", kind: "bool", label: "Tell me of new mail", help: "", group: "", section: "", choices: [], min: 0, max: 0, step: 1, unit: "", value: true }] }] }] }]
+                      lately: [
+                          { line: "Tue 24 Nov 09:20, “Rent”: The moment does not let a notice come now.", act: { at: 3, rule: "r1", object: "mid:c@impots.example" }, object: "mid:c@impots.example", undo: false, notThis: true },
+                          { line: "Tue 24 Nov 09:12: “Notice” tied to the project Taxes 2025.", act: { at: 1, rule: "r1", object: "mid:a@impots.example", act: "tie" }, object: "mid:a@impots.example", undo: true, notThis: false },
+                          { line: "Mon 23 Nov 08:00: “Old” tied to the project Taxes 2025. Taken back since.", act: { at: 0, rule: "r1", object: "mid:b@impots.example", act: "tie" }, object: "mid:b@impots.example", undo: false, notThis: false }] },
+                    { id: "r2", own: true, on: true, sentence: "When a message arrives from anyone at impots.example: make a task from the model “Pay a bill”.", then: "make a task from the model “Pay a bill”", problem: "", unknown: false, off: "", rule: { id: "r2" }, lately: [] }] },
+                { when: "When a message arrives from anyone at new.example:", rules: [
+                    { id: "r3", own: true, on: true, sentence: "When a newer Sioul's rule arrives.", then: "", problem: "Written by a newer Sioul.", unknown: true, off: "", rule: { id: "r3" }, lately: [] }] }],
+                places: [{ id: "project:shop", title: "The project Shop: one rule", kept: "Kept with the project Shop, among its routes; changed on its page.", open: { kind: "project", uri: "sioul:project/shop", key: "shop" }, openText: "Open the project",
+                           rules: [{ id: "read:route:1", own: false, on: true, sentence: "When a message arrives from anyone at shop.example: tie it to the project Shop.", off: "" }] }] }],
+            presets: [{ heading: "Mail", presets: [
+                { id: "codes-told", sentence: "When a message holds a code, it is shown at once and told.", off: false, open: null, openText: "", offered: false },
+                { id: "new-mail-told", sentence: "When new mail arrives, Sioul tells you of it.", off: true, open: { kind: "settings:reminders.mail" }, openText: "Change it where it is set", offered: false }] },
+                { heading: "Tasks", presets: [{ id: "first-estimate", sentence: "When a task is made, Sioul writes its first estimate.", off: false, open: null, openText: "", offered: true }] }]
         })
-
         function rulesView() {
             return JSON.stringify(mock.view)
         }
@@ -98,7 +104,7 @@ Item {
         }
         function rulePreview(rule) {
             mock.calls.push({ what: "rulePreview", rule: JSON.parse(rule) })
-            mock.rulesPreviewed(JSON.stringify({ asked: rule, count: 2, text: "2 messages in the last 30 days:", lines: ["12 Nov, Tax office: “Notice” — tie it", "20 Nov, Tax office: “Reminder” — tie it"] }))
+            mock.rulesPreviewed(JSON.stringify({ asked: rule, count: 2, past: true, text: "2 messages in the last 30 days:", lines: ["12 Nov, Tax office: “Notice” — tie it", "20 Nov, Tax office: “Reminder” — tie it"] }))
         }
         function saveRule(rule, also) {
             mock.calls.push({ what: "saveRule", rule: JSON.parse(rule), also: also })
@@ -127,8 +133,9 @@ Item {
         function ruleFromPreset(id) {
             return JSON.stringify({ id: "", on: true, when: { type: "message", event: "arrives", if: [{ field: "kind", test: "is", value: ["bill"] }] }, then: { type: "none", action: "tell", with: {} } })
         }
-        function rulesStarts() {
-            return JSON.stringify({ messages: [{ key: "/mail/cur/1", subject: "Your bill", from: "Shop", day: "20 November" }, { key: "/mail/cur/2", subject: "Notice", from: "Tax office", day: "12 November" }], presets: [{ id: "codes-told", sentence: "When a message holds a code: tell you." }] })
+        function rulesStartsAsk() {
+            mock.calls.push({ what: "rulesStartsAsk" })
+            mock.rulesStartsFound(JSON.stringify({ messages: [{ key: "/mail/cur/1", subject: "Your bill", from: "Shop", day: "20 November" }, { key: "/mail/cur/2", subject: "Notice", from: "Tax office", day: "12 November" }], presets: [] }))
         }
         function reminderOpened(kind, uri, key) {
             mock.calls.push({ what: "reminderOpened", kind: kind, uri: uri, key: key })
@@ -208,23 +215,31 @@ Item {
         function init() {
             mock.calls = []
             tab.part = "own"
+            tab.unfolded = ({})
+            tab.removing = ""
             tab.reload()
-            if (tab.editor)
-                tab.editor.close()
+            // Every card of the tab closed (the editor, the starts, a question).
+            for (const kid of tab.children) {
+                if (kid.item && typeof kid.item.close === "function")
+                    kid.item.close()
+            }
             waitForRendering(tab)
         }
 
         // Grouped by what happens; the two rules of one "when" together under it, each by
-        // what it does; a rule alone by its whole sentence.
+        // what it does; a rule kept elsewhere folded with its place.
         function test_rules_are_grouped_by_what_happens() {
             const group = find(tab, "rulesGroup:0")
             verify(group !== null)
             compare(group.title, "When a message arrives")
-            compare(find(tab, "rule:r1").children[0].children[1].children[0].text, "•  tie it to the project Taxes 2025")
-            compare(find(find(tab, "rule:read:route:1"), "ruleWords").text, "When a message arrives from shop.example: tie it to the project Shop.")
+            compare(find(find(tab, "rule:r1"), "ruleWords").text, "•  tie it to the project Taxes 2025")
+            const place = find(tab, "rulesPlace:project:shop")
+            verify(place !== null)
+            compare(place.title, "The project Shop: one rule")
+            verify(!place.made, "folded: its sentences made when first opened")
         }
 
-        // Switched off and removed: what the list asks of Sioul.
+        // Switched off and removed: what the list asks of Sioul; a newer Sioul's rule asked first.
         function test_a_rule_switched_off_and_removed() {
             const line = find(tab, "rule:r1")
             const toggle = find(line, "ruleSwitch")
@@ -237,51 +252,93 @@ Item {
             mouseClick(find(line, "ruleRemoveNarrow"))
             compare(calls("removeRule").length, 1)
             compare(calls("removeRule")[0].id, "r1")
+            // A rule a newer Sioul wrote cannot be put back: asked, then removed.
+            const newer = find(tab, "rule:r3")
+            verify(!find(newer, "ruleEditNarrow").enabled, "never edited here")
+            mouseClick(find(newer, "ruleRemoveNarrow"))
+            compare(calls("removeRule").length, 1, "not yet: asked first")
+            compare(tab.removing, "r3")
         }
 
-        // What it did lately: folded, made when first opened; Undo and Not for this one.
+        // What it did lately: folded, made when first opened, kept open when the list is read
+        // again; Undo only where the rule wrote it, Not for this one only where it waits.
         function test_what_it_did_lately() {
-            const fold = find(find(tab, "rule:r1"), "ruleLately")
+            let fold = find(find(tab, "rule:r1"), "ruleLately")
             verify(fold.visible)
-            compare(fold.title, "rules-lately 1")
+            compare(fold.title, "rules-lately 3")
             verify(!fold.made, "made when first unfolded")
             verify(!find(find(tab, "rule:r2"), "ruleLately").visible, "nothing done: no fold")
             fold.want(true)
-            tryVerify(() => find(fold, "ruleActUndo") !== null)
-            mouseClick(find(fold, "ruleActUndo"))
-            compare(calls("undoRuleAct").length, 1)
+            tryVerify(() => fold.made)
+            const undos = []
+            const notThese = []
+            const walk = item => {
+                if (!item)
+                    return
+                if (item.objectName === "ruleActUndo")
+                    undos.push(item)
+                if (item.objectName === "ruleActNotThis")
+                    notThese.push(item)
+                for (const kid of item.children || [])
+                    walk(kid)
+            }
+            walk(fold)
+            compare(undos.map(b => b.visible).join(","), "false,true,false", "Undo on the done line alone")
+            compare(notThese.map(b => b.visible).join(","), "true,false,false", "Not for this one on the waiting line alone")
+            undos[1].clicked()
             compare(calls("undoRuleAct")[0].act.object, "mid:a@impots.example")
-            mouseClick(find(fold, "ruleActNotThis"))
-            compare([calls("ruleNotForThisOne")[0].rule, calls("ruleNotForThisOne")[0].object].join("|"), "r1|mid:a@impots.example")
+            notThese[0].clicked()
+            compare([calls("ruleNotForThisOne")[0].rule, calls("ruleNotForThisOne")[0].object].join("|"), "r1|mid:c@impots.example")
+            // Read again (another device wrote): the fold stays open.
+            tab.reload()
+            waitForRendering(tab)
+            fold = find(find(tab, "rule:r1"), "ruleLately")
+            verify(fold.open, "kept open")
         }
 
-        // Kept elsewhere: where, and its link; no switch, no Edit, no ✕ here.
+        // Kept elsewhere: where, and its link, once for the place; no switch, no Edit, no ✕.
         function test_a_rule_kept_elsewhere_opens_where_it_is_kept() {
-            const line = find(tab, "rule:read:route:1")
-            verify(!find(line, "ruleSwitch").visible)
-            verify(!find(line, "ruleEditNarrow").visible && !find(line, "ruleEdit").visible)
-            const link = find(line, "ruleOpen")
+            const place = find(tab, "rulesPlace:project:shop")
+            place.want(true)
+            tryVerify(() => place.made)
+            const line = find(place, "rule:read:route:1")
+            verify(line !== null)
+            verify(find(line, "ruleSwitch") === null && find(line, "ruleEdit") === null)
+            const link = find(place, "ruleOpen")
             verify(link.visible)
             compare(link.text, "Open the project")
             link.activated()
             compare([calls("reminderOpened")[0].kind, calls("reminderOpened")[0].key].join("|"), "project|shop")
         }
 
-        // Presets: a line each; a switch only where a setting turns it on or off; Details where
-        // there is more (a copy offered); none for a line with nothing to change.
-        function test_presets_are_lines_with_a_switch_where_there_is_one() {
+        // Presets: grouped by what they watch, each its written sentence; off said in words; a
+        // link to where its setting lives, never a switch of its own; a copy where Sioul runs it.
+        function test_presets_are_written_lines_with_a_link_where_set() {
             verify(find(tab, "rulesTabs").visible)
             tab.part = "presets"
             waitForRendering(tab)
+            compare(find(tab, "presetsGroup:0").title, "Mail")
             const codes = find(tab, "preset:codes-told")
             const mail = find(tab, "preset:new-mail-told")
-            verify(codes !== null && mail !== null)
-            verify(!codes.children[0].visible, "no setting: no switch, plainly on")
-            verify(find(codes, "presetDetails").visible, "it can be copied")
-            verify(mail.children[0].visible, "its setting's switch")
-            verify(!find(mail, "presetDetails").visible, "nothing more to change")
-            mouseClick(mail.children[0])
-            compare([calls("setSetting")[0].key, calls("setSetting")[0].value].join("|"), "reminders.mail|false")
+            verify(!find(codes, "presetWhere").visible && !find(codes, "presetOff").visible, "nothing set elsewhere: one line of words")
+            verify(find(mail, "presetOff").visible, "off where it is set, said")
+            const where = find(mail, "presetWhere")
+            verify(where.visible)
+            where.activated()
+            compare(calls("reminderOpened")[0].kind, "settings:reminders.mail")
+            let switches = 0
+            const walk = item => {
+                if (!item)
+                    return
+                if (item instanceof Switch && item.visible)
+                    switches++
+                for (const kid of item.children || [])
+                    walk(kid)
+            }
+            walk(tab)
+            compare(switches, 0, "no switch drawn twice: it lives where it is set")
+            verify(!find(codes, "presetCopy").visible)
+            verify(find(find(tab, "preset:first-estimate"), "presetCopy").visible, "copied where Sioul runs it")
             compare(past(tab, []).join("; "), "", "nothing past 412 points")
         }
 
@@ -295,6 +352,8 @@ Item {
             const form = editor()
             tryVerify(() => form.opened)
             compare(form.draft.when.type, "message", "what is available first")
+            const types = find(form.contentItem, "ruleType")
+            compare(types.model.map(m => m.text).join(","), "A message,rules-later: A task", "Sioul, without events, is never a When; a task, with none available yet, later")
             compare(form.draft.when.event, "arrives")
             const events = find(form.contentItem, "ruleEvent")
             compare(events.count, 2)
@@ -383,8 +442,11 @@ Item {
             mouseClick(find(tab, "rulesAdd"))
             tryVerify(() => tab.children.some(c => c.item && c.item.objectName === "ruleStart" && c.item.opened))
             const start = tab.children.find(c => c.item && c.item.objectName === "ruleStart").item
+            compare(calls("rulesStartsAsk").length, 1, "asked off the window's thread")
+            verify(!start.looking, "found")
             verify(find(start.contentItem, "ruleStartBlank").visible)
-            verify(find(start.contentItem, "ruleStartPresets").visible)
+            verify(!find(start.contentItem, "ruleStartPresets").visible, "no preset to start from yet")
+            verify(find(start.contentItem, "ruleStartPresetsLater").visible, "said once, quietly")
             find(start.contentItem, "ruleStartFind").text = "tax"
             start.find = "tax"
             compare(start.found.length, 1)

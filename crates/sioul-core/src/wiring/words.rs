@@ -59,6 +59,8 @@ pub struct Names {
     pub budgets: BTreeMap<String, String>,
     /// The persons your admin is done for, by id ("me" is said as "you").
     pub persons: BTreeMap<String, String>,
+    /// Papers' titles, by id: what a rule kept, named in its history.
+    pub papers: BTreeMap<String, String>,
 }
 
 impl Names {
@@ -88,6 +90,11 @@ impl Names {
         for person in crate::persons::Persons::load(&crate::persons::Persons::default_path()).persons {
             names.persons.insert(person.id, person.name);
         }
+        if let Some(wallet) = config.places().and_then(|places| crate::papers::Wallet::load_at(&places).ok()) {
+            for paper in wallet.papers {
+                names.papers.insert(paper.id, paper.title);
+            }
+        }
         names
     }
 }
@@ -110,6 +117,20 @@ fn args<'a>(pairs: &[(&'a str, String)]) -> FluentArgs<'a> {
 /// Typed words in quotes: “avis”, « avis ».
 fn quoted(tr: &Translator, text: &str) -> String {
     tr.text("rule-quoted", Some(&args(&[("text", text.trim().to_string())])))
+}
+
+/// A folder by its purpose, as a person says it ("your junk folder"), else by its name, quoted.
+fn folder(tr: &Translator, id: &str) -> String {
+    said(tr, &format!("rule-folder-{}", id.trim().to_lowercase()), None).unwrap_or_else(|| tr.text("rule-folder-named", Some(&args(&[("name", quoted(tr, id))]))))
+}
+
+/// A pattern's inserts ({sender}, {month}…) in words, between ‹ ›: what the message puts there.
+fn inserts(tr: &Translator, pattern: &str) -> String {
+    let mut out = pattern.to_string();
+    for insert in ["sender", "month", "year", "subject", "file"] {
+        out = out.replace(&format!("{{{insert}}}"), &tr.text("rule-insert", Some(&args(&[("name", tr.text(&format!("rule-insert-{insert}"), None))]))));
+    }
+    out
 }
 
 /// Several phrases or values, the last joined by `last` ("and", "or"): "a, b or c".
@@ -204,6 +225,7 @@ fn values(field: &str, kind: Value, list: &[String], names: &Names, tr: &Transla
         .map(|v| v.trim())
         .filter(|v| !v.is_empty())
         .map(|v| match kind {
+            Value::Text if field == "folder" => folder(tr, v),
             Value::Text | Value::Words => quoted(tr, v),
             Value::Choice if field == "circle" => said(tr, &format!("rule-circle-{v}"), None).unwrap_or_else(|| declare::choice_name(tr, field, v)),
             Value::Choice => declare::choice_name(tr, field, v),
@@ -219,7 +241,7 @@ fn values(field: &str, kind: Value, list: &[String], names: &Names, tr: &Transla
             Value::PaperKind => quoted(tr, &said(tr, &format!("paper-kind-{v}"), None).unwrap_or_else(|| v.to_string())),
             Value::Person if v == crate::persons::ME => tr.text("rule-for-me", None),
             Value::Person => named(&names.persons, v),
-            Value::Pattern => quoted(tr, v),
+            Value::Pattern => quoted(tr, &inserts(tr, v)),
             Value::FileType => said(tr, &format!("rule-attachments-{v}"), None).unwrap_or_else(|| declare::choice_name(tr, "attachment-type", v)),
             _ => v.to_string(),
         })
@@ -273,12 +295,14 @@ pub fn then_part(rule: &Rule, names: &Names, tr: &Translator) -> String {
         ("none", "tell") => {
             let level = param("level").and_then(Param::text).unwrap_or_else(|| "now".into());
             let words = param("words").and_then(Param::text).filter(|w| !w.is_empty());
-            let id = if words.is_some() { "rule-do-none-tell-words" } else { "rule-do-none-tell" };
+            // Quietly, nothing is told: its words are a notice's, never said.
+            let id = if words.is_some() && level != "quiet" { "rule-do-none-tell-words" } else { "rule-do-none-tell" };
             said(tr, id, Some(&args(&[("level", level), ("words", words.map(|w| quoted(tr, &w)).unwrap_or_default())])))
         }
         // A message's attachments kept as papers: which ones as the phrase's insert, then its details.
         ("message", "keep-attachments") => {
-            let which = param("type").and_then(Param::text).filter(|t| !t.is_empty()).unwrap_or_else(|| "any".into());
+            // Unsaid, PDFs: what the engine keeps (`engine::keep_attachments`).
+            let which = param("type").and_then(Param::text).filter(|t| !t.is_empty()).unwrap_or_else(|| "pdf".into());
             let which = said(tr, &format!("rule-attachments-{which}"), None).unwrap_or_else(|| tr.text("rule-attachments-any", None));
             said(tr, &id, Some(&args(&[("which", which), ("same", same.into())]))).map(|main| {
                 format!(
@@ -327,7 +351,9 @@ pub fn act_line(act: &Act, names: &Names, tr: &Translator) -> String {
     let project = names.projects.get(&project).cloned().unwrap_or(project);
     let topic = names.topics.get(&act.result).cloned().unwrap_or_else(|| act.result.clone());
     let wrote = if act.wrote { "yes" } else { "no" };
-    let pairs = [("Subject", subject), ("project", project), ("topic", topic), ("wrote", wrote.to_string()), ("act", act.act.clone())];
+    // A paper by its title, so that two kept from one message read apart.
+    let paper = names.papers.get(&crate::links::id_of(&act.result)).filter(|t| !t.trim().is_empty()).map_or_else(|| tr.text("rule-a-paper", None), |t| quoted(tr, t));
+    let pairs = [("Subject", subject), ("project", project), ("topic", topic), ("paper", paper), ("wrote", wrote.to_string()), ("act", act.act.clone())];
     said(tr, &format!("rule-act-{}", act.act), Some(&args(&pairs))).unwrap_or_else(|| tr.text("rule-act-other", Some(&args(&pairs))))
 }
 
@@ -390,26 +416,45 @@ mod tests {
         let unchosen = rule(Join::All, &[("attachment", "exists", &[])], ("", ""), &[]);
         let en = Translator::new("en");
         let said = |r: &Rule| sentence(r, &n, &en);
-        assert_eq!(said(&tie), "When a message arrives from impots.example and with “avis” or “notice” in its subject: tie it to the project Taxes 2025.");
-        assert_eq!(said(&refused), "When a message from shop.example says a payment was refused: make a task from the model “Pay another way”, titled with its subject, asked three business days after it came.");
+        assert_eq!(said(&tie), "When a message arrives from anyone at impots.example and with “avis” or “notice” in its subject: tie it to the project Taxes 2025.");
+        assert_eq!(said(&refused), "When a message from anyone at shop.example says a payment was refused: make a task from the model “Pay another way”, titled with its subject, asked three business days after it came.");
         assert_eq!(said(&topic), "When a message arrives from someone in your Safe circle: give it the topic Bills.");
         assert_eq!(said(&code), "When a message holds a code: tell you.");
-        assert_eq!(said(&quiet), "When a message arrives whose subject contains “rent”: say “Rent is due” quietly, in the status line.");
+        assert_eq!(said(&quiet), "When a message arrives whose subject contains “rent”: keep it quietly in this rule's history.");
         assert_eq!(said(&filter), "When a message arrives whose sender contains “@bank.example” or on Saturday or Sunday: mark it read.");
-        assert_eq!(said(&money), "When a message arrives from energy.example: count a payment in the budget Household, of the amount it states.");
-        assert_eq!(said(&papers), "When a message from phone.example brings a bill: keep its PDFs in Papers, as “Rent receipt”, named “{sender} {month}”, for you.");
+        assert_eq!(said(&money), "When a message arrives from anyone at energy.example: propose a payment for the budget Household, of the amount it states.");
+        assert_eq!(said(&papers), "When a message from anyone at phone.example brings a bill: keep its PDFs in Papers, as “Rent receipt”, named “‹sender› ‹month›”, for you.");
         assert_eq!(said(&unchosen), "When a message arrives with an attachment: (what it does, still to choose).");
         assert_eq!(when_heading(&tie, &en), "When a message arrives");
-        assert_eq!(when_shared(&tie, &n, &en), "When a message arrives from impots.example and with “avis” or “notice” in its subject:");
+        assert_eq!(when_shared(&tie, &n, &en), "When a message arrives from anyone at impots.example and with “avis” or “notice” in its subject:");
         let fr = Translator::new("fr");
         let dit = |r: &Rule| sentence(r, &n, &fr);
         assert_eq!(dit(&tie), "Quand un courriel arrive du domaine impots.example et avec «\u{202f}avis\u{202f}» ou «\u{202f}notice\u{202f}» dans son objet\u{202f}: le rattacher au projet Taxes 2025.");
-        assert_eq!(dit(&refused), "Quand un courriel du domaine shop.example dit qu’un paiement a été refusé\u{202f}: faire une tâche du modèle «\u{202f}Pay another way\u{202f}», intitulée d’après son objet, demandée trois jours travaillés après son arrivée.");
+        assert_eq!(dit(&refused), "Quand un courriel du domaine shop.example dit qu’un paiement a été refusé\u{202f}: créer une tâche d’après le modèle «\u{202f}Pay another way\u{202f}», intitulée d’après son objet, demandée trois jours travaillés après son arrivée.");
         assert_eq!(dit(&topic), "Quand un courriel arrive de quelqu’un de votre cercle Sûrs\u{202f}: lui donner le thème Bills.");
         assert_eq!(dit(&code), "Quand un courriel contient un code\u{202f}: vous le dire.");
         assert_eq!(dit(&filter), "Quand un courriel arrive dont l’expéditeur contient «\u{202f}@bank.example\u{202f}» ou le samedi ou dimanche\u{202f}: le marquer comme lu.");
-        assert_eq!(dit(&money), "Quand un courriel arrive du domaine energy.example\u{202f}: compter un paiement dans le budget Household, du montant qu’il annonce.");
-        assert_eq!(dit(&papers), "Quand un courriel du domaine phone.example apporte une facture\u{202f}: garder ses PDF dans Papiers, comme «\u{202f}Quittance de loyer\u{202f}», sous le nom «\u{202f}{sender} {month}\u{202f}», pour vous.");
+        assert_eq!(dit(&money), "Quand un courriel arrive du domaine energy.example\u{202f}: proposer un paiement dans le budget Household, du montant qu’il annonce.");
+        assert_eq!(dit(&papers), "Quand un courriel du domaine phone.example apporte une facture\u{202f}: garder ses PDF dans Papiers, comme «\u{202f}Quittance de loyer\u{202f}», sous le nom «\u{202f}‹expéditeur› ‹mois›\u{202f}», pour vous.");
+    }
+
+    /// What is left unset reads as the engine does it: PDFs kept, told now,
+    /// the title, the project and the days the engine takes said as nothing
+    /// more than "from the model".
+    #[test]
+    fn unset_details_read_as_the_engine_does_them() {
+        let n = names();
+        let en = Translator::new("en");
+        let papers = rule(Join::All, &[("kind", "is", &["bill"])], ("message", "keep-attachments"), &[]);
+        assert_eq!(then_part(&papers, &n, &en), "keep its PDFs in Papers");
+        let tell = rule(Join::All, &[("kind", "is", &["bill"])], ("none", "tell"), &[]);
+        assert_eq!(then_part(&tell, &n, &en), "tell you");
+        let quiet_words = rule(Join::All, &[("kind", "is", &["bill"])], ("none", "tell"), &[("level", fixed("quiet")), ("words", fixed("Pay"))]);
+        assert_eq!(then_part(&quiet_words, &n, &en), "keep it quietly in this rule's history", "quiet words are never said");
+        let task = rule(Join::All, &[("kind", "is", &["bill"])], ("task", "make"), &[("model", fixed("pay"))]);
+        assert_eq!(then_part(&task, &n, &en), "make a task from the model “Pay another way”");
+        let moved = rule(Join::All, &[("folder", "is", &["junk"])], ("message", "move-to-folder"), &[("folder", fixed("inbox"))]);
+        assert_eq!(then_part(&moved, &n, &en), "move it into your inbox");
     }
 
     /// An action on another object than the one that triggered it says
@@ -453,6 +498,26 @@ mod tests {
                     let said = then_part(&r, &n, &tr);
                     assert!(!said.contains("rule-") && !said.trim().is_empty(), "{language} {}.{}: {said}", kind.id, action.id);
                 }
+            }
+        }
+    }
+
+    /// Every preset has its own written sentence in both languages, and
+    /// each setting it names (its switch, its details) is a setting today,
+    /// one a page shows: a preset never claims a switch that does not exist.
+    #[test]
+    fn every_preset_is_written_and_its_settings_exist() {
+        let views = ["parameters", "general", "porch", "mail", "senders", "accounts", "agenda", "tasks", "notes", "sites", "texts", "money", "contacts", "supplies", "letters", "papers"];
+        let tr = Translator::new("en");
+        let config = crate::config::Config::default();
+        let keys: Vec<String> = views.iter().flat_map(|v| crate::settings::for_view(v, &config, &tr, &[], None)).map(|s| s.key).collect();
+        for preset in declare::presets() {
+            for language in ["en", "fr"] {
+                let written = Translator::new(language).own(&format!("rule-preset-{}", preset.id));
+                assert!(written.is_some_and(|w| !w.is_empty()), "{language}: no sentence for the preset {}", preset.id);
+            }
+            for key in preset.setting.into_iter().chain(preset.params.iter().map(|p| p.key)) {
+                assert!(keys.iter().any(|k| k == key), "the preset {} names {key}, which no page shows", preset.id);
             }
         }
     }

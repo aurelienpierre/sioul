@@ -176,6 +176,8 @@ ColumnLayout {
         to: 365
         editable: true
         value: slot.value.length > 0 ? Number(slot.value[0]) : 0
+        // Unset, an empty box: the default is said in words above it, never as a 0.
+        textFromValue: (value, locale) => slot.value.length === 0 ? "" : Number(value).toLocaleString(locale, "f", 0)
         Accessible.name: slot.name
         onValueModified: {
             if (slot.kind === "number" && Number.isFinite(number.value))

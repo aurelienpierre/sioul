@@ -10847,7 +10847,7 @@ rules-field-message-size = sa taille
 rules-field-message-date = le jour de son arrivée
 rules-field-message-weekday = le jour de la semaine de son arrivée
 rules-field-message-hour = l’heure de son arrivée
-rules-field-message-topic = son sujet
+rules-field-message-topic = son thème
 rules-field-message-project = son projet
 rules-field-message-kind = ce que Sioul y reconnaît
 rules-field-message-amount = le montant qu’il annonce
@@ -10910,7 +10910,7 @@ rules-choice-kind-reply = une réponse à ce que vous avez envoyé
 rules-choice-spam-spam = indésirable
 rules-choice-spam-doubt = un doute
 rules-action-message-tie-to-project = le rattacher à un projet
-rules-action-message-give-topic = lui donner un sujet
+rules-action-message-give-topic = lui donner un thème
 rules-action-message-keep-attachments = garder ses pièces jointes dans Papiers
 rules-action-message-move-to-folder = le déplacer dans un dossier
 rules-action-message-archive = l’archiver
@@ -10919,7 +10919,7 @@ rules-action-message-mark-read = le marquer lu
 rules-action-message-flag = le signaler
 rules-action-message-keyword = lui donner un mot-clé
 rules-action-message-trash = le mettre à la corbeille
-rules-action-message-never-topic = ne jamais lui donner un sujet
+rules-action-message-never-topic = ne jamais lui donner un thème
 rules-action-message-tie-to-task = le rattacher à sa tâche
 rules-action-message-tie-to-site = le rattacher à son site
 rules-action-message-leave-list = quitter sa liste
@@ -10941,10 +10941,10 @@ rules-action-supply-take-out = sortir les fournitures du stock
 rules-action-call-decline = le refuser
 rules-action-paper-keep = le garder comme papier
 rules-action-letter-read = la lire
-rules-action-none-tell = me prévenir
+rules-action-none-tell = vous prévenir
 rules-action-none-do-not-disturb = activer ou désactiver Ne pas déranger
 rules-param-project = Le projet
-rules-param-topic = Le sujet
+rules-param-topic = Le thème
 rules-param-type = Quelles pièces jointes
 rules-param-name = Dont le nom contient
 rules-param-kind = Le type du papier
@@ -10975,9 +10975,9 @@ rules-once-made = Créé une fois, sous un nom tiré de la règle et de ce qui l
 rules-once-record = Écrit une fois dans le registre que lit chaque appareil.
 rules-once-tell = Dit une fois, par l’appareil qui garde vos notifications.
 rules-refused-no-project = Le projet qu’elle nomme n’existe plus.
-rules-refused-no-topic = Le sujet qu’elle nomme n’existe plus.
-rules-refused-your-word = Vous avez donné vous-même un sujet à ce courriel : le vôtre reste.
-rules-refused-no-id = Ce courriel n’a pas d’identifiant par lequel lui donner un sujet.
+rules-refused-no-topic = Le thème qu’elle nomme n’existe plus.
+rules-refused-your-word = Vous avez donné vous-même un thème à ce courriel : le vôtre reste.
+rules-refused-no-id = Ce courriel n’a pas d’identifiant par lequel lui donner un thème.
 rules-refused-infected = L’antivirus a refusé une pièce jointe : aucun fichier de ce courriel n’est gardé.
 rules-refused-no-papers = Les papiers n’ont pas encore de dossier sur cet appareil.
 rules-refused-no-attachment = Ce courriel ne porte aucune pièce jointe que la règle nomme.
@@ -11009,7 +11009,7 @@ rules-runs-route = Agit quand le courrier arrive sur chaque appareil, et chaque 
 rules-runs-route-task = Agit quand le courrier arrive sur chaque appareil, une fois par courriel.
 rules-runs-mail-rule = Lue quand les budgets montrent leur courrier.
 rules-runs-filter = Agit sur le serveur à chaque relève, sur l’appareil qui relève le premier.
-rules-runs-topic = Lue chaque fois que les sujets du courrier sont donnés.
+rules-runs-topic = Lue chaque fois que les thèmes du courrier sont donnés.
 rules-file-type-any = Toutes les pièces jointes
 rules-for-me = Vous
 # Paramètres ▸ Règles : « quand ceci arrive, faire cela » (docs/rules.md, RulesTab.qml, RuleEditor.qml).
@@ -11038,7 +11038,7 @@ rules-from-this = Faire une règle de ceci…
 rules-kept-project = Gardée avec le projet { $project }, parmi ses routes ; elle se change sur sa page.
 rules-kept-budget = Gardée avec le budget { $budget }, parmi les courriels qui deviennent ses lignes ; aucune page ne la change encore.
 rules-kept-filters = Gardée parmi les filtres des courriels ; elle se change dans Courriels ⚙ ▸ Filtres, où leur ordre est gardé aussi.
-rules-kept-filters-stop = Gardée parmi les filtres des courriels, où les filtres suivants ne sont plus consultés une fois qu’elle agit ; elle se change dans Courriels ⚙ ▸ Filtres.
+rules-kept-filters-stop = Les filtres suivants ne sont plus consultés une fois qu’il agit.
 rules-kept-topics = Gardée avec le thème { $topic } ; elle se change dans Courriels ⚙ ▸ Thèmes.
 rules-kept-off = Elle est éteinte là où elle est gardée.
 rules-open-project = Ouvrir le projet
@@ -11102,7 +11102,49 @@ rules-also-past = { $n ->
         [one] Aussi pour ce courriel, une fois
        *[other] Aussi pour ces { $n } courriels, une fois chacun
     }
-rules-message-gone = Aucune règle ne peut partir de ce courriel : il n’est plus là, ou le Porche l’a mis de côté.
+rules-not-understood = Cette règle n’a pas pu être lue : { $error }
+rules-act-waiting = { $when }, { $Subject } : { $why }
+rules-act-back = { $when } : { $line } Repris depuis.
+rules-act-left = { $when } : { $line } Annuler l’a trouvé changé, il reste donc tel quel.
+rules-act-out = { $when } : { $line } Retiré depuis : l’antivirus a refusé son fichier.
+rules-removed-for-good = Règle retirée pour de bon : { $sentence }
+rules-remove-newer-title = Retirer une règle d’un Sioul plus récent ?
+rules-remove-newer = Une version plus récente de Sioul a écrit cette règle. Retirée ici, elle ne peut pas être remise depuis cet appareil.
+rules-remove-for-good = Retirer pour de bon
+rules-place = { $n ->
+        [one] { $name } : une règle
+       *[other] { $name } : { $count } règles
+    }
+rules-place-project = Le projet { $project }
+rules-place-budget = Le budget { $budget }
+rules-place-filters = Les filtres des courriels
+rules-place-topic = Le thème { $topic }
+rules-preset-off = Éteint là où il se règle.
+rules-preset-where = Le changer là où il se règle
+rules-presets-message = Courriels
+rules-presets-task = Tâches
+rules-presets-event = Événements
+rules-presets-movement = Argent
+rules-presets-supply = Stocks
+rules-presets-call = Appels
+rules-presets-paper = Papiers
+rules-presets-letter = Lettres
+rules-presets-contract = Contrats
+rules-presets-invoice = Factures
+rules-presets-site = Sites
+rules-presets-clock = Jours et moments
+rules-presets-none = Sioul
+rules-default-task-make-project = Sauf choix de votre part : son projet, sinon celui du modèle.
+rules-default-task-make-title = Sauf choix de votre part : son objet, sans les mots que la règle cherche.
+rules-default-task-make-days = Sauf choix de votre part : autant de jours travaillés que le dit le modèle.
+rules-default-none-tell-level = Sauf choix de votre part : dès que le moment le permet.
+rules-default-none-tell-words = Sauf choix de votre part : qui l’envoie et son objet.
+rules-default-message-keep-attachments-type = Sauf choix de votre part : ses PDF.
+rules-default-message-keep-attachments-name = Sauf choix de votre part : quels que soient leurs noms.
+rules-default-message-keep-attachments-kind = Sauf choix de votre part : deviné d’après le nom du fichier, puis l’objet.
+rules-default-message-keep-attachments-title = Sauf choix de votre part : le nom du fichier.
+rules-default-message-keep-attachments-for = Sauf choix de votre part : vous.
+rules-message-gone = Aucune règle ne peut partir de ce courriel : il n’est plus là, ou le Porche le retient (d’un inconnu, mis de côté, non prouvé, dans les indésirables ou la corbeille), et les règles ne voient jamais ces courriels.
 rules-act-when = { $when } : { $line }
 rules-act-undone = { $when } : { $line } Annulé depuis.
 rules-model-of = { $model } ({ $project })
@@ -11116,6 +11158,7 @@ rules-add-title = Ajouter une règle
 rules-start-blank = Partir de rien
 rules-start-message = D’un courriel
 rules-start-find = Quelques mots de son objet ou de son expéditeur
+rules-start-looking = Je cherche les courriels des 30 derniers jours qu’une règle peut voir…
 rules-start-no-message = Aucun courriel des 30 derniers jours n’est encore là.
 rules-start-none-found = Aucun courriel des 30 derniers jours n’a ces mots.
 rules-start-preset = D’un préréglage
@@ -11312,8 +11355,8 @@ rule-do-message-never-topic = { $same ->
        *[yes] ne jamais lui donner le thème { $topic }
     }
 rule-do-message-move-to-folder = { $same ->
-        [no] ranger son courriel dans le dossier { $folder }
-       *[yes] le ranger dans le dossier { $folder }
+        [no] ranger son courriel dans { $folder }
+       *[yes] le ranger dans { $folder }
     }
 rule-do-message-archive = { $same ->
         [no] archiver son courriel
@@ -11357,7 +11400,7 @@ rule-attachments-audio = ses sons
 rule-attachments-video = ses vidéos
 rule-attachments-text = ses fichiers texte
 rule-for-me = vous
-rule-do-task-make = faire une tâche du modèle { $model }
+rule-do-task-make = créer une tâche d’après le modèle { $model }
 rule-do-task-make-project = { $from ->
         [yes] , dans son projet
        *[no] , dans le projet { $value }
@@ -11396,8 +11439,8 @@ rule-do-event-move = { $same ->
        *[yes] le déplacer de { $minutes } minutes
     }
 rule-do-movement-plan = { $direction ->
-        [credit] compter une rentrée d’argent dans le budget { $budget }
-       *[debit] compter un paiement dans le budget { $budget }
+        [credit] proposer une rentrée d’argent dans le budget { $budget }
+       *[debit] proposer un paiement dans le budget { $budget }
     }
 rule-do-movement-plan-amount = { $from ->
         [yes] , du montant qu’il annonce
@@ -11405,13 +11448,10 @@ rule-do-movement-plan-amount = { $from ->
     }
 rule-do-movement-plan-label = , comme { $value }
 rule-do-none-tell = { $level ->
-        [quiet] le dire discrètement, dans la ligne d’état
+        [quiet] le garder discrètement dans l’historique de cette règle
        *[now] vous le dire
     }
-rule-do-none-tell-words = { $level ->
-        [quiet] dire { $words } discrètement, dans la ligne d’état
-       *[now] vous dire { $words }
-    }
+rule-do-none-tell-words = vous dire { $words }
 rule-heading-message-is-said-spam = Quand vous dites qu’un courriel est indésirable
 rule-heading-supply-runs-low = Quand un stock devient bas
 rule-heading-supply-comes-in = Quand un stock est réapprovisionné
@@ -11433,8 +11473,8 @@ rule-if-message-spam = { $test ->
        *[is] que votre filtre juge indésirable
     }
 rule-if-message-folder = { $test ->
-        [is-not] hors du dossier { $value }
-       *[is] dans le dossier { $value }
+        [is-not] ailleurs que dans { $value }
+       *[is] dans { $value }
     }
 rule-from-message-topic = le thème que Sioul lui trouve
 rule-do-message-tie-to-project-plain = { $same ->
@@ -11445,7 +11485,7 @@ rule-do-message-give-topic-plain = { $same ->
         [no] donner un thème à son courriel
        *[yes] lui donner un thème
     }
-rule-do-task-make-plain = faire une tâche
+rule-do-task-make-plain = créer une tâche
 rule-do-message-tie-to-task = { $same ->
         [no] rattacher son courriel à sa tâche
        *[yes] le rattacher à sa tâche
@@ -11490,6 +11530,19 @@ rule-do-letter-read = { $same ->
     }
 rule-do-paper-keep = le garder dans Papiers
 rule-do-none-do-not-disturb = activer « Ne pas déranger »
+rule-a-paper = sa pièce jointe
+rule-folder-junk = votre dossier des indésirables
+rule-folder-inbox = votre boîte de réception
+rule-folder-trash = votre corbeille
+rule-folder-archive = vos archives
+rule-folder-sent = vos courriels envoyés
+rule-folder-named = le dossier { $name }
+rule-insert = ‹{ $name }›
+rule-insert-sender = expéditeur
+rule-insert-month = mois
+rule-insert-year = année
+rule-insert-subject = objet
+rule-insert-file = nom du fichier
 rule-act-tie = { $wrote ->
         [no] { $Subject } était déjà dans le projet { $project }.
        *[yes] { $Subject } rattaché au projet { $project }.
@@ -11504,14 +11557,63 @@ rule-act-topic = { $wrote ->
     }
 rule-act-tell = { $Subject } : signalé.
 rule-act-paper = { $wrote ->
-        [no] { $Subject } : ses pièces jointes étaient déjà dans Papiers.
-       *[yes] { $Subject } : ses pièces jointes gardées dans Papiers.
+        [no] { $Subject } : { $paper } était déjà dans Papiers.
+       *[yes] { $Subject } : { $paper } est maintenant dans Papiers.
     }
 rule-act-other = { $Subject } : fait.
 rules-refused-code-told = Un courriel qui porte un code est dit par sa propre notification : aucune règle ne le redit.
 rules-refused-elsewhere = Un autre appareil garde vos notifications : il dit ce courriel, ou celui-ci le fera quand il les gardera.
 rules-refused-too-large = Ses pièces jointes sont trop grandes pour qu’une règle les garde comme papiers : gardez-les vous-même si vous les voulez.
+rules-problem-domain = Un domaine s’écrit exemple.fr, sans @ : une adresse va sous « son expéditeur ».
+rules-problem-address = Une adresse s’écrit nom@exemple.fr : un domaine seul va sous « le domaine de son expéditeur ».
+rules-problem-time = Une heure s’écrit 18:00.
+rules-problem-date = Un jour s’écrit 2026-10-01.
+rules-problem-size = Une taille s’écrit 5 Mo ou 500 Ko.
 rules-problem-reserved = Cette règle vient avec Sioul ou est lue là où elle se règle : changez-la là-bas.
 rules-paper-taken-out = « { $title } » a été retiré de vos papiers : l’antivirus a refusé son fichier.
 papers-unchecked = Pas vérifié par un antivirus.
 rules-refused-moment = Le moment ne laisse pas venir de notification maintenant : elle attend, et vient quand il le permet, dans la semaine.
+
+# Each preset, the rule that comes with Sioul, said as it is done today (RulesTab.qml, Presets).
+rule-preset-conversation-follows-project = Quand un courriel répond à un autre qui appartient à un projet, il va aussi dans ce projet.
+rule-preset-github-mail = Quand GitHub écrit au sujet d’un ticket ou d’une demande de fusion que vous suivez comme tâche, le courriel est rattaché à cette tâche.
+rule-preset-spam-filter-moves = Quand votre propre filtre juge indésirable le courriel d’un inconnu, il fait ce que vous avez choisi pour ce verdict : le mettre dans les indésirables, le marquer, ou le laisser.
+rule-preset-proven-mail-brought-back = Quand votre fournisseur met dans les indésirables un courriel dont quelque chose prouve l’expéditeur, Sioul le ramène dans votre boîte de réception.
+rule-preset-topics-given = Quand un courriel arrive, Sioul lui donne le thème que désignent ses mots et son expéditeur, sauf si vous lui en avez donné un vous-même.
+rule-preset-codes-told = Quand un courriel contient un code, un mot de passe, une réinitialisation ou un lien de connexion, il est montré aussitôt sous Tout de suite et signalé, quelle que soit l’heure.
+rule-preset-new-mail-told = Quand de nouveaux courriels arrivent, Sioul vous les signale comme le moment et le cercle de leur expéditeur le permettent, les infolettres seulement si vous le demandez.
+rule-preset-spam-leaves-list = Quand vous dites qu’un courriel est indésirable et que sa liste permet de la quitter en un clic, Sioul quitte cette liste après dix secondes pour annuler.
+rule-preset-invitation-replies-read = Quand vous ouvrez un courriel qui répond à une invitation, sa réponse est reportée dans l’événement.
+rule-preset-money-mail-planned = Quand un courriel parle d’un paiement, d’une facture, d’une commande ou d’un remboursement, Sioul le propose comme une ligne de vos budgets.
+rule-preset-money-mail-joined = Quand un courriel parle d’un paiement déjà compté dans vos budgets, il lui est joint sans question.
+rule-preset-site-announced = Quand vous ouvrez un courriel d’un expéditeur que l’un de vos sites nomme, il est rattaché à ce site.
+rule-preset-supplies-used = Quand une tâche est faite, les fournitures qu’elle prévoyait sont retirées de votre stock.
+rule-preset-resupply-task = Quand un stock devient bas, une tâche pour en racheter est créée, une seule fois.
+rule-preset-repeating-task-next-turn = Quand une tâche qui se répète est faite, elle revient à son prochain tour.
+rule-preset-bigger-task-closes = Quand la dernière étape d’une tâche plus grande est faite, la tâche plus grande l’est aussi.
+rule-preset-wait-over-told = Quand une tâche est faite, ce qui l’attend démarre son délai, et vous êtes prévenu quand l’attente est finie.
+rule-preset-time-blocks-follow = Quand une tâche change, est remise ou est faite, les créneaux réservés pour elle suivent.
+rule-preset-first-estimate = Quand une tâche est créée, Sioul écrit sa première estimation, son énergie et ses domaines, que vous pouvez changer.
+rule-preset-date-asked-reminded = Quand la date demandée d’une tâche approche, un rappel vient autant de jours avant que vous l’avez choisi.
+rule-preset-event-reminded = Quand un événement approche, un rappel vient aussi longtemps avant que vous l’avez choisi.
+rule-preset-preparation-set-aside = Quand un rendez-vous est fini, la tâche qui le préparait est mise de côté et celle pour laquelle il avait lieu est close.
+rule-preset-paired-task-follows = Quand un rendez-vous est déplacé, la date de la tâche qui lui est liée et ses trajets suivent.
+rule-preset-child-event-asked = Quand un événement arrive dans l’agenda d’un enfant sans personne pour l’accompagner, il vous est demandé une fois qui le fait.
+rule-preset-child-event-follow-up = Quand un événement d’un enfant d’un type qui revient est fini, une tâche pour en assurer la suite est créée.
+rule-preset-conflict-said = Quand le changement de quelqu’un d’autre fait se chevaucher deux événements, c’est dit une fois.
+rule-preset-series-paused = Quand viennent des vacances ou des jours fériés, les événements d’une série qui s’arrête alors sont suspendus.
+rule-preset-availability-mirrored = Quand un événement est créé dans un agenda que vous reflétez, un événement « occupé » est tenu à jour là où votre disponibilité est montrée.
+rule-preset-plan-fills-days = Chaque jour, le plan place vos tâches dans les heures que vous leur gardez.
+rule-preset-do-not-disturb-by-reasons = Quand commence un moment qui demande le calme (le sommeil, une pause, une séance de concentration), « Ne pas déranger » s’active sur tous vos appareils, et s’éteint ensuite.
+rule-preset-work-hours-over = Quand vos heures de travail sont finies, vous êtes prévenu une fois.
+rule-preset-books-thresholds = Quand vos factures approchent d’un seuil de vos comptes, vous êtes prévenu une fois.
+rule-preset-calls-screened = Quand un appel arrive sur un téléphone, il sonne ou va sur la messagerie comme le disent les appels de ce téléphone.
+rule-preset-missed-call-task = Quand un appel est manqué, ou qu’un de vos appels ne les joint pas, une tâche pour rappeler est créée.
+rule-preset-call-closes-task = Quand un appel aboutit, la tâche pour rappeler cette personne est faite.
+rule-preset-bank-line-joined = Quand une ligne de l’export de votre banque arrive, elle est jointe au paiement qu’elle est, et une facture qu’elle règle est marquée payée.
+rule-preset-budget-presets-counted = Quand vient le jour d’un paiement régulier, il est compté dans son budget.
+rule-preset-contract-notice-told = Quand le jour de préavis d’un contrat approche, un rappel vient.
+rule-preset-invoice-due-told = Quand une facture que vous avez émise arrive à échéance sans être payée, un rappel vient autant de jours avant que vous l’avez choisi.
+rule-preset-letter-read = Quand un scan arrive dans la boîte des lettres, il est lu et montré comme une lettre.
+rule-preset-paper-renewal-told = Quand un papier est bientôt à renouveler, un rappel vient.
+rule-preset-site-file-kept = Quand un site propose un fichier, il est gardé là où vous l’avez demandé, et tout de suite comme papier.

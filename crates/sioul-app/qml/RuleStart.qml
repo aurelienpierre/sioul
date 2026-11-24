@@ -3,7 +3,8 @@
 
 // "Add a rule…" (Settings ▸ Rules; docs/rules.md, "The view"): three ways
 // to start, in one small card. From nothing; from a message of the last 30
-// days, found by a few words of its subject or its sender (the same draft
+// days a rule can see (never what the Porch holds), found off the window's
+// thread, then by a few words of its subject or its sender (the same draft
 // as its menu's "Make a rule from this…": its sender's proven domain, what
 // Sioul recognises in it, its project); from a preset the engine can run
 // now, said by its sentence (none yet: one quiet line says it comes later). A choice closes the card and says
@@ -24,8 +25,10 @@ SafeDialog {
     required property var sioul
     required property var theme
 
-    // {messages: [{key, subject, from, day}], presets: [{id, sentence}]}
+    // {messages: [{key, subject, from, day}], presets: [{id, sentence}]}, found off the window's thread.
     property var offered: ({ messages: [], presets: [] })
+    // Still looking for the messages a rule can see.
+    property bool looking: false
     // A few words to find a message by.
     property string find: ""
     // The messages the words find, a dozen at most.
@@ -39,9 +42,20 @@ SafeDialog {
     signal chosen(string kind, string id)
 
     function ask() {
-        start.offered = JSON.parse(start.sioul.rulesStarts() || "null") || { messages: [], presets: [] }
+        start.offered = { messages: [], presets: [] }
+        start.looking = true
         start.find = ""
+        start.sioul.rulesStartsAsk()
         start.open()
+    }
+
+    Connections {
+        target: start.sioul
+
+        function onRulesStartsFound(found) {
+            start.offered = JSON.parse(found || "null") || { messages: [], presets: [] }
+            start.looking = false
+        }
     }
 
     function choose(kind, id) {
@@ -93,7 +107,7 @@ SafeDialog {
                 Label {
                     visible: start.found.length === 0
                     Layout.fillWidth: true
-                    text: start.sioul.text((start.offered.messages || []).length === 0 ? "rules-start-no-message" : "rules-start-none-found")
+                    text: start.sioul.text(start.looking ? "rules-start-looking" : (start.offered.messages || []).length === 0 ? "rules-start-no-message" : "rules-start-none-found")
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: start.theme.muted
@@ -136,7 +150,7 @@ SafeDialog {
             // No preset the engine runs yet: said once, quietly, where they would be.
             Label {
                 objectName: "ruleStartPresetsLater"
-                visible: (start.offered.presets || []).length === 0
+                visible: !start.looking && (start.offered.presets || []).length === 0
                 Layout.fillWidth: true
                 text: start.sioul.text("rules-start-preset-later")
                 textFormat: Text.PlainText

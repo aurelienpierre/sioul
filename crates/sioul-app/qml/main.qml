@@ -5865,7 +5865,7 @@ SioulWindow {
             // Settings ▸ Rules (docs/rules.md): the list with your rules and those kept elsewhere
             // (the demo's routes, a route that makes tasks, its budgets' mail rules, its filters, its
             // topics' senders), what a rule did lately, the editor at each step and its preview, a
-            // rule from a message, "Add a rule…", the presets and a preset's card.
+            // rule from a message, "Add a rule…", the presets, a place's fold.
             function rulesTab() {
                 return parametersPage ? parametersPage.rules : null
             }
@@ -5971,9 +5971,25 @@ SioulWindow {
                 () => parametersPage.scrollBy(0.6),
                 () => {},
                 () => grabber.save("rules-presets-more"),
-                () => grabber.rulesTab().openPreset("new-mail-told"),
+                // A place's fold opened: its rules kept elsewhere, where, and the link there.
+                () => {
+                    grabber.rulesTab().part = "own"
+                    const tab = grabber.rulesTab()
+                    const places = []
+                    const walk = item => {
+                        if (item.objectName && item.objectName.startsWith("rulesPlace:"))
+                            places.push(item)
+                        for (const kid of item.children)
+                            walk(kid)
+                    }
+                    walk(tab)
+                    if (places.length > 0) {
+                        places[0].want(true)
+                        parametersPage.bringIntoView(places[0])
+                    }
+                },
                 () => {},
-                () => grabber.saveWindow("rules-preset-card"),
+                () => grabber.save("rules-place"),
                 () => window.close()
             ]
             readonly property var wordsSteps: [

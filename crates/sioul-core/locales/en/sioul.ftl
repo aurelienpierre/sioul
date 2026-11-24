@@ -10555,7 +10555,7 @@ rules-action-supply-take-out = take the supplies out of the stock
 rules-action-call-decline = decline it
 rules-action-paper-keep = keep it as a paper
 rules-action-letter-read = read it
-rules-action-none-tell = tell me
+rules-action-none-tell = tell you
 rules-action-none-do-not-disturb = turn do-not-disturb on or off
 rules-param-project = The project
 rules-param-topic = The topic
@@ -10566,7 +10566,7 @@ rules-param-title = Its name
 rules-param-for = Whom it is for
 rules-param-folder = The folder
 rules-param-model = The model
-rules-param-days = Working days after it came
+rules-param-days = Business days after it came
 rules-param-date = The date
 rules-param-tag = The tag
 rules-param-list = The list
@@ -10652,7 +10652,7 @@ rules-from-this = Make a rule from this…
 rules-kept-project = Kept with the project { $project }, among its routes; changed on its page.
 rules-kept-budget = Kept with the budget { $budget }, among the mail that becomes its lines; no page changes it yet.
 rules-kept-filters = Kept among Mail's filters; changed in Mail ⚙ ▸ Filters, where their order is kept too.
-rules-kept-filters-stop = Kept among Mail's filters, where the filters after it are not asked once it acts; changed in Mail ⚙ ▸ Filters.
+rules-kept-filters-stop = The filters after it are not asked once it acts.
 rules-kept-topics = Kept with the topic { $topic }; changed in Mail ⚙ ▸ Topics.
 rules-kept-off = It is off where it is kept.
 rules-open-project = Open the project
@@ -10716,7 +10716,49 @@ rules-also-past = { $n ->
         [one] Also for this message, once
        *[other] Also for these { $n } messages, once each
     }
-rules-message-gone = No rule can start from this message: it is no longer here, or the Porch set it aside.
+rules-not-understood = This rule could not be read: { $error }
+rules-act-waiting = { $when }, { $Subject }: { $why }
+rules-act-back = { $when }: { $line } Taken back since.
+rules-act-left = { $when }: { $line } Undo found it changed, so it stays as it is.
+rules-act-out = { $when }: { $line } Taken out since: the antivirus refused its file.
+rules-removed-for-good = Rule removed for good: { $sentence }
+rules-remove-newer-title = Remove a rule from a newer Sioul?
+rules-remove-newer = A newer version of Sioul wrote this rule. Removed here, it cannot be put back from this device.
+rules-remove-for-good = Remove for good
+rules-place = { $n ->
+        [one] { $name }: one rule
+       *[other] { $name }: { $count } rules
+    }
+rules-place-project = The project { $project }
+rules-place-budget = The budget { $budget }
+rules-place-filters = Mail's filters
+rules-place-topic = The topic { $topic }
+rules-preset-off = Off where it is set.
+rules-preset-where = Change it where it is set
+rules-presets-message = Mail
+rules-presets-task = Tasks
+rules-presets-event = Events
+rules-presets-movement = Money
+rules-presets-supply = Supplies
+rules-presets-call = Calls
+rules-presets-paper = Papers
+rules-presets-letter = Letters
+rules-presets-contract = Contracts
+rules-presets-invoice = Invoices
+rules-presets-site = Sites
+rules-presets-clock = Days and moments
+rules-presets-none = Sioul
+rules-default-task-make-project = Unless you choose: its project, else the model's.
+rules-default-task-make-title = Unless you choose: its subject, without the words the rule looks for.
+rules-default-task-make-days = Unless you choose: as many business days as the model says.
+rules-default-none-tell-level = Unless you choose: as soon as the moment allows.
+rules-default-none-tell-words = Unless you choose: who sent it and its subject.
+rules-default-message-keep-attachments-type = Unless you choose: its PDFs.
+rules-default-message-keep-attachments-name = Unless you choose: whatever their names.
+rules-default-message-keep-attachments-kind = Unless you choose: guessed from the file's name, then the subject.
+rules-default-message-keep-attachments-title = Unless you choose: the file's name.
+rules-default-message-keep-attachments-for = Unless you choose: you.
+rules-message-gone = No rule can start from this message: it is no longer here, or the Porch holds it (a stranger's, set aside, unproven, in spam or the trash), and rules never see such mail.
 rules-act-when = { $when }: { $line }
 rules-act-undone = { $when }: { $line } Undone since.
 rules-model-of = { $model } ({ $project })
@@ -10730,6 +10772,7 @@ rules-add-title = Add a rule
 rules-start-blank = Start from nothing
 rules-start-message = From a message
 rules-start-find = A few words of its subject or its sender
+rules-start-looking = Looking for the messages of the last 30 days a rule can see…
 rules-start-no-message = No message of the last 30 days is here yet.
 rules-start-none-found = No message of the last 30 days has these words.
 rules-start-preset = From a preset
@@ -10791,7 +10834,7 @@ rule-circle-restricted = someone in your Restricted circle
 rule-circle-stranger = a stranger
 rule-if-any = where { $field } { $test } { $value }
 rule-if-message-sender = from { $value }
-rule-if-message-sender-domain = from { $value }
+rule-if-message-sender-domain = from anyone at { $value }
 rule-if-message-from = { $test ->
         [not-contains] whose sender does not contain { $value }
         [is] whose sender is { $value }
@@ -10926,8 +10969,8 @@ rule-do-message-never-topic = { $same ->
        *[yes] never give it the topic { $topic }
     }
 rule-do-message-move-to-folder = { $same ->
-        [no] move its message into the folder { $folder }
-       *[yes] move it into the folder { $folder }
+        [no] move its message into { $folder }
+       *[yes] move it into { $folder }
     }
 rule-do-message-archive = { $same ->
         [no] archive its message
@@ -11010,8 +11053,8 @@ rule-do-event-move = { $same ->
        *[yes] move it by { $minutes } minutes
     }
 rule-do-movement-plan = { $direction ->
-        [credit] count money coming into the budget { $budget }
-       *[debit] count a payment in the budget { $budget }
+        [credit] propose money coming into the budget { $budget }
+       *[debit] propose a payment for the budget { $budget }
     }
 rule-do-movement-plan-amount = { $from ->
         [yes] , of the amount it states
@@ -11019,13 +11062,10 @@ rule-do-movement-plan-amount = { $from ->
     }
 rule-do-movement-plan-label = , as { $value }
 rule-do-none-tell = { $level ->
-        [quiet] say it quietly, in the status line
+        [quiet] keep it quietly in this rule's history
        *[now] tell you
     }
-rule-do-none-tell-words = { $level ->
-        [quiet] say { $words } quietly, in the status line
-       *[now] tell you { $words }
-    }
+rule-do-none-tell-words = tell you { $words }
 rule-heading-message-is-said-spam = When you say a message is spam
 rule-heading-supply-runs-low = When a supply runs low
 rule-heading-supply-comes-in = When a supply comes in
@@ -11047,8 +11087,8 @@ rule-if-message-spam = { $test ->
        *[is] that your spam filter calls spam
     }
 rule-if-message-folder = { $test ->
-        [is-not] outside the folder { $value }
-       *[is] in the folder { $value }
+        [is-not] outside { $value }
+       *[is] in { $value }
     }
 rule-from-message-topic = the topic Sioul finds for it
 rule-do-message-tie-to-project-plain = { $same ->
@@ -11104,6 +11144,19 @@ rule-do-letter-read = { $same ->
     }
 rule-do-paper-keep = keep it in Papers
 rule-do-none-do-not-disturb = turn do-not-disturb on
+rule-a-paper = its attachment
+rule-folder-junk = your junk folder
+rule-folder-inbox = your inbox
+rule-folder-trash = your trash
+rule-folder-archive = your archive
+rule-folder-sent = your sent mail
+rule-folder-named = the folder { $name }
+rule-insert = ‹{ $name }›
+rule-insert-sender = sender
+rule-insert-month = month
+rule-insert-year = year
+rule-insert-subject = subject
+rule-insert-file = file name
 rule-act-tie = { $wrote ->
         [no] { $Subject } was in the project { $project } already.
        *[yes] { $Subject } tied to the project { $project }.
@@ -11118,14 +11171,63 @@ rule-act-topic = { $wrote ->
     }
 rule-act-tell = { $Subject }: told.
 rule-act-paper = { $wrote ->
-        [no] { $Subject }: its attachments were in Papers already.
-       *[yes] { $Subject }: its attachments kept in Papers.
+        [no] { $Subject }: { $paper } was in Papers already.
+       *[yes] { $Subject }: { $paper } is in Papers now.
     }
 rule-act-other = { $Subject }: done.
 rules-refused-code-told = A message holding a code is told by its own notice: no rule tells it again.
 rules-refused-elsewhere = Another device keeps your notices: it tells this message, or this one does once it keeps them.
 rules-refused-too-large = Its attachments are too large to keep as papers by a rule: keep them yourself if you want them.
+rules-problem-domain = A domain reads as example.org, without an @: an address goes under "its sender".
+rules-problem-address = An address reads as name@example.org: a domain alone goes under "its sender's domain".
+rules-problem-time = A time reads as 18:00.
+rules-problem-date = A day reads as 2026-10-01.
+rules-problem-size = A size reads as 5 MB or 500 KB.
 rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
 rules-paper-taken-out = “{ $title }” was taken out of your papers: the antivirus refused its file.
 papers-unchecked = Not checked by an antivirus.
 rules-refused-moment = The moment does not let a notice come now: it waits, and is told when it can within the week.
+
+# Each preset, the rule that comes with Sioul, said as it is done today (RulesTab.qml, Presets).
+rule-preset-conversation-follows-project = When a message answers one that belongs to a project, it goes into that project too.
+rule-preset-github-mail = When GitHub mails about an issue or a pull request you follow as a task, the message is tied to that task.
+rule-preset-spam-filter-moves = When your own spam filter judges a stranger's message to be spam, it does what you chose for that verdict: moves it to spam, flags it, or leaves it.
+rule-preset-proven-mail-brought-back = When your provider puts in spam a message whose sender something proves, Sioul brings it back to your inbox.
+rule-preset-topics-given = When a message arrives, Sioul gives it the topic its words and its sender point to, unless you gave it one yourself.
+rule-preset-codes-told = When a message holds a code, a password, a reset or a link to sign in, it is shown at once under Right now and told, whatever the hour.
+rule-preset-new-mail-told = When new mail arrives, Sioul tells you of it as the moment and its sender's circle allow, newsletters only if you ask.
+rule-preset-spam-leaves-list = When you say a message is spam and its list offers to leave in one click, Sioul leaves that list after ten seconds to undo.
+rule-preset-invitation-replies-read = When you open a message that answers an invitation, its answer is written into the event.
+rule-preset-money-mail-planned = When a message tells of a payment, a bill, an order or a refund, Sioul proposes it as a line of your budgets.
+rule-preset-money-mail-joined = When a message tells of a payment already counted in your budgets, it is joined to it without a question.
+rule-preset-site-announced = When you open a message from a sender one of your sites names, it is tied to that site.
+rule-preset-supplies-used = When a task is done, the supplies it planned to use are taken out of your stock.
+rule-preset-resupply-task = When a supply runs low, a task to buy more is made, once.
+rule-preset-repeating-task-next-turn = When a repeating task is done, it comes back at its next turn.
+rule-preset-bigger-task-closes = When the last step of a bigger task is done, the bigger task is done too.
+rule-preset-wait-over-told = When a task is done, what waits for it starts its clock, and you are told when the wait is over.
+rule-preset-time-blocks-follow = When a task changes, is put off or is done, the time blocks kept for it follow.
+rule-preset-first-estimate = When a task is made, Sioul writes its first estimate, its energy and its areas, which you can change.
+rule-preset-date-asked-reminded = When the date asked of a task comes near, you are reminded as many days before as you chose.
+rule-preset-event-reminded = When an event comes near, you are reminded as long before as you chose.
+rule-preset-preparation-set-aside = When an appointment is over, the task that prepared it is set aside and the one it was for is closed.
+rule-preset-paired-task-follows = When an appointment moves, the date of its paired task and its journeys follow.
+rule-preset-child-event-asked = When an event comes into a child's agenda without anyone to take them, you are asked once who does.
+rule-preset-child-event-follow-up = When a child's event of a kind that comes back is over, a task to follow it up is made.
+rule-preset-conflict-said = When someone else's change makes two events clash, it is said once.
+rule-preset-series-paused = When vacations or holidays come, the events of a series that stop then are paused.
+rule-preset-availability-mirrored = When an event is made in an agenda you mirror, a busy event is kept in step where your availability is shown.
+rule-preset-plan-fills-days = Each day, the plan places your tasks in the hours you keep for them.
+rule-preset-do-not-disturb-by-reasons = When a moment begins that asks for quiet (sleep, a pause, a focus session), do-not-disturb turns on on every device, and off after.
+rule-preset-work-hours-over = When your work hours are over, you are told once.
+rule-preset-books-thresholds = When your invoices come near a threshold of your books, you are told once.
+rule-preset-calls-screened = When a call rings on a phone, it rings or goes to voicemail as that phone's calls say.
+rule-preset-missed-call-task = When a call is missed, or a call of yours does not reach them, a task to call back is made.
+rule-preset-call-closes-task = When a call goes through, the task to call back that person is done.
+rule-preset-bank-line-joined = When a line of your bank's export comes in, it is joined to the payment it is, and an invoice it pays is marked paid.
+rule-preset-budget-presets-counted = When the day of a regular payment comes, it is counted in its budget.
+rule-preset-contract-notice-told = When a contract's notice day comes near, you are reminded.
+rule-preset-invoice-due-told = When an invoice you issued is due and not paid, you are reminded as many days before as you chose.
+rule-preset-letter-read = When a scan arrives in your letters' inbox, it is read and shown as a letter.
+rule-preset-paper-renewal-told = When a paper is soon to renew, you are reminded.
+rule-preset-site-file-kept = When a site offers a file, it is kept where you asked, and as a paper at once.

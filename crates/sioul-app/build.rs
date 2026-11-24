@@ -196,13 +196,12 @@ fn main() {
         // A route that makes a task of each message: its form.
         "qml/RouteTask.qml",
         // Settings ▸ Rules (docs/rules.md): the list, its editor, a value's control, a declared
-        // thing's drop-down, "Add a rule…"'s three starts, a preset's card.
+        // thing's drop-down, "Add a rule…"'s starts.
         "qml/RulesTab.qml",
         "qml/RuleEditor.qml",
         "qml/RuleValue.qml",
         "qml/RuleCombo.qml",
         "qml/RuleStart.qml",
-        "qml/PresetCard.qml",
         "qml/Household.qml",
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",

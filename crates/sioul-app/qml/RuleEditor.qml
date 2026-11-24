@@ -325,7 +325,8 @@ SafeDialog {
                         theme: form.theme
                         objectName: "ruleType"
                         Layout.fillWidth: true
-                        things: form.catalogue.types || []
+                        // Only what can happen: a type is chosen for its events (Sioul itself has none).
+                        things: (form.catalogue.types || []).filter(t => (t.events || []).length > 0).map(t => ({ id: t.id, name: t.name, available: t.events.some(e => e.available) }))
                         chosen: form.draft ? form.draft.when.type : ""
                         Accessible.name: form.sioul.text("rules-when-type")
                         onPicked: id => form.setType(id)
@@ -489,6 +490,18 @@ SafeDialog {
                             wrapMode: Text.Wrap
                             color: form.theme.muted
                         }
+                        // Left unset: what the rule then does, in words (never a 0 or an empty box that says nothing).
+                        Label {
+                            objectName: "ruleParamDefault"
+                            readonly property string key: "rules-default-" + form.draft.then.type + "-" + form.draft.then.action + "-" + param.modelData.id
+                            visible: param.given === undefined && text !== key
+                            Layout.fillWidth: true
+                            text: form.sioul.text(key)
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: form.theme.muted
+                        }
                         // Chosen here, or from what triggered it: one choice of two.
                         Flow {
                             visible: param.both
@@ -499,7 +512,8 @@ SafeDialog {
                                 objectName: "ruleParamFixed"
                                 checkable: true
                                 autoExclusive: true
-                                checked: !param.fromIt
+                                // Selected only once a value is chosen here: unset, neither is.
+                                checked: param.given !== undefined && !param.fromIt
                                 text: form.sioul.text("rules-chosen-here")
                                 onClicked: {
                                     if (param.fromIt)
@@ -662,7 +676,8 @@ SafeDialog {
                 // Those messages too, once each: a choice made at saving, unticked.
                 CheckBox {
                     objectName: "ruleAlsoPast"
-                    visible: !form.looking && form.preview !== null && form.preview.count > 0
+                    // Only where acting on mail already here does something (never "tell", which tells only what comes).
+                    visible: !form.looking && form.preview !== null && form.preview.past === true
                     Layout.fillWidth: true
                     checked: form.alsoPast
                     text: form.preview ? form.sioul.textCounted("rules-also-past", form.preview.count) : ""

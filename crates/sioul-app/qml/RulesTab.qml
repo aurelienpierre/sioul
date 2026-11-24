@@ -5,22 +5,23 @@
 // sentences, "when this happens, do that", grouped under what happens
 // ("When a message arrives"), the rules that share the same "when" shown
 // together under it, each then by its own bullet. Your own rules, each with
-// its switch, Edit, ✕ (Undo in the status line) and "What it did lately":
-// each act with Undo and "Not for this one". The rules kept today in their
-// own places (a project's routes and the tasks they make, a budget's mail
-// rules, Mail's filters, a topic's senders) are in the same list, said by the
-// same words, read-only here: each says where it is kept and opens its own
-// editor there; nothing of them is copied. One button, "Add a rule…", offers
-// three starts (RuleStart.qml): from nothing, from a message, from a preset;
-// the editor (RuleEditor.qml) opens on it. A second tab, a conscious choice
-// away: Presets, the rules that come with Sioul, what it does by itself
-// today, grouped the same way: a line of words each, its switch where a
-// setting turns it on or off today, "Details" where it has more to change
-// or can be copied (PresetCard.qml). Every sentence comes from the core
-// (`rulesView`, made by one function: the editor and the status line say the
-// same words). Everything opened on demand is made the first time. Read
-// again when the rules' list or their record of acts changes, here or on
-// another device.
+// its switch, Edit, ✕ (Undo in the status line; a rule a newer Sioul wrote,
+// which cannot be put back, asked first) and "What it did lately": each
+// result as it stands now (done, taken back, left as it was, taken out by
+// the antivirus, waiting), Undo only where the rule wrote it, "Not for this
+// one" only where it waits. The rules kept today in their own places (a
+// project's routes and the tasks they make, a budget's mail rules, Mail's
+// filters, a topic's senders) are in the same groups, said by the same
+// words, read-only: one fold per place, which says where they are kept and
+// opens that place; nothing of them is copied. One button, "Add a rule…",
+// offers its starts (RuleStart.qml); the editor (RuleEditor.qml) opens on
+// one. A second tab, a conscious choice away: Presets, the rules that come
+// with Sioul, grouped by what they watch, each its own written sentence,
+// "Off where it is set." when its setting is off, and a link to where that
+// setting lives (a switch is drawn once, there). Every sentence of a rule
+// comes from the core (`rulesView`, one function: the editor and the status
+// line say the same words). Everything opened on demand is made the first
+// time; a fold stays as it was when the list is read again.
 
 pragma ComponentBehavior: Bound
 
@@ -36,10 +37,15 @@ ColumnLayout {
     required property var sioul
     required property var theme
 
-    // What `rulesView` gives: {groups: [{heading, sets: [{when, rules}]}], presets (the same shape), readOnly, note, count}.
+    // What `rulesView` gives: {groups: [{heading, sets: [{when, rules}], places: [{id, title, kept, open, openText, rules}]}],
+    // presets: [{heading, presets: [{id, sentence, off, open, openText, offered}]}], readOnly, note, count}.
     property var view: ({ groups: [], presets: [], readOnly: false, note: "", count: 0 })
     // The tab shown: your rules, or the presets.
     property string part: "own"
+    // The folds open, by their ids ("lately:<rule>", "place:<id>"): kept as the list is read again.
+    property var unfolded: ({})
+    // A rule a newer Sioul wrote, waiting for its removal to be confirmed.
+    property string removing: ""
     // On a phone: the buttons under each sentence rather than beside it.
     readonly property bool narrow: tab.width < 520
     // The editor, once made.
@@ -49,14 +55,28 @@ ColumnLayout {
         tab.view = JSON.parse(tab.sioul.rulesView() || "null") || tab.view
         if (tab.view.presets.length === 0)
             tab.part = "own"
-        const card = presetLater.item as PresetCard
-        if (card && card.visible && card.line)
-            card.line = tab.presetLine(card.line.id) || card.line
+    }
+
+    // A fold opened or closed: kept by its id.
+    function fold(id, open) {
+        const kept = Object.assign({}, tab.unfolded)
+        kept[id] = open
+        tab.unfolded = kept
     }
 
     // A rule to change, or a new one (null), or a draft made elsewhere.
     function edit(rule) {
         editorLater.now().edit(rule)
+    }
+
+    // ✕: removed at once with Undo; one a newer Sioul wrote, which nothing here can put back, asked first.
+    function remove(line) {
+        if (line.unknown) {
+            tab.removing = line.id
+            confirmLater.now().ask(tab.sioul.text("rules-remove-newer-title"), tab.sioul.text("rules-remove-newer"), tab.sioul.text("rules-remove-for-good"))
+            return
+        }
+        tab.sioul.removeRule(line.id)
     }
 
     // A start chosen in "Add a rule…": the editor on a blank rule, a message's draft, a preset's copy.
@@ -73,7 +93,7 @@ ColumnLayout {
         tab.edit(draft)
     }
 
-    // "Add a rule…": its three starts.
+    // "Add a rule…": its starts.
     function add() {
         startLater.now().ask()
     }
@@ -81,25 +101,6 @@ ColumnLayout {
     // "Add a rule…" closed, if it was ever opened (the window's pictures).
     function closeStart() {
         startLater.close()
-    }
-
-    // A preset's card, by its id (the window's pictures).
-    function openPreset(id) {
-        const line = tab.presetLine(id)
-        if (line)
-            presetLater.now().show(line)
-    }
-
-    // A preset's line, by its id.
-    function presetLine(id) {
-        for (const group of tab.view.presets) {
-            for (const set of group.sets) {
-                const found = set.rules.find(r => r.id === id)
-                if (found)
-                    return found
-            }
-        }
-        return null
     }
 
     // A rule's line, by its id (tests and the window's pictures).
@@ -183,7 +184,7 @@ ColumnLayout {
         color: tab.theme.muted
     }
 
-    // What happens, one frame each; inside, the rules that share a "when" together.
+    // What happens, one frame each: your rules by their "when", then one fold per place that keeps rules of its own.
     Repeater {
         model: tab.part === "own" ? tab.view.groups : []
 
@@ -226,21 +227,18 @@ ColumnLayout {
                     Repeater {
                         model: set.modelData.rules
 
-                        // One rule: its switch, its sentence (or, under a shared "when", what it
-                        // does), Edit and ✕; what it did lately, folded. A rule kept elsewhere:
-                        // where, and a link that opens it there.
+                        // One rule of yours: its switch, its sentence (under a shared "when", what
+                        // it does), Edit and ✕; what it did lately, folded.
                         delegate: ColumnLayout {
                             id: line
 
                             required property var modelData
                             readonly property var rule: line.modelData
-                            readonly property bool shared: set.shared
-                            readonly property bool own: line.rule.own === true
                             readonly property bool on: line.rule.on !== false
 
                             objectName: "rule:" + line.rule.id
                             Layout.fillWidth: true
-                            Layout.leftMargin: line.shared ? tab.theme.indent : 0
+                            Layout.leftMargin: set.shared ? tab.theme.indent : 0
                             spacing: 2
 
                             RowLayout {
@@ -249,7 +247,6 @@ ColumnLayout {
 
                                 Switch {
                                     objectName: "ruleSwitch"
-                                    visible: line.own
                                     Layout.alignment: Qt.AlignTop
                                     checked: line.on
                                     enabled: !tab.view.readOnly
@@ -272,13 +269,13 @@ ColumnLayout {
                                     Label {
                                         objectName: "ruleWords"
                                         Layout.fillWidth: true
-                                        text: line.shared ? "•  " + line.rule.then : line.rule.sentence
+                                        text: set.shared ? "•  " + line.rule.then : line.rule.sentence
                                         textFormat: Text.PlainText
                                         wrapMode: Text.Wrap
                                         lineHeight: 1.2
                                         color: line.on ? tab.theme.text : tab.theme.muted
                                     }
-                                    // Why it cannot run (a project gone, a newer Sioul's), or that it is off where it is kept.
+                                    // Why it cannot run (a project gone, a newer Sioul's).
                                     Label {
                                         visible: text !== ""
                                         Layout.fillWidth: true
@@ -288,28 +285,9 @@ ColumnLayout {
                                         font.pixelSize: 13
                                         color: tab.theme.warm
                                     }
-                                    // Kept elsewhere: where, said plainly.
-                                    Label {
-                                        visible: !line.own && text !== ""
-                                        Layout.fillWidth: true
-                                        text: line.rule.kept || ""
-                                        textFormat: Text.PlainText
-                                        wrapMode: Text.Wrap
-                                        font.pixelSize: 13
-                                        color: tab.theme.muted
-                                    }
-                                    Link {
-                                        objectName: "ruleOpen"
-                                        visible: !line.own && !!line.rule.open
-                                        Layout.fillWidth: true
-                                        theme: tab.theme
-                                        text: line.rule.openText || ""
-                                        font.pixelSize: 13
-                                        onActivated: tab.sioul.reminderOpened(line.rule.open.kind, line.rule.open.uri || "", line.rule.open.key || "")
-                                    }
-                                    // On a phone, Edit and ✕ under the words.
+                                    // On a phone, Edit and Remove under the words.
                                     Flow {
-                                        visible: line.own && tab.narrow
+                                        visible: tab.narrow
                                         Layout.fillWidth: true
                                         spacing: tab.theme.labelGap
 
@@ -323,13 +301,13 @@ ColumnLayout {
                                             objectName: "ruleRemoveNarrow"
                                             enabled: !tab.view.readOnly
                                             text: tab.sioul.text("ui-remove")
-                                            onClicked: tab.sioul.removeRule(line.rule.id)
+                                            onClicked: tab.remove(line.rule)
                                         }
                                     }
                                 }
                                 Button {
                                     objectName: "ruleEdit"
-                                    visible: line.own && !tab.narrow
+                                    visible: !tab.narrow
                                     Layout.alignment: Qt.AlignTop
                                     enabled: !tab.view.readOnly && !line.rule.unknown
                                     text: tab.sioul.text("ui-edit")
@@ -337,7 +315,7 @@ ColumnLayout {
                                 }
                                 ToolButton {
                                     objectName: "ruleRemove"
-                                    visible: line.own && !tab.narrow
+                                    visible: !tab.narrow
                                     Layout.alignment: Qt.AlignTop
                                     enabled: !tab.view.readOnly
                                     text: "✕"
@@ -345,19 +323,22 @@ ColumnLayout {
                                     ToolTip.visible: hovered
                                     ToolTip.text: tab.sioul.text("rules-remove")
                                     ToolTip.delay: 400
-                                    onClicked: tab.sioul.removeRule(line.rule.id)
+                                    onClicked: tab.remove(line.rule)
                                 }
                             }
 
-                            // What it did lately: made when first unfolded.
+                            // What it did lately: made when first unfolded, kept open as the list is read again.
                             Fold {
                                 objectName: "ruleLately"
-                                visible: line.own && (line.rule.lately || []).length > 0
+                                visible: (line.rule.lately || []).length > 0
                                 Layout.fillWidth: true
                                 Layout.leftMargin: tab.narrow ? 0 : 52
                                 theme: tab.theme
                                 title: tab.sioul.textCounted("rules-lately", (line.rule.lately || []).length)
                                 titleSize: 13
+                                controlled: true
+                                open: tab.unfolded["lately:" + line.rule.id] === true
+                                onToggled: open => tab.fold("lately:" + line.rule.id, open)
 
                                 ColumnLayout {
                                     spacing: tab.theme.rowGap
@@ -379,15 +360,16 @@ ColumnLayout {
                                                 textFormat: Text.PlainText
                                                 wrapMode: Text.Wrap
                                                 font.pixelSize: 13
-                                                color: act.modelData.undone ? tab.theme.muted : tab.theme.text
+                                                color: act.modelData.undo || act.modelData.notThis ? tab.theme.text : tab.theme.muted
                                             }
                                             Flow {
-                                                visible: !act.modelData.undone && !tab.view.readOnly
+                                                visible: (act.modelData.undo || act.modelData.notThis) && !tab.view.readOnly
                                                 Layout.fillWidth: true
                                                 spacing: tab.theme.labelGap
 
                                                 Button {
                                                     objectName: "ruleActUndo"
+                                                    visible: act.modelData.undo
                                                     font.pixelSize: 13
                                                     text: tab.sioul.text("ui-undo")
                                                     Accessible.name: act.modelData.line + ", " + text
@@ -395,6 +377,7 @@ ColumnLayout {
                                                 }
                                                 Button {
                                                     objectName: "ruleActNotThis"
+                                                    visible: act.modelData.notThis
                                                     font.pixelSize: 13
                                                     text: tab.sioul.text("rules-not-this-one")
                                                     Accessible.name: act.modelData.line + ", " + text
@@ -409,12 +392,85 @@ ColumnLayout {
                     }
                 }
             }
+
+            // The rules a place keeps (a project, a budget, Mail's filters, a topic): one fold,
+            // where they are kept and the link there said once, their sentences inside.
+            Repeater {
+                model: group.modelData.places
+
+                delegate: Fold {
+                    id: place
+
+                    required property var modelData
+
+                    objectName: "rulesPlace:" + place.modelData.id
+                    Layout.fillWidth: true
+                    theme: tab.theme
+                    title: place.modelData.title
+                    controlled: true
+                    open: tab.unfolded["place:" + place.modelData.id] === true
+                    onToggled: open => tab.fold("place:" + place.modelData.id, open)
+
+                    ColumnLayout {
+                        spacing: tab.theme.rowGap
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: place.modelData.kept
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.pixelSize: 13
+                            color: tab.theme.muted
+                        }
+                        Link {
+                            objectName: "ruleOpen"
+                            visible: !!place.modelData.open
+                            Layout.fillWidth: true
+                            theme: tab.theme
+                            text: place.modelData.openText || ""
+                            onActivated: tab.sioul.reminderOpened(place.modelData.open.kind, place.modelData.open.uri || "", place.modelData.open.key || "")
+                        }
+                        Repeater {
+                            model: place.modelData.rules
+
+                            delegate: ColumnLayout {
+                                id: kept
+
+                                required property var modelData
+
+                                objectName: "rule:" + kept.modelData.id
+                                Layout.fillWidth: true
+                                spacing: 2
+
+                                Label {
+                                    objectName: "ruleWords"
+                                    Layout.fillWidth: true
+                                    text: kept.modelData.sentence
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.2
+                                    color: kept.modelData.on ? tab.theme.text : tab.theme.muted
+                                }
+                                // Off where it is kept, or a filter after which no other is asked.
+                                Label {
+                                    visible: text !== ""
+                                    Layout.fillWidth: true
+                                    text: kept.modelData.off || ""
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 13
+                                    color: tab.theme.muted
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    // The presets, grouped by what happens as your rules are: one line of words
-    // each, its switch where a setting turns it on or off today, Details where
-    // it has more to change or can be copied.
+    // The presets, grouped by what they watch: each its written sentence, off said
+    // in words, a link to where its setting lives, and a copy where Sioul can run it.
     Repeater {
         model: tab.part === "presets" ? tab.view.presets : []
 
@@ -432,50 +488,64 @@ ColumnLayout {
             body.spacing: tab.theme.rowGap
 
             Repeater {
-                model: presetGroup.modelData.sets.reduce((all, set) => all.concat(set.rules), [])
+                model: presetGroup.modelData.presets
 
-                delegate: RowLayout {
+                delegate: ColumnLayout {
                     id: preset
 
                     required property var modelData
-                    // Its on and off, when a setting of its own says it (a switch).
-                    readonly property var onOff: (preset.modelData.settings || []).find(r => r.key === preset.modelData.preset.setting && r.kind === "bool") || null
-                    readonly property bool more: (preset.modelData.settings || []).some(r => preset.onOff === null || r.key !== preset.onOff.key) || preset.modelData.preset.offered === true
 
                     objectName: "preset:" + preset.modelData.id
                     Layout.fillWidth: true
-                    spacing: tab.theme.labelGap
+                    spacing: 2
 
-                    Switch {
-                        visible: preset.onOff !== null
-                        Layout.alignment: Qt.AlignTop
-                        checked: preset.onOff !== null && preset.onOff.value === true
-                        Accessible.name: preset.onOff ? preset.onOff.label : ""
-                        onToggled: {
-                            const problem = tab.sioul.setSetting(preset.onOff.key, JSON.stringify(checked))
-                            if (problem !== "")
-                                tab.sioul.status = problem
-                            tab.reload()
-                        }
-                    }
                     Label {
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 0
                         text: preset.modelData.sentence
                         textFormat: Text.PlainText
                         wrapMode: Text.Wrap
                         lineHeight: 1.2
-                        color: preset.onOff === null || preset.onOff.value === true ? tab.theme.text : tab.theme.muted
+                        color: preset.modelData.off ? tab.theme.muted : tab.theme.text
+                    }
+                    Label {
+                        objectName: "presetOff"
+                        visible: preset.modelData.off
+                        Layout.fillWidth: true
+                        text: tab.sioul.text("rules-preset-off")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 13
+                        color: tab.theme.muted
+                    }
+                    Link {
+                        objectName: "presetWhere"
+                        visible: !!preset.modelData.open
+                        Layout.fillWidth: true
+                        theme: tab.theme
+                        font.pixelSize: 13
+                        text: preset.modelData.openText || ""
+                        onActivated: tab.sioul.reminderOpened(preset.modelData.open.kind, "", "")
                     }
                     Button {
-                        objectName: "presetDetails"
-                        visible: preset.more
-                        Layout.alignment: Qt.AlignTop
-                        text: tab.sioul.text("rules-preset-open")
-                        Accessible.name: preset.modelData.sentence + ", " + text
-                        onClicked: presetLater.now().show(preset.modelData)
+                        objectName: "presetCopy"
+                        visible: preset.modelData.offered === true
+                        Layout.alignment: Qt.AlignLeft
+                        text: tab.sioul.text("rules-preset-copy")
+                        onClicked: tab.startFrom("preset", preset.modelData.id)
                     }
                 }
+            }
+        }
+    }
+
+    Later {
+        id: editorLater
+
+        sourceComponent: Component {
+            RuleEditor {
+                sioul: tab.sioul
+                theme: tab.theme
+                onSaved: tab.reload()
             }
         }
     }
@@ -492,27 +562,18 @@ ColumnLayout {
         }
     }
 
+    // Removing a rule a newer Sioul wrote: asked once, since it cannot be put back.
     Later {
-        id: presetLater
+        id: confirmLater
 
         sourceComponent: Component {
-            PresetCard {
+            ConfirmDialog {
                 sioul: tab.sioul
                 theme: tab.theme
-                onChanged: tab.reload()
-                onCopied: id => tab.startFrom("preset", id)
-            }
-        }
-    }
-
-    Later {
-        id: editorLater
-
-        sourceComponent: Component {
-            RuleEditor {
-                sioul: tab.sioul
-                theme: tab.theme
-                onSaved: tab.reload()
+                onConfirmed: {
+                    tab.sioul.removeRule(tab.removing)
+                    tab.removing = ""
+                }
             }
         }
     }

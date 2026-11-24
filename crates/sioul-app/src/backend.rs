@@ -2564,9 +2564,15 @@ pub mod qobject {
         #[qinvokable]
         fn rule_from_preset(self: &Sioul, id: &QString) -> QString;
 
-        /// What "Add a rule…" offers to start from: {messages, presets}, as JSON.
+        /// What "Add a rule…" offers to start from, found off the window's
+        /// thread; `rules_starts_found` brings {messages, presets} as JSON.
         #[qinvokable]
-        fn rules_starts(self: &Sioul) -> QString;
+        fn rules_starts_ask(self: Pin<&mut Sioul>);
+
+        /// Whether a rule can start from this message (its file): never from
+        /// mail the Porch holds. Asked as a message's menu opens.
+        #[qinvokable]
+        fn rule_offered(self: &Sioul, key: &QString) -> bool;
 
         /// A general model of task (JSON: {id, name, prefix, list, business_days}) kept
         /// with the rules; returns {id, error} as JSON.
@@ -3506,9 +3512,13 @@ pub mod qobject {
         #[qsignal]
         fn leave_spam_found(self: Pin<&mut Sioul>, found: QString);
 
-        /// What a rule would have done in the last 30 days, as JSON {asked, count, text, lines}.
+        /// What a rule would have done in the last 30 days, as JSON {asked, count, text, lines, past}.
         #[qsignal]
         fn rules_previewed(self: Pin<&mut Sioul>, found: QString);
+
+        /// What "Add a rule…" offers to start from, as JSON {messages, presets}.
+        #[qsignal]
+        fn rules_starts_found(self: Pin<&mut Sioul>, found: QString);
 
         /// A message read for the reading pane (`read_message`): its key, the
         /// message laid out for reading as JSON (`view::MessageView`; empty
@@ -9998,7 +10008,7 @@ impl qobject::Sioul {
     }
 
     fn rule_sentence(&self, rule: &QString) -> QString {
-        QString::from(&crate::wiring::said(&rule.to_string()))
+        QString::from(&crate::wiring::said(&self.shared(), &rule.to_string()))
     }
 
     fn rule_preview(self: Pin<&mut Self>, rule: &QString) {
@@ -10033,8 +10043,12 @@ impl qobject::Sioul {
         QString::from(&crate::wiring::from_preset(&id.to_string()))
     }
 
-    fn rules_starts(&self) -> QString {
-        QString::from(&crate::wiring::starts(&self.shared()))
+    fn rules_starts_ask(self: Pin<&mut Self>) {
+        crate::wiring::starts(&self.qt_thread(), &self.shared());
+    }
+
+    fn rule_offered(&self, key: &QString) -> bool {
+        crate::wiring::offered(&key.to_string())
     }
 
     fn save_rule_model(self: Pin<&mut Self>, model: &QString) -> QString {
