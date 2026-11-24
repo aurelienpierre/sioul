@@ -49,6 +49,7 @@ nav = [
     { "Across Sioul" = [
       { "Hours: work, your admin, leisure, meals, sleep" = "guide/hours.md" },
       { "What reaches you, and when" = "guide/notifications.md" },
+      { "Rules: when this happens, do that" = "guide/rules.md" },
       { "Pauses: Free time and Pause" = "guide/pauses.md" },
       { "Calls: who may ring, and when" = "guide/calls.md" },
       # texts: SMS phase (b).

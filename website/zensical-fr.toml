@@ -50,6 +50,7 @@ nav = [
     { "Dans tout Sioul" = [
       { "Les heures : travail, démarches, loisirs, repas, sommeil" = "guide/hours.md" },
       { "Ce qui vous joint, et quand" = "guide/notifications.md" },
+      { "Les règles : quand ceci arrive, faire cela" = "guide/rules.md" },
       { "Les pauses : temps libre et pause" = "guide/pauses.md" },
       { "Les appels : qui peut sonner, et quand" = "guide/calls.md" },
       # texts: SMS phase (b).

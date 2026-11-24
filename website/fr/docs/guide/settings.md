@@ -8,7 +8,7 @@ description: Les paramètres de Sioul – un seul endroit pour ce qui concerne S
 
 **Paramètres** est l’icône à curseurs en bas de la colonne de gauche ; sur un téléphone, et dans toute fenêtre de moins de 720 pixels de large, les lieux sont dans le tiroir qu’ouvre ☰, et Paramètres est en bas de celui-ci. On y trouve ce qui concerne Sioul tout entier ; ce qui concerne une seule page est sur cette page, derrière son ⚙ ([plus bas](#each-pages-own-settings)). Chaque réglage dit en une phrase ce qu’il change, et s’enregistre dès que vous le changez : rien à confirmer, rien à appliquer. Vos réglages vous suivent sur vos autres appareils quand vous partagez entre eux ; vos mots de passe, jamais.
 
-La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Agents d’IA**, en haut de la page. Ce qui règle un téléphone est sur sa carte dans **Appareils**. **Mots**, après **Ce qui vous joint**, garde les mots auxquels Sioul reconnaît les choses ([plus bas](#words)). Les flèches du clavier passent d’un onglet à l’autre quand la rangée d’onglets a le focus. Dans une fenêtre trop étroite pour tous les noms, la rangée défile de côté : son bout coupé s’estompe, et la flèche à ce bout amène l’onglet suivant en vue.
+La page Paramètres a un onglet pour chacune des sections ci-dessous, d’**Affichage** à **Agents d’IA**, en haut de la page. Ce qui règle un téléphone est sur sa carte dans **Appareils**. **Règles**, après **Ce qui vous joint**, tient ce que fait Sioul quand quelque chose arrive ([plus bas](#rules)) ; **Mots**, après elle, garde les mots auxquels Sioul reconnaît les choses ([plus bas](#words)). Les flèches du clavier passent d’un onglet à l’autre quand la rangée d’onglets a le focus. Dans une fenêtre trop étroite pour tous les noms, la rangée défile de côté : son bout coupé s’estompe, et la flèche à ce bout amène l’onglet suivant en vue.
 
 <figure markdown="span">
   [![Les Paramètres sur un ordinateur, sur leur premier onglet : en haut, les onglets Affichage, Heures, Ce qui vous joint, Mots, Rappels, Pauses, Partage, Appareils, Factures et Agents d’IA ; sous Affichage, « Langue et apparence » avec Langue, Couleurs, Afficher le nom des lieux à côté de leur icône et Afficher les mots de passe pendant la saisie, chacun avec sa phrase ; puis « Cet appareil » et Ce qu’est cet appareil.](../assets/screens/fr/settings-tabs.png){ loading=lazy }](../assets/screens/fr/settings-tabs.png "Ouvrir l’image en grand")
@@ -61,6 +61,10 @@ Une seule page pour quand chaque chose vous joint : Sioul décide de ce qui pa
 - **Ce qui vient quand** : chaque ligne à chaque moment, un mot par case, un appui pour la changer.
 
 Voir [Ce qui vous joint, et quand](notifications.md).
+
+## Règles {#rules}
+
+Une seule liste de phrases, « quand ceci arrive, faire cela » : vos propres règles, chacune avec son interrupteur, **Modifier**, **✕** et ce qu’elle a fait dernièrement ; les règles gardées ailleurs (les routes d’un projet, les règles de courriel d’un budget, les filtres des courriels, les expéditeurs d’un thème), dites de la même façon, chacune ouvrant l’endroit où elle est gardée ; **Ajouter une règle…**, de rien ou d’un courriel. Un second onglet, **Préréglages**, tient les règles qui viennent avec Sioul. Voir [Les règles](rules.md).
 
 ## Rappels {#reminders}
 
