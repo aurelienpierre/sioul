@@ -831,7 +831,7 @@ reason-blocked = you blocked this sender
 reason-impersonation = it uses the name { $brand } but comes from { $domain }: set aside
 ui-block = Block…
 ui-block-title = Block this sender?
-ui-block-text = Their mail will be set aside for good: never shown, never counted. Nothing is deleted, and you can unblock them in Accounts.
+ui-block-text = Their mail will be set aside for good: never shown, never counted. Nothing is deleted, and you can unblock them later.
 ui-block-address = Block { $address }
 ui-block-domain = Block everyone at { $domain }
 ui-blocked = { $entry } is blocked.
@@ -3787,7 +3787,7 @@ topic-donation = a donation
 topic-other = something else
 tone-calm = calm
 tone-hostile = hostile
-shield-none = No address is shielded: set “shield = true” on an account, or in Mail's settings.
+shield-none = No address is shielded: set “shield = true” on an account, or turn on its shield on its card in Accounts.
 shield-read = The AI read { $n } { $n ->
     [one] message
    *[other] messages
@@ -3993,7 +3993,7 @@ settings-about-look = Language, colours, the places' names, passwords as you typ
 settings-about-hours = Working hours, hours for your admin, meals and the night, time off.
 settings-about-attention = Who reaches you, and when; Sioul's own notices; do not disturb on every device.
 settings-about-words = The words Sioul looks for in mail, papers, calls and tasks, in your languages.
-settings-about-reminders = Reminders of dates asked, with Sioul's window closed, and notifications gathered.
+settings-about-reminders = Reminders of dates asked, with Sioul's window closed too.
 settings-about-pauses = Free time and the pause: when work ends, what helps you, the pause's screen.
 settings-about-files = Your devices in step, through a folder or a server, sealed; what each part carries.
 settings-about-devices = Your devices: what each is, what it is for, what comes forward on each; each phone's calls, and what Android must allow on this one.
@@ -4919,7 +4919,7 @@ agenda-tasks-moved = { $count ->
    *[other] { $count } tasks moved around it.
 }
 agenda-every-day = Every day
-agenda-every-day-tip = Make this time the usual one, in Settings ▸ Hours
+agenda-every-day-tip = Make this time the usual one, every day
 need-every-day = { $what } at { $time } every day.
 need-every-day-night = Bedtime { $bed } and waking { $wake }, every day.
 need-had-now = Had it, just now
@@ -5946,7 +5946,8 @@ need-times-wrong = Two times, as 12:30, the end after the start.
 need-too-short = A few minutes at least.
 need-other-day = That would move it to another day.
 need-over = It is over already: it stays as it was.
-health-day-empty = Meals, rest and sleep are set in Settings ▸ Hours.
+health-day-empty = No usual meal, rest or sleep is set yet.
+health-day-empty-set = Set your usual meals and sleep
 health-day-nothing = Nothing set for this day.
 health-errand-day = { $what } (in your tasks from this day)
 health-alone = These doses are known to this device only. If Sioul also runs on another device, share between them (Settings ▸ Sharing): a dose marked on one then counts on all, and only the one you are using reminds you.
@@ -8670,7 +8671,7 @@ event-clock-utc = UTC
 overlap-day-close = { $day }, { $first } and { $second }: { $gap } min between them, less than the { $needed } min { $source }.
 overlap-source-after = kept after the first (its After)
 overlap-source-before = kept before the second (its Before)
-overlap-source-setting = kept between two events (Settings ▸ Agenda)
+overlap-source-setting = kept between two events (Agenda ⚙)
 home-card-overlap-close = Today, { $first } then { $second }: { $gap } min between them, less than the { $needed } min you keep.
 home-card-overlap-close-plain = Today, two events closer than the time you keep between them.
 agenda-kept = Kept before it: { $before } min; after it: { $after } min (this event's own Before and After, in its form).
@@ -10251,7 +10252,7 @@ hours-doubt-long = These hours are too long for Sioul to read: it counts none of
 hours-short-days = mo tu we th fr sa su
 hours-form-short-placeholder = mo-fr 9-12, 14-17; sa 9-12
 hours-form-holidays-help = Unticked, it is closed on the public holidays Sioul knows (Settings ▸ Hours).
-hours-holidays-unknown = Closed on public holidays, but Sioul knows none yet: add their calendar in Settings ▸ Hours.
+hours-holidays-unknown = Closed on public holidays, but Sioul knows none yet: subscribe to their calendar in Settings ▸ Hours, under Vacations and holidays.
 hours-form-day-unread = Sioul cannot count this day: it goes to the free line when you save.
 hours-form-card-rest = Also on the card, which Sioul cannot count: { $text }. It stays there while these hours do not change.
 hours-saved-ticked = { $count ->

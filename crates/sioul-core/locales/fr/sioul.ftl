@@ -855,7 +855,7 @@ reason-blocked = vous avez bloqué cet expéditeur
 reason-impersonation = il prend le nom { $brand } mais vient de { $domain } : mis de côté
 ui-block = Bloquer…
 ui-block-title = Bloquer cet expéditeur ?
-ui-block-text = Ses courriels seront mis de côté pour de bon : jamais affichés, jamais comptés. Rien n’est supprimé, et vous pouvez le débloquer dans Comptes.
+ui-block-text = Ses courriels seront mis de côté pour de bon : jamais affichés, jamais comptés. Rien n’est supprimé, et vous pourrez le débloquer plus tard.
 ui-block-address = Bloquer { $address }
 ui-block-domain = Bloquer tout { $domain }
 ui-blocked = { $entry } est bloqué.
@@ -3820,7 +3820,7 @@ topic-donation = un don
 topic-other = autre chose
 tone-calm = calme
 tone-hostile = hostile
-shield-none = Aucune adresse n’est protégée : mettre « shield = true » sur un compte, ou dans Courriels ▸ ⚙.
+shield-none = Aucune adresse n’est protégée : mettre « shield = true » sur un compte, ou activer sa protection sur sa fiche dans Comptes.
 shield-read = L’IA a lu { $n } { $n ->
     [one] courriel
    *[other] courriels
@@ -4026,7 +4026,7 @@ settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la 
 settings-about-hours = Heures de travail, heures pour vos démarches, repas et nuit, congés.
 settings-about-attention = Qui vous joint, et quand ; les avis de Sioul ; « Ne pas déranger » sur tous vos appareils.
 settings-about-words = Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.
-settings-about-reminders = Rappels des dates demandées, fenêtre de Sioul fermée, et notifications regroupées.
+settings-about-reminders = Rappels des dates demandées, fenêtre de Sioul fermée aussi.
 settings-about-pauses = Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.
 settings-about-files = Vos appareils au même point, par un dossier ou un serveur, scellés ; ce que porte chaque partie.
 settings-about-devices = Vos appareils : ce qu’est chacun, à quoi il sert, ce qui passe devant sur chacun ; les appels de chaque téléphone, et ce qu’Android doit permettre sur celui-ci.
@@ -4950,7 +4950,7 @@ agenda-tasks-moved = { $count ->
    *[other] { $count } tâches se sont déplacées autour.
 }
 agenda-every-day = Tous les jours
-agenda-every-day-tip = Faire de cette heure l’heure habituelle, dans Paramètres ▸ Heures
+agenda-every-day-tip = Faire de cette heure l’heure habituelle, chaque jour
 need-every-day = { $what } à { $time } tous les jours.
 need-every-day-night = Coucher à { $bed } et réveil à { $wake }, tous les jours.
 need-had-now = Déjà fait, à l’instant
@@ -5980,7 +5980,8 @@ need-times-wrong = Deux heures, comme 12:30, la fin après le début.
 need-too-short = Quelques minutes au moins.
 need-other-day = Cela le ferait passer à un autre jour.
 need-over = C’est déjà passé : cela reste tel quel.
-health-day-empty = Les repas, le repos et le sommeil se règlent dans Paramètres ▸ Heures.
+health-day-empty = Aucun repas, repos ni sommeil habituel n’est encore réglé.
+health-day-empty-set = Régler vos repas et votre sommeil habituels
 health-day-nothing = Rien de prévu ce jour-là.
 health-errand-day = { $what } (dans vos tâches à partir de ce jour)
 health-alone = Ces prises ne sont connues que de cet appareil. Si Sioul tourne aussi sur un autre, partagez entre eux (Paramètres ▸ Partage) : une prise notée sur l’un compte alors sur tous, et seul celui où vous êtes vous la rappelle.
@@ -8733,7 +8734,7 @@ event-clock-utc = UTC
 overlap-day-close = { $day }, { $first } et { $second } : { $gap } min entre les deux, moins que les { $needed } min { $source }.
 overlap-source-after = gardées après le premier (son Après)
 overlap-source-before = gardées avant le second (son Avant)
-overlap-source-setting = gardées entre deux événements (Paramètres ▸ Agenda)
+overlap-source-setting = gardées entre deux événements (Agenda ⚙)
 home-card-overlap-close = Aujourd’hui, { $first } puis { $second } : { $gap } min entre les deux, moins que les { $needed } min que vous gardez.
 home-card-overlap-close-plain = Aujourd’hui, deux événements plus proches que le temps que vous gardez entre eux.
 agenda-kept = Gardé avant : { $before } min ; après : { $after } min (l’Avant et l’Après de cet événement, dans son formulaire).
@@ -10637,7 +10638,7 @@ hours-doubt-long = Ces horaires sont trop longs pour que Sioul les lise : il n
 hours-short-days = lu ma me je ve sa di
 hours-form-short-placeholder = lu-ve 9-12, 14-17 ; sa 9-12
 hours-form-holidays-help = Décoché, il est fermé les jours fériés que Sioul connaît (Réglages ▸ Heures).
-hours-holidays-unknown = Fermé les jours fériés, mais Sioul n’en connaît encore aucun : ajoutez leur agenda dans Réglages ▸ Heures.
+hours-holidays-unknown = Fermé les jours fériés, mais Sioul n’en connaît encore aucun : abonnez-vous à leur agenda dans Paramètres ▸ Heures, sous Vacances et jours fériés.
 hours-form-day-unread = Sioul ne sait pas compter ce jour : il ira dans la ligne libre quand vous enregistrerez.
 hours-form-card-rest = Aussi sur la fiche, que Sioul ne sait pas compter : { $text }. Cela y reste tant que ces horaires ne changent pas.
 hours-saved-ticked = { $count ->

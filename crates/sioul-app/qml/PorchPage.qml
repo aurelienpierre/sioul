@@ -14,7 +14,6 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Item {
@@ -370,16 +369,6 @@ Item {
     // How mail is sorted, every lane: for the window's images.
     function openSettings(open) {
         settingsButton.show(open)
-    }
-
-    // A scan of a paper letter, chosen and copied into the folder scans are
-    // read from (the New menu's "A paper letter (scan)…"); without a folder,
-    // where one is chosen: Settings.
-    function addScan() {
-        if (page.sioul.lettersFolder() === "")
-            page.window.showParameters("case_store")
-        else
-            scanPicker.open()
     }
 
     function grabSettings(path) {
@@ -1825,16 +1814,5 @@ Item {
                 }
             }
         }
-    }
-
-    // PDF and pictures, the kinds Sioul reads; several at once. Each copied,
-    // the chosen file left where it was; what happened said on the status line.
-    FileDialog {
-        id: scanPicker
-
-        title: page.sioul.text("letters-add-scan-title")
-        fileMode: FileDialog.OpenFiles
-        nameFilters: [page.sioul.text("letters-add-scan-filter") + " (*.pdf *.png *.jpg *.jpeg *.tif *.tiff *.webp)"]
-        onAccepted: page.sioul.status = page.sioul.lettersAdd(JSON.stringify(Array.from(scanPicker.selectedFiles, f => f.toString())))
     }
 }
