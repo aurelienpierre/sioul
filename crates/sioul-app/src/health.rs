@@ -4148,8 +4148,8 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
         return Vec::new();
     }
     let _ = today.save(&path);
-    // In a meeting, nothing is said: the time stays kept.
-    let meeting = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && e.start <= stamp && e.end > stamp);
+    // In a meeting, nothing is said: the time stays kept. Another person's appointment is not yours.
+    let meeting = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && !e.another_persons() && e.start <= stamp && e.end > stamp);
     if meeting {
         return Vec::new();
     }

@@ -308,9 +308,11 @@ pub(crate) fn line(date: &str) -> String {
     .to_string()
 }
 
-/// Whether an event goes on now (not a whole day's, not cancelled).
+/// Whether an event goes on now (not a whole day's, not cancelled), never
+/// one of another person's agenda: it is not your present moment
+/// (`Occurrence::another_persons`).
 fn meeting(stamp: i64) -> bool {
-    sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && e.start <= stamp && e.end > stamp)
+    sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && !e.another_persons() && e.start <= stamp && e.end > stamp)
 }
 
 /// The day the end-of-work notice was given, on this device.
