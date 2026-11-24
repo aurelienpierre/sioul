@@ -1432,6 +1432,46 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// Your rules and what they did wait for a device that has their stores,
+/// as an older Sioul (0.1.0) never says: kept on the desk, neither sent nor
+/// read on the phone; once the phone says so, the next exchanges bring the
+/// desk's rules and its record of acts there, the phone's own log beside it.
+#[test]
+fn your_rules_wait_for_a_device_that_has_them() {
+    let base = scratch("rules-gate");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let mut now = NOW;
+    entry(&desk, &folder, &key, |e| {
+        e.start(now / 1000);
+        e.rules = RULES_SHARED;
+    });
+    entry(&phone, &folder, &key, |e| e.start(now / 1000));
+    let rules = "version = 1\n\n[[rule]]\nid = \"r1\"\non = true\nsince = 1795000000\nwhen.type = \"message\"\nwhen.event = \"arrives\"\nwhen.if = [{ field = \"kind\", test = \"is\", value = [\"bill\"] }]\nthen.type = \"none\"\nthen.action = \"tell\"\n";
+    desk.write(RULES, rules);
+    let line = "{\"at\":1795000000000,\"rule\":\"r1\",\"object\":\"mid:a@example.org\",\"act\":\"tell\",\"result\":\"now\",\"wrote\":true,\"depth\":1}\n";
+    let desk_log = format!("{RULES_ACTS}{}.jsonl", desk.id);
+    desk.write(&desk_log, line);
+    let rounds = |now: &mut i64| {
+        for _ in 0..2 {
+            background(&desk, &folder, &key, *now);
+            *now += MINUTE;
+            background(&phone, &folder, &key, *now);
+            *now += MINUTE;
+        }
+    };
+    rounds(&mut now);
+    assert!(!phone.path(RULES).exists() && !phone.path(&desk_log).exists(), "kept on the desk");
+    entry(&phone, &folder, &key, |e| e.rules = RULES_SHARED);
+    rounds(&mut now);
+    let read = sioul_core::wiring::store::Rules::load(&phone.path(RULES)).unwrap();
+    assert_eq!(read.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["r1"], "{}", phone.read(RULES));
+    assert_eq!(phone.read(&desk_log), line, "the desk's acts, on the phone");
+    assert!(sioul_core::wiring::acts::Acts::read(&phone.path(RULES_ACTS)).touched("r1", "mid:a@example.org"));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// A table trained on a device at `now` (its clock's time): its file written,
 /// dated then; never after this computer's real clock, whose files dated
 /// ahead would wait as still changing (a test that runs months ahead).
