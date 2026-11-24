@@ -91,8 +91,13 @@ fn text(written: &str) -> Area {
 }
 
 /// What the filter's button says: the areas shown, in their order ("Admin ·
-/// Leisure"), or that none is ticked.
+/// Leisure"), "All areas" when the three are, or that none is ticked. One
+/// name for every area, wherever the filter stands (the Agenda's steps, Mail,
+/// Projects, Time, Settings ▸ Devices).
 pub fn label(tr: &Translator, shown: Area) -> String {
+    if shown == Area::ALL {
+        return tr.text("area-filter-all", None);
+    }
     let words: Vec<String> = [(shown.work, "area-filter-work"), (shown.admin, "area-filter-admin"), (shown.leisure, "area-filter-leisure")].iter().filter(|(on, _)| *on).map(|(_, id)| tr.text(id, None)).collect();
     if words.is_empty() { tr.text("area-filter-none", None) } else { words.join(" · ") }
 }
@@ -307,7 +312,8 @@ mod tests {
     fn the_button_says_what_shows() {
         let en = Translator::new("en");
         assert_eq!(label(&en, Area::PERSONAL), "Admin · Leisure");
-        assert_eq!(label(&en, Area::ALL), "Work · Admin · Leisure");
+        assert_eq!(label(&en, Area::ALL), "All areas");
+        assert_eq!(label(&Translator::new("fr"), Area::ALL), "Tous les domaines");
         assert_eq!(label(&en, Area::default()), "Nothing ticked");
         assert_eq!(label(&Translator::new("fr"), Area::MIXED), "Travail · Démarches");
         let ticked = AreaFilter { ticked: Some("work".into()), under: "leisure".into(), until: None };

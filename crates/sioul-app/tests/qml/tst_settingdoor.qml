@@ -27,7 +27,6 @@ TestCase {
             "screen_colours": "sites",
             "calmer_colours": "sites",
             "sites": "sites",
-            "link.bitwarden": "sites",
             "bitwarden": "bitwarden",
             "bitwarden.email": "bitwarden",
             "bitwarden_vault": "bitwarden",
@@ -96,10 +95,7 @@ TestCase {
         door.open("bitwarden.email")
         door.open("bitwarden_vault")
         compare(fakeWindow.accountsPage.asked.slice(1), [[true, "bitwarden.email"], [true, "bitwarden_vault"]])
-        // The Sites page's line about it is the Sites page's own.
-        door.open("link.bitwarden")
-        compare(fakeWindow.page, 3)
-        compare(fakeWindow.sitesPage.asked, [[true, "link.bitwarden"]])
+        compare(fakeWindow.sitesPage.asked, [], "never the Sites page")
         compare(fakeWindow.parametersPage.asked, [], "never Settings")
     }
 

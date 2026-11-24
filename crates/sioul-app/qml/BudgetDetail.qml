@@ -30,7 +30,7 @@ ColumnLayout {
     signal back
 
     // An instant (ms) as a date whose own clock reads the time zone Sioul shows
-    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
+    // (`zone::current`, Settings ▸ Hours ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
     function wall(ms) {
         return new Date(ms + (typeof detail.sioul.zoneOffset === "function" ? detail.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }

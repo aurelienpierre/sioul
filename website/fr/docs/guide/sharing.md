@@ -143,7 +143,7 @@ Sur le téléphone lui-même, tant qu’Android n’a pas donné à Sioul un acc
 
 **Détails**, sous les quatre, tient le reste. Ils restent ouverts ou fermés comme vous les avez laissés, sur cet appareil seulement :
 
-- **Renommer…** : un nom à vous pour l’appareil. Vider le champ fait revenir le nom de son système ; sous un nom que vous avez donné, la carte dit comment son système l’appelle. Sur la carte de cet appareil, **Ce qu’est cet appareil** change ce qu’il est, comme dans les [Paramètres](settings.md#display).
+- **Renommer…** : un nom à vous pour l’appareil. Vider le champ fait revenir le nom de son système ; sous un nom que vous avez donné, la carte dit comment son système l’appelle. Sur la carte de cet appareil, **Ce qu’est cet appareil** change ce qu’il est : sa seule place ([Paramètres](settings.md#devices)).
 - **Dernière ouverture**, tant qu’il est utilisé (sinon elle est en vue), et **Dernier partage** : quand Sioul y a été ouvert pour la dernière fois, et quand il a lu les autres appareils et écrit ses propres changements pour la dernière fois.
 - **Sioul** : la version qu’il fait tourner, comme « 0.0.3 (eff8661abcde) », avec une phrase quand elle est plus ancienne que celle de cet appareil, pour que vous le mettiez à jour quand vous voulez.
 - **Partage** : les parties qu’il partage ([Ce qui voyage depuis cet appareil](#what-travels-from-this-device)). Sur la carte de cet appareil, **Changer ce qui voyage depuis cet appareil…** y mène. Les parties d’un autre appareil ne se changent pas d’ici : une partie s’active ou se coupe sur l’appareil lui-même, là où ses données arrivent. Un appareil sur un Sioul plus ancien ne dit pas ce qu’il partage.

@@ -260,16 +260,15 @@ Item {
             const line = find(person, "personReaches")
             verify(line.visible && line.text === "Léa is one of your people.", line.text)
             root.doors = []
-            find(person, "personReachesOpen").clicked()
-            compare(root.doors, ["settings:attention.people"])
+            verify(find(person, "personReachesOpen") === null, "no door that only says where the circle's rule is")
             const sheet = find(person, "personCardSheet")
             verify(sheet.visible, "the card's sheet")
             sheet.clicked()
-            compare(root.doors, ["settings:attention.people", "sheet:/stand-in/lea.vcf"])
+            compare(root.doors, ["sheet:/stand-in/lea.vcf"])
             compare(past(person, []).join("; "), "", "nothing past 412 points")
             person.personId = "me"
             waitForRendering(person)
-            verify(!find(person, "personReaches").visible && !find(person, "personReachesOpen").visible, "your own page: none")
+            verify(!find(person, "personReaches").visible, "your own page: none")
         }
 
         function test_a_child_s_agendas_with_who_does_what() {

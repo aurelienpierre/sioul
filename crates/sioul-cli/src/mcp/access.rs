@@ -115,13 +115,13 @@ pub fn left_out(count: usize) -> Option<String> {
 /// A thing the agent asked for by its address, kept from agents.
 pub fn kept(what: &str) -> String {
     format!(
-        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, to a work or school account kept from agents, or to someone of the household the person has not opened to agents, or it is health, which agents never see. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul, or in Settings ▸ AI agents, where work and school accounts are opened too; someone of the household on their page in Contacts."
+        "{what} is kept from agents: it belongs to a project the person has not opened to agents, to no project while things outside projects are closed to them, to a work or school account kept from agents, or to someone of the household the person has not opened to agents, or it is health, which agents never see. Sioul neither reads nor writes it for an agent. The person opens a project on its page in Sioul; work and school accounts in Settings ▸ AI agents; someone of the household on their page in Contacts."
     )
 }
 
 /// A project named by the agent, closed to agents.
 pub fn closed_project(id: &str) -> String {
-    format!("The project “{}” is closed to agents: Sioul neither reads it nor writes into it for an agent. The person opens it on its page in Sioul, or in Settings ▸ AI agents.", crate::one_line(id))
+    format!("The project “{}” is closed to agents: Sioul neither reads it nor writes into it for an agent. The person opens it on its page in Sioul.", crate::one_line(id))
 }
 
 /// A new thing in no project, while those are closed to agents.

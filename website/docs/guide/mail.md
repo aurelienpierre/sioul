@@ -9,7 +9,7 @@ description: Sioul's mail client - every address and folder, each message checke
 The Mail page keeps all your mail, from every address, for when you choose to look; what is new waits on [the Porch](porch.md) first. Sioul checks each message itself as it arrives, and tells you before you read it whether it really comes from the address it shows. Nothing in a message loads or runs, and an attachment goes through your system's antivirus, when it has one, before it opens. You write in plain text, in Markdown if you like, and whatever you send, move or delete can be undone for ten seconds. Sioul shows no unread counts, no badges and no red.
 
 <figure markdown="span">
-  [![The Mail page on All addresses: on the left, All addresses chosen, then each address, one unfolded with its folders (Inbox, Sent, Drafts, Archive, Junk, Trash); at the top, a search field, More… and the Real time box; above the list, the chips All, Unread, Sent and Spam, the filter's button "Work ▾" (in work hours), a square for each address and "All topics ▾"; then the messages by day, one line each with its address's square, who, the subject and the time, a small dot before the unread ones, a paper clip beside those with an attachment.](../assets/screens/mail.png){ loading=lazy }](../assets/screens/mail.png "Open the picture at full size")
+  [![The Mail page on All addresses: on the left, All addresses chosen, then each address, one unfolded with its folders (Inbox, Sent, Drafts, Archive, Junk, Trash); at the top, a search field and More…; above the list, the chips All, Unread, Sent and Spam, the filter's button "Work ▾" (in work hours), a square for each address and "All topics ▾"; then the messages by day, one line each with its address's square, who, the subject and the time, a small dot before the unread ones, a paper clip beside those with an attachment.](../assets/screens/mail.png){ loading=lazy }](../assets/screens/mail.png "Open the picture at full size")
   <figcaption>Folders on the left, the newest mail in the middle, no counts.</figcaption>
 </figure>
 
@@ -112,8 +112,7 @@ Opening a message marks it read, as any mail program does. On a device you said 
 
 A topic is a quiet word on a message, such as Health, Tax or Choir: a way to look at your mail, never a folder. Nothing moves, and nothing asks you to tag anything.
 
-- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off, in **All addresses** and in each address's folders alike. Choose several with Ctrl and Shift, or on a touch screen with **Select** in a row's menu (a long press), then a tap on each. The topic they share is ticked. **New topic…** makes it and gives it in one act.
-- **Rename or remove…**, at the end of the same menu, turns each topic's name into a field: change it and press Enter, or **Remove** it (its word leaves every message, with **Undo**). **Done** goes back.
+- **Topic…**, under the sender's line in the reader, in a message's menu, or in the bar above a selection, gives a topic to one message or to several at once, changes it or takes it off, in **All addresses** and in each address's folders alike. Choose several with Ctrl and Shift, or on a touch screen with **Select** in a row's menu (a long press), then a tap on each. The topic they share is ticked. **New topic…** makes it and gives it in one act. The topics themselves are renamed and removed in the page's ⚙, under **Topics** ([Settings](#settings)).
 - **Always <topic> for this sender**, or **Never…**, in the same menu: the sender's mail takes it, or never does. A reply takes the topic you gave its conversation.
 - **The Topic filter**, beside the filter by area, shows one topic's mail alone. The topic shows quietly after the subject, in **All addresses** and in each folder, and in the reader with why it has it.
 - Each act says what it did, with **Undo**. In the Mail page's ⚙, **Topics** lists them, renames and removes them, and on a computer or a tablet **Groups Sioul noticed** gathers mail no topic names yet, by its words, when you press **Look for groups**: **Name it** gives the whole group a topic, once a thousand messages are kept here, named when a topic preset or a kind of site holds most of it, and **Always a topic…** files all the mail of a sender who writes to you a lot under the topic you name.
@@ -272,17 +271,15 @@ On Android, the band asks the PIN first, typed for each use and never kept, then
 The ⚙ at the top of the Mail page:
 
 - **By conversation**: messages grouped with their answers.
-- **Fetch every**: how often the folders other than the inbox are fetched, from 1 to 240 minutes, 5 unless you change it. The inbox comes as soon as the server says something arrived.
-- **Font**, **Size**, **Line spacing**, under **How text reads**: how messages read. The same three are in the Porch's ⚙, and behind **Aa** in Notes.
 - **Topics**: your topics, to rename or remove, the topics Sioul knows, and the groups Sioul noticed ([above](#topics)).
 - **Lists you left**: each list you left from a message, when and how, once there is one; and the row that leaves the lists of the mail you called spam, when there are some ([above](#unsubscribing)).
 - **When you say Spam, also leave its list if it offers one click**, under Your own spam filter: on unless you switch it off ([above](#unsubscribing)).
 - **Filters**: what is done to new mail on its server, by conditions ([above](#filters)).
 - **Your own spam filter**: below.
 
-Each address's own settings (what it is for, how far back, how often, its protection) are on its card in [Accounts](accounts.md#your-accounts).
+How often mail is fetched (for every address, at the top of Your accounts, and for each on its card) and each address's own settings (what it is for, how far back, its protection) are in [Accounts](accounts.md#your-accounts); how messages read (font, size, line spacing), in [Settings ▸ Display](settings.md#display).
 
-**Real time**, at the top of the page, fetches every folder of every address each minute, and opens the Porch as **Show all mail now** does, for a code or a password you are waiting for, until the hours you ticked it in end (an hour, ticked at night). The same switch is **Mail every minute** in the card What reaches you now ([Real time](porch.md#real-time)).
+**Mail every minute**, in the card What reaches you now (the button at the end of the status line), fetches every folder of every address each minute, and opens the Porch as **Show all mail now** does, for a code or a password you are waiting for, until the hours you ticked it in end (an hour, ticked at night) ([Real time](porch.md#real-time)).
 
 #### Your own spam filter {#your-own-spam-filter}
 

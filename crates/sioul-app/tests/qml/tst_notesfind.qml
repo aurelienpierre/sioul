@@ -145,6 +145,9 @@ Item {
         function textWith(key, name, value) {
             return mock.text(key) + ": " + value
         }
+        function textCounted(key, n) {
+            return mock.text(key) + (n > 0 ? " (" + n + ")" : "")
+        }
         function viewFlag(name) {
             return false
         }
@@ -457,6 +460,9 @@ Item {
             for (const width of [412, 1280, 884]) {
                 root.width = width
                 fakeWindow.compact = width < 700
+                // On a phone, the two choices are folded behind Filters (PageHead.qml): unfolded first.
+                if (fakeWindow.compact && !named(page, "noteChoices").visible)
+                    mouseClick(named(page, "noteFilters"))
                 if (width > 700)
                     page.open("Projects/Fernhill Library.md")
                 waitForRendering(page)

@@ -4,13 +4,17 @@
 
 // A button drawn as its words or its icon alone, for what is not an action of
 // the page: a row of a list or a panel (Mail's addresses among their
-// folders), a fold line ("▸ Server and folders"), a line of a menu made of
-// buttons, a button inside a field (a password's eye), a state that answers
-// a press (a dose taken). Sioul's flat buttons that hold words keep an outline
-// (qml/style/StyleButton.qml); these do not. Basic's flat button, as Qt 6.9 to
-// 6.11 write it: no ground at rest; filled when pressed, checked or
-// highlighted; and, unlike Basic's flat one, a ring in the highlight while
-// the keyboard's focus is on it. The same properties and sizes as a Button.
+// folders), a line of a menu made of buttons, a button inside a field (a
+// password's eye), a state that answers a press (a dose taken). A fold line
+// is Fold.qml, made of one. Sioul's buttons that hold words keep an outline
+// (qml/style/StyleButton.qml); these do not. Basic's flat button, as Qt 6.9
+// to 6.11 write it: no ground at rest, a light one under the pointer, Basic's
+// mid tone while pressed, and a ring in the highlight while the keyboard's
+// focus is on it. Chosen (`checked` or `highlighted`: the topic shown, a
+// line of a menu), it takes the window's one look for what is selected: the
+// accent's frame, a light tint of it, bold words, and a ✓ before them among
+// other lines that can be chosen. A colour icon keeps its own colours. The
+// same properties and sizes as a Button.
 
 import QtQuick
 import QtQuick.Controls.impl
@@ -18,6 +22,19 @@ import QtQuick.Templates as T
 
 T.Button {
     id: control
+
+    // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette then.
+    readonly property var shownIn: control.Window.window
+    readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
+    readonly property bool selected: control.checked || control.highlighted
+    // One line chosen among several, said by the page (`autoExclusive`, or a ButtonGroup): a ✓ before its words.
+    readonly property bool choice: control.autoExclusive || (control.checkable && control.T.ButtonGroup.group !== null)
+    readonly property bool ownColours: control.sioulTheme !== undefined && control.sioulTheme.ownColours(control.icon.name)
+    readonly property font boldFont: Qt.font(control.font.pixelSize > 0
+        ? { family: control.font.family, pixelSize: control.font.pixelSize, italic: control.font.italic, capitalization: control.font.capitalization, weight: Font.DemiBold }
+        : { family: control.font.family, pointSize: control.font.pointSize, italic: control.font.italic, capitalization: control.font.capitalization, weight: Font.DemiBold })
+    readonly property color ink: !control.enabled ? (control.sioulTheme ? control.sioulTheme.muted : control.palette.placeholderText)
+        : control.visualFocus && !control.down && !control.selected ? control.palette.highlight : control.palette.windowText
 
     implicitWidth: Math.max(implicitBackgroundWidth + leftInset + rightInset,
                             implicitContentWidth + leftPadding + rightPadding)
@@ -31,30 +48,35 @@ T.Button {
 
     icon.width: 24
     icon.height: 24
-    icon.color: control.checked || control.highlighted ? control.palette.brightText :
-                !control.down ? (control.visualFocus ? control.palette.highlight : control.palette.windowText) : control.palette.buttonText
+    icon.color: control.ink
 
     contentItem: IconLabel {
         spacing: control.spacing
         mirrored: control.mirrored
         display: control.display
 
-        icon: control.icon
-        text: control.text
-        font: control.font
-        color: control.checked || control.highlighted ? control.palette.brightText :
-               !control.down ? (control.visualFocus ? control.palette.highlight : control.palette.windowText) : control.palette.buttonText
+        icon.name: control.icon.name
+        icon.source: control.icon.source
+        icon.width: control.icon.width
+        icon.height: control.icon.height
+        icon.cache: control.icon.cache
+        icon.color: control.ownColours ? "transparent" : control.enabled && !control.selected ? control.icon.color : control.ink
+        text: control.selected && control.choice ? "✓  " + control.text : control.text
+        font: control.selected ? control.boldFont : control.font
+        color: control.ink
     }
 
     background: Rectangle {
-        readonly property bool filled: control.down || control.checked || control.highlighted
+        readonly property var theme: control.sioulTheme
 
         implicitWidth: 100
         implicitHeight: 40
-        visible: filled || control.visualFocus
-        color: filled ? Color.blend(control.checked || control.highlighted ? control.palette.dark : control.palette.button,
-                                    control.palette.mid, control.down ? 0.5 : 0.0) : "transparent"
-        border.color: control.palette.highlight
-        border.width: control.visualFocus ? 2 : 0
+        radius: theme ? theme.radius : 0
+        visible: control.selected || control.down || control.visualFocus || (control.hovered && control.enabled)
+        color: control.down ? control.palette.mid
+            : control.selected ? (theme ? theme.chosenTint : Color.blend(control.palette.window, control.palette.dark, 0.16))
+            : control.hovered ? (theme ? theme.hover : control.palette.light) : "transparent"
+        border.color: control.visualFocus ? control.palette.highlight : theme ? theme.accent : control.palette.dark
+        border.width: control.visualFocus || control.selected ? 2 : 0
     }
 }

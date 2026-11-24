@@ -51,6 +51,13 @@ QtObject {
     readonly property color selection: dark ? "#5d8471" : "#5f8572"
     readonly property color accent: dark ? "#93b5a2" : "#4c6b5c"
     readonly property color accentText: dark ? "#1e1f1c" : "#fbfaf7"
+    // A button selected (one choice among several, a state that is on): a light
+    // tint of the accent under its 2-point frame in the accent, the accent a
+    // fifth (light) or a sixth (dark) of the way in from the cards; the text on
+    // it 10.4:1 light and 8.4:1 dark, the frame 4.3:1 and 4.8:1 against it
+    // (qml/style/StyleButton.qml, tests/qml/tst_style.qml).
+    // Named apart from the light or dark choice `chosen`, which main.qml's Theme declares.
+    readonly property color chosenTint: dark ? "#383f38" : "#d8ddd8"
     // What you type in or choose from (a text field, a text area, a combo box, a
     // box to tick): a fill of its own, a step below a card's surface (light
     // 93 L* against the cards' 98; dark 9 against 16) and away from a filled
@@ -77,7 +84,21 @@ QtObject {
     // Fingers rather than a mouse (a phone, or the runner's phone size): what is
     // tapped is kept a fingertip wide (CostTiles.qml).
     property bool touch: false
+    // The spacings, by what they part (docs/qt-quick.md, "The look of each kind
+    // of thing", rule 17); a page uses these names, never a number of its own.
+    // Around a page and between its sections, cards and columns.
     readonly property int gap: compact ? 10 : 16
+    // Between two sections of a card or a column.
+    readonly property int sectionGap: gap
+    // Between the rows of a group (a section's fields, a list's lines in a card).
+    readonly property int rowGap: 8
+    // Between a label and the control it names, beside or above it.
+    readonly property int labelGap: 6
+    // Inside a card or a section's frame, on every side (Panel.qml, Section.qml).
+    readonly property int cardPadding: compact ? 10 : 14
+    // One step of indentation: what a fold holds sits under its words, past its
+    // arrow (Fold.qml); a level nested under another, one step more.
+    readonly property int indent: 24
     readonly property int radius: 6
     // A page's column of text and forms (PageColumn.qml): a legible width, centred.
     readonly property int readable: 720
@@ -103,7 +124,7 @@ QtObject {
         return available < 720 ? available : Math.round(Math.min(Math.max(520, available * 0.42), 760, available - 240))
     }
 
-    // Long text (notes, mail, a task's notes): the family, size and spacing chosen in "Aa".
+    // Long text (notes, mail, a task's notes): the family, size and spacing chosen in Settings ▸ Display (`reading.*`).
     property string readingFamily: ""
     property int readingSize: 16
     // Line height, as a multiple of the font's (1.5 reads more easily than Qt's 1.0).
@@ -156,6 +177,21 @@ QtObject {
             "think": "games-hint",
             "make": "run-build"
         })
+
+    // The bundled icons that are drawn in colours of their own at a button's
+    // size (Breeze's applications, places, documents, weather, the shields and
+    // the lock): a tint would make each a solid shape, a white disc or a black
+    // square. Buttons draw these in their own colours, and tint only the
+    // symbolic ones (qml/style/StyleButton.qml). Written by tools/bundle-icons.py
+    // from the bundle itself: run it again rather than changing the list by hand.
+    // own-colour icons: begin
+    readonly property var ownColourIcons: ["application-pdf", "audio-x-generic", "dialog-password", "dialog-warning", "folder", "folder-documents", "folder-mail", "folder-open", "folder-trash", "image-x-generic", "inode-directory", "internet-mail", "internet-web-browser", "mail-mark-junk", "notification-disabled", "package-x-generic", "security-high", "security-low", "security-medium", "text-x-generic", "user-trash", "weather-clear-night", "x-office-document"]
+    // own-colour icons: end
+
+    // Whether an icon, by its name, keeps its own colours on a button.
+    function ownColours(name: string): bool {
+        return name !== "" && theme.ownColourIcons.indexOf(name) >= 0
+    }
 
     // Rich text with its lines spaced: Qt's text documents take line-height from a style sheet.
     function spaced(html) {

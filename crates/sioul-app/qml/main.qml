@@ -975,11 +975,6 @@ SioulWindow {
         // Who may reach you on one channel: Settings ▸ What reaches you ▸ By person, at that channel.
         else if (item.kind === "reach-mail" || item.kind === "reach-calls" || item.kind === "reach-messages")
             window.showParameters("attention." + item.kind.slice("reach-".length))
-        // "Subscribe to a calendar…" from Settings ▸ Hours ▸ Vacations and holidays: the Agenda's ⚙, its form open.
-        else if (item.kind === "settings:agendas.subscribe") {
-            window.page = 4
-            Qt.callLater(() => agendaPage.askSubscribe())
-        }
         // A setting, from another tab's link: "settings:attention.pause", What reaches you at the pause's card.
         else if (item.kind.startsWith("settings:"))
             window.showParameters(item.kind.slice("settings:".length))
@@ -1549,7 +1544,7 @@ SioulWindow {
             property string doneUid: ""
             // A page is shown at one tick and saved at the next, since an image is
             // taken at the next frame.
-            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps, "notes-find": grabber.notesFindSteps, "search-tabs": grabber.searchTabSteps })[sioul.grabSteps()] || grabber.pages
+            readonly property var steps: ({ "actions": grabber.actions, "pim": grabber.pim, "pgp": grabber.pgp, "tasks": grabber.tasks, "move": grabber.move, "links": grabber.links, "projects": grabber.projects, "map": grabber.map, "duplicates": grabber.duplicates, "sites": grabber.sites, "quiet": grabber.quiet, "folders": grabber.folders, "notes": grabber.notes, "collections": grabber.collections, "health": grabber.health, "movetask": grabber.movetask, "google": grabber.google, "github": grabber.github, "batch-a": grabber.batchA, "export": grabber.exportCsv, "noantivirus": grabber.noAntivirus, "share": grabber.share, "share-join": grabber.shareJoin, "share-two": grabber.shareTwo, "parameters": grabber.parameters, "closed-on": grabber.closedOn, "closed-off": grabber.closedOff, "papers": grabber.papers, "budget": grabber.budget, "energy": grabber.energy, "day": grabber.day, "bitwarden-key": grabber.bitwardenKey, "bitwarden-passkey": grabber.bitwardenPasskey, "bitwarden-choose": grabber.bitwardenChoose, "bitwarden-wait": grabber.bitwardenWait, "tray": grabber.traySteps, "areas": grabber.areas, "presets": grabber.presets, "ownership": grabber.ownership, "zoom": grabber.zoom, "accounts": grabber.accounts, "account-tabs": grabber.accountTabs, "batch-11": grabber.batch11, "contracts": grabber.contracts, "bank": grabber.bankSteps, "porch-money": grabber.porchMoney, "porch-notices": grabber.porchNotices, "letters": grabber.lettersSteps, "letters-act": grabber.lettersAct, "demo": grabber.demo, "phone": grabber.phone, "drag": grabber.dragSteps, "taskform": grabber.taskForm, "tiles": grabber.tilesSteps, "review": grabber.review, "site-open": grabber.siteOpen, "site-quit": grabber.siteQuit, "site-during": grabber.siteDuring, "site-share": grabber.siteShare, "site-devices": grabber.siteDevices, "site-colour": grabber.siteColour, "rail": grabber.railSteps, "pauses": grabber.pauseSteps, "blocks": grabber.blockSteps, "unsubscribe": grabber.unsubscribeSteps, "leave-spam": grabber.leaveSpamSteps, "attention": grabber.attentionSteps, "line": grabber.lineSteps, "compose": grabber.composeSteps, "share-panel": grabber.sharePanel, "join": grabber.joinSteps, "share-send": grabber.shareSend, "spam": grabber.spamSteps, "mail-search": grabber.mailSearchSteps, "mail-filters": grabber.mailFilterSteps, "security-key": grabber.securityKeySteps, "health-gpg": grabber.healthGpgSteps, "calls": grabber.callsSteps, "words": grabber.wordsSteps, "texts": grabber.textsSteps, "ai": grabber.aiSteps, "projects-file": grabber.projectsFileSteps, "attachments": grabber.attachmentSteps, "memory": grabber.memorySteps, "rest": grabber.restSteps, "rest-shared": grabber.restSharedSteps, "notes-shared": grabber.notesSharedSteps, "microsoft": grabber.microsoftSteps, "reach": grabber.reachSteps, "steps": grabber.stepSteps, "checklist": grabber.checklistSteps, "composed": grabber.composedSteps, "pair": grabber.pairSteps, "agenda": grabber.agendaSteps, "cards": grabber.cardSteps, "taskviews": grabber.taskViewSteps, "mail-open": grabber.mailOpenSteps, "mailbox": grabber.mailboxSteps, "mailbox-measure": grabber.mailboxMeasureSteps, "safe-area": grabber.safeAreaSteps, "budgets-page": grabber.budgetsPageSteps, "money-tabs": grabber.moneyTabSteps, "shell": grabber.shellSteps, "views": grabber.viewsSteps, "chain": grabber.chainSteps, "letters-page": grabber.lettersPageSteps, "persons": grabber.personsSteps, "crud": grabber.crudSteps, "availability": grabber.availabilitySteps, "topics": grabber.topicSteps, "timeline": grabber.timelineSteps, "eventcard": grabber.eventCardSteps, "invite": grabber.inviteSteps, "contact-address": grabber.contactAddressSteps, "hours": grabber.hoursSteps, "ties": grabber.tiesSteps, "invoices": grabber.invoicesSteps, "address-books": grabber.addressBookSteps, "contact-card": grabber.contactCardSteps, "phones": grabber.phonesSteps, "calendars": grabber.calendarSteps, "storage": grabber.storageSteps, "downloads": grabber.downloadSteps, "household": grabber.householdSteps, "notes-find": grabber.notesFindSteps, "search-tabs": grabber.searchTabSteps, "tour": grabber.tourTicks, "tour-pages": grabber.tourTicks, "tour-panels": grabber.tourTicks, "tour-settings": grabber.tourTicks, "tour-reach": grabber.tourTicks, "tour-accounts": grabber.tourTicks, "tour-cards": grabber.tourTicks, "tour-health": grabber.tourTicks })[sioul.grabSteps()] || grabber.pages
             // The documentation's pictures, on the demo profile (tools/demo/screenshots.sh):
             // each place as it is used, a weekday afternoon. Run again on the profile
             // without hours (make-demo.py --no-hours), where everything comes at once:
@@ -4401,6 +4396,27 @@ SioulWindow {
                 () => {},
                 () => grabber.savePopup(agendaPage.eventForm(), "calendars-event-form"),
                 () => agendaPage.eventForm().close(),
+                // Tasks ⚙ ▸ Task lists, the lists of tasks alone (the demo's Work tasks), then
+                // its removal asked: the sentence and its confirmation; nothing is removed.
+                () => window.page = 1,
+                () => tasksPage.openSettings(true, "task_lists"),
+                () => {},
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    console.warn("task lists: " + (lists ? lists.shown.map(l => l.name).join(", ") : "none"))
+                    if (lists && lists.shown.length > 0)
+                        lists.askRemoval(lists.shown[0].id)
+                },
+                () => {},
+                () => tasksPage.grabSettings(grabber.folder + "/calendars-task-lists-remove.png"),
+                () => {
+                    const lists = tasksPage.settingsPart("taskListsSetup")
+                    if (lists)
+                        lists.removing = ""
+                    tasksPage.openSettings(false)
+                },
                 () => window.close()
             ]
             readonly property var invoicesSteps: [
@@ -4560,15 +4576,11 @@ SioulWindow {
                 () => console.warn("sioul-bitwarden: answered, the dialog waits: " + sitesPage.bitwardenUnlock.busy + "; it says: " + sitesPage.bitwardenUnlock.problem),
                 () => sitesPage.bitwardenUnlock.contentItem.parent.grabToImage(result => result.saveToFile(grabber.folder + "/bitwarden-answered.png")),
                 () => sitesPage.bitwardenUnlock.close(),
-                // Where Bitwarden is set: the password manager's card at the top of Accounts
-                // (none set on a demo profile), then its form in Add an account.
+                // Where Bitwarden is set: the password manager's card at the top of Accounts,
+                // which holds its form while none is set (none on a demo profile).
                 () => window.showParameters("bitwarden"),
                 () => {},
                 () => grabber.save("vault-card-none"),
-                () => accountsPage.addVault(),
-                () => {},
-                () => {},
-                () => grabber.save("vault-form"),
                 () => window.close()
             ]
             // The window hidden as to the tray, then brought back (`bringBack`): no
@@ -6448,6 +6460,722 @@ SioulWindow {
                 },
                 () => window.close()
             ]
+
+            // The tour (SIOUL_GRAB_STEPS=tour, or one of its parts: tour-pages, tour-panels,
+            // tour-settings, tour-reach, tour-accounts, tour-cards, tour-health; SIOUL_GRAB_PHONE
+            // for a phone's): every page of the places and each of its tabs, each page's ⚙,
+            // every section of Settings with its folds and Details unfolded, What reaches you's
+            // tabs and one of each of its editors, each account and the first step of adding
+            // each kind, one card of each type of thing, Health; for a review of the whole
+            // window. Written for any profile, a person's own included: it reads what it finds
+            // (no name of the demo's), and only opens, looks and closes; it never saves, sends,
+            // deletes, ticks nor changes a setting, and what it unfolds it folds again. No message
+            // nor text conversation is opened. A view taller than the window is pictured screen
+            // by screen (NAME-1, NAME-2…). Every picture is the whole window, what floats over it
+            // included. The log says "tour: NAME: what it shows" for each picture and "tour:
+            // MISSING …" for what could not be reached. Each part holds in the sandbox's 400
+            // seconds; "tour" runs them all, one after the other (about 15 minutes: TIMEOUT=1200
+            // for tools/demo/run.sh). A queue of acts, one per tick: an act may put the acts it
+            // found to do first (the tabs a page shows), and may ask ticks to wait (its number).
+            property var tourQueue: []
+            property int tourWait: 0
+            property int tourCount: 0
+            property bool tourStarted: false
+            // The fold lines the tour opened, closed again after their pictures.
+            property var tourOpened: []
+            readonly property var tourTicks: Array(2400).fill(() => grabber.tourTick())
+            // The places in their order, by page; Health, Accounts and Settings have parts of their own.
+            readonly property var tourPlaces: [[0, "porch"], [1, "tasks"], [2, "mail"], [14, "texts"], [3, "sites"], [4, "agenda"], [5, "contacts"], [6, "notes"], [7, "projects"], [17, "supplies"], [8, "time"], [9, "money"], [13, "papers"], [15, "letters"]]
+
+            function tourTick() {
+                if (!grabber.tourStarted) {
+                    grabber.tourStarted = true
+                    grabber.tourQueue = grabber.tourPlan(sioul.grabSteps())
+                    return
+                }
+                if (grabber.tourWait > 0) {
+                    grabber.tourWait -= 1
+                    return
+                }
+                if (grabber.tourQueue.length === 0) {
+                    console.warn("tour: done, " + grabber.tourCount + " pictures")
+                    grabber.stop()
+                    window.close()
+                    return
+                }
+                const act = grabber.tourQueue[0]
+                grabber.tourQueue = grabber.tourQueue.slice(1)
+                try {
+                    grabber.tourWait = act() || 0
+                } catch (failed) {
+                    console.warn("tour: MISSING a step failed: " + failed)
+                    grabber.tourWait = 0
+                }
+            }
+
+            // Acts done before the rest of the queue.
+            function tourFirst(acts) {
+                grabber.tourQueue = acts.concat(grabber.tourQueue)
+            }
+
+            function tourPlan(name) {
+                const parts = { "tour-pages": grabber.tourPages, "tour-panels": grabber.tourPanels, "tour-settings": grabber.tourSettings, "tour-reach": grabber.tourReach, "tour-accounts": grabber.tourAccounts, "tour-cards": grabber.tourCards, "tour-health": grabber.tourHealth }
+                const order = name === "tour" ? Object.keys(parts) : [name]
+                // A computer's window as a laptop's screen holds it; a phone's as it is.
+                let acts = [() => {
+                    if (!window.phoneGrab) {
+                        window.width = 1400
+                        window.height = 900
+                    }
+                    console.warn("tour: " + order.join(", ") + " at " + window.width + " by " + window.height)
+                    return 1
+                }]
+                for (const part of order)
+                    acts = acts.concat([() => console.warn("tour: part " + part)], parts[part]())
+                return acts
+            }
+
+            // The picture: the whole window, what floats over it included; on a phone, what passes its edge.
+            function tourSave(name, what) {
+                grabber.tourCount += 1
+                console.warn("tour: " + name + ": " + what)
+                grabber.saveWindow(name)
+                if (window.phoneGrab)
+                    grabber.overflow(name, frame.Overlay.overlay.parent)
+            }
+
+            // Every item under `root` that `test` takes, depth first; `hidden`: the hidden ones' too.
+            function tourFind(root, test, hidden) {
+                const found = []
+                const walk = (item, depth) => {
+                    if (!item || depth > 90 || (!hidden && item.visible === false))
+                        return
+                    if (test(item))
+                        found.push(item)
+                    const kids = item.children || []
+                    for (let i = 0; i < kids.length; ++i)
+                        walk(kids[i], depth + 1)
+                }
+                walk(root, 0)
+                return found
+            }
+
+            function tourIsTabs(item) {
+                return item.tabRepeater !== undefined && item.strip !== undefined && Array.isArray(item.model) && typeof item.chosen === "function"
+            }
+
+            // A fold's line ("▸  Details", "▸ Plus"), folded, that can be pressed.
+            function tourIsFold(item) {
+                return item.text !== undefined && typeof item.clicked === "function" && item.enabled !== false && /^▸\s+\S/.test(String(item.text))
+            }
+
+            // The view that scrolls under `root`: the largest whose content is taller than it
+            // (`side` "right": the rightmost, a card beside its list).
+            function tourFlick(root, side) {
+                const flicks = grabber.tourFind(root, item => item.contentY !== undefined && item.originY !== undefined && item.flickableDirection !== undefined && item.height > 60 && item.width > 60 && item.contentHeight > item.height + 4)
+                    .filter(flick => side !== "right" || window.phoneGrab || flick.mapToItem(null, 0, 0).x >= window.width * 0.3)
+                let best = null
+                for (const flick of flicks) {
+                    if (best === null)
+                        best = flick
+                    else if (side === "right" ? flick.mapToItem(null, 0, 0).x > best.mapToItem(null, 0, 0).x + 1 : flick.width * flick.height > best.width * best.height)
+                        best = flick
+                }
+                return best
+            }
+
+            // Pictures of what shows: NAME when it fits, else NAME-1, NAME-2… down the view that
+            // scrolls under `root` (a function: read when the act runs), `most` screens at most.
+            function tourView(name, what, root, most, side) {
+                return () => {
+                    const base = typeof root === "function" ? root() : root
+                    const flick = base ? grabber.tourFlick(base, side) : null
+                    if (flick === null) {
+                        grabber.tourSave(name, what)
+                        return 0
+                    }
+                    flick.contentY = flick.originY
+                    // Which view scrolls, in the log: what to look at when a series starts lower than its top.
+                    console.warn("tour: (" + name + " scrolls " + String(flick).split("(")[0] + ", " + Math.round(flick.width) + " by " + Math.round(flick.height) + ", its content " + Math.round(flick.contentHeight) + " high)")
+                    grabber.tourFirst([() => grabber.tourScreen(name, what, flick, 1, most || 6, flick.originY)])
+                    return 0
+                }
+            }
+            // Screen `n`, the view put at `y` as its picture is asked: the picture is drawn at the
+            // next frame, so nothing else may move in this act (the next screen's place is set by
+            // the next act), and a view that moved by itself since (a field taking the focus, a
+            // list keeping its place) is put back.
+            function tourScreen(name, what, flick, n, most, y) {
+                flick.contentY = y
+                grabber.tourSave(name + "-" + n, n === 1 ? what : what + ", screen " + n)
+                const end = flick.originY + Math.max(0, flick.contentHeight - flick.height)
+                if (y >= end - 2)
+                    return 0
+                if (n >= most) {
+                    console.warn("tour: MISSING " + name + ": the view goes on past screen " + most + ", not pictured further")
+                    return 0
+                }
+                const next = Math.min(end, y + Math.round(flick.height * 0.85))
+                grabber.tourFirst([() => grabber.tourScreen(name, what, flick, n + 1, most, next)])
+                return 0
+            }
+
+            // Every fold under `root` opened, three rounds (what a fold opens may fold too), the last
+            // one waited for; kept to fold again.
+            function tourUnfold(root) {
+                const round = wait => () => {
+                    const base = typeof root === "function" ? root() : root
+                    const folds = base ? grabber.tourFind(base, grabber.tourIsFold) : []
+                    for (const fold of folds)
+                        fold.clicked()
+                    grabber.tourOpened = grabber.tourOpened.concat(folds)
+                    return wait
+                }
+                return [round(0), round(0), round(1)]
+            }
+            // What the tour unfolded, folded again, the innermost first.
+            function tourRefold() {
+                return () => {
+                    const opened = grabber.tourOpened.slice().reverse()
+                    grabber.tourOpened = []
+                    for (const fold of opened) {
+                        try {
+                            if (fold && fold.visible && /^▾/.test(String(fold.text)))
+                                fold.clicked()
+                        } catch (gone) {
+                            // Made anew since (a list read again): nothing left to fold.
+                        }
+                    }
+                    return 0
+                }
+            }
+
+            // Every pop-up open in the window closed (menus, forms, sheets, a page's ⚙), unsaved:
+            // those its items hold, and those Loaders made (Later.qml's forms).
+            function tourCloseAll() {
+                return () => {
+                    const close = thing => {
+                        if (thing && thing.opened === true && typeof thing.close === "function")
+                            thing.close()
+                    }
+                    grabber.tourFind(window.contentItem, item => {
+                        close(item.item)
+                        const held = item.resources || []
+                        for (let i = 0; i < held.length; ++i)
+                            close(held[i])
+                        return false
+                    }, true)
+                    return 0
+                }
+            }
+
+            // A place shown, its card and pop-ups closed first.
+            function tourGo(index) {
+                return [grabber.tourCloseAll(), () => {
+                    cardHost.close()
+                    window.page = index
+                    return 2
+                }]
+            }
+
+            // The places' column on a phone, then each place, each of its tabs, back to the tab it showed.
+            function tourPages() {
+                let acts = []
+                if (window.phoneGrab)
+                    acts.push(() => {
+                        window.placesOpen = true
+                        return 1
+                    }, () => grabber.tourSave("places", "the places pulled from the left (a phone's)"), () => {
+                        window.placesOpen = false
+                        return 1
+                    })
+                for (const place of grabber.tourPlaces)
+                    acts = acts.concat(grabber.tourGo(place[0]), [grabber.tourTabs(place[1])])
+                // The Porch's section help, and "New".
+                acts = acts.concat(grabber.tourGo(0), [() => {
+                    const lanes = porchPage.view.lanes || []
+                    if (lanes.length === 0) {
+                        console.warn("tour: MISSING porch-help: the Porch shows no section")
+                        return 0
+                    }
+                    porchPage.showHelp(lanes[0])
+                    return 1
+                }, () => {
+                    if (porchPage.helpItem() !== null)
+                        grabber.tourSave("porch-help", "the Porch: a section's ?, its help")
+                    return 0
+                }, () => {
+                    porchPage.closeHelp()
+                    return 0
+                }, () => {
+                    window.showNewMenu()
+                    return 1
+                }, () => grabber.tourSave("new-menu", "+ New, its menu"), () => {
+                    newMenu.item.close()
+                    return 0
+                }])
+                return acts
+            }
+            // The place shown: each tab of its row, or the place as it is.
+            function tourTabs(name) {
+                return () => {
+                    const page = window.shownPage
+                    if (!page) {
+                        console.warn("tour: MISSING page " + name + ": not made")
+                        return 0
+                    }
+                    const rows = grabber.tourFind(page, grabber.tourIsTabs).filter(t => t.model.length > 0)
+                    if (rows.length === 0) {
+                        grabber.tourFirst([grabber.tourView("page-" + name, "the " + name + " page as it opens", () => window.shownPage, 4)])
+                        return 0
+                    }
+                    const tabs = rows[0]
+                    const shown = tabs.current
+                    let acts = []
+                    for (const tab of tabs.model)
+                        acts.push(() => {
+                            tabs.chosen(tab.id)
+                            return 1
+                        }, grabber.tourView("page-" + name + "-" + tab.id, "the " + name + " page, its tab " + tab.text, () => window.shownPage, 4))
+                    acts.push(() => {
+                        if (shown !== "")
+                            tabs.chosen(shown)
+                        return 0
+                    })
+                    grabber.tourFirst(acts)
+                    return 0
+                }
+            }
+
+            // A settings button's panel (SettingsPanel.qml), once made.
+            function tourPanelOf(button) {
+                const loader = (button.children || []).find(c => typeof c.setSource === "function")
+                return loader ? loader.item : null
+            }
+            function tourIsSettingsButton(item) {
+                return item.reading !== undefined && item.view !== undefined && typeof item.show === "function" && typeof item.scrollTo === "function"
+            }
+
+            // Each place's ⚙ and "Aa": open, down to its end, closed.
+            function tourPanels() {
+                let acts = []
+                for (const place of grabber.tourPlaces) {
+                    const name = place[1]
+                    acts = acts.concat(grabber.tourGo(place[0]), [() => {
+                        const page = window.shownPage
+                        // Money's ⚙ is made by its own call; on a phone its button is hidden, the window's bar
+                        // opening its panel (`barSettings`).
+                        if (name === "money")
+                            page.openSettings(false)
+                        const buttons = grabber.tourFind(window.contentItem, grabber.tourIsSettingsButton, name === "money").filter(b => grabber.tourWithin(b, page))
+                        if (buttons.length === 0) {
+                            console.warn("tour: " + name + " has no ⚙")
+                            return 0
+                        }
+                        let more = []
+                        for (const button of buttons) {
+                            const label = button.reading ? "reading" : "settings"
+                            more.push(() => {
+                                button.show(true)
+                                return 1
+                            }, ...grabber.tourUnfold(() => {
+                                const panel = grabber.tourPanelOf(button)
+                                return panel ? panel.contentItem : null
+                            }), grabber.tourView("panel-" + name + "-" + label, "the " + name + " page's " + (button.reading ? "Aa (reading)" : "⚙") + ", its folds open", () => {
+                                const panel = grabber.tourPanelOf(button)
+                                return panel ? panel.contentItem : null
+                            }, 8), grabber.tourRefold(), () => {
+                                button.show(false)
+                                return 0
+                            })
+                        }
+                        grabber.tourFirst(more)
+                        return 0
+                    }])
+                }
+                return acts
+            }
+            function tourWithin(item, root) {
+                for (let at = item; at; at = at.parent)
+                    if (at === root)
+                        return true
+                return false
+            }
+
+            // Settings: each section but What reaches you (tour-reach), its folds and Details
+            // unfolded, down to its end; Words' first line's own page.
+            function tourSettings() {
+                return grabber.tourGo(12).concat([() => {
+                    let acts = []
+                    if (window.phoneGrab)
+                        acts.push(() => {
+                            parametersPage.back()
+                            return 1
+                        }, grabber.tourView("settings-list", "Settings' list of sections (a phone's)", () => parametersPage, 3))
+                    for (const section of parametersPage.sections.filter(s => s !== "attention")) {
+                        acts.push(() => {
+                            parametersPage.open(section)
+                            return 2
+                        }, ...grabber.tourUnfold(() => parametersPage), grabber.tourView("settings-" + section, "Settings ▸ " + sioul.text(parametersPage.tabKey(section)) + ", every fold and Details open", () => parametersPage, 14), grabber.tourRefold())
+                        if (section === "words")
+                            acts.push(() => {
+                                const words = grabber.tourFind(parametersPage, item => item.openNote !== undefined && Array.isArray(item.notes))[0]
+                                if (!words || words.notes.length === 0) {
+                                    console.warn("tour: MISSING settings-words-line: no line in Words")
+                                    return 0
+                                }
+                                words.open = words.notes[0].key.slice("words.about.".length)
+                                return 1
+                            }, grabber.tourView("settings-words-line", "Settings ▸ Words, its first line's own page", () => parametersPage, 6), () => {
+                                const words = grabber.tourFind(parametersPage, item => item.openNote !== undefined && Array.isArray(item.notes))[0]
+                                if (words)
+                                    words.open = ""
+                                return 0
+                            })
+                    }
+                    acts.push(() => {
+                        parametersPage.open("look")
+                        return 0
+                    })
+                    grabber.tourFirst(acts)
+                    return 0
+                }])
+            }
+
+            // Settings ▸ What reaches you: its two tabs down to their end, and each kind of
+            // editor opened once, pictured and closed unchosen: a circle's choice per channel, a
+            // cell of What comes when and a fixed one, a phone's row and its line, Start from, the
+            // status line's card and menu, a person's sheet. A phone's apps and conversations by
+            // time are in its card in Settings ▸ Devices (tour-settings, its folds open).
+            function tourReach() {
+                const tab = () => grabber.tourFind(parametersPage, item => item.objectName === "reachesTab")[0] || null
+                const editor = (name, what, open, close) => [() => {
+                    const shown = tab()
+                    const done = shown ? open(shown) : false
+                    if (!done)
+                        console.warn("tour: MISSING " + name + ": " + what + " (none here)")
+                    return done ? 1 : 0
+                }, () => {
+                    // The picture is drawn at the next frame: the editor is closed by the next act.
+                    if (tab() && grabber.tourFound)
+                        grabber.tourSave(name, what)
+                    return 0
+                }, () => {
+                    const shown = tab()
+                    if (shown && grabber.tourFound)
+                        close(shown)
+                    grabber.tourFound = false
+                    return 0
+                }]
+                const opened = done => {
+                    grabber.tourFound = done
+                    return done
+                }
+                return grabber.tourGo(12).concat([() => {
+                    parametersPage.open("attention")
+                    return 2
+                }, () => {
+                    const shown = tab()
+                    if (shown)
+                        shown.show("rules", "")
+                    return 1
+                }], grabber.tourUnfold(() => tab()), [grabber.tourView("reach-rules", "What reaches you ▸ Your rules, every list open", () => parametersPage, 16), grabber.tourRefold()],
+                editor("reach-editor-circle", "a circle's choice for one channel, opened", shown => {
+                    const circle = (shown.shown.people.rows || []).find(r => (r.cells || []).length > 0)
+                    const item = circle ? shown.findNamed(shown, "choice-" + circle.id + "-" + circle.cells[0].channel) || shown.findNamed(shown, "circle-" + circle.id) : null
+                    if (!item)
+                        return opened(false)
+                    parametersPage.bringIntoView(item)
+                    item.clicked()
+                    return opened(true)
+                }, shown => shown.closeChoices()),
+                !window.phoneGrab ? [] : editor("reach-start-from", "Start from, its menu of presets (a phone's)", shown => {
+                    const button = shown.findNamed(shown, "reachesStartFrom")
+                    if (!button)
+                        return opened(false)
+                    parametersPage.bringIntoView(button)
+                    button.clicked()
+                    return opened(true)
+                }, shown => grabber.tourCloseAll()()),
+                [() => {
+                    window.statusLine.reachButton.openCard()
+                    return 1
+                }, () => grabber.tourSave("reach-card", "the status line's card of what reaches you"), () => {
+                    window.statusLine.reachButton.cardLoader.item.choosing = "dnd"
+                    return 1
+                }, () => grabber.tourSave("reach-card-lengths", "the card's Do not disturb, its lengths shown, none chosen"), () => {
+                    window.statusLine.reachButton.cardLoader.item.close()
+                    window.statusLine.reachButton.openMenu()
+                    return 1
+                }, () => grabber.tourSave("reach-menu", "the status line's menu of what reaches you"), () => {
+                    window.statusLine.reachButton.menuLoader.item.close()
+                    const shown = tab()
+                    if (shown)
+                        shown.show("table", "")
+                    return 1
+                }, grabber.tourView("reach-table", "What reaches you ▸ What comes when", () => parametersPage, 16)],
+                window.phoneGrab ? [] : editor("reach-editor-cell", "a cell of What comes when, its choices", shown => {
+                    const grid = shown.findNamed(shown, "attentionGrid")
+                    const row = grid ? grid.rows.find(r => r.cells.some(c => !c.locked && (c.choices || []).length > 1)) : null
+                    const column = row ? row.cells.find(c => !c.locked && (c.choices || []).length > 1).column : ""
+                    const cell = row ? shown.findNamed(shown, "cell-" + row.id + "-" + column) : null
+                    if (!cell)
+                        return opened(false)
+                    parametersPage.bringIntoView(cell)
+                    grid.openAt(row.id, column)
+                    return opened(true)
+                }, shown => shown.closeChoices()),
+                window.phoneGrab ? [] : editor("reach-editor-fixed", "a fixed cell of What comes when, why it is fixed", shown => {
+                    const grid = shown.findNamed(shown, "attentionGrid")
+                    const row = grid ? grid.rows.find(r => r.cells.some(c => c.locked)) : null
+                    const column = row ? row.cells.find(c => c.locked).column : ""
+                    const cell = row ? shown.findNamed(shown, "cell-" + row.id + "-" + column) : null
+                    if (!cell)
+                        return opened(false)
+                    parametersPage.bringIntoView(cell)
+                    grid.openAt(row.id, column)
+                    return opened(true)
+                }, shown => shown.closeChoices()),
+                !window.phoneGrab ? [] : editor("reach-row", "a row of What comes when, its times (a phone's)", shown => {
+                    if (shown.gridRows.length === 0)
+                        return opened(false)
+                    shown.rowOpen = shown.gridRows[0].id
+                    return opened(true)
+                }, shown => {}),
+                !window.phoneGrab ? [] : editor("reach-editor-line", "a row's time, its choices (a phone's)", shown => {
+                    const row = shown.openRowData
+                    const line = row ? shown.findNamed(shown, "line-" + row.id + "-" + row.cells[0].column) : null
+                    if (!line)
+                        return opened(false)
+                    parametersPage.bringIntoView(line)
+                    line.clicked()
+                    return opened(true)
+                }, shown => {
+                    shown.closeChoices()
+                    shown.rowOpen = ""
+                }),
+                [() => {
+                    const shown = tab()
+                    if (shown)
+                        shown.show("rules", "")
+                    // The contacts are read as their page shows.
+                    window.page = 5
+                    return 2
+                }, () => {
+                    const contacts = contactsPage ? contactsPage.shown.contacts : []
+                    if (contacts.length === 0) {
+                        console.warn("tour: MISSING reach-person-sheet: no contact")
+                        return 0
+                    }
+                    window.openPersonSheet(contacts[0].key, "")
+                    return 2
+                }, () => {
+                    if (personSheet.item && personSheet.item.opened)
+                        grabber.tourSave("reach-person-sheet", "a contact's sheet: how this person reaches you")
+                    return 0
+                }, grabber.tourCloseAll(), () => {
+                    window.page = 12
+                    parametersPage.open("look")
+                    return 0
+                }])
+            }
+            property bool tourFound: false
+
+            // Accounts: each tab, every fold of each account's card open (its settings, its
+            // Details), the first step of adding each kind, the keys.
+            function tourAccounts() {
+                const page = () => accountsPage
+                return grabber.tourGo(11).concat([() => {
+                    const tabs = grabber.tourFind(accountsPage, grabber.tourIsTabs)[0]
+                    if (!tabs) {
+                        grabber.tourFirst([grabber.tourView("accounts", "Accounts", page, 16)])
+                        return 0
+                    }
+                    let acts = []
+                    for (const tab of tabs.model)
+                        acts.push(() => {
+                            tabs.chosen(tab.id)
+                            return 1
+                        }, ...grabber.tourUnfold(page), grabber.tourView("accounts-" + tab.id, "Accounts ▸ " + tab.text + ", every fold open", page, 18), grabber.tourRefold())
+                    acts.push(() => {
+                        tabs.chosen(tabs.model[0].id)
+                        return 0
+                    })
+                    grabber.tourFirst(acts)
+                    return 0
+                }])
+            }
+
+            // One card of each type: opened as a tap opens it, its folds open, down to its end, closed.
+            function tourCard(name, what, open, root, side) {
+                return [() => {
+                    const done = open()
+                    grabber.tourFound = done === true
+                    if (done !== true)
+                        console.warn("tour: MISSING " + name + ": " + what + " (none found)")
+                    return done === true ? 2 : 0
+                }, () => {
+                    if (grabber.tourFound)
+                        grabber.tourFirst([].concat(grabber.tourUnfold(root), [grabber.tourView(name, what, root, 6, side), grabber.tourRefold()]))
+                    grabber.tourFound = false
+                    return 0
+                }, grabber.tourCloseAll(), () => {
+                    cardHost.close()
+                    return 0
+                }]
+            }
+            // The first thing of `kind` in the days the agenda shows (its week), its card opened.
+            function tourAgendaCard(kind) {
+                return () => {
+                    const shown = JSON.parse(sioul.agenda || "{}")
+                    if (!(shown.days || []).some(day => (day.timed || []).concat(day.edges || [], day.head || []).some(row => row.item.kind === kind)))
+                        return false
+                    grabber.openFirstOf(kind)
+                    return true
+                }
+            }
+            function tourCards() {
+                const host = () => cardHost
+                const page = () => window.shownPage
+                let agendaMode = "agenda"
+                return [].concat(grabber.tourGo(1), grabber.tourCard("card-task", "a task's card (the task Now shows)", () => {
+                    if (!tasksPage.shown || !tasksPage.shown.now.now)
+                        return false
+                    tasksPage.openFirst()
+                    return true
+                }, host), [() => {
+                    if (!tasksPage.shown || !tasksPage.shown.now.now) {
+                        console.warn("tour: MISSING card-chain: no task to start the chain of ties from")
+                        return 0
+                    }
+                    window.openChain("sioul:task/" + tasksPage.shown.now.now.uid)
+                    return 2
+                }, () => {
+                    if (window.page === 16)
+                        grabber.tourFirst([grabber.tourView("card-chain", "the chain of ties from that task", page, 4), () => {
+                            window.closeChain()
+                            return 0
+                        }])
+                    return 0
+                }], grabber.tourGo(4), [() => {
+                    agendaMode = agendaPage.mode
+                    agendaPage.mode = "week"
+                    return 3
+                }], grabber.tourCard("card-event", "an event's card (the first of the week)", grabber.tourAgendaCard("event"), host),
+                grabber.tourCard("card-meal", "a meal's card", grabber.tourAgendaCard("meal"), host),
+                grabber.tourCard("card-night", "the night's card", grabber.tourAgendaCard("night"), host),
+                grabber.tourCard("card-dated", "a date asked's card (a paper's, a contract's, an invoice's)", grabber.tourAgendaCard("dated"), host), [() => {
+                    agendaPage.mode = agendaMode
+                    return 0
+                }], grabber.tourGo(5), grabber.tourCard("card-contact", "a contact's card (the first)", () => {
+                    if (contactsPage.shown.contacts.length === 0)
+                        return false
+                    contactsPage.openFirst()
+                    return true
+                }, page, "right"), [() => {
+                    contactsPage.open("")
+                    return 0
+                }], grabber.tourCard("card-person", "a person of the household, their page", () => {
+                    const people = (JSON.parse(sioul.household() || "null") || { persons: [] }).persons || []
+                    if (people.length === 0)
+                        return false
+                    window.openPerson(people[0].id)
+                    return true
+                }, page, "right"), [() => {
+                    contactsPage.openPerson("")
+                    return 0
+                }], grabber.tourGo(6), grabber.tourCard("card-note", "a note (the last changed)", () => {
+                    notesPage.openFirst()
+                    return notesPage.note !== null || (notesPage.shown.recent || []).length > 0 || (notesPage.shown.groups || []).length > 0
+                }, page, "right"), [() => {
+                    notesPage.back()
+                    return 0
+                }], grabber.tourGo(7), grabber.tourCard("card-project", "a project's page (the first listed)", () => {
+                    if (projectsPage.rows.length === 0)
+                        return false
+                    projectsPage.openFirst()
+                    return true
+                }, page, "right"), [() => {
+                    projectsPage.open("")
+                    return 0
+                }], grabber.tourGo(17), grabber.tourCard("card-supply", "a supply's card", () => {
+                    const groups = (suppliesPage.shown.calm || []).concat(suppliesPage.shown.all || [])
+                    const group = groups.find(g => (g.supplies || []).length > 0)
+                    if (!group)
+                        return false
+                    suppliesPage.open(group.supplies[0].id)
+                    return true
+                }, () => frame.Overlay.overlay), grabber.tourGo(13), grabber.tourCard("card-paper", "a paper's form, unsaved", () => {
+                    const family = (papersPage.shown.families || []).find(f => (f.papers || []).length > 0)
+                    if (!family)
+                        return false
+                    papersPage.open(family.papers[0].id)
+                    return true
+                }, () => frame.Overlay.overlay), grabber.tourGo(8), grabber.tourCard("card-time", "a stretch of time noted, its form, unsaved", () => {
+                    if (!timePage.shown || timePage.shown.entries.length === 0)
+                        return false
+                    timePage.changeFirst()
+                    return true
+                }, () => frame.Overlay.overlay), grabber.tourGo(9), grabber.tourCard("card-budget", "a budget's page (the first)", () => {
+                    budgetsPage.showTab(1)
+                    if (!budgetsPage.view || budgetsPage.view.budgets.length === 0)
+                        return false
+                    budgetsPage.openFirst()
+                    return true
+                }, page), [() => {
+                    budgetsPage.openId = ""
+                    return 0
+                }], grabber.tourCard("card-movement", "a money movement's pane (the first)", () => {
+                    budgetsPage.showTab(2)
+                    const movements = budgetsPage.movements
+                    const first = movements ? movements.firstTold() : ""
+                    if (!first)
+                        return false
+                    movements.openMovement(first)
+                    return true
+                }, page, "right"), [() => {
+                    if (budgetsPage.movements)
+                        budgetsPage.movements.detail = null
+                    return 0
+                }], grabber.tourCard("card-contract", "a contract's form, unsaved", () => {
+                    budgetsPage.showTab(1)
+                    const contracts = budgetsPage.contractsNow()
+                    contracts.reload()
+                    if (contracts.shown.contracts.length === 0)
+                        return false
+                    budgetsPage.openContract(contracts.shown.contracts[0].id)
+                    return true
+                }, () => frame.Overlay.overlay), grabber.tourCard("card-invoice", "an issued invoice's pane", () => {
+                    budgetsPage.showTab(4)
+                    const invoices = budgetsPage.invoices
+                    const row = invoices ? (invoices.shown.rows || []).find(r => r.draft === "") : null
+                    if (!row)
+                        return false
+                    invoices.openInvoice(row.number)
+                    return true
+                }, page), [() => {
+                    if (budgetsPage.invoices)
+                        budgetsPage.invoices.back()
+                    budgetsPage.showTab(0)
+                    return 0
+                }])
+            }
+
+            // Health: the day, the week, its ⚙.
+            function tourHealth() {
+                const page = () => healthPage
+                return grabber.tourGo(10).concat([grabber.tourView("health-day", "Health, the day", page, 4), () => {
+                    healthPage.showWeek()
+                    return 2
+                }, grabber.tourView("health-week", "Health, the week", page, 4), () => {
+                    healthPage.showDay()
+                    healthPage.settingsPanel().open()
+                    return 1
+                }, grabber.tourView("health-settings", "Health's ⚙", () => healthPage.settingsPanel().contentItem, 6), () => {
+                    healthPage.closeSettings()
+                    return 0
+                }])
+            }
 
             // A list of Settings ▸ Words changed as a person would: words added, others taken away.
             function changeWords(key, added, removed) {

@@ -3196,7 +3196,7 @@ pub fn event_refs() -> Vec<EventRef> {
         .collect()
 }
 
-/// Where a new event goes: the calendar chosen in Settings ▸ Agenda
+/// Where a new event goes: the calendar chosen in Agenda ⚙
 /// (`agenda.calendar`), while it can be written to and is shown here; else
 /// the first calendar that can be written to and takes events, the one made
 /// for time blocks last (`blocks::CALENDAR`).

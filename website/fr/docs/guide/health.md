@@ -106,7 +106,7 @@ Le doute s’en va de lui-même dès que cet appareil partage de nouveau, ou se 
 
 Des heures gardées libres, réglées avant tout travail : Sioul n’y prévoit aucune tâche, et prévoit le reste de la journée autour d’elles.
 
-Réglés une fois dans [Paramètres ▸ Heures](settings.md#hours), sous **Repas, repos et sommeil**, puisque toutes les pages les suivent (le ⚙ de cette page a un bouton vers eux, **Repas, repos et sommeil, dans Paramètres**, et la carte d’un repas, d’une sieste ou de la nuit a **Vos repas et siestes habituels…**), puis changés pour un jour sur cette page (plus haut, « Changer un jour »). Chacun des trois n’est gardé qu’une fois coché :
+Réglés une fois dans [Paramètres ▸ Heures](settings.md#hours), sous **Repas, repos et sommeil**, puisque toutes les pages les suivent (la carte d’un repas, d’une sieste ou de la nuit a **Vos repas et siestes habituels…**, qui les y ouvre), puis changés pour un jour sur cette page (plus haut, « Changer un jour »). Chacun des trois n’est gardé qu’une fois coché :
 
 - **Repas** : trois pour commencer (petit déjeuner, déjeuner, dîner), chacun à l’heure que vous choisissez, avec les minutes pour le préparer et pour manger. **Ajouter un repas ou un en-cas** pour davantage. Si deux repas sont prévus à plus de quatre heures d’écart, c’est dit là, discrètement.
 - **Siestes** : une pour commencer : quand, combien de temps, et quelques minutes pour revenir après. **Ajouter une sieste** pour davantage.

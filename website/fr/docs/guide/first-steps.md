@@ -28,7 +28,7 @@ Sioul parle anglais ou français, selon la langue de votre système, sauf si vou
 
 Le nom de chaque icône, avec sa touche, s’affiche quand le pointeur s’y arrête, quand le clavier l’atteint, ou par un appui long sur un écran tactile.
 
-**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. Ce qui concerne Sioul tout entier est dans **Paramètres**, en onglets en travers de la page : Affichage, Heures, Ce qui vous joint, Mots, Rappels, Pauses, Partage, Appareils, Factures et Agents d’IA. La lecture du texte long (la police, sa taille et l’interligne) est dans le ⚙ des Courriels et du Porche, et derrière « Aa » dans les Notes. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
+**Sur chaque page**, le ⚙ au bout de la première ligne contient les réglages propres à cette page, chacun avec une phrase sur ce qu’il change ; ils sont enregistrés aussitôt. Ce qui concerne Sioul tout entier est dans **Paramètres**, en onglets en travers de la page : Affichage, Heures, Ce qui vous joint, Mots, Rappels, Pauses, Partage, Appareils, Factures et Agents d’IA. La lecture du texte long (la police, sa taille et l’interligne) est dans Paramètres ▸ Affichage. Un clic droit, la touche Menu, ou un appui long sur un écran tactile, sur n’importe quel élément donne ce qui n’est pas en vue.
 
 ### Touches {#keys}
 

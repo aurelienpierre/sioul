@@ -1834,7 +1834,7 @@ pub mod qobject {
         #[qinvokable]
         fn need_every_day(self: Pin<&mut Sioul>, edit: &QString) -> QString;
 
-        /// How long a new event lasts, in minutes (Settings ▸ Agenda; 30 unset).
+        /// How long a new event lasts, in minutes (Agenda ⚙; 30 unset).
         #[qinvokable]
         fn new_event_minutes(self: &Sioul) -> i32;
 
@@ -3221,7 +3221,7 @@ pub mod qobject {
         #[qinvokable]
         fn mail_note(self: Pin<&mut Sioul>, path: &QString) -> QString;
 
-        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "reading", "contacts", "sites", "general"), as JSON.
+        /// A page's settings ("porch", "mail", "agenda", "tasks", "notes", "contacts", "sites", "general"), as JSON.
         #[qinvokable]
         fn settings(self: &Sioul, view: &QString) -> QString;
 
@@ -4197,6 +4197,9 @@ struct Views {
 pub(crate) fn offline() -> bool {
     std::env::var_os("SIOUL_DEMO").is_some()
 }
+
+/// The window's step lists that take pictures of the whole window on any profile (`grab_steps`).
+const TOUR_LISTS: [&str; 8] = ["tour", "tour-pages", "tour-panels", "tour-settings", "tour-reach", "tour-accounts", "tour-cards", "tour-health"];
 
 /// Where the forecast is kept between fetches (the phone's card reads it too, `homecard`).
 pub(crate) fn weather_cache() -> PathBuf {
@@ -9524,6 +9527,16 @@ impl qobject::Sioul {
         if steps == "tablet" {
             return QString::from(&steps);
         }
+        // "tour" and its parts ("tour-pages" each place and its tabs, "tour-panels" each place's ⚙,
+        // "tour-settings" each section of Settings with its folds and Details open, "tour-reach" What
+        // reaches you's tabs and one of each of its editors, "tour-accounts" each account and the first
+        // step of adding each kind, "tour-cards" one card of each type of thing, "tour-health" Health):
+        // pictures alone of the whole window, for a review of it (main.qml's `tourPlan`). They open,
+        // look and close, never save, send, delete nor change a setting, and name nothing of the demo's:
+        // allowed in every build, on any profile (docs/building.md, "The tour").
+        if TOUR_LISTS.contains(&steps.as_str()) {
+            return QString::from(&steps);
+        }
         // The other steps archive, delete and send mail, answer invitations:
         // against test servers, from the test build only. "demo", "phone" and
         // "drag" take pictures alone; "taskform" makes tasks and rates them, "review"
@@ -9561,7 +9574,7 @@ impl qobject::Sioul {
         // tied to one time of a repeating event, found by its field's rows (docs/tasks.md), "compose"
         // the writing window, an answer and a new message, its drafts made and deleted (docs/building.md),
         // "texts" the Texts page, its conversations and a text's states (docs/texts.md),
-        // "ai" Settings ▸ AI agents, a project opened to agents on its page, an agent's text
+        // "ai" Settings ▸ AI agents (what is in no project, texts, the spam filter), a project opened to agents on its page, an agent's text
         // draft in the Texts page used, nothing sent (docs/mcp.md),
         // "health" the Health page, its week, its settings (⚙), a block's menu and its change
         // for one day, closed unsaved (docs/health.md), "tiles" the costs as tiles in a task's

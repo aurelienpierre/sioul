@@ -89,8 +89,20 @@ Item {
         function test_the_button_says_what_shows() {
             const filter = made({ work: false, admin: true, leisure: true, label: "Démarches · Loisirs", own: false })
             const button = named(filter, "areaFilter")
-            compare(button.text, "Démarches · Loisirs  ▾")
+            compare(button.text, "Démarches · Loisirs")
             compare(button.Accessible.name, "area-filter-name:Démarches · Loisirs")
+            // A value chosen in a list: the drop-down's look, not a button's (DropDown.qml).
+            compare(button.Accessible.role, Accessible.ComboBox)
+            verify(button.contentItem.text === "Démarches · Loisirs", "the value alone, no ▾ after it")
+            // The keys that open a combo box open it: Return, Enter, Down (Alt+Down too).
+            for (const key of [Qt.Key_Return, Qt.Key_Enter, Qt.Key_Down]) {
+                button.forceActiveFocus()
+                keyClick(key)
+                tryCompare(filter, "unfolded", true, 1000, "opened by key " + key)
+                filter.fold()
+                tryCompare(filter, "unfolded", false)
+                wait(320)
+            }
             mouseClick(button)
             tryCompare(filter, "unfolded", true)
             compare([named(filter, "area:work").checked, named(filter, "area:admin").checked, named(filter, "area:leisure").checked], [false, true, true])

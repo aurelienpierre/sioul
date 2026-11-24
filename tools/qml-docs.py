@@ -64,7 +64,7 @@ NAMED = {
     "StatusLine": "status", "LineButton": "status", "NoisePlayer": "status", "HowWasIt": "status",
     "SettingsPanel": "settings", "SettingRow": "settings", "SettingsButton": "settings",
     "HealthSettings": "settings", "SharePanel": "settings", "NeedsSection": "settings",
-    "StorageMove": "dialogs", "SettingDoor": "settings", "SitesWeb": "window", "VaultCard": "settings", "VaultForm": "settings", "VaultHeld": "settings",
+    "StorageMove": "dialogs", "SettingDoor": "settings", "SitesWeb": "window", "VaultCard": "settings", "VaultHeld": "settings",
     "ContactBatches": "settings",
     "PhoneCard": "settings", "CallsLine": "settings", "AllowList": "settings", "RestrictedCard": "settings", "CardFold": "settings",
     "SubscribeForm": "settings", "VacationsCalendars": "settings",

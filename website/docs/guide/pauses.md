@@ -37,13 +37,14 @@ When Free time takes some of your working hours, the end of today's work moves l
 
 In [Settings ▸ Pauses](settings.md#pauses), take your time:
 
-- **What comes during a pause**: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. It opens the table **What comes when**, in Settings ▸ [What reaches you](notifications.md#by-time), where the **Pause** column says it; there, **Later** in the **Doses** row makes dose reminders wait until you come back, reminded once then.
 - **What helps you**: in your own words, one thing a line. A line with a link or a file's path opens it from the pause: a playlist, a folder of photos, an app's page.
 - **A line for the pause**: one line of yours, shown on the screen.
 - **Breathing guide**: off unless you turn it on; then a slow shape to breathe with, shown only when you tap it, the breath out longer than the breath in, at the pace you set in **Breaths a minute** (six, unless you change it; from three to ten).
 - **Coming back**: the rest of the day lighter (as a hazy day), no more work that day, or as planned.
 - **Numbers for**: the country whose emergency number and crisis line show during a pause; unless you choose, the country of your phone numbers.
 - **Try the pause screen** shows it as it will be. Nothing is held.
+
+**What comes during a pause** is set in What reaches you: doses, your events' alarms and, on a phone, Sioul's reminders before them, the codes you asked for, and your Always through people's calls and messages; the rest waits until you come back. On a computer, only what is to do comes then ([What reaches you](notifications.md#to-know-or-to-do)): the agenda shows the rest. The table **What comes when**, in Settings ▸ [What reaches you](notifications.md#by-time), says it in its **Pause** column; there, **Later** in the **Doses** row makes dose reminders wait until you come back, reminded once then.
 
 ### Press it {#press-it}
 

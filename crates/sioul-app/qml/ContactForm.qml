@@ -38,8 +38,6 @@ ColumnLayout {
     property string bookPlace: ""
     readonly property bool placed: form.books.some(b => b.id === form.bookPlace)
 
-    // Asked to open the address book's switch (Contacts ⚙ ▸ Address books).
-    signal askedSwitch()
     // This contact's categories, as edited.
     property var chosen: []
     // Those in use it does not have yet, to choose from.
@@ -345,27 +343,17 @@ ColumnLayout {
             Layout.fillWidth: true
         }
     }
-    // A group on a card whose book's groups do not decide who may reach you: said, with the door to its switch.
-    Flow {
+    // A group on a card whose book's groups do not decide who may reach you: said while it is
+    // given (the book's switch is Contacts ⚙ ▸ Address books' alone).
+    Label {
         objectName: "contactFormGroupsHeld"
         visible: form.heldBook !== "" && (form.chosen.length > 0 || newCategory.text.trim() !== "")
         Layout.fillWidth: true
-        spacing: 6
-
-        Label {
-            width: Math.min(implicitWidth, parent.width)
-            text: form.sioul.textWith("contact-groups-held", "book", form.heldBook)
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            font.pixelSize: 13
-            color: form.theme.muted
-        }
-        Button {
-            objectName: "contactFormGroupsDoor"
-            flat: true
-            text: form.sioul.text("contact-groups-held-door")
-            onClicked: form.askedSwitch()
-        }
+        text: form.sioul.textWith("contact-groups-held", "book", form.heldBook)
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 13
+        color: form.theme.muted
     }
     Later {
         id: usedMenu

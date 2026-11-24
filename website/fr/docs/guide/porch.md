@@ -226,15 +226,14 @@ Les courriels hostiles vont dans leur propre file, repliée, qui ne montre ni le
 
 ### Les réglages du Porche {#the-porchs-settings}
 
-Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche, et la lecture d’un courriel ouvert ici :
+Le ⚙ en haut du Porche contient ce qui n’appartient qu’au Porche :
 
 - **Projets montrés ici** : quels projets ont une section sur le Porche, un par ligne. Les courriels des autres restent sur leur page dans Projets.
 - **Appels ▸ Appels refusés par vos téléphones** : activé sauf si vous l’éteignez, les appels refusés par vos téléphones attendent aussi sur le Porche de cet appareil ; désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun ([Les appels](calls.md#on-your-computers)).
 - **Appels ▸ Une tâche pour rappeler**, **Une tâche pour réessayer** : actives sauf si vous les éteignez, un appel manqué d’une personne de vos carnets d’adresses fait une tâche « Rappeler … », un appel de votre part qui ne l’a pas jointe « Réessayer d’appeler … » ; **Un appel tombé sur sa messagerie** : 90 secondes, sauf si vous choisissez 60 ou 120 ([Les appels](calls.md#calls-missed)).
-- **Lecture du texte** : la police, sa taille et l’interligne d’un courriel ouvert ici, les mêmes que dans le ⚙ de la page Courriels.
-- **Comment les courriels sont triés** : chaque file, dans l’ordre du tri, avec ses règles ; **Expéditeurs connus**, la liste de ceux que vous avez laissés entrer ; et, pour les mots qui rendent un expéditeur automatique (no-reply…), un bouton vers Paramètres ▸ Mots, où ils sont gardés avec les autres mots que Sioul repère ([Paramètres](settings.md#words)).
+- **Comment les courriels sont triés** : chaque file, dans l’ordre du tri, avec ses règles ; sous De personnes que vous connaissez, **Expéditeurs connus**, la liste de ceux que vous avez laissés entrer, sa seule place (l’aide de chaque file, son ⓘ, dit comment les courriels y arrivent, et ne la modifie plus).
 
-Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-person), vos heures dans [Paramètres](settings.md#hours).
+Ce qui appartient à autre chose se règle là où se trouve cette chose : le rang et la protection d’une adresse sur sa fiche dans [Comptes](accounts.md), les règles d’un projet sur sa page dans [Projets](projects.md), qui peut vous écrire et quand dans Paramètres ▸ [Ce qui vous joint](notifications.md#by-person), vos heures dans [Paramètres](settings.md#hours), les mots qui rendent un expéditeur automatique (no-reply…) dans [Paramètres ▸ Mots](settings.md#words), la lecture d’un courriel dans [Paramètres ▸ Affichage](settings.md#display).
 
 #### Certaines adresses d’abord, d’autres en dernier {#some-addresses-first-others-last}
 

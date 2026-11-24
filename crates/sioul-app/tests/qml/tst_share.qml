@@ -53,8 +53,6 @@ Item {
             "en": {
                 "share-now": "Exchange now",
                 "share-stop": "Stop sharing",
-                "share-devices-moved": "Your devices are listed in Settings ▸ Devices, with what each is for.",
-                "share-devices-open": "Open Devices",
                 "share-send-help": "Right after each change, Sioul sends this device's own files there itself, beside your sync app.",
                 "share-backup-switch": "Also fetch them from the server",
                 "share-backup-help": "When your sync app is late, Sioul also reads them on the server.",
@@ -65,8 +63,6 @@ Item {
             "fr": {
                 "share-now": "Échanger maintenant",
                 "share-stop": "Arrêter le partage",
-                "share-devices-moved": "Vos appareils sont listés dans Paramètres ▸ Appareils, avec ce à quoi sert chacun.",
-                "share-devices-open": "Ouvrir Appareils",
                 "share-send-help": "Juste après chaque changement, Sioul envoie lui-même là-bas les fichiers de cet appareil, à côté de votre application de synchronisation.",
                 "share-backup-switch": "Aller aussi les chercher sur le serveur",
                 "share-backup-help": "Quand votre application de synchronisation tarde, Sioul les lit aussi sur le serveur.",
@@ -187,13 +183,6 @@ Item {
         }
     }
 
-    SignalSpy {
-        id: devicesSpy
-
-        target: panel
-        signalName: "devicesAsked"
-    }
-
     TestCase {
         name: "SharePanel"
         when: windowShown
@@ -279,15 +268,14 @@ Item {
             mock.storageMove = ""
         }
 
-        function test_the_notes_folder_line_leads_to_the_notes_page() {
-            mock.opened = []
+        // The notes folder said, as where notes travel from; set on the Notes page alone: no door here.
+        function test_the_notes_folder_line_says_where_notes_travel_from() {
             const line = walk(panel, i => i.objectName === "shareNotesFolder", [])[0]
             verify(line.visible)
             verify(line.text.indexOf("/stand-in/Notes") >= 0, line.text)
             mock.notesFolder = JSON.stringify({ state: "unset" })
             verify(line.text.indexOf("/stand-in/Notes") < 0 && line.text !== "", line.text)
-            walk(panel, i => i.objectName === "shareNotesFolderOpen", [])[0].clicked()
-            compare(mock.opened, ["settings:case_store"])
+            compare(walk(panel, i => i.objectName === "shareNotesFolderOpen", []).length, 0, "no door to the Notes page")
             mock.notesFolder = JSON.stringify({ state: "ready", path: "/stand-in/Notes" })
         }
 
@@ -325,13 +313,10 @@ Item {
             tryVerify(() => button("share-device-remove-confirm") !== null, 2000)
             button("share-device-remove-confirm").clicked()
             compare(mock.asked, ["files c", "files c", "remove c"])
-            // The devices that count are listed in their own tab: none here, one line leads there.
+            // The devices that count are listed in their own tab: none here, and no line says so.
             const live = walk(panel, i => i.visible && i.text === "share-device-remove-live" && i.clicked !== undefined, [])
             compare(live.length, 0, "the devices that count have their own tab")
-            verify(shown(mock.text("share-devices-moved")) !== null, "the line that leads to the devices' tab")
-            devicesSpy.clear()
-            button(mock.text("share-devices-open")).clicked()
-            compare(devicesSpy.count, 1, "the devices' tab asked for")
+            compare(walk(panel, i => i.objectName === "shareToDevices", []).length, 0, "no line that only leads to the devices' tab")
             save("share-held-and-removal")
         }
 
@@ -373,7 +358,6 @@ Item {
             wait(50)
             // This device's build; each other device's is said in the devices' tab.
             verify(shown(said.build) !== null, "this device's build")
-            verify(shown(mock.text("share-devices-moved")) !== null, "the line that leads to the devices' tab")
             // The switch, on by default where the backup is, and where it stands.
             const sending = switchBeside(said.sendSwitch)
             verify(sending !== null, "the switch to send beside the sync app")

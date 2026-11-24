@@ -15,7 +15,8 @@ Pane {
     // A firmer border, in the accent: the one thing that cannot wait.
     property bool accent: false
 
-    padding: theme.gap
+    // Inside a card, on every side: one padding for every card and section (Theme.qml).
+    padding: theme.cardPadding
 
     background: Rectangle {
         color: panel.theme.surface

@@ -226,15 +226,14 @@ Hostile mail goes to its own folded lane, which shows neither the sender's name 
 
 ### The Porch's settings {#the-porchs-settings}
 
-The ⚙ at the top of the Porch holds what is the Porch's alone, and how a message opened here reads:
+The ⚙ at the top of the Porch holds what is the Porch's alone:
 
 - **Projects shown here**: which projects have a section on the Porch, one per line. The others' mail stays on their page in Projects.
 - **Calls ▸ Calls your phones declined**: on unless you turn it off, the calls your phones declined wait on this device's Porch too; off, each phone lists only its own, and your computers none ([Calls](calls.md#on-your-computers)).
 - **Calls ▸ A task to call back**, **A task to call again**: on unless you turn them off, a missed call from someone in your address books makes a task "Call back …", a call of yours that did not reach them "Call … again"; **A call that reached their voicemail**: 90 seconds unless you choose 60 or 120 ([Calls](calls.md#calls-missed)).
-- **How text reads**: the font, its size and the space between lines of a message opened here, the same as in the Mail page's ⚙.
-- **How mail is sorted**: every lane, in the order mail is sorted, with its rules; **Senders you know**, the list of those you let in; and, for the words that make a sender automatic (no-reply…), a button to Settings ▸ Words, where they are kept with the other words Sioul looks for ([Settings](settings.md#words)).
+- **How mail is sorted**: every lane, in the order mail is sorted, with its rules; under From people you know, **Senders you know**, the list of those you let in, its one place (each lane's help, its ⓘ, says how mail lands there, and no longer edits it).
 
-What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in Settings ▸ [What reaches you](notifications.md#by-person), your hours in [Settings](settings.md#hours).
+What belongs to something else is set where that thing is: an address's rank and protection on its card in [Accounts](accounts.md), a project's routes on its page in [Projects](projects.md), who may write to you when in Settings ▸ [What reaches you](notifications.md#by-person), your hours in [Settings](settings.md#hours), the words that make a sender automatic (no-reply…) in [Settings ▸ Words](settings.md#words), how a message reads in [Settings ▸ Display](settings.md#display).
 
 #### Some addresses first, others last {#some-addresses-first-others-last}
 

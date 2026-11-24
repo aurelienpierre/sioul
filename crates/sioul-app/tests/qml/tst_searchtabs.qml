@@ -64,7 +64,7 @@ Item {
         function textWith(key, name, value) { return mock.text(key) + " " + value }
         function textArgs(key, args) { return mock.text(key) }
         function textCounted(key, n) {
-            if (key === "task-filters")
+            if (key === "task-filters" || key === "ui-filters")
                 return n === 0 ? mock.text("task-filters-none") : mock.text("task-filters-none") + " (" + n + ")"
             if (key === "things-left-out")
                 return (mock.words["things-left-out"] || "things-left-out") + ":" + n

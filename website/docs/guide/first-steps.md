@@ -28,7 +28,7 @@ Sioul speaks English and French, as your system does, unless you choose otherwis
 
 Each icon's name, with its key, shows when the pointer rests on it, when the keyboard reaches it, or at a long press on a touch screen.
 
-**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. What belongs to Sioul as a whole is in **Settings**, in tabs across the page: Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents. How long text reads (the font, its size and the space between lines) is in the ⚙ of Mail and of the Porch, and behind "Aa" in Notes. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
+**On each page**, the ⚙ at the end of the first row holds that page's own settings, each with a sentence on what it changes; they are saved at once. What belongs to Sioul as a whole is in **Settings**, in tabs across the page: Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents. How long text reads (the font, its size and the space between lines) is in Settings ▸ Display. A right click, the Menu key, or a long press on a touch screen, on anything gives what is not in view.
 
 ### Keys
 

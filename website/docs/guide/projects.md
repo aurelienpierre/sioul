@@ -30,7 +30,7 @@ A project is any matter you follow: work for a client, whose time is billed, or 
 - Without it, the project is yours.
 - **What it is for**: work, your admin, leisure, any of them together, the same three switches as everywhere ([Hours](hours.md)). The Projects and Time pages show it in those hours, and its tasks come in them unless they say their own. Nothing ticked, a client's project counts as work; another follows its open tasks, and shows at any hour when it has none.
 - **Where it stands**: open, waiting, or closed.
-- **Open to AI agents**: off until you switch it on ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
+- **Open to AI agents**, in the form of a new project: off until you switch it on ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)). Afterwards it is changed on the project's page alone.
 
 **Edit**, at the top of a project's page, opens this form again. **Take out of the list**, at its foot, removes the project once you confirm. Its tasks, notes, mail and time stay where they are; they are no longer gathered under it.
 
@@ -85,14 +85,14 @@ If Sioul's lists still hold `sioul-cases.toml`, the file's name before projects 
 
 ## By your hours {#in-quiet-time}
 
-The button above the list says what it shows ("Leisure ▾") and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change, a day at most; **As the hours say** brings theirs back at once. On a device you said is for some areas only, the boxes follow that too, and the **?** beside them says what waits on your other devices ([What each device is for](hours.md#what-each-device-is-for)). A client's project with nothing ticked counts as work; another one with nothing ticked shows for what its open tasks are for, and at any hour when it has none. When the ticks show no project, one sentence says so: "No project for what is ticked." Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
+The drop-down above the list says what it shows ("Leisure", or "All areas" when the three are ticked) and opens three boxes, **Work**, **Admin** and **Leisure**, ticked as your hours say on this device: work's projects in your working hours, your admin's in your admin hours, leisure's in the evening, at meals and at night. Tick another to see its projects too: it holds until your hours change, a day at most; **As the hours say** brings theirs back at once. On a device you said is for some areas only, the boxes follow that too, and the **?** beside them says what waits on your other devices ([What each device is for](hours.md#what-each-device-is-for)). A client's project with nothing ticked counts as work; another one with nothing ticked shows for what its open tasks are for, and at any hour when it has none. When the ticks show no project, one sentence says so: "No project for what is ticked." Nothing covers the page, at any hour, and a project opened from elsewhere opens whatever the ticks. The [Time](time.md#in-quiet-time) page shares these ticks. See [Hours](hours.md).
 
 ## Going further {#going-further}
 
 - **A lane on the Porch**: **Projects shown here**, in the Porch's ⚙, gives a project its own lane there ([The Porch](porch.md)).
 - **On a device not updated yet**: **Admin** and **Leisure** together, and all three on a client's project, are written as the older **Yours, outside work**, which an older Sioul reads, and its box reads here as admin and leisure (beside a client, all three, as the older Sioul read it). Other choices are new to an older Sioul: it reads them as nothing said, and saving the project's form there takes them out. Update every device before using them.
 - **By hand, if you like**: the list of projects is a readable file, `sioul-projects.toml`, which you can edit; its form is [below](#for-technical-readers).
-- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) sees a project only once you open it: **Open to AI agents**, on its page or in its form. It then reads what the project's page gathers, with one-time codes, sign-in links, account and card numbers masked in its mail, and may add tasks, notes, ties and drafts to it. Of a project left closed it sees nothing ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
+- **An AI agent you connect** ([Using an AI agent](ai-agent.md)) sees a project only once you open it: **Open to AI agents**, on its page (or in the form that makes it). It then reads what the project's page gathers, with one-time codes, sign-in links, account and card numbers masked in its mail, and may add tasks, notes, ties and drafts to it. Of a project left closed it sees nothing ([Choosing what an agent sees](ai-agent.md#choosing-what-an-agent-sees)).
 
 ## Why it works this way {#why-it-works-this-way}
 

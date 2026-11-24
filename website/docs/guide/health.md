@@ -106,7 +106,7 @@ The doubt goes by itself as soon as that device shares again, or closes properly
 
 Times kept free, set before any work: Sioul plans no task in them, and plans the rest of the day around them.
 
-Set once in [Settings ▸ Hours](settings.md#hours), under **Meals, rest and sleep**, since every page follows them (this page's ⚙ has a button to them, **Meals, rest and sleep, in Settings**, and the card of a meal, a nap or the night has **Your usual meals and naps…**), then changed for a day on this page (above, "Change a day"). Each of the three is kept only once you tick it:
+Set once in [Settings ▸ Hours](settings.md#hours), under **Meals, rest and sleep**, since every page follows them (the card of a meal, a nap or the night has **Your usual meals and naps…**, which opens them there), then changed for a day on this page (above, "Change a day"). Each of the three is kept only once you tick it:
 
 - **Meals**: three to begin with (breakfast, lunch, dinner), each at the time you choose, with the minutes it takes to get it ready and to eat. **Add a meal or a snack** for more. If two meals are planned more than four hours apart, it is said there, quietly.
 - **Naps**: one to begin with: when, how long, and a few minutes to come back after it. **Add a nap** for more.

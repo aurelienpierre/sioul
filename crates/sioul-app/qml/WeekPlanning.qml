@@ -941,7 +941,7 @@ ColumnLayout {
     }
 
     // An instant (ms) as a date whose own clock reads the time zone Sioul shows
-    // (`zone::current`, Settings ▸ Agenda ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
+    // (`zone::current`, Settings ▸ Hours ▸ Time zone; `zoneOffset`, JavaScript's own offset back).
     function wall(ms) {
         return new Date(ms + (typeof planning.sioul.zoneOffset === "function" ? planning.sioul.zoneOffset(ms / 1000) + new Date(ms).getTimezoneOffset() * 60000 : 0))
     }
@@ -1047,7 +1047,7 @@ ColumnLayout {
         return proper + (around.length > 0 ? "\n" + around.join(" · ") : "")
     }
 
-    // How long a new event lasts (Settings ▸ Agenda), in minutes.
+    // How long a new event lasts (Agenda ⚙), in minutes.
     function newLength() {
         const minutes = typeof planning.sioul.newEventMinutes === "function" ? planning.sioul.newEventMinutes() : 30
         return minutes > 0 ? minutes : 30

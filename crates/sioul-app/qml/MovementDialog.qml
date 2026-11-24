@@ -250,17 +250,19 @@ SafeDialog {
         RowLayout {
             visible: dialog.editing === null
 
-            // A click on the choice shown unticks it: its binding ticks it again.
+            // One choice of two (`autoExclusive`: a ✓ on the one chosen). A click ticks one and
+            // unticks the other by hand: both bindings are given back.
             Button {
                 id: once
 
                 text: dialog.sioul.text("budget-add-once")
                 checkable: true
+                autoExclusive: true
                 checked: !dialog.recurring
-                flat: dialog.recurring
                 onClicked: {
                     dialog.recurring = false
                     once.checked = Qt.binding(() => !dialog.recurring)
+                    recurringButton.checked = Qt.binding(() => dialog.recurring)
                 }
             }
             Button {
@@ -268,10 +270,11 @@ SafeDialog {
 
                 text: dialog.sioul.text("budget-add-recurring")
                 checkable: true
+                autoExclusive: true
                 checked: dialog.recurring
-                flat: !dialog.recurring
                 onClicked: {
                     dialog.recurring = true
+                    once.checked = Qt.binding(() => !dialog.recurring)
                     recurringButton.checked = Qt.binding(() => dialog.recurring)
                 }
             }
@@ -521,28 +524,13 @@ SafeDialog {
         }
     }
 
-    // The buttons inside an Item: a DialogButtonBox as the footer itself closes
-    // the dialog on "Save" even when saving fails, and what went wrong is never read.
-    footer: Item {
-        implicitWidth: buttons.implicitWidth
-        implicitHeight: buttons.implicitHeight
-
-        DialogButtonBox {
-            id: buttons
-
-            anchors.fill: parent
-
-            Button {
-                text: dialog.sioul.text("ui-save")
-                highlighted: true
-                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
-            }
-            Button {
-                text: dialog.sioul.text("ui-cancel")
-                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
-            }
-            onAccepted: dialog.save()
-            onRejected: dialog.close()
-        }
+    // The dialog's foot (DialogFoot.qml): Cancel, then Save, at the right. It never
+    // closes the dialog by itself: a save that fails keeps the form open, and says why.
+    footer: DialogFoot {
+        sioul: dialog.sioul
+        theme: dialog.theme
+        mainText: dialog.sioul.text("ui-save")
+        onAccepted: dialog.save()
+        onRejected: dialog.close()
     }
 }
