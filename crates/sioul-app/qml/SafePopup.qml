@@ -27,6 +27,14 @@ Popup {
     readonly property real roomWidth: safe.parent ? safe.parent.width - (safe.safeArea ? safe.safeArea.left + safe.safeArea.right : 0) : 800
     readonly property real roomHeight: safe.parent ? safe.parent.height - (safe.safeArea ? safe.safeArea.top + safe.safeArea.bottom : 0) : 800
 
+    // It takes the keyboard's focus when it opens, so that Escape, and a phone's
+    // Back (Qt's popups close on Android's Back key only while they hold the
+    // focus), close it rather than reaching the page under it: without it,
+    // Back with a page's ⚙ open sent Sioul to the home screen (24 November
+    // 2026). A popup beside a field being typed into (a date's, a time's on a
+    // computer) says `focus: false`, and the window's Back takes it (main.qml).
+    focus: true
+
     topMargin: (safe.safeArea ? safe.safeArea.top : 0) + safe.safeGap
     bottomMargin: (safe.safeArea ? safe.safeArea.bottom : 0) + safe.safeGap
     leftMargin: (safe.safeArea ? safe.safeArea.left : 0) + safe.safeGap

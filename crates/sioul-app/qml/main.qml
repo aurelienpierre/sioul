@@ -17,7 +17,10 @@
 // to (a task, a message, a note, an event, a contact) opens where it lives.
 // On a phone, or in a window as narrow, the places are pulled over the pages
 // from the left (☰) with their names, the pages take the whole width, and
-// Android's Back puts the places away, then goes back to the Porch.
+// Android's Back closes what is open on top first (a menu, a popup, a page's
+// ⚙, a dialog: each takes the focus as it opens, SafePopup.qml), then puts the
+// places away, closes the card or what the page opened, then goes back to
+// the Porch.
 
 pragma ComponentBehavior: Bound
 
@@ -287,6 +290,22 @@ SioulWindow {
             cardHost.back()
         else if (window.shownPage !== null && window.shownPage.canGoBack === true)
             window.shownPage.back()
+    }
+
+    // Android's Back (and a mouse's), under whatever popup is open, which closes first
+    // on its own (it holds the focus: SafePopup.qml): the places put away, else the card
+    // or what the page opened closed, else back to the Porch. False on the Porch with
+    // nothing open: Android's own Back then (Sioul goes to the background).
+    function backTaken() {
+        if (window.placesOpen)
+            window.placesOpen = false
+        else if (window.canGoBack || cardHost.open)
+            window.goBack()
+        else if (window.page !== 0)
+            window.page = 0
+        else
+            return false
+        return true
     }
     // Work time or quiet time: {quiet, reason, until, line, hours}.
     readonly property var moment: sioul.mode ? JSON.parse(sioul.mode) : ({ quiet: false, sleep: false, reason: "", until: "", line: "", hours: false, night: true })
@@ -6705,17 +6724,13 @@ SioulWindow {
 
     // Android's Back: the places put away, else what the page opened closed,
     // else back to the Porch; on the Porch, Android's own (Sioul goes to the background).
+    // While a popup that closes on Escape is open, Qt holds this back (QQuickShortcutContext):
+    // the popup, which holds the focus, takes Back itself; one that does not (a list under
+    // a field being typed into) leaves it to the frame's keys below.
     Shortcut {
         sequence: "Back"
         enabled: window.placesOpen || window.canGoBack || cardHost.open || window.page !== 0
-        onActivated: {
-            if (window.placesOpen)
-                window.placesOpen = false
-            else if (window.canGoBack || cardHost.open)
-                window.goBack()
-            else
-                window.page = 0
-        }
+        onActivated: window.backTaken()
     }
     // Escape: the card open first (a computer's; a phone's Back above).
     Shortcut {
@@ -6811,6 +6826,16 @@ SioulWindow {
 
         anchors.fill: parent
         color: theme.background
+        // The keys' last stop: the keyboard's focus rests here when nothing else holds it,
+        // and every page's key that nothing took comes up to it. Back that reaches it found
+        // no popup to close it (one open beside a field that keeps the focus holds the
+        // window's Back shortcut): it goes back as the shortcut would, never leaving Sioul
+        // while something is open.
+        focus: true
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Back && window.backTaken())
+                event.accepted = true
+        }
 
         // The places and the pages; on a computer, under the title bar.
         Item {
