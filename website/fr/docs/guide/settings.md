@@ -75,7 +75,7 @@ Quand chaque rappel peut venir, et les nouveaux courriels, c’est [Ce qui vous 
 
 ## Pauses {#pauses}
 
-Le temps libre et la pause, préparés un jour calme : jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros ; **Ce qui vient pendant une pause**, qui ouvre Ce qui vous joint sur **Ce qui vient quand** ; **Essayer l’écran de pause** ; **Oublier la dernière pause**, une fois qu’il y en a eu une. **Rien du tout**, pour le temps libre, est dans [Ce qui vous joint](#what-reaches-you), sous **Moments**, **Pendant le temps libre**. Voir [Les pauses](pauses.md).
+Le temps libre et la pause, préparés un jour calme : jusqu’où la fin du travail peut se décaler, si le mouvement est proposé ; pour la pause, ce qui vous aide, votre ligne, le guide de respiration, ce que tient le reste de la journée ensuite, de quel pays sont les numéros ; **Essayer l’écran de pause** ; **Oublier la dernière pause**, une fois qu’il y en a eu une. **Rien du tout**, pour le temps libre, est dans [Ce qui vous joint](#what-reaches-you), sous **Moments**, **Pendant le temps libre**. Voir [Les pauses](pauses.md).
 
 ## La carte d’un téléphone {#this-phone}
 
@@ -95,7 +95,7 @@ Ce qui règle un téléphone est sur sa propre carte dans [Appareils](#devices),
 
 ## Partage {#your-folder-and-sharing}
 
-Le dossier des notes est à la page Notes, dans son ⚙ ([Votre dossier de notes](notes.md#your-notes-folder)) ; une ligne dit ici lequel c’est, puisque vos notes partent de lui, avec un bouton vers lui. En dessous, une ligne dit où Sioul garde ses propres listes sur cet appareil (encore dans votre dossier de notes, ou dans son propre dossier, avec le dossier des papiers et celui des courriers), et **Où Sioul garde ses listes** ouvre la fenêtre de leur déplacement ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Une fois les listes déplacées, une ligne compte les anciens fichiers de Sioul encore dans votre dossier de notes, avec **Les retirer**.
+Le dossier des notes est à la page Notes, dans son ⚙ ([Votre dossier de notes](notes.md#your-notes-folder)) ; une ligne dit ici lequel c’est, puisque vos notes partent de lui. En dessous, une ligne dit où Sioul garde ses propres listes sur cet appareil (encore dans votre dossier de notes, ou dans son propre dossier, avec le dossier des papiers et celui des courriers), et **Où Sioul garde ses listes** ouvre la fenêtre de leur déplacement ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Une fois les listes déplacées, une ligne compte les anciens fichiers de Sioul encore dans votre dossier de notes, avec **Les retirer**.
 
 - **Entre vos appareils** : partager avec vos autres appareils ce que Sioul garde sur celui-ci, partie par partie, scellé par une phrase de passe ; vos notes et vos papiers aussi, si vous les activez. Voir [Partager entre vos appareils](sharing.md).
 - **Voir les versions précédentes** : ce qu’un changement venu d’un autre appareil a remplacé ici, gardé sur cet appareil, avec **Remettre** ([Remettre une version précédente](sharing.md#putting-back-an-older-version)).

@@ -214,6 +214,13 @@ impl LaneInfo {
     }
 }
 
+/// The lanes' rules that say where another page's setting is (an address's
+/// shield and rank in Accounts, a project's routes in Projects, who is
+/// blocked, what the spam filter does with each verdict): said in the lane's
+/// help, by the mail it explains, never in the Porch's settings, which hold
+/// only what they set (one canonical place per setting, 24 November 2026).
+pub const RULES_ELSEWHERE: &[&str] = &["rule-where-shield", "rule-where-rank", "rule-where-routes", "rule-where-blocked", "rule-review-where", "rule-low-none"];
+
 /// Every lane mail can land in, in the order the Porch shows them (the
 /// Porch's own sections come between: docs/porch.md): projects, public
 /// addresses, what you sent yourself, people; then filed mail, the

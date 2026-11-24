@@ -75,7 +75,7 @@ When each reminder may come, and new mail, is in [What reaches you](#what-reache
 
 ## Pauses
 
-Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **What comes during a pause**, which opens What reaches you on **What comes when**; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Moments**, **In Free time**. See [Pauses](pauses.md).
+Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Moments**, **In Free time**. See [Pauses](pauses.md).
 
 ## A phone's card {#this-phone}
 
@@ -95,7 +95,7 @@ What sets a phone up is on its own card in [Devices](#devices), under its **Deta
 
 ## Sharing {#your-folder-and-sharing}
 
-The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it, with a button to it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Once they have moved, a line counts Sioul's old files still in your notes folder, with **Take them out**.
+The notes folder is the Notes page's, in its ⚙ ([Your notes folder](notes.md#your-notes-folder)); one line here says which it is, since your notes travel from it. Below it, one line says where Sioul keeps its own lists on this device (still in your notes folder, or in its own folder, with the papers' and the letters' folders), and **Where Sioul keeps its lists** opens the window of their move ([Where Sioul keeps its lists](sharing.md#where-sioul-keeps-its-lists)). Once they have moved, a line counts Sioul's old files still in your notes folder, with **Take them out**.
 
 - **Between your devices**: sharing with your other devices what Sioul keeps on this one, part by part, sealed with a passphrase; your notes and papers too, if you switch them on. See [Sharing between your devices](sharing.md).
 - **Show earlier versions**: what another device's change replaced here, kept on this device, with **Put back** ([Putting back an older version](sharing.md#putting-back-an-older-version)).

@@ -42,7 +42,8 @@ ColumnLayout {
     property string vaultState: ""
     // The vault's Unlock pressed: the card that shows it opens its dialog (VaultCard.qml).
     signal unlockAsked()
-    // A link's button pressed: the panel it is in closes, its place shown (SettingsPanel.qml).
+    // Another place opened from the row (Settings ▸ Hours' "Subscribe to a calendar of
+    // holidays…"): the panel it is in closes, that place shown (SettingsPanel.qml).
     signal followed()
 
     // Whether two values are the same, compared as JSON.
@@ -54,7 +55,7 @@ ColumnLayout {
 
     Label {
         // A block under a heading of its own (the panel's Section) says no title again.
-        visible: field.setting.kind !== "note" && field.setting.kind !== "link" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches" && field.setting.kind !== "mapsearch"
+        visible: field.setting.kind !== "note" && field.setting.kind !== "filters" && field.setting.kind !== "action" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "addressbooks" && field.setting.kind !== "contactbatches" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.label
         textFormat: Text.PlainText
@@ -72,41 +73,6 @@ ColumnLayout {
         wrapMode: Text.Wrap
         lineHeight: 1.25
         color: field.theme.text
-    }
-
-    // Nothing to change here: a sentence, and a button to where it is
-    // changed (the automatic senders' words, from the Porch's Filed lane).
-    Loader {
-        active: field.setting.kind === "link"
-        visible: active
-        Layout.fillWidth: true
-
-        sourceComponent: Component {
-            ColumnLayout {
-                spacing: 2
-
-                Label {
-                    Layout.fillWidth: true
-                    text: field.setting.kind === "link" ? field.setting.help : ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    lineHeight: 1.25
-                    color: field.theme.text
-                }
-                Button {
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    flat: true
-                    text: field.theme.plain(field.setting.label)
-                    icon.name: "go-next"
-                    icon.color: field.theme.text
-                    // The window shows it, as a reminder's "Open" does (main.qml, openThing).
-                    onClicked: {
-                        field.followed()
-                        field.sioul.reminderOpened(String(field.setting.value), "", "")
-                    }
-                }
-            }
-        }
     }
 
     // The Bitwarden vault as it is now on this device, Unlock while it is
@@ -1551,7 +1517,7 @@ ColumnLayout {
 
     Label {
         // The blocks say their sentence first themselves.
-        visible: text !== "" && field.setting.kind !== "link" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "mapsearch"
+        visible: text !== "" && field.setting.kind !== "spam" && field.setting.kind !== "filters" && field.setting.kind !== "agendas" && field.setting.kind !== "addressbooks" && field.setting.kind !== "availability" && field.setting.kind !== "conflicts" && field.setting.kind !== "topics" && field.setting.kind !== "leavespam" && field.setting.kind !== "invoicing" && field.setting.kind !== "needs" && field.setting.kind !== "textssending" && field.setting.kind !== "mapsearch"
         Layout.fillWidth: true
         text: field.setting.kind === "note" ? field.setting.help.split("\n").filter(line => line !== "").map(line => "•  " + line).join("\n") : field.setting.help
         textFormat: Text.PlainText

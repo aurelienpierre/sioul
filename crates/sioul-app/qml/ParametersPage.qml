@@ -577,7 +577,6 @@ Item {
                         SharePanel {
                             sioul: page.sioul
                             theme: page.theme
-                            onDevicesAsked: page.showSetting("devices")
                         }
                     }
                 }

@@ -62,9 +62,6 @@ pub enum Kind {
     Note,
     /// A secret kept in the system keyring, typed and never shown: `value` says whether one is kept.
     Secret,
-    /// Nothing to change here: a button to where it is changed (`value`: the
-    /// window's `openThing` kind, `"settings:<key>"` for another setting).
-    Link,
     /// Nothing to change: a sentence (`help`) and a button (`label`) that
     /// does one thing when pressed, never by itself; pressing it saves `true`
     /// under its key (the projects' file renamed: `projects::rename_file`).
@@ -310,10 +307,8 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             "people" | "screener" => {
                 b.push("known", "known", Kind::Senders, known());
             }
-            // The automatic senders' words are in Settings ▸ Words, with the others (docs/words.md).
-            "filed" => {
-                b.push("link.words.senders", "filed-words", Kind::Link, SettingValue::Text("settings:words.senders.automatic".into()));
-            }
+            // The automatic senders' words are Settings ▸ Words' alone (docs/words.md): the
+            // lane's rule names them, no line here says where they are.
             _ => {}
         }
         return b.out;
@@ -377,8 +372,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 .collect();
         }
         "porch" => {
-            // Working hours and days off are Sioul's as a whole: in the settings page.
-            b.note(tr.text("set-hours-elsewhere", None), Vec::new());
             // Which projects have their lane here; each is made, renamed and routed in Projects.
             if let Some(store) = store.filter(|s| !s.projects.is_empty()) {
                 b.group = tr.text("set-projects-group", None);
@@ -420,9 +413,13 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // project's lane is in its page.
             b.group = tr.text("set-sorting", None);
             b.note(tr.text("rule-order", None), Vec::new());
+            // Each lane's rules but those that say where another page's setting is (an address's
+            // shield and rank, who is blocked, the spam filter's verdicts): the lane's help says
+            // them, by its mail; a settings panel holds only what it sets (24 November 2026).
+            let elsewhere: Vec<String> = crate::view::RULES_ELSEWHERE.iter().map(|id| tr.text(id, None)).collect();
             for lane in crate::view::lanes(config, store, tr).into_iter().filter(|l| !l.key.starts_with("project:")) {
                 b.group = lane.title.clone();
-                b.note(lane.about, lane.rules);
+                b.note(lane.about, lane.rules.into_iter().filter(|rule| !elsewhere.contains(rule)).collect());
                 for mut setting in for_view(&format!("lane:{}", lane.key), config, tr, lists, store) {
                     if b.out.iter().any(|s| s.key == setting.key) {
                         continue;
@@ -436,8 +433,6 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.push("mail.threads", "mail-threads", Kind::Bool, SettingValue::Bool(config.mail.threads));
             let s = b.push("fetch_minutes", "fetch-minutes", Kind::Int, int(config.fetch_minutes, crate::config::DEFAULT_FETCH_MINUTES));
             Builder::range(s, 1.0, 240.0, 1.0, "min");
-            // Each address's own: in Accounts, on its card.
-            b.note(tr.text("set-accounts-elsewhere", None), Vec::new());
             // The mail filters: one list for every address, their own block.
             b.group = tr.text("set-filters-group", None);
             b.push("mail.filter", "filters", Kind::Filters, SettingValue::Text(String::new()));
@@ -833,10 +828,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.section = "words".into();
             words_rows(&mut b, config);
             // Reminders before dates; with the window closed, the window says (an entry started with the session).
-            // Those of one page's things are behind that page's ⚙, said first.
+            // Those of one page's things are behind that page's ⚙, each its own alone.
             b.section = "reminders".into();
             b.group = tr.text("set-reminders-group", None);
-            b.note(tr.text("set-reminders-elsewhere", None), Vec::new());
             let s = b.push("reminders.asked_days", "reminders-asked", Kind::Int, SettingValue::Int(i64::from(config.reminders.asked_days)));
             Builder::range(s, 0.0, 10.0, 1.0, "");
             b.push("reminders_closed", "reminders-closed", Kind::Bool, SettingValue::Bool(false));
@@ -850,8 +844,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             b.group = tr.text("set-pause-group", None);
             // Said once, where the pause is set up (P5).
             b.note(tr.text("set-pause-about", None), Vec::new());
-            // What comes during a pause, doses included: What reaches you ▸ By time, the pause's card.
-            b.push("link.attention.pause", "pause-attention", Kind::Link, SettingValue::Text("settings:attention.pause".into()));
+            // What comes during a pause, doses included, is What reaches you's alone (the pause's card).
             b.push("pause.helps", "pause-helps", Kind::Words, SettingValue::Texts(config.pause.helps.clone()));
             b.push("pause.grounding", "pause-grounding", Kind::Text, SettingValue::Text(config.pause.grounding.clone()));
             b.push("pause.breathing", "pause-breathing", Kind::Bool, SettingValue::Bool(config.pause.breathing));
@@ -1721,18 +1714,20 @@ mod tests {
         assert_eq!(keys("accounts"), vec!["ai_key"]);
         assert_eq!(keys("tasks"), vec!["office_hours", "tasks.kind", "tasks.estimate", "tasks.list", "tasks.blocks", "tasks.block_alarms", "reminders.waits", "planning.start", "planning.window_days", "planning.even_days", "planning.gain_slots", "quiet.work", "quiet.personal", "github.enabled"]);
         assert_eq!(for_view("tasks", &config, &tr, &[("acct/plan".into(), "Plan".into())], None).iter().find(|s| s.key == "tasks.list").unwrap().choices.len(), 2);
-        assert_eq!(for_view("lane:filed", &config, &tr, &[], None)[0].kind, Kind::Link);
+        assert!(for_view("lane:filed", &config, &tr, &[], None).is_empty(), "the automatic senders' words are Settings ▸ Words' alone");
         // The Porch: its letters and its own sorting; every lane said once, none with another page's settings.
         let porch = for_view("porch", &config, &tr, &[], None);
         let notes = porch.iter().filter(|s| s.kind == Kind::Note).count();
-        // Where the hours went, the order, then public, what you sent yourself, people, filed, screener, less important, the review queue, set aside, hostile.
-        assert_eq!(notes, 1 + 1 + 9, "{porch:?}");
+        // The order, then public, what you sent yourself, people, filed, screener, less important, the review queue, set aside, hostile.
+        assert_eq!(notes, 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
-        assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known", "link.words.senders"]);
+        assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "reading.family", "reading.size", "reading.spacing", "known"]);
         assert_eq!(keys("letters"), vec!["letters.folder", "letters.inbox"]);
         assert_eq!(keys("papers"), vec!["papers.folder"]);
         assert_eq!(keys("supplies"), vec!["supplies.list"]);
-        assert!(porch.iter().any(|s| s.kind == Kind::Note && s.help.contains("Accounts")), "the shield is said to be in Accounts");
+        // No line says where another page's setting is: the lanes' help says it, by their mail.
+        assert!(porch.iter().all(|s| !s.help.contains("Accounts") && !s.label.contains("Accounts") && !s.help.contains("Settings") && !s.label.contains("Settings ▸")), "{porch:?}");
+        assert!(crate::view::lanes(&config, None, &tr).iter().any(|l| l.rules.contains(&tr.text("rule-where-shield", None))), "the lane's help still says where the shield is");
         // Sioul as a whole: language and looks, your folder, hours, what reaches you, reminders, pauses, invoices;
         // the words tab apart (`the_words_tab`).
         // (The projects' file's renaming shows only for a notes folder holding its first name: `the_projects_file_is_renamed_on_demand`.)
@@ -1743,7 +1738,7 @@ mod tests {
                 // colour: "screen_colours" and "calmer_colours" are the Sites page's (below).
                 "language", "theme", "places_named", "passwords_shown", "device_kind", "window", "window.admin", "needs", "time_off", "reminders.mail", "reminders.mail_newsletters", "reminders.gather", "notices.informative_minutes", "reminders.gathered", "free_time.nothing",
                 "dnd.button", "dnd.focus", "dnd.pauses", "dnd.sleep", "reminders.asked_days", "reminders_closed",
-                "free_time.moves", "free_time.latest_after", "free_time.movement", "link.attention.pause", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
+                "free_time.moves", "free_time.latest_after", "free_time.movement", "pause.helps", "pause.grounding", "pause.breathing", "pause.pace", "pause.after", "pause.country", "invoice",
                 "invoice.folder", "invoice.rate", "mcp.outside_projects", "mcp.texts", "mcp.spam"
             ]
         );

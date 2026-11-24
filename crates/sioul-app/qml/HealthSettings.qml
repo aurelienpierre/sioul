@@ -3,9 +3,8 @@
 
 // The Health page's settings (its ⚙), set once or rarely, made the first
 // time they open: where the pharmacy and renewal errands go, the pause to
-// move, the limit on chats. The usual meals, naps and night are in
-// Settings ▸ Hours, since every page reads the time now: one line here
-// leads there. The medicines and the prescriptions are the page's content,
+// move, the limit on chats. The usual meals, naps and night are Settings ▸
+// Hours' alone, since every page reads the time now. The medicines and the prescriptions are the page's content,
 // changed there (MedicinesSection.qml), as is a day that differs, that day
 // only. On the right of the window, all of a phone's; Escape or a click
 // outside closes it.
@@ -130,33 +129,6 @@ SafePopup {
                     model: lists.map(l => panel.theme.plain(l.name))
                     currentIndex: Math.max(0, lists.findIndex(l => l.id === panel.shown.errands_list))
                     onActivated: index => panel.setting("errands_list", lists[index].id)
-                }
-            }
-
-            // The usual meals, naps and night: in Settings ▸ Hours, where every page's time is set.
-            Section {
-                Layout.fillWidth: true
-                Layout.topMargin: 12
-                theme: panel.theme
-                title: panel.sioul.text("needs-title")
-
-                Label {
-                    Layout.fillWidth: true
-                    text: panel.sioul.text("health-needs-elsewhere")
-                    wrapMode: Text.Wrap
-                    color: panel.theme.text
-                }
-                Button {
-                    objectName: "healthNeedsLink"
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    flat: true
-                    text: panel.sioul.text("health-needs-open")
-                    icon.name: "go-next"
-                    icon.color: panel.theme.text
-                    onClicked: {
-                        panel.close()
-                        panel.sioul.reminderOpened("needs", "", "")
-                    }
                 }
             }
 
