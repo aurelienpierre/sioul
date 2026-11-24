@@ -10650,4 +10650,5 @@ rules-runs-filter = Runs on the server at each fetch, on whichever device fetche
 rules-runs-topic = Read each time mail's topics are given.
 rules-file-type-any = Every attachment
 rules-for-me = You
+rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
 papers-unchecked = Not checked by an antivirus.

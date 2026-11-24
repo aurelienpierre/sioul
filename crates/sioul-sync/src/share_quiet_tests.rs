@@ -1435,7 +1435,8 @@ fn your_word_on_topics_waits_for_a_device_that_has_it() {
 /// Your rules and what they did wait for a device that has their stores,
 /// as an older Sioul (0.1.0) never says: kept on the desk, neither sent nor
 /// read on the phone; once the phone says so, the next exchanges bring the
-/// desk's rules and its record of acts there, the phone's own log beside it.
+/// desk's rules and its record of acts there, the phone's own log beside it,
+/// and a rule a newer Sioul wrote travels byte for byte, never run.
 #[test]
 fn your_rules_wait_for_a_device_that_has_them() {
     let base = scratch("rules-gate");
@@ -1449,7 +1450,9 @@ fn your_rules_wait_for_a_device_that_has_them() {
     });
     entry(&phone, &folder, &key, |e| e.start(now / 1000));
     let rules = "version = 1\n\n[[rule]]\nid = \"r1\"\non = true\nsince = 1795000000\nwhen.type = \"message\"\nwhen.event = \"arrives\"\nwhen.if = [{ field = \"kind\", test = \"is\", value = [\"bill\"] }]\nthen.type = \"none\"\nthen.action = \"tell\"\n";
-    desk.write(RULES, rules);
+    let newer = "\n[[rule]]\nid = \"r2\"\non = true\nsince = 1795000000\nwhen.type = \"call\"   # a later type\nwhen.event = \"missed\"\nthen.type = \"task\"\nthen.action = \"make\"\ncolour = \"blue\"\n";
+    let rules = format!("{rules}{newer}");
+    desk.write(RULES, &rules);
     let line = "{\"at\":1795000000000,\"rule\":\"r1\",\"object\":\"mid:a@example.org\",\"act\":\"tell\",\"result\":\"now\",\"wrote\":true,\"depth\":1}\n";
     let desk_log = format!("{RULES_ACTS}{}.jsonl", desk.id);
     desk.write(&desk_log, line);
@@ -1466,7 +1469,9 @@ fn your_rules_wait_for_a_device_that_has_them() {
     entry(&phone, &folder, &key, |e| e.rules = RULES_SHARED);
     rounds(&mut now);
     let read = sioul_core::wiring::store::Rules::load(&phone.path(RULES)).unwrap();
-    assert_eq!(read.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["r1"], "{}", phone.read(RULES));
+    assert_eq!(read.rules.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(), ["r1", "r2"], "{}", phone.read(RULES));
+    assert!(phone.read(RULES).contains(newer), "a newer Sioul's rule, byte for byte: {}", phone.read(RULES));
+    assert!(!read.rules[1].unknown.is_empty() && read.running().map(|r| r.id.as_str()).collect::<Vec<_>>() == ["r1"], "never run here");
     assert_eq!(phone.read(&desk_log), line, "the desk's acts, on the phone");
     assert!(sioul_core::wiring::acts::Acts::read(&phone.path(RULES_ACTS)).touched("r1", "mid:a@example.org"));
     let _ = std::fs::remove_dir_all(&base);
