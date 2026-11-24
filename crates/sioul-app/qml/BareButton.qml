@@ -24,7 +24,8 @@ T.Button {
     id: control
 
     // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette then.
-    readonly property var sioulTheme: control.Window.window ? control.Window.window.theme : undefined
+    readonly property var shownIn: control.Window.window
+    readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
     readonly property bool selected: control.checked || control.highlighted
     // One line that can be chosen among several: a ✓ before its words when chosen.
     readonly property bool choice: control.autoExclusive

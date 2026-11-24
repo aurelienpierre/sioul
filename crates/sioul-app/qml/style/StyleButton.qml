@@ -31,7 +31,8 @@ T.Button {
     id: control
 
     // The window's theme (SioulWindow.qml); a window of Qt's own has none: its palette then.
-    readonly property var sioulTheme: control.Window.window ? control.Window.window.theme : undefined
+    readonly property var shownIn: control.Window.window
+    readonly property var sioulTheme: control.shownIn ? control.shownIn.theme : undefined
     // Words on it (a letter or a digit): an arrow or a cross alone is an icon.
     readonly property bool hasWords: control.display !== T.AbstractButton.IconOnly && /[0-9A-Za-zÀ-ɏͰ-ϿЀ-ӿ]/.test(control.text)
     readonly property bool mainAction: control.highlighted && control.enabled

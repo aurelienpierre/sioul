@@ -25,7 +25,6 @@
 
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 
 Pane {
     id: foot
