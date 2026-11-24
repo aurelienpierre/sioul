@@ -107,7 +107,7 @@ fn note_made(before: &Persons, after: &Persons, config: &Config, papers: &[Paper
                 .calendars
                 .iter()
                 .filter(|(_, said)| {
-                    let relation = match said.whose.as_deref().and_then(sioul_core::agendas::Whose::parse) {
+                    let relation = match said.whose_word() {
                         Some(sioul_core::agendas::Whose::Child) => Relation::Child,
                         Some(sioul_core::agendas::Whose::Partner) => Relation::Partner,
                         Some(sioul_core::agendas::Whose::Parent) => Relation::OtherParent,
@@ -521,7 +521,7 @@ fn tie_role_noting(place: &str, noting: bool) -> String {
     use sioul_core::agendas::Whose;
     let config = load_config();
     let Some(said) = config.agenda.calendars.get(place) else { return String::new() };
-    let relation = match said.whose.as_deref().and_then(Whose::parse) {
+    let relation = match said.whose_word() {
         Some(Whose::Child) => Relation::Child,
         Some(Whose::Partner) => Relation::Partner,
         Some(Whose::Parent) => Relation::OtherParent,

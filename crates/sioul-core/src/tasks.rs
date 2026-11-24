@@ -1558,7 +1558,7 @@ pub fn all(zone: &TimeZone) -> Vec<Task> {
     let mut tasks: Vec<Task> = lists().iter().flat_map(|list| list.items().into_iter().filter_map(|path| read(&path, list, zone)).collect::<Vec<_>>()).collect();
     // A child's task is in your plan when you take it (several agendas, part 3).
     let config = crate::agendas::read_config();
-    let children: std::collections::BTreeSet<String> = config.agenda.calendars.iter().filter(|(_, said)| said.whose.as_deref().and_then(crate::agendas::Whose::parse) == Some(crate::agendas::Whose::Child)).map(|(place, _)| place.clone()).collect();
+    let children: std::collections::BTreeSet<String> = config.agenda.calendars.iter().filter(|(_, said)| said.whose_word() == Some(crate::agendas::Whose::Child)).map(|(place, _)| place.clone()).collect();
     if !children.is_empty() {
         crate::holders::mark_tasks(&mut tasks, &children, &crate::agenda::own_addresses());
     }

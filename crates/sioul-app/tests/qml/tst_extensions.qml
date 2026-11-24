@@ -212,7 +212,8 @@ Item {
         function test_each_agenda_says_where_its_lessons_go_and_a_calendar_is_chosen() {
             const tab = make([offer({ installed: true, enabled: true, signedIn: true, agendas: [
                 { id: "p-1", name: "Timetable: <b>Alex</b>", line: "Choose the calendar.", warn: true, place: "", busy: false },
-                { id: "p-2", name: "Timetable: Sam", line: "In Kids: 140 lessons.", warn: false, place: "local/kids", busy: true }
+                { id: "p-2", name: "Timetable: Sam", line: "In Kids: 140 lessons.", warn: false, place: "local/kids", busy: true },
+                { id: "p-3", name: "Lessons", line: "In Lessons: 12 lessons.", warn: false, place: "local/lessons", busy: false, theirs: true, whose: "Lessons is Kim's agenda. Its events are theirs." }
             ] })])
             const shown = texts(tab, []).join("\n")
             verify(shown.indexOf("Timetable: <b>Alex</b>") >= 0, "a name the extension gave, as plain text: " + shown)
@@ -233,6 +234,7 @@ Item {
             const whose = find(form, "agendaWhose")
             whose.activated(3)
             compare(form.whose, "partner")
+            verify(find(form, "agendaWhoseTheirs").visible, "what another person's agenda does, said where it is chosen")
             find(form, "agendaPerson").activated(1)
             compare(form.personId, "p-sam")
             form.make()
@@ -244,6 +246,9 @@ Item {
             compare(find(tab, "extensionBusy:p-1").text, "agenda-busy-time", "the words of a subscribed calendar's tick")
             compare(find(tab, "extensionBusyHelp:p-1").text, "agenda-busy-time-help", "and the line under them")
             compare(find(tab, "extensionBusy:p-2").checked, true, "chosen to count as busy")
+            // Another person's agenda: whose said in words, no busy choice offered.
+            compare(find(tab, "extensionAgendaWhose:p-3").text, "Lessons is Kim's agenda. Its events are theirs.")
+            verify(find(tab, "extensionAgendaWhose:p-3").visible && !find(tab, "extensionBusy:p-3").visible && !find(tab, "extensionBusyHelp:p-3").visible)
             find(tab, "extensionBusy:p-1").toggle()
             find(tab, "extensionBusy:p-1").toggled()
             compare(mock.asked[mock.asked.length - 1], "busy timetable p-1 true", "the flip goes back to Sioul")

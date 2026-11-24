@@ -155,10 +155,21 @@ pub enum Reach {
 /// configuration from reading.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Said {
-    /// "yours", "child", "parent", "partner", "someone", "shared". An older
-    /// Sioul reads a word it does not know as unsaid ("someone" on 0.1.0).
+    /// "yours", "child", "parent", "partner", "shared"; someone else's is
+    /// written "shared" here with `role` beside it (`Said::whose_word`). An
+    /// older Sioul reads a word it does not know as unsaid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub whose: Option<String>,
+    /// The role a newer Sioul reads where `whose` keeps the word an older
+    /// one knows (24 November 2026): `role = "someone"` beside `whose =
+    /// "shared"` is someone else's agenda (a co-worker's, a friend's). A Sioul
+    /// 0.1.0 skips it and reads "shared": theirs, never its busy time nor its
+    /// plan (its reminders still come there), the nearest it knows; with
+    /// "someone" in `whose` it would have read unsaid, so yours. Read only
+    /// while `whose` says "shared": an older Sioul that changes `whose` leaves
+    /// it behind, unread.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Whose name: a child's above all ("Léa").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -202,7 +213,18 @@ pub struct Said {
 
 impl Said {
     /// The fields an agenda's settings may write.
-    pub const FIELDS: [&'static str; 11] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person"];
+    pub const FIELDS: [&'static str; 12] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person", "role"];
+
+    /// Whose it is, as said: `whose`, or `role` where `whose` says "shared"
+    /// (someone else's: `Said::role`); None when unsaid or a word this Sioul
+    /// does not know.
+    pub fn whose_word(&self) -> Option<Whose> {
+        let whose = self.whose.as_deref().and_then(Whose::parse)?;
+        match self.role.as_deref().and_then(Whose::parse) {
+            Some(Whose::Someone) if whose == Whose::Shared => Some(Whose::Someone),
+            _ => Some(whose),
+        }
+    }
 }
 
 /// How the other parent of a child's agenda answers (`Said::parent_answers`).
@@ -284,7 +306,7 @@ impl Agenda {
     pub fn of(collection: &Collection, said: &Said, config: &Config, server_read_only: bool, details: &dyn Fn() -> bool) -> Agenda {
         // A calendar subscribed by its address (`subscribed`): yours unless said, read only, never written.
         let subscribed = collection.account == vdir::SUBSCRIBED;
-        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
+        let whose = said.whose_word().unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
         let area = said.area.as_deref().and_then(Area::parse).unwrap_or_else(|| if work_account(config, &collection.account) { Area::WORK } else { Area::PERSONAL });
         let reaches = said.reaches.as_deref().and_then(Reaches::parse).unwrap_or_default();
         let access = match said.access.as_deref().and_then(Access::parse) {
@@ -616,9 +638,24 @@ pub fn read_config() -> Arc<Config> {
 /// `Said::FIELDS`; a word that does not read is refused.
 pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
     let value = value.trim();
+    // Someone else's: "shared" in `whose`, which a Sioul 0.1.0 reads as theirs, and the role
+    // beside it (`Said::role`); any other word takes the role out.
+    if field == "whose" {
+        let whose = if value.is_empty() { None } else { Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner, someone or shared"))?) };
+        let someone = whose == Some(Whose::Someone);
+        set_one(path, id, "whose", if someone { Whose::Shared.id() } else { whose.map_or("", Whose::id) })?;
+        return set_one(path, id, "role", if someone { Whose::Someone.id() } else { "" });
+    }
+    set_one(path, id, field, value)
+}
+
+/// `set_field`, one field as it is written.
+fn set_one(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
     let written: Option<String> = match field {
         _ if value.is_empty() => None,
         "whose" => Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner, someone or shared"))?.id().to_string()),
+        "role" if value == Whose::Someone.id() => Some(value.to_string()),
+        "role" => return Err(format!("{value}: someone, or nothing")),
         "name" => Some(value.to_string()),
         "area" => Some(Area::parse(value).ok_or_else(|| format!("{value}: work, admin, leisure, joined by +"))?.id()),
         "reaches" => Some(Reaches::parse(value).ok_or_else(|| format!("{value}: all-day or outside-work"))?.id().to_string()),
@@ -1892,6 +1929,17 @@ mod tests {
         assert_eq!(read.agenda.overlaps.get("local/home|murena/lea-ecole"), Some(&true));
         assert!(set_field(&path, "murena/lea-ecole", "whose", "cousin").is_err());
         assert!(set_field(&path, "murena/lea-ecole", "colour", "red").is_err());
+        // Someone else's: "shared" written where a Sioul 0.1.0 reads it (theirs there), the role beside it.
+        set_field(&path, "local/kim", "whose", "someone").unwrap();
+        let kim = Config::load(&path).unwrap().agenda.calendars["local/kim"].clone();
+        assert_eq!((kim.whose.as_deref(), kim.role.as_deref(), kim.whose_word()), (Some("shared"), Some("someone"), Some(Whose::Someone)));
+        // An older Sioul that says "partner" leaves the role behind: unread.
+        assert_eq!(Said { whose: Some("partner".into()), ..kim.clone() }.whose_word(), Some(Whose::Partner));
+        // Another word takes the role out; unsaid, both go.
+        set_field(&path, "local/kim", "whose", "partner").unwrap();
+        let kim = Config::load(&path).unwrap().agenda.calendars["local/kim"].clone();
+        assert_eq!((kim.whose.as_deref(), kim.role.as_deref()), (Some("partner"), None));
+        set_field(&path, "local/kim", "whose", "").unwrap();
         for field in ["whose", "name", "access"] {
             set_field(&path, "murena/lea-ecole", field, "").unwrap();
         }

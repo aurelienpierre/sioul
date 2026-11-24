@@ -1031,7 +1031,7 @@ pub fn renamed_agendas(calendars: &BTreeMap<String, crate::agendas::Said>, befor
     let Some(person) = before.get(id) else { return Vec::new() };
     let mut out = Vec::new();
     for (place, said) in calendars {
-        let whose = said.whose.as_deref().and_then(Whose::parse);
+        let whose = said.whose_word();
         let relation = match whose {
             Some(Whose::Child) => Some(Relation::Child),
             Some(Whose::Partner) => Some(Relation::Partner),

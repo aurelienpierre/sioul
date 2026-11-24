@@ -688,6 +688,8 @@ pub fn days_off_spans(days_off: &crate::vacations::DaysOff, window: (i64, i64), 
 /// Blocks of one word that touch, overlap or lie closer than the rounding
 /// are made one, so that nothing says how many things fill a time. With
 /// `closing`, one last block "Not known yet" from the window's end on.
+/// Never an event of an agenda that is not the person's (`theirs`): another person's busy time,
+/// a co-worker's lessons say, is theirs to share, not the person's (review of 3346ff96, 3).
 pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, window: (i64, i64)) -> Vec<Block> {
     let (from, to) = window;
     let step = availability.step();
@@ -700,7 +702,7 @@ pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words,
     };
     let mut found: Vec<Block> = events
         .iter()
-        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && e.task.is_empty() && e.end > e.start && e.end > from && e.start < to)
+        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && !e.theirs && e.task.is_empty() && e.end > e.start && e.end > from && e.start < to)
         .map(|e| {
             let (start, end) = outward(e.start - i64::from(e.margins.before.min(24 * 60)) * 60, e.end + i64::from(e.margins.after.min(24 * 60)) * 60);
             Block { start, end, word: word_of(e) }
@@ -1182,8 +1184,10 @@ mod tests {
             Occurrence { task: "t-free".into(), ..event("me/personal", "t", 12_000, 13_000, "Write the report") },
             Occurrence { declined: true, ..event("me/personal", "n", 10_000, 11_000, "Declined") },
             event("me/hidden", "p", 9_000, 9_500, "Not picked"),
+            // Picked, but said another person's since (a co-worker's lessons): their busy time, never shared as the person's.
+            Occurrence { theirs: true, other_person: true, ..event("me/lessons", "s", 14_000, 15_000, "Lesson") },
         ];
-        let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["me/personal", "work/main"]) };
+        let availability = Availability { words: [("work/main".to_string(), "Work".to_string())].into(), ..mine(&["me/personal", "work/main", "me/lessons"]) };
         let tasks = TaskTime::default();
         let found = blocks(&events, &availability, &WORDS, &BTreeSet::new(), &tasks, ALL);
         assert_eq!(found, [Block { start: 1_000, end: 3_000, word: "Busy".into() }, Block { start: 2_500, end: 4_000, word: "Work".into() }, Block { start: 86_400, end: 2 * 86_400, word: "Busy".into() }]);
