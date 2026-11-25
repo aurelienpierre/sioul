@@ -7648,7 +7648,8 @@ phonemsgs-code = Un code est arrivé de { $who } à { $time }. Il reste sur votr
 phonemsgs-code-day = { $day }, un code est arrivé de { $who } à { $time }. Il reste sur votre téléphone.
 phonemsgs-code-row = Un code est arrivé. Il reste sur votre téléphone.
 phonemsgs-code-notice = Un code de { $who } est arrivé sur votre téléphone
-phonemsgs-code-notice-body = Il reste sur votre téléphone : lisez-le là-bas.
+phonemsgs-code-notice-app = Un code est arrivé sur votre téléphone, dans { $app }
+phonemsgs-code-notice-body = Lisez-le sur votre téléphone.
 phonemsgs-head = { $context }, { $who } a écrit :
 phonemsgs-head-app = { $context }, { $who } a écrit sur { $app } :
 phonemsgs-head-on = { $context }, { $who } a écrit à { $phone } :
@@ -8649,7 +8650,9 @@ appnotes-why-released = Retenu avant que vous demandiez à votre téléphone de 
 appnotes-why-unknown = Sioul n’a pas pu savoir qui a écrit : laissée passer comme le serait le message d’un contact.
 appnotes-why-unknown-held = Sioul n’a pas pu savoir qui a écrit : retenue jusqu’à { $when }, comme le serait le message d’un contact.
 appnotes-code-title = Code de { $sender }
+appnotes-code-title-app = Un code dans { $app }
 appnotes-code-body-open = Un code est arrivé : ouvrez-le dans son application.
+appnotes-code-body-approval = Une validation à faire : ouvrez-la dans son application.
 appnotes-why-people-off = Les messages des personnes ne sont pas retenus sur ce téléphone : laissée passer.
 
 # Le bouton et la carte « Ce qui vous joint maintenant » (partie 5 de « Ce qui vous joint » ; 3.5 et 3.6 de la proposition).

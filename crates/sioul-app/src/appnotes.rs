@@ -443,15 +443,18 @@ fn decide_at(json: &str, now: &Zoned) -> String {
 fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64, said: i64) -> Option<Value> {
     use sioul_core::notice::{Act, Kind as Of, Notice};
     let found = appnotes::code_of(posted, words);
-    let sender = sioul_core::phonemsgs::code_sender(posted, words);
-    let title = crate::backend::say("appnotes-code-title", &[("sender", sender)]);
+    // From whom, as safe to say; the app's name in place of a sender that may hold a code: "A code in Message".
+    let (sender, app) = sioul_core::phonemsgs::code_sender_or_app(posted, words);
+    let title = if app { crate::backend::say("appnotes-code-title-app", &[("app", sender)]) } else { crate::backend::say("appnotes-code-title", &[("sender", sender)]) };
     let lasts = found.as_ref().map_or(sioul_core::codes::CodeKind::Code.usual_minutes(), sioul_core::codes::OneTimeCode::lasts_minutes);
     let code = found.as_ref().and_then(|c| c.code.clone());
     let validity = found.as_ref().and_then(|c| c.expires_minutes).map(|minutes| tr().validity(minutes));
     let body = match (&code, validity) {
         (Some(code), Some(validity)) => format!("{code}, {validity}"),
         (Some(code), None) => code.clone(),
-        (None, _) => tr().text("appnotes-code-body-open", None),
+        // A copy Android redacted: a code came; else an approval (a sign-in, a payment), no code in it.
+        (None, _) if posted.redacted => tr().text("appnotes-code-body-open", None),
+        (None, _) => tr().text("appnotes-code-body-approval", None),
     };
     // Its life counts from when its message was sent: a notification posted again long after (a restart) says nothing.
     let until = said + i64::from(lasts) * 60;
@@ -2315,7 +2318,7 @@ mod tests {
         assert_eq!(code["tag"], json!(format!("code:{}", appnotes::key_hash("0|foundation.e.message|7|null|10123"))), "{decided}");
         assert_eq!((code["class"].as_str(), code["pierce"].as_bool(), code["kind"].as_str()), (Some("actionable"), Some(true), Some("codes")), "{code}");
         // In the window's language, as this process read it once (`backend::tr`): not always the test configuration's.
-        let title = crate::backend::say("appnotes-code-title", &[("sender", "Message".to_string())]);
+        let title = crate::backend::say("appnotes-code-title-app", &[("app", "Message".to_string())]);
         assert_eq!(code["title"], json!(title), "the short number may hold a code: the app's name");
         assert_eq!(code["body"], json!("482913"));
         assert_eq!(code["actions"], json!([{ "label": tr().text("notify-copy", None), "copy": "482913" }]));

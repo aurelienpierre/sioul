@@ -659,8 +659,9 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                     continue;
                 }
                 // To do, until it expires (docs/notifications.md), without its buttons: nothing here opens a thing.
+                // A code set aside as forged is said too, without it, as the window says it (`view::set_aside_codes`).
                 let told = sioul_core::notice::told(Some(Kind::Codes));
-                for code in view::codes(&arrived, &s.tr) {
+                for code in view::codes(&arrived, &s.tr).into_iter().chain(view::set_aside_codes(&arrived, &s.tr)) {
                     let notice = code.notice("", "");
                     if let sioul_core::notice::Decision::Post(shape) = sioul_core::notice::decide(&notice, &told, sioul_core::notice::moment_from_files(&config, &now, crate::remind::present()), config.notices.minutes(), stamp) {
                         notify::teller().post(notice, shape, "", None);

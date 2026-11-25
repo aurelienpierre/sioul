@@ -241,9 +241,8 @@ pub(crate) fn tell_codes() {
     }
     for line in fresh {
         told.insert(line.id.clone(), now);
-        let who = if line.name.trim().is_empty() { line.label.clone() } else { line.name.clone() };
         let ends = line.at.max(line.shows) / 1000 + rules::CODE_TOLD_MS / 1000;
-        let notice = sioul_core::notice::Notice::new(sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes), crate::backend::say("phonemsgs-code-notice", &[("who", who)]), tr().text("phonemsgs-code-notice-body", None)).until(Some(ends));
+        let notice = sioul_core::notice::Notice::new(sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes), code_notice_title(&line), tr().text("phonemsgs-code-notice-body", None)).until(Some(ends));
         // Seen on any device: settled, and taken away.
         let pair: std::collections::BTreeMap<String, String> = notice_of.get(&line.id).map(|id| (line.id.clone(), id.clone())).into_iter().collect();
         let id = line.id.clone();
@@ -255,6 +254,14 @@ pub(crate) fn tell_codes() {
     {
         eprintln!("sioul: phone messages: {e}");
     }
+}
+
+/// A phone's code as a computer's notice says it: from whom it came, or, when
+/// the phone said its app's name in place of a sender that may hold a code
+/// (`phonemsgs::code_sender_or_app`), in which app.
+fn code_notice_title(line: &Line) -> String {
+    let app = line.name.trim().is_empty() || line.name == line.label;
+    if app { crate::backend::say("phonemsgs-code-notice-app", &[("app", line.label.clone())]) } else { crate::backend::say("phonemsgs-code-notice", &[("who", line.name.clone())]) }
 }
 
 // ---------------------------------------------------------------- the Porch

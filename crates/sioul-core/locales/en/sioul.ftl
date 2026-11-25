@@ -7592,7 +7592,8 @@ phonemsgs-code = A code came from { $who } at { $time }. It stays on your phone.
 phonemsgs-code-day = { $day }, a code came from { $who } at { $time }. It stays on your phone.
 phonemsgs-code-row = A code came. It stays on your phone.
 phonemsgs-code-notice = A code from { $who } came to your phone
-phonemsgs-code-notice-body = It stays on your phone: read it there.
+phonemsgs-code-notice-app = A code came to your phone, in { $app }
+phonemsgs-code-notice-body = Read it on your phone.
 phonemsgs-head = { $context }, { $who } wrote:
 phonemsgs-head-app = { $context }, { $who } wrote on { $app }:
 phonemsgs-head-on = { $context }, { $who } wrote to { $phone }:
@@ -8586,7 +8587,9 @@ appnotes-why-released = Held before you asked your phone to let what it held thr
 appnotes-why-unknown = Sioul could not tell who wrote: let through as a contact's message would be.
 appnotes-why-unknown-held = Sioul could not tell who wrote: held until { $when }, as a contact's message would be.
 appnotes-code-title = Code from { $sender }
+appnotes-code-title-app = A code in { $app }
 appnotes-code-body-open = A code came: open it in its app.
+appnotes-code-body-approval = Something to approve: open it in its app.
 appnotes-why-people-off = People's messages are not held on this phone: let through.
 
 # The button and the card "What reaches you now" (part 5 of "What reaches you"; the proposal's 3.5 and 3.6).

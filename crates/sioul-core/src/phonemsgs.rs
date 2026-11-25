@@ -437,6 +437,12 @@ pub(crate) fn title_of(c: &appnotes::Conversation) -> String {
 /// length, never a phone number's, which a "+", a space or a ninth digit
 /// shows), or nothing.
 pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
+    code_sender_or_app(p, words).0
+}
+
+/// `code_sender`, with whether what it says is the app's name in place of a
+/// sender (its words then say "a code in Message", never "from Message").
+pub fn code_sender_or_app(p: &Posted, words: &crate::words::Words) -> (String, bool) {
     let last = p.messages.iter().rev().find_map(|m| m.sender.as_ref().filter(|s| !is_user(p, s))).map(|s| s.name.as_str());
     let named = [last.unwrap_or(""), p.people.first().map_or("", |s| s.name.as_str()), p.conversation.as_str(), p.title.as_str()].into_iter().map(|n| one_line(n, NAME_MAX)).find(|n| !n.is_empty()).unwrap_or_default();
     // Four digits in a row that are no phone number may be the code itself ("G-482913"): never said.
@@ -447,9 +453,9 @@ pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
     });
     let bare = named.chars().all(|c| c.is_ascii_digit()) && named.len() <= 8;
     if named.is_empty() || crate::codes::detect(&words.codes, &named, "").is_some() || (coded && (bare || appnotes::number_in(&named).is_none())) {
-        one_line(&p.app, NAME_MAX)
+        (one_line(&p.app, NAME_MAX), true)
     } else {
-        named
+        (named, false)
     }
 }
 

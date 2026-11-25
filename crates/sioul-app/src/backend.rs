@@ -4998,12 +4998,13 @@ fn learn(qt: &QtThread, shared: &Shared, id: &str) {
     }
 }
 
-/// One notice per verified code among new mail (`CodeView::notice`,
-/// docs/notifications.md): to do, until the code expires; Copy (taking it
-/// away), Open the message, and a click on it opening its message; taken
-/// away too once its message is read or dismissed on any device. As the
-/// matrix of what reaches you says (as usual, at once at any time; "On the
-/// Porch only" a choice while you sleep): a code not told waits on the Porch.
+/// One notice per code among new mail (`CodeView::notice`,
+/// docs/notifications.md), and one for each code set aside as forged, said
+/// without it (`view::set_aside_codes`): to do, until the code expires; Copy
+/// (taking it away), Open the message, and a click on it opening its
+/// message; taken away too once its message is read or dismissed on any
+/// device. As the matrix of what reaches you says: at once at every time,
+/// sleep included, fixed since 24 November 2026.
 /// On a phone, Android's (`code_notices`), from the window's fetches and the
 /// background service's alike.
 pub(crate) fn notify_codes(files: &[PathBuf]) {
