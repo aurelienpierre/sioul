@@ -1142,13 +1142,12 @@ mod tests {
         assert_eq!(detect("Your verification code", "Your verification code for 2026: 4821").and_then(|c| c.code).as_deref(), Some("4821"));
     }
 
-    /// Review of 25 November 2026, should-fix 8: what the handoff claimed
-    /// and no test held. Decimals and a currency sign make an amount, never
-    /// the code before "ce code"; the new pointing phrases in a message about
-    /// paying; the longest phrase ("è il tuo" before "è il"); the owner within
-    /// six words after the code's word; the owners added in German and Italian.
+    /// Decimals and a currency sign make an amount, never the code before
+    /// "ce code"; the informal pointing phrases in a message about paying;
+    /// the longest phrase ("è il tuo" before "è il"); the owner within six
+    /// words after the code's word; the owners of German and Italian.
     #[test]
-    fn what_the_handoff_claimed() {
+    fn amounts_informal_phrases_and_owners() {
         for (title, body) in [
             ("BANQUE", "Votre paiement de 1234,56 EUR est en attente. Ne partagez jamais ce code."),
             ("Bank", "Your payment of €4821 is pending. Never share this code."),

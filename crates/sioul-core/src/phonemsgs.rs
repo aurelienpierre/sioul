@@ -1206,7 +1206,7 @@ mod tests {
         assert_eq!(lines.iter().map(|l| (l.code, l.name.as_str())).collect::<Vec<_>>(), [(true, "Message")]);
         // A title of seven or eight bare digits may be the code itself (review of 25 November 2026,
         // should-fix 6): the app's name; a phone number, with its "+" or its spaces, is said.
-        for (name, said) in [("4829135", "Message"), ("48291357", "Message"), ("+33199001234", "+33199001234"), ("06 12 34 56 78", "06 12 34 56 78")] {
+        for (name, said) in [("4829135", "Message"), ("48291357", "Message"), ("+33199001234", "+33199001234"), ("06 39 98 01 01", "06 39 98 01 01")] {
             let sender = Person { name: name.into(), ..Person::default() };
             let (code, extra) = texted(&sender, &["G-482913 est votre code de vérification."]);
             let lines = decided(&code, &extra, None, Decision::through(Why::Code), Send::Words);
