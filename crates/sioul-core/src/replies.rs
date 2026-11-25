@@ -1504,10 +1504,10 @@ mod tests {
     /// her two messages, the second at `last`; with `mine`, your reply after them.
     fn signal(last: i64, mine: Option<&str>) -> (Posted, Extra) {
         let alice = Person { name: "Alice".into(), key: "alice".into(), uri: "tel:+33199001234".into(), ..Person::default() };
-        let mut messages = vec![Message { sender: Some(alice.clone()), text: "Tu passes ?".into() }, Message { sender: Some(alice.clone()), text: "Je suis au café.".into() }];
+        let mut messages = vec![Message { sender: Some(alice.clone()), text: "Tu passes ?".into(), at: 0 }, Message { sender: Some(alice.clone()), text: "Je suis au café.".into(), at: 0 }];
         let mut times = vec![ExtraMessage { at: last - MINUTE, picture: false }, ExtraMessage { at: last, picture: false }];
         if let Some(mine) = mine {
-            messages.push(Message { sender: None, text: mine.into() });
+            messages.push(Message { sender: None, text: mine.into(), at: 0 });
             times.push(ExtraMessage { at: last + MINUTE, picture: false });
         }
         let posted = Posted {
@@ -1630,8 +1630,8 @@ mod tests {
         let alice = Person { name: "Alice".into(), key: "alice".into(), ..Person::default() };
         let bob = Person { name: "Bob".into(), key: "bob".into(), ..Person::default() };
         let base = Posted { key: "0|com.example.chat|7|null|10123".into(), package: "com.example.chat".into(), app: "Chat".into(), category: "msg".into(), template: "android.app.Notification$MessagingStyle".into(), is_conversation: true, ..Posted::default() };
-        let one = Posted { title: "Alice".into(), messages: vec![Message { sender: Some(alice.clone()), text: "Tu passes ?".into() }], people: vec![alice.clone()], ..base.clone() };
-        let group = Posted { messages: vec![Message { sender: Some(bob.clone()), text: "Qui vient ?".into() }, Message { sender: Some(alice.clone()), text: "Moi.".into() }], people: vec![bob.clone(), alice.clone()], ..base.clone() };
+        let one = Posted { title: "Alice".into(), messages: vec![Message { sender: Some(alice.clone()), text: "Tu passes ?".into(), at: 0 }], people: vec![alice.clone()], ..base.clone() };
+        let group = Posted { messages: vec![Message { sender: Some(bob.clone()), text: "Qui vient ?".into(), at: 0 }, Message { sender: Some(alice.clone()), text: "Moi.".into(), at: 0 }], people: vec![bob.clone(), alice.clone()], ..base.clone() };
         let talk = |p: &Posted| match appnotes::classify(p, &choices, &words) {
             Kind::People(t) => t.conversation.unwrap(),
             other => panic!("{other:?}"),

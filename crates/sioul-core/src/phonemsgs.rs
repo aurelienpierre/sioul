@@ -1097,7 +1097,7 @@ mod tests {
             template: "android.app.Notification$MessagingStyle".into(),
             title: from.name.clone(),
             text: texts.last().map_or(String::new(), |t| t.to_string()),
-            messages: texts.iter().map(|t| Message { sender: Some(from.clone()), text: t.to_string() }).collect(),
+            messages: texts.iter().enumerate().map(|(i, t)| Message { sender: Some(from.clone()), text: t.to_string(), at: NOW - 600_000 + i as i64 * 60_000 }).collect(),
             people: vec![Person { uri: from.uri.clone(), ..Person::default() }],
             sms_app: true,
             ..Posted::default()

@@ -474,7 +474,7 @@ fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64, said
 /// says none.
 fn said_at(json: &str, posted: &Posted, now: i64) -> i64 {
     let extra = sioul_core::phonemsgs::Extra::read(json);
-    let message = appnotes::newest_from_others(posted).and_then(|i| extra.messages.get(i)).map(|m| m.at);
+    let message = appnotes::newest_from_others(posted).into_iter().map(|i| posted.messages[i].at).max();
     [message, Some(extra.when), Some(extra.posted)].into_iter().flatten().find(|ms| *ms > 0).map_or(now, |ms| (ms / 1000).min(now))
 }
 
