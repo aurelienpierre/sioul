@@ -163,6 +163,8 @@ sioul-app/src/remind.rs	set_background	1	std::fs::remove_file(&restart)
 sioul-app/src/remind.rs	write_entries	1	std::fs::write(&path, text)
 sioul-app/src/remind.rs	watching	1	std::fs::OpenOptions::new()
 sioul-app/src/remind.rs	stop	1	std::fs::remove_file(path)
+# sioul-app/src/remind.rs: the mark that this device said once what no longer reminds since the update (state): no item.
+sioul-app/src/remind.rs	tell_once_since_whose	1	std::fs::write(&mark, "")
 
 # sioul-app/src/reviews.rs: the weekly review's mark of being said: no item.
 sioul-app/src/reviews.rs	mark_told	1	std::fs::write(told_path(), format!("work = \"{date}\"\n"))
