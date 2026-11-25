@@ -148,11 +148,10 @@ pub(crate) fn settle(qt: &QtThread, shared: &Arc<Shared>) {
 fn engine_here(config: &sioul_core::config::Config) -> Option<Engine<'static>> {
     let device = device();
     let rules = sioul_core::wiring::store::Rules::load(&sioul_core::wiring::store::path()).unwrap_or_default();
+    let record = sioul_core::wiring::acts::Acts::read(&sioul_core::wiring::acts::folder());
     let can_scan = can_scan();
-    let something = !rules.rules.is_empty()
-        || !sioul_core::wiring::acts::Acts::read(&sioul_core::wiring::acts::folder()).to_take_back(&sioul_core::wiring::acts::device_name(&device)).is_empty()
-        || (can_scan && config.places().and_then(|p| sioul_core::papers::Wallet::load_at(&p).ok()).is_some_and(|w| w.papers.iter().any(|p| p.unchecked)));
-    if !something {
+    let unchecked = || can_scan && config.places().and_then(|p| sioul_core::papers::Wallet::load_at(&p).ok()).is_some_and(|w| w.papers.iter().any(|p| p.unchecked));
+    if !engine::has_work(&rules, &record, &device, unchecked) {
         return None;
     }
     let mut engine = Engine::here(config, &device, &sioul_core::zone::now());

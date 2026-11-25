@@ -30,7 +30,7 @@ use crate::projects::ProjectStore;
 use crate::routetasks::{self, Workdays};
 use crate::notice::Notice;
 use crate::wiring::acts::{self, Acts};
-use crate::wiring::engine::{Engine, Outcome, Scanned};
+use crate::wiring::engine::{self, Engine, Outcome, Scanned};
 use crate::wiring::store::{self, Rules};
 use std::path::{Path, PathBuf};
 
@@ -76,10 +76,7 @@ pub fn arrived(here: &Here, files: &[PathBuf], first: bool) -> Arrived {
     let store = config.places().and_then(|places| ProjectStore::open(&places).ok()).map(|s| s.with_ties(&ties));
     let senders = Senders::load(config);
     let rules = Rules::load(&store::path());
-    let runs = rules.as_ref().is_ok_and(|r| r.running().next().is_some());
-    // What an Undo elsewhere took back, this device takes back too, rules or none.
     let record = Acts::read(&acts::folder());
-    let settles = !record.to_take_back(&acts::device_name(here.device)).is_empty();
     // Judged once, with your spam filter's verdict, for the ties and the rules.
     let sources = config.mail_sources();
     let judged = crate::porch::judge(files, &sources, store.as_ref(), &SenderList::default(), &senders, stamp);
@@ -107,7 +104,8 @@ pub fn arrived(here: &Here, files: &[PathBuf], first: bool) -> Arrived {
         Ok(rules) => (rules, None),
         Err(e) => (Rules::default(), Some(e)),
     };
-    if runs || settles {
+    // A rule that runs, or what an Undo elsewhere took back, which this device takes back too, rules or none.
+    if engine::has_work(&rules, &record, here.device, || false) {
         let mut engine = Engine::of(config, here.device, &now, rules, store, senders, Vec::new());
         engine.acts = record;
         engine.tells_here = here.tells_here;

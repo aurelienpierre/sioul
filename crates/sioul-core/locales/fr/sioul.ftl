@@ -11564,15 +11564,15 @@ rule-act-other = { $Subject } : fait.
 rules-refused-code-told = Un courriel qui porte un code est dit par sa propre notification : aucune règle ne le redit.
 rules-refused-elsewhere = Un autre appareil garde vos notifications : il dit ce courriel, ou celui-ci le fera quand il les gardera.
 rules-refused-too-large = Ses pièces jointes sont trop grandes pour qu’une règle les garde comme papiers : gardez-les vous-même si vous les voulez.
+rules-problem-reserved = Cette règle vient avec Sioul ou est lue là où elle se règle : changez-la là-bas.
+rules-paper-taken-out = « { $title } » a été retiré de vos papiers : l’antivirus a refusé son fichier.
+papers-unchecked = Pas vérifié par un antivirus.
+rules-refused-moment = Le moment ne laisse pas venir de notification maintenant : elle attend, et vient quand il le permet, dans la semaine.
 rules-problem-domain = Un domaine s’écrit exemple.fr, sans @ : une adresse va sous « son expéditeur ».
 rules-problem-address = Une adresse s’écrit nom@exemple.fr : un domaine seul va sous « le domaine de son expéditeur ».
 rules-problem-time = Une heure s’écrit 18:00.
 rules-problem-date = Un jour s’écrit 2026-10-01.
 rules-problem-size = Une taille s’écrit 5 Mo ou 500 Ko.
-rules-problem-reserved = Cette règle vient avec Sioul ou est lue là où elle se règle : changez-la là-bas.
-rules-paper-taken-out = « { $title } » a été retiré de vos papiers : l’antivirus a refusé son fichier.
-papers-unchecked = Pas vérifié par un antivirus.
-rules-refused-moment = Le moment ne laisse pas venir de notification maintenant : elle attend, et vient quand il le permet, dans la semaine.
 
 # Each preset, the rule that comes with Sioul, said as it is done today (RulesTab.qml, Presets).
 rule-preset-conversation-follows-project = Quand un courriel répond à un autre qui appartient à un projet, il va aussi dans ce projet.

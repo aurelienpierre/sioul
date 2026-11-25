@@ -1016,6 +1016,22 @@ mod tests {
         assert_eq!((office.field.as_str(), office.value.join(",")), ("sender-domain", "impots.example".to_string()));
     }
 
+    /// Every setting a preset names, its own switch or a parameter's, is one
+    /// Sioul declares on some page (`settings::for_view`): a preset's link to
+    /// where it is set never points at nothing (the view's review, must-fix 8).
+    #[test]
+    fn every_preset_s_setting_is_declared() {
+        let config: crate::config::Config = toml::from_str("case_store = \"~/Notes\"\n[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\n").unwrap();
+        let tr = crate::i18n::Translator::new("en");
+        let pages = ["accounts", "agenda", "bitwarden", "contacts", "general", "letters", "mail", "money", "notes", "papers", "parameters", "porch", "reading", "senders", "sites", "supplies", "tasks", "texts"];
+        let declared: std::collections::BTreeSet<String> = pages.iter().flat_map(|page| crate::settings::for_view(page, &config, &tr, &[("acct/plan".into(), "Plan".into())], None)).map(|s| s.key).collect();
+        let named: Vec<(&str, &str)> = presets().iter().flat_map(|p| p.setting.iter().copied().chain(p.params.iter().map(|q| q.key)).map(move |key| (p.id, key)).collect::<Vec<_>>()).collect();
+        assert!(!named.is_empty());
+        for (preset, key) in named {
+            assert!(declared.contains(key), "{preset}: {key} is declared on no page");
+        }
+    }
+
     /// Every name the catalogue gives exists in English and French.
     #[test]
     fn every_declaration_is_named_in_both_languages() {

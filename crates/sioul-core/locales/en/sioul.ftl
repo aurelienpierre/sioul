@@ -11178,15 +11178,15 @@ rule-act-other = { $Subject }: done.
 rules-refused-code-told = A message holding a code is told by its own notice: no rule tells it again.
 rules-refused-elsewhere = Another device keeps your notices: it tells this message, or this one does once it keeps them.
 rules-refused-too-large = Its attachments are too large to keep as papers by a rule: keep them yourself if you want them.
+rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
+rules-paper-taken-out = “{ $title }” was taken out of your papers: the antivirus refused its file.
+papers-unchecked = Not checked by an antivirus.
+rules-refused-moment = The moment does not let a notice come now: it waits, and is told when it can within the week.
 rules-problem-domain = A domain reads as example.org, without an @: an address goes under "its sender".
 rules-problem-address = An address reads as name@example.org: a domain alone goes under "its sender's domain".
 rules-problem-time = A time reads as 18:00.
 rules-problem-date = A day reads as 2026-10-01.
 rules-problem-size = A size reads as 5 MB or 500 KB.
-rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
-rules-paper-taken-out = “{ $title }” was taken out of your papers: the antivirus refused its file.
-papers-unchecked = Not checked by an antivirus.
-rules-refused-moment = The moment does not let a notice come now: it waits, and is told when it can within the week.
 
 # Each preset, the rule that comes with Sioul, said as it is done today (RulesTab.qml, Presets).
 rule-preset-conversation-follows-project = When a message answers one that belongs to a project, it goes into that project too.

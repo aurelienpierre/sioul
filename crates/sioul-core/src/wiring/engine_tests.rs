@@ -76,7 +76,15 @@ impl Device {
     /// A message stored in its mail folder, come on `on` at 10:00 UTC (its
     /// file's time and its Date), with its attachments (name, type, base64).
     fn store(&self, n: u32, from: &str, results: &str, subject: &str, on: &str, attachments: &[(&str, &str, &str)]) -> PathBuf {
-        let path = self.mail.join("cur").join(format!("{n}.U1-{n}.sioul{}2,S", crate::maildir::INFO));
+        self.store_in("", n, from, results, subject, on, attachments)
+    }
+
+    /// The same in one of the account's folders (Maildir++: ".Junk"; "" the inbox).
+    #[allow(clippy::too_many_arguments)]
+    fn store_in(&self, folder: &str, n: u32, from: &str, results: &str, subject: &str, on: &str, attachments: &[(&str, &str, &str)]) -> PathBuf {
+        let cur = self.mail.join(folder).join("cur");
+        std::fs::create_dir_all(&cur).unwrap();
+        let path = cur.join(format!("{n}.U1-{n}.sioul{}2,S", crate::maildir::INFO));
         let results = if results.is_empty() { String::new() } else { format!("Authentication-Results: mx.provider.example; {results}\r\n") };
         let at = format!("{on}T10:00").parse::<jiff::civil::DateTime>().unwrap().to_zoned(jiff::tz::TimeZone::UTC).unwrap();
         let head = format!("{results}Message-ID: <sale-{n}@shop.example.org>\r\nFrom: {from}\r\nTo: you@you.example.org\r\nDate: {}\r\nSubject: {subject}\r\nMIME-Version: 1.0\r\n", at.strftime("%a, %d %b %Y %H:%M:%S %z"));
@@ -314,7 +322,10 @@ fn an_act_undone_is_taken_back_on_every_device() {
 /// The guards: nothing at an address's first fetch; nothing on what came
 /// before the rule, nor on mail more than a week old; nothing on mail the
 /// Porch sets aside (forged), holds (a stranger in the screener), cannot
-/// prove (SPF and DKIM failing: not even by its subject), nor on your own.
+/// prove (SPF and DKIM failing: not even by its subject), nor on your own;
+/// nothing on mail lying in a junk or a trash folder, whatever the provider
+/// calls it: by the role the folders saved at the last sync give it (a
+/// "Spamverdacht", a "Papierkorb"), by its name when none is saved.
 #[test]
 fn a_rule_never_acts_where_the_guards_say_no() {
     crate::config::stand_ins_only();
@@ -331,9 +342,51 @@ fn a_rule_never_acts_where_the_guards_say_no() {
     let own = desk.store(4, "Me <you@you.example.org>", "", "[New sale] Four", "2026-11-20", &[]);
     let stranger = desk.store(6, "Someone <news@other.example>", STRANGER, "[New sale] Six", "2026-11-20", &[]);
     let by_subject = rule("r-subject", vec![condition("subject", "has-words", "New sale")], "task", "make", &[("model", Param::Text("send".into()))]);
-    let done = desk.arrive(&[sale_task(), by_subject], &[forged, unproven, own, stranger], false);
+    let done = desk.arrive(&[sale_task(), by_subject.clone()], &[forged, unproven, own, stranger], false);
     assert!(done.done.is_empty() && desk.tasks().is_empty(), "set aside, unproven, your own, a stranger held: {done:?}");
+    // Junk and trash: an account whose folders were saved at its last sync, under names no words know.
+    let account = format!("wiring-guards-{}", std::process::id());
+    let saved = crate::folders::saved_path(&account);
+    std::fs::create_dir_all(saved.parent().unwrap()).unwrap();
+    let folder = |name: &str, role: &str| format!("[[folder]]\nname = \"{name}\"\ndisplay = \"{name}\"\nrole = \"{role}\"\nlocal = \".{name}\"\nspecial = true\n\n");
+    std::fs::write(&saved, format!("[[folder]]\nname = \"INBOX\"\ndisplay = \"Inbox\"\nrole = \"inbox\"\nlocal = \"\"\n\n{}{}{}", folder("Spamverdacht", "junk"), folder("Papierkorb", "trash"), folder("Rechnungen", "other"))).unwrap();
+    let held_files = [desk.store_in(".Spamverdacht", 7, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Seven", "2026-11-22", &[]), desk.store_in(".Papierkorb", 8, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Eight", "2026-11-22", &[])];
+    let kept = desk.store_in(".Rechnungen", 9, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Nine", "2026-11-22", &[]);
+    let mut engine = desk.engine(&[sale_task()], Scanned::Clean);
+    engine.sources[0].account = Some(account.clone());
+    let judged = engine.judge(&[held_files[0].clone(), held_files[1].clone(), kept]);
+    assert!(judged.iter().all(|t| t.card.account.as_deref() == Some(account.as_str())), "read as the account's");
+    let out = engine.on_arrival(&judged, false, &Translator::new("en"));
+    assert_eq!(out.done.iter().map(|d| d.act.object.as_str()).collect::<Vec<_>>(), ["mid:sale-9@shop.example.org"], "junk and trash by their saved role, another folder acted on: {out:?}");
+    // No folder saved: by the name alone, as the words know it.
+    let named = desk.store_in(".Junk", 10, "Shop <shop@shop.example.org>", GENUINE, "[New sale] Ten", "2026-11-22", &[]);
+    assert!(desk.arrive(&[sale_task()], &[named], false).done.is_empty(), "a folder named Junk");
+    let _ = std::fs::remove_file(&saved);
     let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The engine is built whenever this device has something to do: a rule
+/// that runs; with no rule left, what an Undo elsewhere took back and this
+/// device has not taken back yet; a paper to read where an antivirus can
+/// be asked. Nothing else builds it (`has_work`, which `arrival::arrived`
+/// and the window's and the phone's settling ask).
+#[test]
+fn a_device_settles_when_something_waits_for_it() {
+    let none = Rules::default();
+    let mut one = Rules::default();
+    one.rules = vec![sale_task()];
+    let line = |at: i64, device: &str| Act { at, rule: "r-task".into(), object: "mid:sale-1@shop.example.org".into(), result: "sioul:task/t1".into(), device: device.into(), ..Act::default() };
+    let made = Act { act: "task".into(), wrote: true, ..line(1, "phone") };
+    let back = Act { undone: true, back: true, ..line(2, "desk") };
+    let left = Act { undone: true, ..line(2, "desk") };
+    let taken = Act { taken: true, ..line(3, "phone") };
+    assert!(!has_work(&none, &Acts::default(), "phone", || false), "nothing at all");
+    assert!(has_work(&one, &Acts::default(), "phone", || false), "a rule runs");
+    assert!(has_work(&none, &Acts::of(vec![made.clone(), back.clone()]), "phone", || false), "no rule left, a task to take back");
+    assert!(!has_work(&none, &Acts::of(vec![made.clone(), back.clone()]), "desk", || false), "the desk wrote nothing");
+    assert!(!has_work(&none, &Acts::of(vec![made.clone(), left]), "phone", || false), "not for this one: nothing to take back");
+    assert!(!has_work(&none, &Acts::of(vec![made, back, taken]), "phone", || false), "taken back already");
+    assert!(has_work(&none, &Acts::default(), "phone", || true), "a paper to read");
 }
 
 /// A chain stops: a rule never acts on what it made itself, nor past three
@@ -619,6 +672,100 @@ fn a_phone_keeps_unchecked_and_a_computer_refuses() {
     assert!(phone.wallet().papers.is_empty(), "the unchecked paper of those bytes taken out");
     assert!(Acts::read(&phone.acts).undone("r-paper", "mid:sale-2@shop.example.org"));
     assert!(phone.arrive_scanned(&[keep_papers(&[])], &[at_phone], false, Scanned::NoAntivirus).done.is_empty(), "never kept after");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Where no antivirus can be asked, none is: a file a rule keeps is marked
+/// at once (the antivirus, which would refuse it, never asked) and the
+/// unchecked papers are not read; where one can be, each paper is asked
+/// once a run, known by its file's size and time, and asked again once its
+/// file changed.
+#[test]
+fn an_antivirus_is_asked_only_where_one_can_be() {
+    crate::config::stand_ins_only();
+    let base = scratch("can-scan");
+    let tr = Translator::new("en");
+    let phone = Device::new(&base, "phone");
+    let mail = phone.store(1, "Shop <shop@shop.example.org>", GENUINE, "Your bill", "2026-11-20", &[("bill.pdf", "application/pdf", PDF)]);
+    let none_here = |device: &Device, rules: &[Rule]| {
+        let mut engine = device.engine(rules, Scanned::Infected("never asked".into()));
+        engine.can_scan = false;
+        engine
+    };
+    let engine = none_here(&phone, &[keep_papers(&[])]);
+    let out = engine.on_arrival(&engine.judge(&[mail]), false, &tr);
+    assert_eq!(out.done.len(), 1, "{out:?}");
+    assert!(out.done[0].act.unchecked && phone.wallet().papers[0].unchecked, "kept, marked, the antivirus never asked");
+    let settled = none_here(&phone, &[]).settle(&tr);
+    assert!(settled.taken_out.is_empty() && phone.wallet().papers[0].unchecked, "no paper read");
+    // A computer with one: asked once a run, again once the file changed.
+    let desk = Device::new(&base, "desk");
+    let wallet = phone.wallet();
+    let file = wallet.file_path(&wallet.papers[0]).unwrap();
+    std::fs::create_dir_all(desk.dir.join("papers")).unwrap();
+    std::fs::copy(phone.dir.join(crate::papers::MANIFEST), desk.dir.join(crate::papers::MANIFEST)).unwrap();
+    let there = desk.dir.join("papers").join(file.file_name().unwrap());
+    std::fs::copy(&file, &there).unwrap();
+    let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let settle = || {
+        let mut engine = desk.engine(&[], Scanned::Clean);
+        let asked = std::sync::Arc::clone(&asked);
+        engine.scan = Box::new(move |_: &Path| {
+            asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Scanned::Unanswered("busy".into())
+        });
+        engine.settle(&tr);
+    };
+    settle();
+    settle();
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 1, "once a run");
+    let later = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_800_000_000);
+    std::fs::File::options().write(true).open(&there).unwrap().set_modified(later).unwrap();
+    settle();
+    assert_eq!(asked.load(std::sync::atomic::Ordering::SeqCst), 2, "its file changed: asked again");
+    assert!(desk.wallet().papers[0].unchecked, "unanswered: still marked");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device still on 0.1.0 that rewrites the wallet drops the mark "not
+/// checked by an antivirus": a newer device puts it back from the record at
+/// its next settle while the file is the one the rule kept; never once an
+/// antivirus read it clean, nor once its file was replaced.
+#[test]
+fn a_mark_an_older_sioul_dropped_is_put_back() {
+    crate::config::stand_ins_only();
+    let base = scratch("mark-back");
+    let tr = Translator::new("en");
+    let drop_marks = |device: &Device| {
+        crate::papers::Wallet::change_at(&device.places(), |w| {
+            for mut paper in w.papers.clone() {
+                paper.unchecked = false;
+                w.put(paper);
+            }
+        })
+        .unwrap();
+    };
+    let phone = Device::new(&base, "phone");
+    let mail = phone.store(1, "Shop <shop@shop.example.org>", GENUINE, "Your bill", "2026-11-20", &[("bill.pdf", "application/pdf", PDF)]);
+    assert_eq!(phone.arrive_scanned(&[keep_papers(&[])], &[mail], false, Scanned::NoAntivirus).done.len(), 1);
+    drop_marks(&phone);
+    phone.engine(&[keep_papers(&[])], Scanned::NoAntivirus).settle(&tr);
+    assert!(phone.wallet().papers[0].unchecked, "put back");
+    // Read clean where an antivirus can be asked: the mark goes for good.
+    phone.engine(&[], Scanned::Clean).settle(&tr);
+    assert!(!phone.wallet().papers[0].unchecked);
+    phone.engine(&[keep_papers(&[])], Scanned::NoAntivirus).settle(&tr);
+    assert!(!phone.wallet().papers[0].unchecked, "never put back after a clean read");
+    // Its file replaced by yours: never put back either, and said so once in the record.
+    let tablet = Device::new(&base, "tablet");
+    let mail = tablet.store(1, "Shop <shop@shop.example.org>", GENUINE, "Your bill", "2026-11-20", &[("bill.pdf", "application/pdf", PDF)]);
+    assert_eq!(tablet.arrive_scanned(&[keep_papers(&[])], &[mail], false, Scanned::NoAntivirus).done.len(), 1);
+    let wallet = tablet.wallet();
+    std::fs::write(wallet.file_path(&wallet.papers[0]).unwrap(), b"%PDF-1.4\n% mine\n").unwrap();
+    drop_marks(&tablet);
+    tablet.engine(&[keep_papers(&[])], Scanned::NoAntivirus).settle(&tr);
+    assert!(!tablet.wallet().papers[0].unchecked, "another file: left as it is");
+    assert!(Acts::read(&tablet.acts).all.iter().any(|a| a.act == super::acts::MARK_OFF));
     let _ = std::fs::remove_dir_all(&base);
 }
 
