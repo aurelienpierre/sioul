@@ -372,6 +372,19 @@ pub fn code_in_message(p: &Posted, text: &str, words: &crate::words::Words) -> O
     crate::codes::detect(&words.codes, subject_of(p), text)
 }
 
+/// The codes of a conversation's earlier messages of someone else (all but
+/// its newest, `newest_from_others`), each with its message's time (ms, 0
+/// unsaid): what keeps its notification let through while one lasts.
+pub fn earlier_codes(p: &Posted, words: &crate::words::Words) -> Vec<(i64, crate::codes::OneTimeCode)> {
+    let newest = newest_from_others(p);
+    p.messages
+        .iter()
+        .enumerate()
+        .filter(|(i, m)| !newest.contains(i) && m.sender.as_ref().is_some_and(|s| !is_user(p, s)))
+        .filter_map(|(_, m)| code_in_message(p, &m.text, words).map(|code| (m.at, code)))
+        .collect()
+}
+
 /// What a notification gives the detector as its subject: its title; but a
 /// texting app's title that is only a number (a short number, a phone
 /// number) names who wrote, never a code (`36123` taken for the code beside
