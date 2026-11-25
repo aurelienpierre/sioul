@@ -820,7 +820,9 @@ public final class AppNotes extends NotificationListenerService
         Context context = getApplicationContext();
         Notices.Said notice = Notices.Said.of(said);
         // Told already for this notification, the same code: once (an update, a repost, an older message's reading).
-        String told = notice.title + "\n" + notice.body;
+        // Its end too, which counts from its message's time: a second approval or redacted code, whose words are the
+        // same fixed sentence, is a new message and rings.
+        String told = notice.title + "\n" + notice.body + "\n" + notice.endsMs;
         String[] before = codeNotices.get(sbn.getKey());
         if (before != null && before[1].equals(told))
             return;

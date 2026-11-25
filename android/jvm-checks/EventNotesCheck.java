@@ -71,6 +71,7 @@ public final class EventNotesCheck
         int quiet = codeNotice.indexOf("notice.words = null;");
         int post = codeNotice.indexOf("Notices.post(context, notice);");
         expect("a code told once per notification, before anything", told > 0 && told < passes);
+        expect("a new message's code or approval rings: its end in what is kept", codeNotice.contains("notice.body + \"\\n\" + notice.endsMs"));
         expect("posted only while one of Sioul's modes passes", passes > 0 && codeNotice.indexOf("== null)", passes) > passes && codeNotice.indexOf("return;", passes) < post);
         expect("the reminders' words never written from the listener", quiet > passes && quiet < post);
         expect("the code kept by its notification's key", codeNotice.contains("codeNotices.put(sbn.getKey(), new String[] { notice.tag, told });"));
