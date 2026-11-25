@@ -338,7 +338,7 @@ pub fn codes(items: &[Triaged], tr: &Translator) -> Vec<CodeView> {
 /// message, a provider's spam tag in its subject, breaks its signature too).
 /// Never a blocked sender's, a borrowed brand's name (phishing), nor spam,
 /// which a code protects already. What a forger gains at most: one notice,
-/// "Code from <the address it forged> (forged)", which opens the message in
+/// `Code from <the address it forged> (forged)`, which opens the message in
 /// Mail's reader under its "set aside" line.
 pub fn set_aside_codes(items: &[Triaged], tr: &Translator) -> Vec<CodeView> {
     items
