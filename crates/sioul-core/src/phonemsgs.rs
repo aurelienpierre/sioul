@@ -433,7 +433,9 @@ pub(crate) fn title_of(c: &appnotes::Conversation) -> String {
 /// Who a code came from, as safe to say: the last sender's name, else the
 /// conversation's, else the title; the app's name when that name may hold
 /// the code itself (four digits in a row that are no phone number, a short
-/// number included), or nothing.
+/// number included, and a bare number of eight digits at most: a code's
+/// length, never a phone number's, which a "+", a space or a ninth digit
+/// shows), or nothing.
 pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
     let last = p.messages.iter().rev().find_map(|m| m.sender.as_ref().filter(|s| !is_user(p, s))).map(|s| s.name.as_str());
     let named = [last.unwrap_or(""), p.people.first().map_or("", |s| s.name.as_str()), p.conversation.as_str(), p.title.as_str()].into_iter().map(|n| one_line(n, NAME_MAX)).find(|n| !n.is_empty()).unwrap_or_default();
@@ -443,7 +445,8 @@ pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
         run = if c.is_ascii_digit() { run + 1 } else { 0 };
         run >= 4
     });
-    if named.is_empty() || crate::codes::detect(&words.codes, &named, "").is_some() || (coded && appnotes::number_in(&named).is_none()) {
+    let bare = named.chars().all(|c| c.is_ascii_digit()) && named.len() <= 8;
+    if named.is_empty() || crate::codes::detect(&words.codes, &named, "").is_some() || (coded && (bare || appnotes::number_in(&named).is_none())) {
         one_line(&p.app, NAME_MAX)
     } else {
         named
@@ -1187,6 +1190,14 @@ mod tests {
         let (code, extra) = texted(&short, &["G-482913 est votre code de vérification."]);
         let lines = decided(&code, &extra, None, Decision::through(Why::Code), Send::Words);
         assert_eq!(lines.iter().map(|l| (l.code, l.name.as_str())).collect::<Vec<_>>(), [(true, "Message")]);
+        // A title of seven or eight bare digits may be the code itself (review of 25 November 2026,
+        // should-fix 6): the app's name; a phone number, with its "+" or its spaces, is said.
+        for (name, said) in [("4829135", "Message"), ("48291357", "Message"), ("+33199001234", "+33199001234"), ("06 12 34 56 78", "06 12 34 56 78")] {
+            let sender = Person { name: name.into(), ..Person::default() };
+            let (code, extra) = texted(&sender, &["G-482913 est votre code de vérification."]);
+            let lines = decided(&code, &extra, None, Decision::through(Why::Code), Send::Words);
+            assert_eq!(lines.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), [said], "{name}");
+        }
         // A copy Android redacted: a code too, its words never carried.
         let (mut redacted, extra) = texted(&bank, &["Sensitive notification content hidden"]);
         redacted.redacted = true;
