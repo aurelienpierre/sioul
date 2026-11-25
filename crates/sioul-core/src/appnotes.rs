@@ -316,10 +316,24 @@ pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
     approvals.channels.iter().any(|word| crate::text::find_word(&channel, word, 0).is_some())
 }
 
-/// What a notification says, its title aside: its text, its expanded text,
-/// its sub-text, its lines and its messages, one per line: what `is_code`
-/// reads with the title.
+/// The newest message of someone else in a conversation's notification
+/// (`Notification.MessagingStyle`, oldest first), by its place among
+/// `Posted::messages`; none for a notification without messages, or whose
+/// messages are all the person's own.
+pub fn newest_from_others(p: &Posted) -> Option<usize> {
+    p.messages.iter().rposition(|m| m.sender.as_ref().is_some_and(|s| !is_user(p, s)))
+}
+
+/// What a notification says, its title aside, as `is_code` reads it with the
+/// title: a conversation's newest message of someone else alone, its earlier
+/// ones, still unread, saying nothing of it (a promotion before a code, a
+/// code before a payment's notice, an older code before a newer one: review
+/// of 25 November 2026, should-fix 2); else its text, its expanded text, its
+/// sub-text and its lines, one per line.
 fn words_of(p: &Posted) -> String {
+    if let Some(newest) = newest_from_others(p) {
+        return p.messages[newest].text.clone();
+    }
     let mut body = vec![p.text.as_str(), p.big.as_str(), p.sub.as_str()];
     body.extend(p.lines.iter().map(String::as_str));
     body.extend(p.messages.iter().map(|m| m.text.as_str()));
@@ -2808,6 +2822,36 @@ mod tests {
         // Another app's title still reads as it did: a chat's subject may hold its code.
         let chat = posted(r#"{"key":"k","package":"org.example.chat","title":"482913 est votre code Exemple","text":"Bienvenue"}"#);
         assert!(is_code(&chat));
+    }
+
+    /// Review of 25 November 2026, should-fix 2: a conversation's
+    /// notification is read for its newest message of someone else alone:
+    /// a code before a payment's notice is no code any more; a promotion
+    /// before a code takes nothing from it; of two codes, the newer.
+    #[test]
+    fn a_conversation_is_read_for_its_newest_message() {
+        let words = crate::words::Words::builtin_ref();
+        let conversation = |older: &str, newest: &str| {
+            posted(&serde_json::json!({
+                "key": "0|foundation.e.message|7|null|10123", "package": "foundation.e.message", "app": "Message", "category": "msg",
+                "template": "android.app.Notification$MessagingStyle", "title": "36123", "text": newest, "sms_app": true,
+                "messages": [{ "text": older, "sender": { "name": "36123" } }, { "text": newest, "sender": { "name": "36123" } }],
+            }).to_string())
+        };
+        let code = "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple.";
+        let paid = conversation(code, "Votre paiement de 23,90 EUR a été accepté.");
+        assert!(!super::is_code(&paid, words), "an older code does not make a later message one");
+        assert_ne!(classify(&paid, &Choices::default()), Kind::Code);
+        let after_promo = conversation("Profitez de -10 % avec le code promo EXEMPLE10.", code);
+        assert_eq!(classify(&after_promo, &Choices::default()), Kind::Code, "an older promotion takes nothing from a code");
+        assert_eq!(code_of(&after_promo, words).and_then(|c| c.code).as_deref(), Some("482913"));
+        let two = conversation("222222 est le code de votre transaction de 23,90 EUR chez Boutique Exemple.", "Votre code de sécurité est 111111.");
+        assert_eq!(code_of(&two, words).and_then(|c| c.code).as_deref(), Some("111111"), "the newer code");
+        // The person's own reply after the code: the code is still the newest of someone else's.
+        let mut replied = conversation("Bonjour", code);
+        replied.messages.push(Message { sender: None, text: "Merci".into() });
+        assert_eq!(code_of(&replied, words).and_then(|c| c.code).as_deref(), Some("482913"));
+        assert_eq!(newest_from_others(&replied), Some(1));
     }
 
     #[test]

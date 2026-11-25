@@ -404,7 +404,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         && posted.intercepted
         && decision.until.is_none()
         && !blocked_code
-        && let Some(notice) = code_notice(&posted, &sioul_core::words::Words::of(&config), stamp)
+        && let Some(notice) = code_notice(&posted, &sioul_core::words::Words::of(&config), stamp, said_at(json, &posted, stamp))
     {
         answer["code"] = notice;
     }
@@ -438,8 +438,9 @@ fn decide_at(json: &str, now: &Zoned) -> String {
 /// the code and how long it lasts, with Copy; on the lock screen its title
 /// alone, never the code (`code_note`'s rule). The app's own notification
 /// stays, silent, in the shade: Java takes Sioul's away with it. Its tag is
-/// the app's notification's, hashed. None when it no longer lasts.
-fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64) -> Option<Value> {
+/// the app's notification's, hashed. Its life counts from when its message
+/// was sent (`said`, Unix seconds): none once it no longer lasts.
+fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64, said: i64) -> Option<Value> {
     use sioul_core::notice::{Act, Kind as Of, Notice};
     let found = appnotes::code_of(posted, words);
     let sender = sioul_core::phonemsgs::code_sender(posted, words);
@@ -452,11 +453,26 @@ fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64) -> O
         (Some(code), None) => code.clone(),
         (None, _) => tr().text("appnotes-code-body-open", None),
     };
-    let mut notice = Notice::new("", Of::Own(sioul_core::attention::Kind::Codes), title.clone(), body).until(Some(now + i64::from(lasts) * 60));
+    // Its life counts from when its message was sent: a notification posted again long after (a restart) says nothing.
+    let until = said + i64::from(lasts) * 60;
+    if until <= now {
+        return None;
+    }
+    let mut notice = Notice::new("", Of::Own(sioul_core::attention::Kind::Codes), title.clone(), body).until(Some(until));
     if let Some(code) = code {
         notice = notice.action(tr().text("notify-copy", None), Act::Copy(code));
     }
     crate::eventalarms::notice_json(&format!("code:{}", appnotes::key_hash(&posted.key)), &notice, true, Some((&title, "")), now)
+}
+
+/// When a notification's message was sent (Unix seconds): its newest
+/// message of someone else's own time, else the notification's `when`,
+/// else when Android posted it, never later than `now`; `now` when Java
+/// says none.
+fn said_at(json: &str, posted: &Posted, now: i64) -> i64 {
+    let extra = sioul_core::phonemsgs::Extra::read(json);
+    let message = appnotes::newest_from_others(posted).and_then(|i| extra.messages.get(i)).map(|m| m.at);
+    [message, Some(extra.when), Some(extra.posted)].into_iter().flatten().find(|ms| *ms > 0).map_or(now, |ms| (ms / 1000).min(now))
 }
 
 /// The listener's line when a person's message from someone Sioul could not
@@ -2310,6 +2326,18 @@ mod tests {
         let decided: serde_json::Value = serde_json::from_str(&decide_at(&heard, &evening)).unwrap();
         assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("code")), "{decided}");
         assert!(decided.get("code").is_none(), "{decided}");
+        // Posted again three hours after its message (a restart): its code is over, nothing of Sioul's;
+        // half an hour's code an hour after its message neither; ten minutes after, its notice, lasting
+        // from the message's time (should-fix 2, d).
+        let at = |minutes: i64| (evening.timestamp().as_second() - minutes * 60) * 1000;
+        for (minutes, said) in [(180, false), (60, false), (10, true)] {
+            let late = PAYMENT.replace("\"intercepted\":true", &format!("\"intercepted\":true,\"when\":{}", at(minutes)));
+            let decided: serde_json::Value = serde_json::from_str(&decide_at(&late, &evening)).unwrap();
+            assert_eq!(decided.get("code").is_some(), said, "{minutes} minutes: {decided}");
+            if said {
+                assert_eq!(decided["code"]["ends"].as_i64(), Some(at(minutes) + 30 * 60_000), "{decided}");
+            }
+        }
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(Ledger::default_path());
