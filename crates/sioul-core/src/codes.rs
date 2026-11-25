@@ -1142,6 +1142,32 @@ mod tests {
         assert_eq!(detect("Your verification code", "Your verification code for 2026: 4821").and_then(|c| c.code).as_deref(), Some("4821"));
     }
 
+    /// Review of 25 November 2026, should-fix 8: what the handoff claimed
+    /// and no test held. Decimals and a currency sign make an amount, never
+    /// the code before "ce code"; the new pointing phrases in a message about
+    /// paying; the longest phrase ("è il tuo" before "è il"); the owner within
+    /// six words after the code's word; the owners added in German and Italian.
+    #[test]
+    fn what_the_handoff_claimed() {
+        for (title, body) in [
+            ("BANQUE", "Votre paiement de 1234,56 EUR est en attente. Ne partagez jamais ce code."),
+            ("Bank", "Your payment of €4821 is pending. Never share this code."),
+            ("", "482913 est le code que nous vous envoyons ce soir pour confirmer votre transaction."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+        for pointing in ["saisis le code", "entre le code", "utilise le code", "tapez le code"] {
+            let body = format!("Pour confirmer ton paiement, {pointing} 551204.");
+            assert_eq!(detect("BANQUE", &body).and_then(|c| c.code).as_deref(), Some("551204"), "{body}");
+        }
+        assert_eq!(detect("Bank", "Enter code 551204 to confirm your payment.").and_then(|c| c.code).as_deref(), Some("551204"));
+        let all: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\", \"de\", \"es\", \"it\"]\ncountries = [\"FR\"]\n").unwrap();
+        let every = Words::of(&all);
+        for body in ["482913 è il tuo codice Esempio.", "482913 ist der Code für deine Zahlung.", "482913 è il codice della sua transazione.", "482913 è il codice della vostra transazione."] {
+            assert_eq!(super::detect(&every.codes, "", body).and_then(|c| c.code).as_deref(), Some("482913"), "{body}");
+        }
+    }
+
     #[test]
     fn a_text_version_that_says_nothing() {
         // Its text version only points to the HTML one, which holds the code.

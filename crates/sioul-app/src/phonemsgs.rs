@@ -548,6 +548,20 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
 mod tests {
     use super::*;
 
+    /// A phone's code as a computer says it (`tell_codes`, review of 25
+    /// November 2026, should-fixes 7 and 8): from whom it came; in which app,
+    /// when the phone said the app's name in place of a sender that may hold
+    /// a code, or nothing; the notice never carrying the code.
+    #[test]
+    fn a_phone_s_code_on_a_computer_says_from_whom_or_in_which_app() {
+        let line = |name: &str| Line { name: name.into(), label: "Message".into(), app: "foundation.e.message".into(), kind: "text".into(), code: true, ..Line::default() };
+        assert_eq!(code_notice_title(&line("Ma Banque")), crate::backend::say("phonemsgs-code-notice", &[("who", "Ma Banque".to_string())]));
+        for name in ["Message", ""] {
+            assert_eq!(code_notice_title(&line(name)), crate::backend::say("phonemsgs-code-notice-app", &[("app", "Message".to_string())]), "{name:?}");
+        }
+        assert!(!code_notice_title(&line("Ma Banque")).chars().any(|c| c.is_ascii_digit()));
+    }
+
     /// Review of part 6, F8: a phone's text's sender's own rows, by their
     /// number, else by their name as the phone's address book names people;
     /// a group's, none.
