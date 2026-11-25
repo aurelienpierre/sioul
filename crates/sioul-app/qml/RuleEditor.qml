@@ -231,6 +231,36 @@ SafeDialog {
         form.saved(answer.id || "")
     }
 
+    // The field being typed in kept in view: a phone's keyboard takes half the screen,
+    // and the form scrolls under it. Asked as the focus moves and as the window shrinks.
+    function revealFocus() {
+        const item = column.shownIn ? column.shownIn.activeFocusItem : null
+        const flick = scroll.contentItem as Flickable
+        if (!form.visible || item === null || flick === null)
+            return
+        let up = item
+        while (up !== null && up !== column)
+            up = up.parent
+        if (up === null)
+            return
+        const top = item.mapToItem(column, 0, 0).y
+        const bottom = top + item.height
+        if (top < flick.contentY)
+            flick.contentY = Math.max(0, top - form.theme.labelGap)
+        else if (bottom > flick.contentY + flick.height)
+            flick.contentY = Math.max(0, Math.min(flick.contentHeight - flick.height, bottom - flick.height + form.theme.labelGap))
+    }
+
+    onHeightChanged: Qt.callLater(form.revealFocus)
+
+    Connections {
+        target: column.shownIn
+
+        function onActiveFocusItemChanged() {
+            Qt.callLater(form.revealFocus)
+        }
+    }
+
     onClosed: {
         previewTimer.stop()
         form.looking = false
@@ -274,6 +304,9 @@ SafeDialog {
 
         ColumnLayout {
             id: column
+
+            // The window the form is shown in: where the keyboard's focus is known.
+            readonly property var shownIn: Window.window
 
             width: scroll.availableWidth
             spacing: form.theme.sectionGap

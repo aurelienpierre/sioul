@@ -64,7 +64,8 @@ Item {
                 { id: "task", name: "A task", available: true, phase: 2, events: [{ id: "is-done", name: "is done", available: false, phase: 2 }], fields: [],
                   actions: [{ id: "make", name: "make a task from a model", available: true, phase: 1, params: [
                       { id: "model", name: "the model", value: "model", required: true, fixed: true, from: [] },
-                      { id: "title", name: "its title", value: "text", required: false, fixed: true, from: [{ id: "subject", name: "its subject", available: true, phase: 1 }] }] }] }
+                      { id: "title", name: "its title", value: "text", required: false, fixed: true, from: [{ id: "subject", name: "its subject", available: true, phase: 1 }] },
+                      { id: "days", name: "business days after it came", value: "number", required: false, fixed: true, from: [] }] }] }
             ]
         })
         property var choices: ({ project: [{ id: "taxes", name: "Taxes 2025", available: true }], model: [{ id: "pay", name: "Pay a bill", available: true }], topic: [], contact: [] })
@@ -434,6 +435,25 @@ Item {
             compare(calls("saveRuleModel").length, 1)
             compare([calls("saveRuleModel")[0].model.name, calls("saveRuleModel")[0].model.business_days].join("|"), "Check the statement|3")
             compare(form.draft.then.with.model, "check")
+            form.close()
+        }
+
+        // The field being typed in is brought into view (a phone's keyboard hides half the form).
+        function test_the_field_typed_in_is_kept_in_view() {
+            tab.edit(JSON.parse(mock.ruleFromMessage("/mail/cur/1")))
+            const form = editor()
+            tryVerify(() => form.opened)
+            form.setAction("task", "make")
+            const flick = form.contentItem.contentItem
+            tryVerify(() => flick.contentHeight > flick.height, 2000, "the form is longer than its card")
+            flick.contentY = 0
+            const days = find(find(form.contentItem, "ruleParam:days"), "ruleValueNumber")
+            verify(days !== null)
+            days.forceActiveFocus()
+            tryVerify(() => {
+                const top = days.mapToItem(flick.contentItem, 0, 0).y
+                return top >= flick.contentY && top + days.height <= flick.contentY + flick.height
+            }, 2000, "the focused box is within the card's view")
             form.close()
         }
 
