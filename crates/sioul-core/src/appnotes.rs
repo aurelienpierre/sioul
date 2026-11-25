@@ -363,6 +363,15 @@ pub fn code_of(p: &Posted, words: &crate::words::Words) -> Option<crate::codes::
     crate::codes::detect(&words.codes, subject_of(p), &words_of(p))
 }
 
+/// The code one message's own words hand over, read as `is_code` reads the
+/// newest (`subject_of` its subject): an earlier message of a conversation
+/// that holds one never leaves the phone in its words
+/// (`phonemsgs::messages_of`), and keeps its notification let through while
+/// its code lasts (sioul-app's `decide_at`).
+pub fn code_in_message(p: &Posted, text: &str, words: &crate::words::Words) -> Option<crate::codes::OneTimeCode> {
+    crate::codes::detect(&words.codes, subject_of(p), text)
+}
+
 /// What a notification gives the detector as its subject: its title; but a
 /// texting app's title that is only a number (a short number, a phone
 /// number) names who wrote, never a code (`36123` taken for the code beside

@@ -531,6 +531,8 @@ fn messages_of(n: &Notice, line: Line, heard: i64) -> Vec<Line> {
     if !from_others.is_empty() {
         let timed = from_others.iter().all(|(i, _, _)| n.extra.messages.get(*i).is_some_and(|e| e.at > 0));
         let chosen: Vec<&(usize, &appnotes::Message, &Person)> = if timed { from_others.iter().collect() } else { from_others.last().into_iter().collect() };
+        // An earlier message that holds a code never travels in its words: its own line said it came, when it was the newest.
+        let chosen: Vec<&(usize, &appnotes::Message, &Person)> = chosen.into_iter().filter(|(_, message, _)| appnotes::code_in_message(p, &message.text, n.words).is_none()).collect();
         // A conversation between two: its number is the conversation's, for Text back.
         let theirs = (!line.group).then(|| p.people.iter().find(|s| s.uri.trim().starts_with("tel:"))).flatten();
         return chosen
@@ -1191,6 +1193,12 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].code && lines[0].text.is_empty() && lines[0].name == "Ma Banque", "{lines:?}");
         assert!(!padded(&lines[0]).contains("482913"));
+        // The same code, then the bank's next text before the conversation is read: the next text travels,
+        // the code's message never (second review of the codes, fix 1).
+        let (later, extra) = texted(&bank, &["Votre code de validation est 482913. Ne le communiquez à personne.", "Votre paiement de 23,90 EUR a été accepté."]);
+        let lines = decided(&later, &extra, Some(Who::Neutral), now_through(), Send::Words);
+        assert!(lines.iter().all(|l| !l.code && !padded(l).contains("482913")), "{lines:?}");
+        assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["Votre paiement de 23,90 EUR a été accepté."]);
         // A code from a short number, or a title that may be the code: the app's name said instead.
         let short = Person { name: "38015".into(), ..Person::default() };
         let (code, extra) = texted(&short, &["G-482913 est votre code de vérification."]);
