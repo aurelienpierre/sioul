@@ -199,6 +199,64 @@ pub(crate) fn before_exchange() {
     }
 }
 
+// ---------------------------------------------------------------- a code told on a computer
+
+/// The codes this computer told, by their line's id, with when (ms): its
+/// own file, never shared, a day kept.
+const CODES_TOLD: &str = "phone-codes-told.json";
+
+/// One look at a time: the window's minute and an exchange may ask at once.
+static TELLING: Mutex<()> = Mutex::new(());
+
+/// The codes your phone let through, each told once on this computer (the
+/// owner's word of 24 November 2026: a code asked for comes by text too, on
+/// the phone and on the computers alike): a notice to do, "A code from
+/// your bank came to your phone", whose code stays on the phone (its line never
+/// carries it, `sioul_core::phonemsgs::lines_of`); told at once at every
+/// time, through a pause and do-not-disturb (the Codes row, fixed), even with
+/// nobody at the computer; gone once its line is seen on any device or its
+/// half hour is over (`rules::codes_to_tell`). At the window's minute and
+/// after each exchange; nothing on a phone, nothing while the part is off here.
+pub(crate) fn tell_codes() {
+    if cfg!(target_os = "android") {
+        return;
+    }
+    let root = rules::folder();
+    if !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
+        return;
+    }
+    let Ok(_one) = TELLING.try_lock() else { return };
+    let now = jiff::Timestamp::now().as_millisecond();
+    let path = state_dir().join(CODES_TOLD);
+    let mut told: std::collections::BTreeMap<String, i64> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let all = rules::read_logs(&root, now);
+    let notice_of = notices_of(&all);
+    let seen = crate::notices::seen_of(NoticeKind::Phone, &notice_of).seen;
+    let ids: std::collections::BTreeSet<String> = told.keys().cloned().collect();
+    let fresh: Vec<Line> = rules::codes_to_tell(&all, &here_id(), &ids, &seen, now).into_iter().cloned().collect();
+    let before = told.len();
+    told.retain(|_, at| now - *at <= 86_400_000);
+    if fresh.is_empty() && told.len() == before {
+        return;
+    }
+    for line in fresh {
+        told.insert(line.id.clone(), now);
+        let who = if line.name.trim().is_empty() { line.label.clone() } else { line.name.clone() };
+        let ends = line.at.max(line.shows) / 1000 + rules::CODE_TOLD_MS / 1000;
+        let notice = sioul_core::notice::Notice::new(sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes), crate::backend::say("phonemsgs-code-notice", &[("who", who)]), tr().text("phonemsgs-code-notice-body", None)).until(Some(ends));
+        // Seen on any device: settled, and taken away.
+        let pair: std::collections::BTreeMap<String, String> = notice_of.get(&line.id).map(|id| (line.id.clone(), id.clone())).into_iter().collect();
+        let id = line.id.clone();
+        let settled: crate::tell::Settled = Box::new(move || crate::notices::seen_of(NoticeKind::Phone, &pair).seen.contains(&id));
+        crate::tell::tell_as(notice, crate::tell::own(sioul_core::attention::Kind::Codes), Some(settled));
+    }
+    if let Ok(text) = serde_json::to_string(&told)
+        && let Err(e) = sioul_core::filelock::replace(&path, text.as_bytes())
+    {
+        eprintln!("sioul: phone messages: {e}");
+    }
+}
+
 // ---------------------------------------------------------------- the Porch
 
 /// Who a number is now, as this device's lists and address books say;

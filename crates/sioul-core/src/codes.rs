@@ -91,6 +91,14 @@ pub fn detect(words: &Codes, subject: &str, body: &str) -> Option<OneTimeCode> {
     read(words, subject, body, false)
 }
 
+/// Finds a short-lived secret in a text read whole, its line breaks kept (a
+/// text message, a chat's, a note): what `detect` reads as a body, so that a
+/// label at a line's start ("Bring the cake\nCode: 7319") is read as one,
+/// which a subject, read on one line, never shows.
+pub fn detect_text(words: &Codes, text: &str) -> Option<OneTimeCode> {
+    read(words, "", text, false)
+}
+
 /// Finds a short-lived secret in a message read from mail. Bulk headers
 /// (`Card::is_list`: `List-Unsubscribe`, `List-Id`, `Precedence: bulk`) are
 /// how many sites send codes and links too, so they never rule one out: they
@@ -121,6 +129,12 @@ fn read(w: &Codes, subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode>
     let secret = |kind, code| Some(OneTimeCode { kind, code, expires_minutes });
     // A code phrase without a code nearby ("never share your security
     // code", a heading) is no code: the next phrase is read, and so on.
+    // A code named before its word in its own sentence ("482913 est le code de votre transaction de …")
+    // is read before the promotions' gate: a shop's name further on ("… chez Pneus Discount", "Promo …")
+    // never undoes it; a promotion in its own sentence does (`not_yours`: "… de votre bon d'achat").
+    if let Some(code) = named_after(w, &folded, &codes(&original)) {
+        return secret(CodeKind::Code, Some(code));
+    }
     if !promotion && let Some(code) = code_in(w, &original, &folded) {
         return secret(CodeKind::Code, Some(code));
     }
@@ -129,8 +143,12 @@ fn read(w: &Codes, subject: &str, body: &str, bulk: bool) -> Option<OneTimeCode>
     // or beside a cue: "your password is" is also an article's sentence.
     let cued = !bulk || first_hit(&folded, &w.request).is_some() || brief;
     let counts = |hit: Option<(usize, usize)>| hit.is_some_and(|(start, _)| start < in_subject || cued);
+    // A password after its label, as a text or a form gives it: "MDP : …", "Password: …".
+    let labelled_password = labelled(w, &original, &folded, &w.password_label, true).into_iter().find(|&(_, end)| gives_value(&original, end));
     for (kind, phrases) in [(CodeKind::Password, &w.password), (CodeKind::PasswordReset, &w.reset), (CodeKind::SignInLink, &w.link), (CodeKind::Confirmation, &w.confirm)] {
-        if counts(first_hit(&folded, phrases)) {
+        let hit = first_hit(&folded, phrases);
+        let hit = if kind == CodeKind::Password { [hit, labelled_password].into_iter().flatten().min_by_key(|&(start, _)| start) } else { hit };
+        if counts(hit) {
             return secret(kind, None);
         }
     }
@@ -187,12 +205,31 @@ fn code_in(w: &Codes, original: &[char], folded: &[char]) -> Option<String> {
     let mut hits: Vec<(usize, usize, bool)> = every_hit(folded, &w.code).into_iter().map(|(start, end)| (start, end, false)).collect();
     hits.extend(every_hit(folded, &w.giving).into_iter().map(|(start, end)| (start, end, true)));
     hits.extend(owned_codes(w, original, folded).into_iter().map(|(start, end)| (start, end, true)));
-    // "Enter the code below", only in a message about signing in or checking who you are.
+    // "Code : 4821", "PIN: 4821": the word for a code as a label, the code after its colon.
+    // One token of a code's shape after its colon, nothing more on its line or in its sentence.
+    let one_code = |end: usize| found.iter().find(|f| f.start >= end).is_some_and(|f| ties(w, &folded[end..f.start], true) && alone_after(original, f.end));
+    hits.extend(labelled(w, original, folded, &w.noun, false).into_iter().filter(|&(_, end)| one_code(end)).map(|(start, end)| (start, end, true)));
+    // "Enter the code below", only in a message about signing in, checking who you are or paying; never
+    // before a shop's code ("avec le code EXEMPLE20", "use code SAVE10": `shop_code_after`).
     if first_hit(folded, &w.sign_in).is_some() {
-        hits.extend(every_hit(folded, &w.pointing).into_iter().map(|(start, end)| (start, end, false)));
+        hits.extend(every_hit(folded, &w.pointing).into_iter().filter(|&(_, end)| !shop_code_after(original, end)).map(|(start, end)| (start, end, false)));
     }
     hits.sort_unstable();
-    hits.into_iter().find_map(|(start, end, giving)| code_beside(w, folded, &found, (start, end), giving)).or_else(|| named_after(w, folded, &found))
+    // A code said to be yours right after it is the surest reading: first.
+    named_after(w, folded, &found).or_else(|| hits.into_iter().find_map(|(start, end, giving)| code_beside(w, folded, &found, (start, end), giving)))
+}
+
+/// Whether the first token after a pointing phrase, on its line, is a shop's
+/// code: neither digits nor any lowercase letter ("EXEMPLE20", "SAVE10",
+/// "NOEL"). Digits ("le code 551204"), a colon, the line's end or ordinary
+/// words ("le code suivant pour…") are not.
+fn shop_code_after(original: &[char], end: usize) -> bool {
+    let mut at = end;
+    while at < original.len() && on_line(original[at]) {
+        at += 1;
+    }
+    let token: Vec<char> = original[at..].iter().copied().take_while(|c| c.is_alphanumeric() || *c == '-').collect();
+    !token.is_empty() && !token.iter().all(char::is_ascii_digit) && !token.iter().any(|c| c.is_lowercase())
 }
 
 /// Whether a folded word is one of a list's, the list's words folded too.
@@ -254,25 +291,170 @@ fn owned_codes(w: &Codes, original: &[char], folded: &[char]) -> Vec<(usize, usi
     out
 }
 
+/// Spaces on a line: plain, non-breaking, narrow, a tab.
+fn on_line(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\u{a0}' | '\u{202f}' | '\u{2009}')
+}
+
+/// Where a label hands a secret over, right before a colon or "=" ("MDP :
+/// …", "Code : 4821", "PIN: 4821"): the label at a line's start or after a
+/// full stop, a question or an exclamation mark, never after a comma, a dash
+/// or a word ("Porte B, code : 4821", "QR-Code: 12345678", "Zip code:" are
+/// none); for the word for a code (`!password`), none of the three words
+/// before it on its line one that makes it someone else's code
+/// (`Codes::not_yours`: "Erreur. Code : 5003", "Colis prêt. Code : 482913"
+/// are none). A password's label also after another field of its line,
+/// written with a capital ("Identifiant : jdupont Mot de passe : …"), or
+/// after its owner, an article before it at most ("Votre mot de passe : …",
+/// "La tua password: …"). "your PIN:" is the owner's (`owned_codes`). As
+/// (start, end) of the label: what follows its colon is the secret, one
+/// token of it (`gives_value`, `alone_after`).
+fn labelled(w: &Codes, original: &[char], folded: &[char], labels: &[String], password: bool) -> Vec<(usize, usize)> {
+    let words = words(folded);
+    let text = |(start, end): (usize, usize)| folded[start..end].iter().collect::<String>();
+    let mut out = Vec::new();
+    for (start, end) in every_hit(folded, labels) {
+        let spaces = folded[end..].iter().take_while(|c| on_line(**c)).count();
+        if !matches!(folded.get(end + spaces), Some(':' | '=' | '\u{ff1a}')) {
+            continue;
+        }
+        // What stands before it on its line: nothing, or what ends a sentence.
+        let mut back = start;
+        while back > 0 && on_line(original[back - 1]) {
+            back -= 1;
+        }
+        let opens = back == 0 || matches!(original[back - 1], '\n' | '\r' | '.' | '!' | '?');
+        let line_start = original[..start].iter().rposition(|c| matches!(c, '\n' | '\r')).map_or(0, |at| at + 1);
+        // The words before it on its line, nearest last.
+        let before: Vec<(usize, usize)> = words.iter().copied().filter(|&(s, e)| s >= line_start && e <= back).collect();
+        if !password {
+            let theirs = before.iter().rev().take(3).any(|&b| is_in(&w.not_yours, &text(b)));
+            if opens && !theirs {
+                out.push((start, end));
+            }
+            continue;
+        }
+        let field_before = original[line_start..back].iter().any(|c| matches!(c, ':' | '=' | '\u{ff1a}'));
+        let word_before = before.last().copied();
+        let named = original[start].is_uppercase() && field_before && word_before.is_none_or(|b| !is_in(&w.not_yours, &text(b)));
+        // "Votre mot de passe :", "La tua password:": an owner right before it, at a line's start or a
+        // sentence's, an article of three letters at most before the owner.
+        let sentence: Vec<(usize, usize)> = before.iter().copied().filter(|&(s, _)| !original[s..back].iter().any(|c| matches!(c, '.' | '!' | '?'))).collect();
+        let owned = match sentence.as_slice() {
+            [owner] => is_in(&w.owners, &text(*owner)),
+            [article, owner] => is_in(&w.owners, &text(*owner)) && text(*article).chars().count() <= 3 && !is_in(&w.not_yours, &text(*article)),
+            _ => false,
+        } && {
+            let first = sentence.first().map_or(start, |&(s, _)| s);
+            let mut at = first;
+            while at > line_start && on_line(original[at - 1]) {
+                at -= 1;
+            }
+            at == line_start || matches!(original[at - 1], '.' | '!' | '?')
+        };
+        if opens || named || owned {
+            out.push((start, end));
+        }
+    }
+    out
+}
+
+/// Whether nothing but the end of its line or of its sentence follows a
+/// value ending at `end` (a mark, a bracket, a closing quote): one token,
+/// so that "Mot de passe : celui choisi à l'inscription" gives none.
+fn alone_after(original: &[char], end: usize) -> bool {
+    let mut at = end;
+    while at < original.len() && on_line(original[at]) {
+        at += 1;
+    }
+    at >= original.len() || matches!(original[at], '\n' | '\r' | '.' | ',' | ';' | '!' | '?' | ')' | ']' | '(' | '»' | '"' | '”' | '|')
+}
+
+/// Whether a label's colon is followed by what it gives, on its line or the
+/// next: something other than the dots or stars that hide it ("Password: ••••••" gives none).
+fn gives_value(original: &[char], end: usize) -> bool {
+    let mut at = end;
+    while at < original.len() && on_line(original[at]) {
+        at += 1;
+    }
+    if !matches!(original.get(at), Some(':' | '=' | '\u{ff1a}')) {
+        return false;
+    }
+    at += 1;
+    let mut breaks = 0;
+    while at < original.len() && (on_line(original[at]) || matches!(original[at], '\n' | '\r')) {
+        breaks += usize::from(original[at] == '\n');
+        at += 1;
+    }
+    let value: Vec<char> = original[at..].iter().copied().take_while(|c| !c.is_whitespace()).collect();
+    breaks <= 1 && !value.is_empty() && !value.iter().all(|c| matches!(c, '*' | '•' | '●' | '∙' | '·' | '.' | '…')) && alone_after(original, at + value.len())
+}
+
 /// A code followed by what says it is yours: "123456 is your Instagram code",
 /// "482913 est votre code de vérification". Up to three words between "your"
-/// and "code", none that makes it no secret.
+/// and "code", none that makes it no secret. Or what says it is the code of
+/// something of yours ("123456 is the code for your transaction of …",
+/// "000000 est le code de votre transaction de …", as a bank or a payment
+/// service texts it): a phrase of `Codes::owned_after` that ends in no owner
+/// ("is the", "est le") counts only when an owner follows the word for a code
+/// in its sentence, within `OWNER_AFTER` words, and neither the words between
+/// them nor the one the owner names make it no secret: "4821 est le code de
+/// la porte", "75011 is the zip code of your town", "1234 est le code de votre
+/// casier" are none.
 fn named_after(w: &Codes, folded: &[char], found: &[Found]) -> Option<String> {
     found.iter().find_map(|f| {
-        let rest = &folded[f.end..(f.end + 60).min(folded.len())];
+        let rest = &folded[f.end..(f.end + 160).min(folded.len())];
         let lead = rest.iter().take_while(|c| **c == ' ').count();
-        let owned = w.owned_after.iter().find(|p| {
-            let p = fold(p);
-            rest[lead..].starts_with(&p) && rest.get(lead + p.len()).is_none_or(|c| !c.is_alphanumeric())
-        })?;
-        let after = &rest[lead + owned.chars().count()..];
+        // The longest phrase that follows: "è il tuo" before "è il".
+        let owned = w
+            .owned_after
+            .iter()
+            .filter(|p| {
+                let p = fold(p);
+                rest[lead..].starts_with(&p) && rest.get(lead + p.len()).is_none_or(|c| !c.is_alphanumeric())
+            })
+            .max_by_key(|p| fold(p).len())?;
+        let after = &rest[lead + fold(owned).len()..];
         let words = words(after);
         let text = |(start, end): (usize, usize)| after[start..end].iter().collect::<String>();
         let code = words.iter().take(4).position(|&word| is_in(&w.noun, &text(word)))?;
         let clean = words[..code].iter().all(|&word| !is_in(&w.not_yours, &text(word)));
         let spaced = after[..words[code].0].iter().all(|c| c.is_alphanumeric() || matches!(c, ' ' | '-' | '\''));
-        (clean && spaced).then(|| f.code.clone())
+        // "Is your": the phrase says whose it is. "Is the": an owner must follow in its sentence.
+        let says_whose = crate::words::folded(owned).split_whitespace().last().is_some_and(|last| is_in(&w.owners, last));
+        (clean && spaced && (says_whose || owner_follows(w, after, &words, code))).then(|| f.code.clone())
     })
+}
+
+/// How many words after the word for a code its owner may come ("the code
+/// for your transaction", "le code pour valider votre paiement").
+const OWNER_AFTER: usize = 6;
+
+/// Whether an owner ("your", "votre") follows the word for a code at
+/// `words[code]` in its sentence, within `OWNER_AFTER` words, with no word
+/// between them nor the one after the owner that makes it no secret
+/// (`Codes::not_yours`): "the code for your transaction" is yours, "the zip
+/// code of your town" and "the code of your locker" are none.
+fn owner_follows(w: &Codes, text: &[char], words: &[(usize, usize)], code: usize) -> bool {
+    let word = |(start, end): (usize, usize)| text[start..end].iter().collect::<String>();
+    let mut between = Vec::new();
+    for (i, &(start, end)) in words.iter().enumerate().skip(code + 1).take(OWNER_AFTER) {
+        // The sentence ends: a full stop, a question or an exclamation, a line.
+        let previous_end = words[i - 1].1;
+        if text[previous_end..start].iter().any(|c| matches!(c, '.' | '!' | '?' | '\n' | ';')) {
+            return false;
+        }
+        let this = word((start, end));
+        if is_in(&w.not_yours, &this) {
+            return false;
+        }
+        if is_in(&w.owners, &this) {
+            let named = words.get(i + 1).filter(|&&(next, _)| !text[end..next].iter().any(|c| matches!(c, '.' | '!' | '?' | '\n' | ';')));
+            return named.is_none_or(|&next| !is_in(&w.not_yours, &word(next))) && between.iter().all(|b: &String| !is_in(&w.not_yours, b));
+        }
+        between.push(this);
+    }
+    false
 }
 
 /// The code next to a phrase: right after it, whatever its shape ("votre code
@@ -296,13 +478,14 @@ fn code_beside(w: &Codes, folded: &[char], found: &[Found], (start, end): (usize
 }
 
 /// Whether what stands between a phrase and a code ties them: spaces, a
-/// colon, "is" or "est". After "your code", a colon or one of these words
+/// colon, "is" or "est", or a linking phrase of the list ("est le": "votre
+/// code est le 482913"). After "your code", a colon or one of these words
 /// at least: "votre code postal : 54390" gives no code.
 fn ties(w: &Codes, gap: &[char], giving: bool) -> bool {
     let gap: String = gap.iter().collect();
     let words: Vec<&str> = gap.split(|c: char| c.is_whitespace() || c == ':' || c == '=').filter(|word| !word.is_empty()).collect();
     let linked = gap.contains([':', '=']) || !words.is_empty();
-    words.len() <= 1 && words.iter().all(|word| is_in(&w.linking, word)) && (linked || !giving)
+    (words.is_empty() || is_in(&w.linking, &words.join(" "))) && (linked || !giving)
 }
 
 /// A code-shaped stretch of the text: where it is, the code as kept, and
@@ -435,7 +618,13 @@ fn mixed_code(text: &str) -> Option<String> {
 }
 
 fn looks_like_amount_or_year(token: &Token) -> bool {
-    is_year(&token.text) || token.before == '+' || amount_follows(token)
+    is_year(&token.text) || token.before == '+' || matches!(token.before, '€' | '$' | '£') || amount_follows(token) || decimals_follow(token)
+}
+
+/// ",56" or ".56" right after: the whole part of an amount ("1234,56 EUR").
+fn decimals_follow(token: &Token) -> bool {
+    let mut after = token.after.chars();
+    matches!(after.next(), Some(',' | '.')) && after.next().is_some_and(|c| c.is_ascii_digit())
 }
 
 fn is_year(text: &str) -> bool {
@@ -701,6 +890,201 @@ mod tests {
         assert!(detect("Votre compte", "Votre code Client : 123456").is_none());
         assert!(detect("Thanks", "Use this code at checkout: 4821").is_none());
         assert!(detect("Order", "Your order 2026-1004 shipped on 06-10.").is_none());
+    }
+
+    /// A code or a password after the word for it and a colon, as texts and
+    /// forms give them ("MDP : …", "Here is your PIN: …", "code: …"); what
+    /// only looks like one is none.
+    #[test]
+    fn secrets_after_their_label() {
+        for body in ["MDP : Xk82pq!", "Salut, voici l'accès.\nMDP: lune-Rouge-42", "Identifiant : jdupont Mot de passe : Xk82pq", "Login: jdupont, Password: Xk82pq"] {
+            assert_eq!(detect("", body).map(|c| c.kind), Some(CodeKind::Password), "{body}");
+        }
+        for (body, code) in [
+            ("Here is your PIN: 4821", "4821"),
+            ("Your PIN is 482913.", "482913"),
+            ("Atelier poterie jeudi soir. Code : 6107", "6107"),
+            ("code: 7314", "7314"),
+            ("Votre code PIN : 4829", "4829"),
+            ("Le service vous attribue un code provisoire. Votre code provisoire est le 39174826.", "39174826"),
+            ("Your temporary code is 551204.", "551204"),
+        ] {
+            assert_eq!(detect("", body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
+        for body in [
+            "Zip Code: 94110",
+            "Postal code: 94110",
+            "Code postal : 54390",
+            "Password: ••••••",
+            "Change your password: open Settings, then Security.",
+            "Code : 2026",
+            "MDP oublié ? Appelle-moi.",
+        ] {
+            assert_eq!(detect("", body), None, "{body}");
+        }
+        // A label added in the configuration is read; the packs alone do not know it.
+        let config: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\"]\ncountries = [\"FR\"]\n[words.codes.password_label]\nadd = [\"Kennwort\"]\n").unwrap();
+        assert_eq!(detect("", "Kennwort: Xk82pq"), None);
+        assert_eq!(super::detect(&Words::of(&config).codes, "", "Kennwort: Xk82pq").map(|c| c.kind), Some(CodeKind::Password));
+    }
+
+    /// The text of 24 November 2026, as a payment service sent it from a
+    /// short number (its shape: the code first, then "est le code de votre
+    /// transaction de …"), in each language the detector knows, with an
+    /// invented code, amount and shop; and the payment and sign-in texts
+    /// usual in English and French.
+    #[test]
+    fn a_transaction_code_named_after_its_digits() {
+        let all: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\", \"de\", \"es\", \"it\"]\ncountries = [\"FR\"]\n").unwrap();
+        let every = Words::of(&all);
+        for (title, body, code) in [
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 1234,56 EUR chez Boutique Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 is the code for your transaction of 23.90 EUR at Example Shop. Keep this code to yourself", "482913"),
+            ("36123", "ExamplePay: 482913 ist der Code für Ihre Transaktion von 23,90 EUR bei Beispielladen. Behalten Sie diesen Code für sich", "482913"),
+            ("36123", "ExamplePay: 482913 es el código de tu transacción de 23,90 EUR en Tienda Ejemplo. Guarda este código para ti", "482913"),
+            ("36123", "ExamplePay: 482913 è il codice della tua transazione di 23,90 EUR presso Negozio Esempio. Tieni questo codice per te", "482913"),
+        ] {
+            assert_eq!(super::detect(&every.codes, title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
+        // French and English alone, as the packs built in.
+        for (title, body, code) in [
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 is the code for your transaction of 23.90 EUR at Example Shop. Keep this code to yourself", "482913"),
+            // Payments: 3-D Secure and the payment services' usual wordings.
+            ("BANQUE", "Code de validation de votre paiement de 49,90 EUR chez BOUTIQUE EXEMPLE : 551204. Ne le communiquez à personne.", "551204"),
+            ("BANQUE", "Pour valider votre achat de 49,90 EUR, saisissez le code 551204. Il expire dans 5 minutes.", "551204"),
+            ("BANQUE", "Votre code est le 551204. Ne le communiquez à personne.", "551204"),
+            ("Bank", "Use code 551204 to approve your payment of 49.90 EUR at Example Shop.", "551204"),
+            ("Bank", "Your one-time passcode for your purchase at EXAMPLE SHOP is 551204. Never share it.", "551204"),
+            // Sign-ins.
+            ("Service", "<#> 551204 est votre code de vérification Exemple.", "551204"),
+            ("Service", "Exemple : votre code de connexion est 551204. Il expire dans 10 min.", "551204"),
+            ("Service", "Your Example verification code is: 551204", "551204"),
+            ("Service", "551204 is your Example login code. Don't share it with anyone.", "551204"),
+            ("Service", "Utilisez le code 551204 pour vous connecter à Exemple.", "551204"),
+        ] {
+            assert_eq!(detect(title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
+        // What only looks like one: a parcel number, an amount, a date, a phone number, a year,
+        // a door's code, a postcode, a locker's, an order's, a client number.
+        for (title, body) in [
+            ("38080", "Votre colis 6A12345678901 est en route. Suivi : https://suivi.example/6A12345678901"),
+            ("Colis", "Votre colis 48291357 sera livré demain. Code de suivi : 48291357."),
+            ("BANQUE", "Un paiement de 1234,56 EUR a été débité le 24/11/2026."),
+            ("BANQUE", "Prélèvement de 482913 EUR le 2026-11-24."),
+            ("Agenda", "Rendez-vous le 24/11/2026 à 21h54, au 06 12 34 56 78."),
+            ("Mairie", "Le marché de Noël 2026 ouvre le 5 décembre."),
+            ("Alice", "4821 est le code de la porte, à ce soir !"),
+            ("Alice", "4821 is the code for the gate, see you tonight!"),
+            ("Mairie", "75011 est le code postal de votre nouvelle adresse."),
+            ("Casier", "4821 est le code de votre casier. Bonne séance !"),
+            ("Shop", "4821 is the code for your order of 23.90 EUR. Thank you!"),
+            ("Shop", "Votre numéro client est 48291357."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+    }
+
+    /// The label rule held tight (review of 24 November 2026, item 8): a label
+    /// counts at a line's start or after a full stop, never after a comma, a
+    /// dash or a word, never when the words before it make it someone else's
+    /// code, and only with one token of a code's shape after it; a password's
+    /// label takes one token too. In English and French. And item 2: an owner
+    /// (with an article at most) before a password's label opens it, in the
+    /// five languages.
+    #[test]
+    fn labels_that_are_someone_else_s() {
+        for body in [
+            "Erreur. Code : 5003",
+            "Error. Code: 5003",
+            "QR-Code: 12345678",
+            "QR code: 12345678",
+            "Porte B, code : 4821",
+            "Door B, code: 4821",
+            "Colis prêt. Code : 482913",
+            "Parcel ready. Code: 482913",
+            "Code : 5003 erreur interne du serveur",
+            "Mot de passe : celui choisi à l'inscription",
+            "Password: the one you chose when you signed up",
+            "Change your password: open Settings, then Security.",
+        ] {
+            assert_eq!(detect("", body), None, "{body}");
+            assert_eq!(super::detect_text(&Words::builtin().codes, body), None, "{body}");
+        }
+        let all: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\", \"de\", \"es\", \"it\"]\ncountries = [\"FR\"]\n").unwrap();
+        let every = Words::of(&all);
+        for body in ["Votre mot de passe : Xk82pq", "Ton mdp : Xk82pq", "Your password: Xk82pq", "Bonjour.\nVotre mot de passe : Xk82pq", "Ihr Passwort: Xk82pq", "Tu contraseña: Xk82pq", "La tua password: Xk82pq"] {
+            assert_eq!(super::detect(&every.codes, "", body).map(|c| c.kind), Some(CodeKind::Password), "{body}");
+        }
+        // An owner far in its sentence, or a word that is no article before it: none.
+        for body in ["Pensez à changer votre mot de passe : Xk82pq", "Your new phone password: Xk82pq soon"] {
+            assert_eq!(super::detect(&every.codes, "", body), None, "{body}");
+        }
+    }
+
+    /// A text read whole keeps its line breaks (`detect_text`): a label at a
+    /// line's start is read there, which a subject read on one line never
+    /// shows; a colon earlier in the text makes no later word a label.
+    #[test]
+    fn a_text_keeps_its_lines() {
+        let words = Words::builtin();
+        assert_eq!(super::detect_text(&words.codes, "Bring the cake\nCode: 7319").and_then(|c| c.code).as_deref(), Some("7319"));
+        assert_eq!(super::detect_text(&words.codes, "Hello\nPassword: Lune-Rouge-58").map(|c| c.kind), Some(CodeKind::Password));
+        assert_eq!(super::detect_text(&words.codes, "We meet at 10:30, bring your Password: open Settings first"), None);
+        assert_eq!(super::detect_text(&words.codes, "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous").and_then(|c| c.code).as_deref(), Some("482913"));
+    }
+
+    /// The digits before the word, as a payment service texts them, and what
+    /// only looks like it: an order's number, a year, an amount, a parcel.
+    #[test]
+    fn digits_before_a_word_that_is_no_code() {
+        for body in [
+            "123456 est le numéro de votre commande.",
+            "123456 is the number of your order.",
+            "2026 est l'année de votre adhésion.",
+            "2026 est le code de votre transaction.",
+            "1234,56 est le montant de votre transaction.",
+            "48291357 est le numéro de votre colis.",
+            "48291357 est le code de votre colis.",
+            "48291357 is the code of your parcel.",
+        ] {
+            assert_eq!(detect("", body), None, "{body}");
+        }
+    }
+
+    /// Review of 25 November 2026, must-fixes 1 and 2: a shop's code after a
+    /// pointing phrase is no one-time code, whatever the message says of a
+    /// purchase; a shop's name further on never undoes a code named before
+    /// its word; a promotion in the code's own sentence does.
+    #[test]
+    fn a_shop_s_code_is_none_and_a_shop_s_name_undoes_nothing() {
+        for (title, body) in [
+            ("36111", "Boutique Exemple: -20% dès 60E d'achat avec le code EXEMPLE20 jusqu'au 30/11 en magasin et sur boutique.example STOP 36111"),
+            ("36111", "Boutique Exemple: -20% ce week-end avec le code NOEL sur votre achat en ligne. STOP au 36111"),
+            ("Shop", "Use code SAVE10 at checkout to get $10 off your next purchase."),
+            ("Shop", "Enter code WELCOME at checkout to save on your first purchase."),
+            ("Boutique", "Merci pour votre achat : saisissez ce code CADEAU15 lors de votre prochaine commande."),
+            ("Boutique", "4821 est le code de votre bon d'achat."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+        assert_eq!(detect_message(&bulk("Derniers jours : -20 % avec le code NOEL20", "Jusqu'à dimanche, dès 50 € d'achat sur tout le site.")), None);
+        for (title, body, code) in [
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Pneus Discount Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Promo Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Exemple Coupon. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Exemple Voucher. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Réduction Exemple. Gardez ce code pour vous", "482913"),
+            ("36123", "ExamplePay: 482913 is the code for your transaction of 23.90 EUR at Example Discount Shop. Keep this code to yourself", "482913"),
+            // Still codes: digits after a pointing phrase, in a message about paying or signing in.
+            ("BANQUE", "Pour valider votre achat de 49,90 EUR, saisissez le code 551204.", "551204"),
+            ("Bank", "Use code 551204 to approve your payment of 49.90 EUR at Example Shop.", "551204"),
+            ("Service", "Utilisez le code 551204 pour vous connecter à Exemple.", "551204"),
+            ("Vérification", "Saisissez le code suivant pour vérifier votre identité :\n\n4829 1357", "48291357"),
+        ] {
+            assert_eq!(detect(title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
     }
 
     #[test]

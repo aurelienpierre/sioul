@@ -133,7 +133,7 @@ It stays the caller's: the model says whether a thing is told now on this device
 ### Examples
 - **A safe friend at 03:00.** Their chat waits for waking (Messages × Safe × Sleep is ○); their mail is on the Porch if you look, told at waking (◑); their call goes to voicemail, and the Porch lists it at waking. On the Always through list: their chat and their call come at once, their mail is ◑.
 - **A number both blocked and on the Always through list**, calling at noon: declined. Blocking someone takes them off Always through, and putting them on Always through takes them off the blocked list, said (`porch::set_standing`, `porch::unblock_person`).
-- **A code from your bank at 22:40, while you wind down**: on the Porch, its card showing it, untold (Codes × Sleep is "On the Porch only" since the notifications' decision 5 of 13 November 2026; At once stays a choice there). The same code by text is never held by Sioul, and the night's do-not-disturb keeps it silent.
+- **A code from your bank at 22:40, while you wind down**: told at once, on top of the Porch and as a notice to do that passes do-not-disturb (Codes × Sleep at once, fixed: the owner's word of 24 November 2026; from 13 November it was "On the Porch only"). The same code by text is never held by Sioul; when the night's do-not-disturb silences the texting app's notification, Sioul's own notice of the code sounds once in its place, and every computer says it came.
 - **A safe colleague's mail at 19:00 to your work address**: shown on the Porch (◑), told with "The Porch opens" when work begins (step 8, decision 2 of 13 November 2026); to your personal address, told at once (Mail × Safe × Leisure is ●).
 - **A neutral colleague's mail at 19:00 to your work address**: it waits off the Porch until work (Mail × Neutral × Leisure is ○, and step 8).
 - **A group's message during Free time**: held until Free time ends and its row lets it come (Groups × Free time is ○).
@@ -201,7 +201,7 @@ A mail app's notification on a phone takes the Mail rows (◑ held, since a phon
 | Automatons (phone) | ◎ | ◎ | ◎ | ◎ | ○ | ○ | ○ | ○ | ○ |
 | Apps and sites set to At once (phone) | ● | ● | ● | ● | ○ | ○ | ○ | ○ | ○ |
 
-**Locks** (`attention::lock`, each with a sentence, `attention-lock-*`): the blocked never; a dose at once but in sleep and a pause, your choice there; a code at once but in sleep, where it waits on the Porch as usual ("On the Porch only", decision 5 of 13 November 2026) and At once stays a choice; an event's alarms at once in a pause and under do-not-disturb, as both promise; the alarm at waking always. Health's night or nap notice at its own start comes whatever sleep's column says, but in a pause.
+**Locks** (`attention::lock`, each with a sentence, `attention-lock-*`): the blocked never; a dose at once but in sleep and a pause, your choice there; a code at once at every time, sleep included (24 November 2026: no setting holds a code; until then sleep's cell was "On the Porch only", a choice); an event's alarms at once in a pause and under do-not-disturb, as both promise; the alarm at waking always. Health's night or nap notice at its own start comes whatever sleep's column says, but in a pause.
 
 **What the cells leave alone**: what a thing is for (step 8) and the named holds (step 9), each said in its time's card; the master switches (new mail told at all, newsletters, sites gathered, each reminder's own, Health's); and each source's own choice (a site's Real time and Silenced, an app's, a conversation's and a browser site's on a phone, an event's Remind, a block's Not today).
 
@@ -229,13 +229,13 @@ Silencing the system is no step of the pipeline: it follows the time. The pause,
 **On a computer**: Plasma inhibits its pop-ups but critical ones; GNOME's switch, with your consent; macOS through two shortcuts; Windows and other desktops cannot be asked ([do-not-disturb.md](do-not-disturb.md)). Sioul decides alone what passes (the notifications' decision 4 of 13 November 2026, [notifications.md](notifications.md)): a notice to do that pierces (codes, an event's alarms) goes at critical urgency while a do-not-disturb holds, Sioul's or the desktop's; the doses keep their own path, at critical urgency; notices to know are not posted then. Nothing to tick in Plasma's settings.
 
 ## 7. The configuration
-`[attention]` in `config.toml`, one key per row, a list of column words: a bare column is ●, `column:level` another level (`now`, `quiet`, `event`, `gathered`, `later`, `never`, `as`, `through`). A row that says the usual is not written; a fixed cell keeps its value; a word not understood, or a value not offered there, is left aside (`Attention::of`).
+`[attention]` in `config.toml`, one key per row, a list of column words: a bare column is ●, `column:level` another level (`now`, `quiet`, `event`, `gathered`, `later`, `never`, `as`, `through`). A row that says the usual is not written; a fixed cell keeps its value; a word not understood, or a value not offered there, is left aside (`Attention::of`): a `codes` row an older Sioul wrote with "sleep:never" reads at once there, the Codes row being fixed since 24 November 2026. An older device (0.1.0) keeps reading what it wrote; nothing of this format changed.
 
 ```toml
 [attention]
 "mail.neutral" = ["work", "admin", "leisure", "meals:quiet", "sleep:later", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]
 "messages.always" = ["work", "admin", "leisure", "meals", "sleep:as", "pause:as", "free", "slot", "dnd:through"]
-codes = ["work", "admin", "leisure", "meals", "sleep:never", "pause", "free", "slot", "dnd"]
+"day-before" = ["work", "admin", "leisure", "meals", "sleep:later", "pause:later", "free:later", "slot", "dnd:later"]
 "app.com.discord" = ["work", "admin:later", "leisure:later", "meals:later", "sleep:later", "pause:later", "free:later", "slot:later", "dnd:later", "name=Discord"]
 "conversation.8c1f0e5a2b7d4c69" = ["leisure", "dnd"]
 ```
@@ -354,7 +354,7 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 3. **Blocked beats Always through**; one list takes them off the other, said.
 4. **Messages at night** wait in sleep and a pause, as mail's telling does; in Free time your safe senders' still come.
 5. **Mail apps on a phone** take the Mail rows, ◑ held.
-6. **Codes asked for** come at once in every time, sleep and a pause included, from mail and from other apps; "On the Porch only" stays a choice for sleep. Changed on 13 November 2026 (the notifications' decision 5, [notifications.md](notifications.md#mail)): in sleep, Sioul's own codes wait on the Porch as usual, as porch.md promised; At once stays a choice there. Other apps' codes on a phone are still never held by the listener (a code cannot wait); the night's do-not-disturb keeps them silent.
+6. **Codes asked for** come at once in every time, sleep and a pause included, from mail and from other apps. Changed on 13 November 2026 (the notifications' decision 5: in sleep, "On the Porch only", At once a choice), then back on 24 November 2026: a code asked for comes at once by mail or by text, on a phone and on the computers alike. Every cell of the Codes row is fixed at once; a text's code that the night's do-not-disturb silences is told by Sioul's own notice that passes it ([notifications.md](notifications.md)).
 7. **An event's alarms in a pause, on a phone**: a channel of their own that passes Sioul's modes. Since 14 November 2026 (the notifications' decision 3), only where Sioul rings them; where the phone's calendar app rings them in Sioul's place, the mode lets its events through where this row says at once (`Silence::calendar`).
 8. **Always through conversations under Sioul's modes**: the modes let Priority conversations through; Sioul opens the conversation's page in Android to mark it.
 9. **Safe callers in Free time**: while the phone screens calls, Sioul's modes let every contact's call ring; else starred contacts only.

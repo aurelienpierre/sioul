@@ -185,6 +185,8 @@ public final class AppNotes extends NotificationListenerService
     private final List<FileObserver> watches = new ArrayList<>();
     /** Each app's name as the phone shows it, by package, found once a process (`label`). */
     private final Map<String, String> labels = new HashMap<>();
+    /** Sioul's own notices of codes another app brought, by that app's notification's key: taken away with it. On the worker. */
+    private final Map<String, String> codeNotices = new HashMap<>();
     /** Android's words in a redacted notification, in the phone's language; read once (`redacted`). */
     private String redactedWords;
     /** The phone's default SMS app's package, "" for none (`smsApp`), and when it was last asked. */
@@ -734,6 +736,10 @@ public final class AppNotes extends NotificationListenerService
     /** A notification's going said to Rust, with why, and a step soon when your computers have it to read. On the worker thread. */
     private void removed(String pkg, String key, int reason)
     {
+        // Its code's notice of Sioul's own, when Sioul posted one (`codeNotice`), goes with it.
+        String code = codeNotices.remove(key);
+        if (code != null)
+            Notices.dismiss(getApplicationContext(), code);
         try {
             DoseAlarms.load(getApplicationContext());
             String answer = nativeReply("removed", new JSONObject().put("package", pkg).put("key", key).put("reason", reason).toString());
@@ -778,6 +784,10 @@ public final class AppNotes extends NotificationListenerService
             // A person's message back at its time, which would have rung: told once, with those of its window (B2).
             if (decided.optBoolean("waited", false))
                 waited(sbn, ranking);
+            // A code let through that Android's do-not-disturb silences: Sioul's own notice of it (Rust's `code_notice`).
+            JSONObject code = decided.optJSONObject("code");
+            if (code != null)
+                codeNotice(sbn, code);
             // Held now, or back from being held: the line of what Sioul holds written again, once a burst settled.
             if (decided.optBoolean("changed", false)) {
                 worker.removeCallbacks(lineSoon);
@@ -787,6 +797,31 @@ public final class AppNotes extends NotificationListenerService
             // Sioul's library that does not load, Rust that fails: the notification stays as it came.
             Log.e(TAG, "Notes: a notification was not decided; it comes as sent.", e);
         }
+    }
+
+    /**
+     * A code another app brought (a text's), let through while Android's
+     * do-not-disturb silences that app's notification: Sioul's own notice of
+     * it (Rust's words, `appnotes::code_notice` in sioul-app), to do, on the
+     * channel that passes Sioul's modes, so that it sounds once; only while
+     * one of Sioul's modes is on (under the person's own do-not-disturb alone
+     * it would come silent as the app's does, a second copy for nothing). A
+     * tap opens what the app's own notification opens; Copy copies the code;
+     * on the lock screen its title alone. Taken away with the app's
+     * notification ({@link #removed}) or when the code's time is over. On the worker.
+     */
+    private void codeNotice(StatusBarNotification sbn, JSONObject said)
+    {
+        Context context = getApplicationContext();
+        Notices.Said notice = Notices.Said.of(said);
+        if (notice.tag.isEmpty() || PauseMode.actChannelNow(context, Notices.word(context, notice.words, "act-pause")) == null)
+            return;
+        // The listener reads the reminders' words, never writes them (EventAlarms.keepWords): an older copy could replace them.
+        notice.words = null;
+        Notification n = sbn.getNotification();
+        notice.tap = n == null ? null : n.contentIntent;
+        codeNotices.put(sbn.getKey(), notice.tag);
+        Notices.post(context, notice);
     }
 
     /** A notification held by Android for `ms` (a second at least), then given back whole, as it came. */

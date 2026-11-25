@@ -169,6 +169,12 @@ final class Notices
         JSONObject words;
         /** A channel of its own (new mail's that passes); null: its class's. */
         String channel;
+        /**
+         * What a tap fires in place of opening its thing in Sioul: another
+         * app's own (what its notification opens), for Sioul's notice of a
+         * code that app brought (AppNotes.codeNotice); never from Rust's JSON.
+         */
+        PendingIntent tap;
 
         /**
          * Rust's JSON: {tag, about, kind, class, group, lasts_ms, ends,
@@ -348,7 +354,7 @@ final class Notices
             // that Sioul has a reminder, never what it is about (composed tasks §7.3), never a code.
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(publicVersion(context, channel, said))
-            .setContentIntent(opening(context, said.tag, said.about))
+            .setContentIntent(said.tap != null ? said.tap : opening(context, said.tag, said.about))
             .setDeleteIntent(NoticeReceiver.deleted(context, said.tag))
             .setAutoCancel(true)
             .setOnlyAlertOnce(!alerts)
