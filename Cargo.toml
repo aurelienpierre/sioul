@@ -41,6 +41,16 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
+# The extensions' interpreter calls one handler per WebAssembly instruction,
+# each into the next, which only an optimised build turns into jumps:
+# unoptimised, an extension's refresh (a real profile's) grows its thread's
+# stack until it overflows and the window aborts.
+[profile.dev.package.wasmi]
+opt-level = 3
+[profile.dev.package.wasmi_ir]
+opt-level = 3
+[profile.dev.package.wasmi_core]
+opt-level = 3
 
 [workspace.dependencies]
 mail-parser = "0.11"
