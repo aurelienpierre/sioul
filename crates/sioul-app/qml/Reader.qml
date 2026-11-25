@@ -294,158 +294,166 @@ Panel {
 
         // What you can do with it: replying at the left, filing at the right, on one line
         // while they fit, else wrapped onto a second (a computer; a phone folds into ⋮).
-        // Its width never widens the column: the text below keeps the panel's width.
-        Flow {
-            id: actionRow
-
-            // The actions shown, side by side, ⋮ included: the space between the two
-            // groups takes the rest of a line they fit on, nothing once they wrap.
-            readonly property real used: {
-                const shown = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton, unsubscribeButton, moreButton].filter(b => b.visible)
-                return shown.reduce((sum, b) => sum + b.implicitWidth, 0) + shown.length * actionRow.spacing
-            }
-
-            objectName: "readerActions"
+        // Its width never widens the column: the text below keeps the panel's width. The
+        // flow sits in a place of no width of its own: its space between the two groups
+        // follows the width it is given, and that width must never follow the flow back
+        // (a panel sized by what it holds would narrow a pixel at a time, without end).
+        Item {
             // A message not here has nothing to do with it (review of 1017fa4, L6).
             visible: !reader.missing && !reader.waiting
             Layout.fillWidth: true
-            Layout.preferredWidth: 0
-            spacing: 4
+            implicitWidth: 0
+            implicitHeight: actionRow.implicitHeight
 
-            ActionButton {
-                id: replyButton
+            Flow {
+                id: actionRow
 
-                theme: reader.theme
-                folds: reader.folds
-                rank: 0
-                iconName: "mail-reply-sender"
-                label: reader.sioul.text("ui-reply")
-                onClicked: reader.window.compose("reply", reader.key)
-            }
-            ActionButton {
-                id: replyAllButton
-
-                theme: reader.theme
-                folds: reader.folds
-                rank: 4
-                offered: reader.reading !== null && reader.reading.others
-                iconName: "mail-reply-all"
-                label: reader.sioul.text("ui-reply-all")
-                onClicked: reader.window.compose("reply-all", reader.key)
-            }
-            ActionButton {
-                id: forwardButton
-
-                theme: reader.theme
-                folds: reader.folds
-                rank: 3
-                iconName: "mail-forward"
-                label: reader.sioul.text("ui-forward")
-                onClicked: reader.window.compose("forward", reader.key)
-            }
-            // Something new tied to it: a task for what it asks, an event, a note, a contact.
-            ActionButton {
-                id: addButton
-
-                theme: reader.theme
-                folds: reader.folds
-                rank: 5
-                iconName: "list-add"
-                label: reader.sioul.text("ui-add-new")
-                // From ⋮ when it waits there: its menu opens under ⋮.
-                onClicked: {
-                    const at = addButton.visible ? addButton : moreButton
-                    addMenu.now().popup(at, 0, at.height)
+                // The actions shown, side by side, ⋮ included: the space between the two
+                // groups takes the rest of a line they fit on, nothing once they wrap.
+                readonly property real used: {
+                    const shown = [replyButton, replyAllButton, forwardButton, addButton, linkButton, archiveButton, trashButton, junkButton, unsubscribeButton, moreButton].filter(b => b.visible)
+                    return shown.reduce((sum, b) => sum + b.implicitWidth, 0) + shown.length * actionRow.spacing
                 }
-            }
-            // Tied to what is there already: a task, an event, a project, anything.
-            ActionButton {
-                id: linkButton
 
-                theme: reader.theme
-                folds: reader.folds
-                rank: 6
-                enabled: reader.source.uri !== ""
-                iconName: "insert-link"
-                label: reader.sioul.text("ui-link-existing")
-                onClicked: {
-                    const at = linkButton.visible ? linkButton : moreButton
-                    linkMenu.now().popup(at, 0, at.height)
+                objectName: "readerActions"
+                width: parent.width
+                spacing: 4
+
+                ActionButton {
+                    id: replyButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 0
+                    iconName: "mail-reply-sender"
+                    label: reader.sioul.text("ui-reply")
+                    onClicked: reader.window.compose("reply", reader.key)
                 }
-            }
-            Item {
-                objectName: "readerActionsGap"
-                width: Math.max(0, actionRow.width - actionRow.used - 1)
-                height: 1
-            }
-            ActionButton {
-                id: archiveButton
+                ActionButton {
+                    id: replyAllButton
 
-                theme: reader.theme
-                folds: reader.folds
-                rank: 1
-                offered: reader.role !== "archive" && reader.role !== "all"
-                iconName: "archive-insert"
-                label: reader.sioul.text("ui-archive")
-                onClicked: reader.act("archive")
-            }
-            ActionButton {
-                id: trashButton
-
-                theme: reader.theme
-                folds: reader.folds
-                rank: 2
-                iconName: "user-trash"
-                label: reader.role === "trash" ? reader.sioul.text("ui-delete-for-good") : reader.sioul.text("ui-trash")
-                onClicked: reader.act("trash")
-            }
-            ActionButton {
-                id: junkButton
-
-                theme: reader.theme
-                folds: reader.folds
-                // In the junk, Not spam is what the message is there for.
-                rank: reader.role === "junk" ? 1 : 8
-                iconName: reader.role === "junk" ? "mail-mark-notjunk" : "mail-mark-junk"
-                label: reader.role === "junk" ? reader.sioul.text("ui-not-junk") : reader.sioul.text("ui-junk")
-                onClicked: reader.act(reader.role === "junk" ? "not-junk" : "junk")
-            }
-            // Leaving the list this message comes from, in one click (docs/client.md,
-            // "Unsubscribing"): only for mail that names a way out. When nothing
-            // may be contacted (forged, spam, nothing proven) it rests dimmed,
-            // and its tip (a tap, on a phone) says why. How text reads is in
-            // the page's ⚙.
-            ActionButton {
-                id: unsubscribeButton
-
-                readonly property var offer: reader.reading && reader.reading.unsubscribe ? reader.reading.unsubscribe : null
-
-                theme: reader.theme
-                folds: reader.folds
-                rank: 7
-                offered: unsubscribeButton.offer !== null
-                opacity: unsubscribeButton.offer !== null && unsubscribeButton.offer.offered ? 1 : 0.5
-                iconName: "dialog-cancel"
-                label: unsubscribeButton.offer !== null ? unsubscribeButton.offer.label : ""
-                ToolTip.visible: unsubscribeButton.hovered
-                ToolTip.text: reader.theme.plain(unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : "")
-                Accessible.description: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
-                onClicked: {
-                    const page = reader.sioul.unsubscribe(reader.key)
-                    if (page !== "")
-                        Qt.openUrlExternally(page)
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 4
+                    offered: reader.reading !== null && reader.reading.others
+                    iconName: "mail-reply-all"
+                    label: reader.sioul.text("ui-reply-all")
+                    onClicked: reader.window.compose("reply-all", reader.key)
                 }
-            }
-            ActionButton {
-                id: moreButton
+                ActionButton {
+                    id: forwardButton
 
-                theme: reader.theme
-                compact: true
-                iconName: "overflow-menu"
-                label: reader.sioul.text("ui-more")
-                display: AbstractButton.IconOnly
-                ToolTip.visible: moreButton.hovered
-                onClicked: more.popup(moreButton, 0, moreButton.height)
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 3
+                    iconName: "mail-forward"
+                    label: reader.sioul.text("ui-forward")
+                    onClicked: reader.window.compose("forward", reader.key)
+                }
+                // Something new tied to it: a task for what it asks, an event, a note, a contact.
+                ActionButton {
+                    id: addButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 5
+                    iconName: "list-add"
+                    label: reader.sioul.text("ui-add-new")
+                    // From ⋮ when it waits there: its menu opens under ⋮.
+                    onClicked: {
+                        const at = addButton.visible ? addButton : moreButton
+                        addMenu.now().popup(at, 0, at.height)
+                    }
+                }
+                // Tied to what is there already: a task, an event, a project, anything.
+                ActionButton {
+                    id: linkButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 6
+                    enabled: reader.source.uri !== ""
+                    iconName: "insert-link"
+                    label: reader.sioul.text("ui-link-existing")
+                    onClicked: {
+                        const at = linkButton.visible ? linkButton : moreButton
+                        linkMenu.now().popup(at, 0, at.height)
+                    }
+                }
+                Item {
+                    objectName: "readerActionsGap"
+                    width: Math.max(0, actionRow.width - actionRow.used - 1)
+                    height: 1
+                }
+                ActionButton {
+                    id: archiveButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 1
+                    offered: reader.role !== "archive" && reader.role !== "all"
+                    iconName: "archive-insert"
+                    label: reader.sioul.text("ui-archive")
+                    onClicked: reader.act("archive")
+                }
+                ActionButton {
+                    id: trashButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 2
+                    iconName: "user-trash"
+                    label: reader.role === "trash" ? reader.sioul.text("ui-delete-for-good") : reader.sioul.text("ui-trash")
+                    onClicked: reader.act("trash")
+                }
+                ActionButton {
+                    id: junkButton
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    // In the junk, Not spam is what the message is there for.
+                    rank: reader.role === "junk" ? 1 : 8
+                    iconName: reader.role === "junk" ? "mail-mark-notjunk" : "mail-mark-junk"
+                    label: reader.role === "junk" ? reader.sioul.text("ui-not-junk") : reader.sioul.text("ui-junk")
+                    onClicked: reader.act(reader.role === "junk" ? "not-junk" : "junk")
+                }
+                // Leaving the list this message comes from, in one click (docs/client.md,
+                // "Unsubscribing"): only for mail that names a way out. When nothing
+                // may be contacted (forged, spam, nothing proven) it rests dimmed,
+                // and its tip (a tap, on a phone) says why. How text reads is in
+                // the page's ⚙.
+                ActionButton {
+                    id: unsubscribeButton
+
+                    readonly property var offer: reader.reading && reader.reading.unsubscribe ? reader.reading.unsubscribe : null
+
+                    theme: reader.theme
+                    folds: reader.folds
+                    rank: 7
+                    offered: unsubscribeButton.offer !== null
+                    opacity: unsubscribeButton.offer !== null && unsubscribeButton.offer.offered ? 1 : 0.5
+                    iconName: "dialog-cancel"
+                    label: unsubscribeButton.offer !== null ? unsubscribeButton.offer.label : ""
+                    ToolTip.visible: unsubscribeButton.hovered
+                    ToolTip.text: reader.theme.plain(unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : "")
+                    Accessible.description: unsubscribeButton.offer !== null ? unsubscribeButton.offer.tip : ""
+                    onClicked: {
+                        const page = reader.sioul.unsubscribe(reader.key)
+                        if (page !== "")
+                            Qt.openUrlExternally(page)
+                    }
+                }
+                ActionButton {
+                    id: moreButton
+
+                    theme: reader.theme
+                    compact: true
+                    iconName: "overflow-menu"
+                    label: reader.sioul.text("ui-more")
+                    display: AbstractButton.IconOnly
+                    ToolTip.visible: moreButton.hovered
+                    onClicked: more.popup(moreButton, 0, moreButton.height)
+                }
             }
         }
 
