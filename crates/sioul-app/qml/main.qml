@@ -5946,21 +5946,44 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.saveWindow("rules-editor-preview"),
-                () => grabber.rulesEditor().close(),
-                // From a message: its first one of the last 30 days.
+                // On a phone, with its keyboard up: the window as Android leaves it (adjustResize,
+                // a keyboard of 330 points), the condition's value typed in; elsewhere nothing.
                 () => {
-                    const offered = JSON.parse(sioul.rulesStarts())
-                    window.ruleFromMail(offered.messages.length > 0 ? offered.messages[0].key : "")
+                    if (!window.phoneGrab)
+                        return
+                    window.height = 891 - 330
+                    const field = grabber.named(grabber.rulesEditor().contentItem, "ruleValueText")
+                    if (field)
+                        field.forceActiveFocus()
+                },
+                () => {},
+                () => {
+                    if (window.phoneGrab)
+                        grabber.saveWindow("rules-editor-keyboard")
+                },
+                () => {
+                    if (window.phoneGrab)
+                        window.height = 891
+                },
+                () => grabber.rulesEditor().close(),
+                // "Add a rule…": its starts, the messages found off the window's thread.
+                () => grabber.rulesTab().add(),
+                () => {},
+                () => {},
+                () => {},
+                () => grabber.saveWindow("rules-start"),
+                // From a message: the first one a rule can see, its draft in the editor.
+                () => {
+                    const start = grabber.rulesTab().starts
+                    if (start && start.offered.messages.length > 0)
+                        start.choose("message", start.offered.messages[0].key)
+                    else
+                        grabber.rulesTab().closeStart()
                 },
                 () => {},
                 () => {},
                 () => grabber.saveWindow("rules-from-message"),
-                () => ruleEditor.close(),
-                // "Add a rule…": three starts.
-                () => grabber.rulesTab().add(),
-                () => {},
-                () => grabber.saveWindow("rules-start"),
-                () => grabber.rulesTab().closeStart(),
+                () => grabber.rulesEditor().close(),
                 // The presets, and one's card.
                 () => {
                     parametersPage.scrollBy(-2)

@@ -50,6 +50,8 @@ ColumnLayout {
     readonly property bool narrow: tab.width < 520
     // The editor, once made.
     readonly property var editor: editorLater.item
+    // "Add a rule…"'s card, once made (the window's pictures).
+    readonly property var starts: startLater.item
 
     function reload() {
         tab.view = JSON.parse(tab.sioul.rulesView() || "null") || tab.view
