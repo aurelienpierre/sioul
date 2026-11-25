@@ -229,7 +229,9 @@ pub struct Paper {
     /// phone): shown "Not checked by an antivirus" until a device with one
     /// reads it, which takes the mark off, or takes the paper out on every
     /// device when it refuses the file (docs/rules.md, "Attachments kept as
-    /// papers"). An older Sioul rewriting the wallet drops the mark.
+    /// papers"). An older Sioul rewriting the wallet drops the mark; a
+    /// newer device puts it back from the rules' record while the file is
+    /// the one kept (`wiring::engine::Engine::restore_marks`).
     #[serde(default)]
     pub unchecked: bool,
 }

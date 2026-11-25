@@ -99,6 +99,12 @@ pub struct Act {
     /// (or found it changed and left it): never asked again.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub taken: bool,
+    /// A paper kept where no antivirus could read its file
+    /// (`papers::Paper::unchecked`): its mark is put back from here where a
+    /// device still on 0.1.0 dropped it (`engine::Engine::restore_marks`),
+    /// until a line `MARK_OFF` names the paper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unchecked: bool,
     /// The rule matched but could not act, for a reason that may pass (a
     /// message id, "rules-refused-…"): tried again at each pass for a week
     /// (`PENDING_MS`), said once. Such a line does not count as done.
@@ -117,6 +123,11 @@ pub struct Act {
     #[serde(skip)]
     pub device: String,
 }
+
+/// The act of a line that says a paper's mark "not checked" came off for
+/// good (`result` names the paper): an antivirus read it clean, or its file
+/// was replaced.
+pub const MARK_OFF: &str = "mark-off";
 
 /// How long a pending act is tried again (milliseconds): a week.
 pub const PENDING_MS: i64 = 7 * 86_400_000;

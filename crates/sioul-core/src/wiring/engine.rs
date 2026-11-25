@@ -204,12 +204,30 @@ pub fn held(judged: &Triaged) -> bool {
     matches!(judged.lane, Lane::SetAside | Lane::Hostile | Lane::Review | Lane::Screener | Lane::Public(_)) || unproven || in_junk_or_trash(&judged.card)
 }
 
-/// Whether a message's file lies in its account's junk or trash folder.
+/// Whether a message's file lies in its account's junk or trash folder:
+/// as the folders saved at the last sync say (the server's mark, else the
+/// folder's name then, `folders::saved`), whatever the provider calls it;
+/// by the directory's name alone only when no folder of the account is saved.
 fn in_junk_or_trash(card: &Card) -> bool {
+    use crate::folders::Role;
     let Some(dir) = card.path.as_deref().and_then(Path::parent).and_then(Path::parent) else { return false };
-    let named = card.account.as_deref().and_then(|account| crate::mailfind::folder_named(account, dir));
-    let name = named.unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().trim_start_matches('.').to_string()).unwrap_or_default());
-    matches!(crate::folders::role_of(&name, None), crate::folders::Role::Junk | crate::folders::Role::Trash)
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    // Maildir++: ".Junk" for a folder; the account's own directory is its inbox, no file read for it.
+    let saved = if name.starts_with('.') { card.account.as_deref().map(crate::folders::saved).unwrap_or_default() } else { Vec::new() };
+    let role = match saved.iter().find(|f| f.local == name) {
+        Some(folder) => folder.role,
+        None => crate::folders::role_of(name.trim_start_matches('.'), None),
+    };
+    matches!(role, Role::Junk | Role::Trash)
+}
+
+/// Whether this device has anything for the engine to do, which
+/// `arrival::arrived` and the window's and the phone's settling ask before
+/// building it: a rule that runs; an act an Undo elsewhere took back that
+/// this device has not taken back yet, even once no rule is left; or what
+/// `more` says (a paper kept unchecked, where an antivirus can be asked).
+pub fn has_work(rules: &Rules, record: &Acts, device: &str, more: impl FnOnce() -> bool) -> bool {
+    rules.running().next().is_some() || !record.to_take_back(&acts::device_name(device)).is_empty() || more()
 }
 
 /// When a message reached your provider (its file's time, `maildir::store`),
@@ -483,13 +501,15 @@ impl<'a> Engine<'a> {
     /// What every pass begins with, and what the caller runs when the
     /// rules' record or the papers arrive from another device: what this
     /// device wrote of pairs undone elsewhere taken back; the pending acts
-    /// of the rules that run tried again; the papers kept unchecked read by
-    /// this device's antivirus, those it refuses taken out.
+    /// of the rules that run tried again; the mark "not checked" put back
+    /// where an older Sioul dropped it (`restore_marks`); the papers kept
+    /// unchecked read by this device's antivirus, those it refuses taken out.
     pub fn settle(&self, tr: &Translator) -> Outcome {
         let mut out = Outcome { problems: self.problems.clone(), ..Outcome::default() };
         if let Err(e) = self.take_back() {
             out.problems.push(e);
         }
+        self.restore_marks();
         out.taken_out.extend(self.scan_unchecked());
         if !self.rules.read_only() {
             out.absorb(self.retry(tr));
@@ -1016,6 +1036,7 @@ impl<'a> Engine<'a> {
                             w.put(paper);
                         }
                     });
+                    work.records.push(mark_off(&id, base.at));
                 }
                 let tie = made_tie(id);
                 let there = work.ties.links.contains(&tie) || work.new_ties.contains(&tie);
@@ -1055,7 +1076,7 @@ impl<'a> Engine<'a> {
             if let Some(movement) = &movement {
                 ties.push(Edge { from: links::paper_uri(&id), to: links::movement_uri(movement), how: "link".into() });
             }
-            doings.push(Doing { act: Act { act: "paper".into(), result: links::paper_uri(&id), wrote: true, digest: sum.clone(), ..base.clone() }, ties, ..Doing::default() });
+            doings.push(Doing { act: Act { act: "paper".into(), result: links::paper_uri(&id), wrote: true, digest: sum.clone(), unchecked, ..base.clone() }, ties, ..Doing::default() });
         }
         clear(&scratch);
         let _ = std::fs::remove_dir(&folder);
@@ -1089,7 +1110,7 @@ impl<'a> Engine<'a> {
         }
         let Some(places) = self.places.as_ref() else { return Vec::new() };
         let Ok(wallet) = crate::papers::Wallet::load_at(places) else { return Vec::new() };
-        let mut out = Vec::new();
+        let (mut out, mut off) = (Vec::new(), Vec::new());
         for paper in wallet.papers.iter().filter(|p| p.unchecked) {
             let Some(file) = wallet.file_path(paper) else { continue };
             let Ok(meta) = std::fs::metadata(&file) else { continue };
@@ -1114,12 +1135,58 @@ impl<'a> Engine<'a> {
                             w.put(paper);
                         }
                     });
+                    off.push(mark_off(&paper.id, self.now.timestamp().as_millisecond()));
                 }
                 Scanned::Infected(_) => out.extend(take_out(places, &self.place, &paper.id).ok().flatten()),
                 Scanned::NoAntivirus | Scanned::Unanswered(_) => {}
             }
         }
+        let _ = acts::append(&self.place.log(), &off);
         out
+    }
+
+    /// The mark "not checked by an antivirus" put back on the papers a rule
+    /// kept unchecked (`Act::unchecked`) whose mark is gone though no
+    /// antivirus read them: a device still on 0.1.0 rewrote the wallet, and
+    /// knows no such mark. Put back while the paper's file is the very one
+    /// the rule kept (its digest); never once a `mark-off` line says an
+    /// antivirus read it clean, or that its file was replaced (written here
+    /// the first time that is seen). Their ids.
+    pub fn restore_marks(&self) -> Vec<String> {
+        let kept: Vec<&Act> = self.acts.all.iter().filter(|a| a.act == "paper" && a.wrote && a.unchecked && !a.digest.is_empty()).collect();
+        if kept.is_empty() {
+            return Vec::new();
+        }
+        let Some(places) = self.places.as_ref() else { return Vec::new() };
+        let Ok(wallet) = crate::papers::Wallet::load_at(places) else { return Vec::new() };
+        let gone: std::collections::HashSet<&str> = self.acts.all.iter().filter(|a| a.act == acts::MARK_OFF).map(|a| a.result.as_str()).collect();
+        let (mut back, mut off): (Vec<String>, Vec<Act>) = (Vec::new(), Vec::new());
+        for act in kept {
+            let id = links::id_of(&act.result);
+            if gone.contains(act.result.as_str()) || back.contains(&id) {
+                continue;
+            }
+            let Some(paper) = wallet.get(&id).filter(|p| !p.unchecked) else { continue };
+            let Some(bytes) = wallet.file_path(paper).and_then(|file| std::fs::read(file).ok()) else { continue };
+            if digest(&bytes) == act.digest {
+                back.push(id);
+            } else {
+                // Another file now (yours): the mark is never put back on it.
+                off.push(mark_off(&id, self.now.timestamp().as_millisecond()));
+            }
+        }
+        if !back.is_empty() {
+            let _ = crate::papers::Wallet::change_at(places, |w| {
+                for id in &back {
+                    if let Some(mut paper) = w.get(id).cloned() {
+                        paper.unchecked = true;
+                        w.put(paper);
+                    }
+                }
+            });
+        }
+        let _ = acts::append(&self.place.log(), &off);
+        back
     }
 
     /// The paper whose file holds these bytes (its digest), among those kept here.
@@ -1188,6 +1255,12 @@ fn take_out(places: &Places, place: &Place, id: &str) -> Result<Option<String>, 
         acts::append(&place.log(), &[Act { at: jiff::Timestamp::now().as_millisecond(), object: links::paper_uri(id), act: "paper".into(), result: links::paper_uri(id), refused: "rules-refused-infected".into(), ..Act::default() }])?;
     }
     Ok(title)
+}
+
+/// The line that says a paper's mark "not checked" came off for good: an
+/// antivirus read it clean, or its file was replaced.
+fn mark_off(id: &str, at: i64) -> Act {
+    Act { at, object: links::paper_uri(id), act: acts::MARK_OFF.into(), result: links::paper_uri(id), ..Act::default() }
 }
 
 /// A paper out of the wallet, its file deleted unless another paper names

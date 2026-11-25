@@ -163,3 +163,24 @@ fn a_rule_that_cannot_run_is_kept_off() {
     assert_eq!(all.iter().map(|m| (m.id.as_str(), m.editable)).collect::<Vec<_>>(), [("pay-a-bill", true), ("flat/visit", false)]);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A value of the wrong shape never matches, so the rule is kept off with a
+/// sentence that says how it reads: an address under "its sender's domain",
+/// a domain under "its sender", "18" for a time, a day, a size; the end of
+/// a "between" read too; the right shapes pass.
+#[test]
+fn values_of_the_wrong_shape_are_refused() {
+    let with = |field: &str, test: &str, value: &str, until: &str| {
+        let condition = Condition { field: field.into(), test: test.into(), value: vec![value.into()], until: until.into() };
+        Rule { when: When { conditions: vec![condition], ..tax_rule().when }, ..tax_rule() }
+    };
+    assert_eq!(with("sender-domain", "is", "ann@impots.example", "").problem(), Some("rules-problem-domain"));
+    assert_eq!(with("sender", "is", "impots.example", "").problem(), Some("rules-problem-address"));
+    assert_eq!(with("hour", "after", "18", "").problem(), Some("rules-problem-time"));
+    assert_eq!(with("date", "after", "1 Oct", "").problem(), Some("rules-problem-date"));
+    assert_eq!(with("size", "above", "big", "").problem(), Some("rules-problem-size"));
+    assert_eq!(with("hour", "between", "08:00", "18").problem(), Some("rules-problem-time"), "the end read too");
+    for (field, test, value, until) in [("sender-domain", "is", "impots.example", ""), ("sender", "is", "ann@impots.example", ""), ("hour", "between", "8:30", "18h"), ("date", "before", "2026-10-01", ""), ("size", "above", "5 MB", "")] {
+        assert_eq!(with(field, test, value, until).problem(), None, "{field} {value}");
+    }
+}
