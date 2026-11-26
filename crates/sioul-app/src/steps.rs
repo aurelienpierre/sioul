@@ -305,14 +305,16 @@ fn doses_ahead() -> bool {
     !health.doses(&now, &until).is_empty()
 }
 
-/// Whether mail is fetched at this step: at its rhythm, only when new mail
-/// is notified at all, and only when some mail fetched now could be told now
-/// (`tellable`, `could_tell`; the notifications' phase 2): what is not told
-/// now waits for its time and comes at the first round of it, or when Sioul
-/// opens. As usual: no round while you sleep or pause, nor while every
-/// address rests and nobody on Always through could reach you then.
+/// Whether mail is fetched at this step: at its rhythm, only when some mail
+/// fetched now could be told now, or a code is wanted (`tellable`:
+/// `could_tell`, the notifications' phase 2, which new mail's own switch
+/// gates; `fetches_for_codes`, which nothing of mail's gates, the Codes row
+/// being fixed at once): what is not told now waits for its time and comes
+/// at the first round of it, or when Sioul opens. As usual: no round while
+/// you sleep or pause with the phone put away, nor while every address rests
+/// and nobody on Always through could reach you then.
 fn mail_due(config: &Config, now: i64, last: i64, tellable: bool) -> bool {
-    config.reminders.mail && tellable && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
+    tellable && now - last >= MAIL_EVERY - 30 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
 /// Whether some new mail fetched now could be told now, as the matrix of
@@ -362,7 +364,8 @@ fn tellable_in(config: &Config, mode: &sioul_core::quiet::Mode, now: &jiff::Zone
     let moment = crate::hours::attention_at(mode, now);
     let attention = sioul_core::attention::Attention::of(config);
     let people = sioul_core::everywhere::People::load(&sioul_core::everywhere::People::default_path());
-    could_tell(config, &attention, people.people.iter().any(|p| !p.emails.is_empty()), &moment) || fetches_for_codes(&attention, &moment, in_use)
+    // New mail never told (its switch off, an exception) holds mail's own rounds, never a code's.
+    (config.reminders.mail && could_tell(config, &attention, people.people.iter().any(|p| !p.emails.is_empty()), &moment)) || fetches_for_codes(&attention, &moment, in_use)
 }
 
 /// The step waits this long at most for its exchange before telling its mail.
@@ -558,7 +561,7 @@ fn step(reason: &str) -> serde_json::Value {
     crate::mailnote::look();
     // Some mail fetched now could be told now, or a code is wanted: else no round (nothing told
     // would come of it). The batch is told after this step's exchange (`mail_round`).
-    let tells = config.reminders.mail && tellable(&config);
+    let tells = tellable(&config);
     let (exchanged_said, exchanged) = std::sync::mpsc::channel::<()>();
     let mut mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells).then(|| {
         MAILED.store(started, Ordering::Relaxed);
@@ -598,7 +601,7 @@ fn step(reason: &str) -> serde_json::Value {
     if mail.is_none() {
         let config = load_config();
         let now = jiff::Timestamp::now().as_second();
-        if config.reminders.mail && mail_due(&config, now, MAILED.load(Ordering::Relaxed), tellable(&config)) {
+        if mail_due(&config, now, MAILED.load(Ordering::Relaxed), tellable(&config)) {
             MAILED.store(now, Ordering::Relaxed);
             let (done, said) = std::sync::mpsc::channel::<()>();
             drop(done);
@@ -1237,8 +1240,9 @@ mod tests {
         assert!(!mail_due(&config, now, now - 60, true), "fetched a minute ago");
         assert!(mail_due(&config, now, now - MAIL_EVERY, true));
         assert!(!mail_due(&config, now, 0, false), "nothing could be told now");
+        // New mail's switch is `tellable`'s to read, for mail's own rounds: a code is fetched for whatever it says.
         config.reminders.mail = false;
-        assert!(!mail_due(&config, now, 0, true), "new mail not notified at all");
+        assert!(mail_due(&config, now, 0, true), "a code wanted: fetched, new mail's switch off");
         config.reminders.mail = true;
         config.accounts.clear();
         assert!(!mail_due(&config, now, 0, true), "no account");
@@ -1337,6 +1341,17 @@ mod tests {
         listed.add(sioul_core::everywhere::Person { name: "Lou".into(), emails: vec!["lou@example.org".into()], ..Default::default() }, None);
         listed.save(&people).unwrap();
         assert!(tellable_in(&config, &evening, &now, false), "someone on Always through: told to any address");
+        // New mail never told (its switch off, as an exception "New mail: never told" leaves it): mail's own rounds
+        // stop, Always through's too, but a code is fetched for with the phone in hand, at work time as asleep.
+        let mut silent = config.clone();
+        silent.reminders.mail = false;
+        let work = mode(sioul_core::areas::Time::Work, sioul_core::quiet::Reason::Working);
+        assert!(!tellable_in(&silent, &evening, &now, false), "no mail told: no round for mail's own sake");
+        assert!(!tellable_in(&silent, &work, &now, false), "work time, put away: no round");
+        for moment in [&evening, &work, &mode(sioul_core::areas::Time::Sleep, sioul_core::quiet::Reason::Sleep)] {
+            assert!(tellable_in(&silent, moment, &now, true), "the phone in hand: a code is fetched for");
+            assert!(mail_due(&silent, 10_000, 0, tellable_in(&silent, moment, &now, true)), "and its round is due");
+        }
         let _ = std::fs::remove_file(&people);
         // The step's order, read from its source: the settled notice taken away at every step,
         // outside the mail round; the batch held until the exchange.
