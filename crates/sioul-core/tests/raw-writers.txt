@@ -956,6 +956,9 @@ sioul-sync/src/scheduling.rs	save	1	sioul_core::filelock::replace(&path, text.as
 # sioul-sync/src/secret.rs: the scratch folder of the kept session's own test (kept_tests), with the keyring it started, removed when the test ends: no item.
 sioul-sync/src/secret.rs	drop	1	std::fs::remove_dir_all(&self.0)
 
+# sioul-sync/src/secret.rs: the keyring's lock on Android, an empty file opened to be locked (`held`, `.keyring.lock` in the data folder): no item.
+sioul-sync/src/secret.rs	held	1	std::fs::OpenOptions::new()
+
 # sioul-sync/src/share.rs:
 #   remove_if_old: the sharing's leftovers.
 sioul-sync/src/share.rs	remove_if_old	1	std::fs::remove_file(path)

@@ -18,28 +18,19 @@ const ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
 /// Messages read per address and round; a burst of mail is read over the next rounds.
 const PER_ROUND: usize = 20;
 
-fn key_entry() -> Result<keyring::Entry, SyncError> {
-    keyring::Entry::new("sioul", "Anthropic API key").map_err(|e| SyncError::Keyring(e.to_string()))
-}
-
 /// The key kept for Anthropic's API, if any (read as `secret` reads, through its session kept).
 pub fn api_key() -> Option<String> {
     crate::secret::named("Anthropic API key").filter(|k| !k.trim().is_empty())
 }
 
-/// Keeps the key, replacing any older one; an empty key forgets it.
+/// Keeps the key, replacing any older one; an empty key forgets it. Through
+/// the keyring's own writers (`secret::save_named`, `forget_named`), which
+/// take its lock on Android as every other secret's write does.
 pub fn save_api_key(key: &str) -> Result<(), SyncError> {
-    if crate::secret::testing() {
-        return Ok(());
-    }
-    let entry = key_entry()?;
     if key.trim().is_empty() {
-        return match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(SyncError::Keyring(e.to_string())),
-        };
+        return crate::secret::forget_named("Anthropic API key");
     }
-    entry.set_password(key.trim()).map_err(|e| SyncError::Keyring(e.to_string()))
+    crate::secret::save_named("Anthropic API key", key.trim())
 }
 
 /// What a round of reading did.

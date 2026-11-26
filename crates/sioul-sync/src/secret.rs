@@ -20,6 +20,106 @@ use sioul_core::config::Account;
 
 const SERVICE: &str = "sioul";
 
+/// Every read and write of the keyring: on Android, under one lock that all
+/// of Sioul's processes and threads take (`held`), the keyring's file read
+/// again first when another process changed it (`android::keyring_fresh`);
+/// elsewhere, and in an Android process without a Context, `f` alone. A lock
+/// another process holds past `KEYRING_WAIT` (a process frozen in the
+/// background while it held it) is a keyring error (`Busy`), never "none
+/// kept": a reader keeps its sign-in and tries again at its next run, a write
+/// fails visibly; nothing runs unlocked then, since the holder may be frozen
+/// in the middle of its write.
+fn guarded<T, E: From<Busy>>(f: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+    #[cfg(target_os = "android")]
+    if let Some(lock) = crate::android::keyring_lock() {
+        return held(&lock, KEYRING_WAIT, || {
+            crate::android::keyring_fresh(SERVICE);
+            f()
+        })
+        .unwrap_or_else(|busy| Err(E::from(busy)));
+    }
+    f()
+}
+
+/// The keyring held by another of Sioul's processes past `KEYRING_WAIT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "android", all(test, unix))), allow(dead_code))]
+struct Busy;
+
+/// What Busy says.
+const BUSY: &str = "the keyring is held by another of Sioul's processes";
+
+impl From<Busy> for keyring::Error {
+    fn from(_: Busy) -> Self {
+        keyring::Error::PlatformFailure(Box::new(std::io::Error::other(BUSY)))
+    }
+}
+
+impl From<Busy> for SyncError {
+    fn from(_: Busy) -> Self {
+        SyncError::Keyring(BUSY.into())
+    }
+}
+
+/// The longest a keyring call waits for another to let the lock go: fifty
+/// times a usual hold, and under the five seconds after which Android says a
+/// window does not answer (the window's own thread reads secrets too).
+#[cfg(any(target_os = "android", all(test, unix)))]
+const KEYRING_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// `f` with the lock at `path` held: between threads and between processes
+/// (`flock` on a file opened for the call: each opening is its own holder),
+/// asked again every 25 ms, `wait` at most, then `Busy`. Taken again by the
+/// thread holding it, it is held already. Where no lock can be taken at all
+/// (no folder for it, a file system without locks), `f` runs all the same,
+/// as before.
+#[cfg(any(target_os = "android", all(test, unix)))]
+fn held<T>(path: &std::path::Path, wait: std::time::Duration, f: impl FnOnce() -> T) -> Result<T, Busy> {
+    use rustix::fs::{FlockOperation, flock};
+    use rustix::io::Errno;
+    use std::cell::Cell;
+    use std::os::unix::fs::OpenOptionsExt;
+    thread_local! {
+        static HOLDING: Cell<bool> = const { Cell::new(false) };
+    }
+    if HOLDING.with(Cell::get) {
+        return Ok(f());
+    }
+    let file = path.parent().and_then(|folder| std::fs::create_dir_all(folder).ok()).and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).mode(0o600).open(path).ok());
+    let until = std::time::Instant::now() + wait;
+    let locked = match &file {
+        None => false,
+        Some(file) => loop {
+            match flock(file, FlockOperation::NonBlockingLockExclusive) {
+                Ok(()) => break true,
+                Err(Errno::INTR) => continue,
+                Err(Errno::WOULDBLOCK) if std::time::Instant::now() < until => std::thread::sleep(std::time::Duration::from_millis(25)),
+                Err(Errno::WOULDBLOCK) => {
+                    eprintln!("sioul: {BUSY} ({}) for {} s: this read or write is given up", path.display(), wait.as_secs_f32());
+                    return Err(Busy);
+                }
+                Err(_) => break false,
+            }
+        },
+    };
+    if !locked {
+        eprintln!("sioul: the keyring's lock could not be taken ({}): its secret read or written without it", path.display());
+    }
+    struct Release;
+    impl Drop for Release {
+        fn drop(&mut self) {
+            HOLDING.with(|holding| holding.set(false));
+        }
+    }
+    HOLDING.with(|holding| holding.set(true));
+    let release = Release;
+    let out = f();
+    drop(release);
+    // Closing the file lets the lock go.
+    drop(file);
+    Ok(out)
+}
+
 /// The name an account's password is kept under: `<login> on <server>`.
 fn user_of(account: &Account) -> Result<String, SyncError> {
     let host = account.host.as_deref().ok_or(SyncError::NoServer)?;
@@ -42,7 +142,7 @@ fn read_secret(user: &str) -> Result<Vec<u8>, keyring::Error> {
         kept::Read::None => return Err(keyring::Error::NoEntry),
         kept::Read::Elsewhere => {}
     }
-    Entry::new(SERVICE, user)?.get_secret()
+    guarded(|| Entry::new(SERVICE, user)?.get_secret())
 }
 
 /// The secret kept under `user`, as text (`read_secret`); one that is not
@@ -58,7 +158,7 @@ fn read_password(user: &str) -> Result<String, keyring::Error> {
         kept::Read::None => return Err(keyring::Error::NoEntry),
         kept::Read::Elsewhere => {}
     }
-    Entry::new(SERVICE, user)?.get_password()
+    guarded(|| Entry::new(SERVICE, user)?.get_password())
 }
 
 /// Keeps the password for the account, replacing any older one.
@@ -66,7 +166,7 @@ pub fn save(account: &Account, password: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    entry(account)?.set_password(password).map_err(|e| SyncError::Keyring(e.to_string()))
+    guarded(|| entry(account)?.set_password(password).map_err(|e| SyncError::Keyring(e.to_string())))
 }
 
 /// Whether the keyring is left alone: tests against a local server
@@ -186,7 +286,7 @@ pub fn save_pgp_passphrase(fingerprint: &str, passphrase: &str) -> Result<(), Sy
     if testing() {
         return Ok(());
     }
-    passphrase_entry(fingerprint)?.set_password(passphrase).map_err(|e| SyncError::Keyring(e.to_string()))
+    guarded(|| passphrase_entry(fingerprint)?.set_password(passphrase).map_err(|e| SyncError::Keyring(e.to_string())))
 }
 
 /// A secret kept under a name of Sioul's ("Bitwarden device token for …").
@@ -216,7 +316,7 @@ pub fn save_named(name: &str, secret: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    Entry::new(SERVICE, name).and_then(|e| e.set_password(secret)).map_err(|e| SyncError::Keyring(e.to_string()))
+    guarded(|| Entry::new(SERVICE, name).and_then(|e| e.set_password(secret))).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
 /// Forgets a secret kept under a name of Sioul's; nothing to do if there was none.
@@ -224,7 +324,7 @@ pub fn forget_named(name: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    match Entry::new(SERVICE, name).and_then(|e| e.delete_credential()) {
+    match guarded(|| Entry::new(SERVICE, name).and_then(|e| e.delete_credential())) {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(SyncError::Keyring(e.to_string())),
     }
@@ -259,7 +359,7 @@ pub fn save_named_bytes(name: &str, secret: &[u8]) -> Result<(), SyncError> {
     if secret.len() > ENTRY_BYTES {
         return Err(SyncError::Keyring(format!("{name}: {} bytes, more than an entry holds everywhere ({ENTRY_BYTES})", secret.len())));
     }
-    Entry::new(SERVICE, name).and_then(|e| e.set_secret(secret)).map_err(|e| SyncError::Keyring(e.to_string()))
+    guarded(|| Entry::new(SERVICE, name).and_then(|e| e.set_secret(secret))).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
 /// Forgets the account's password; nothing to do if there was none.
@@ -267,7 +367,7 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    match entry(account)?.delete_credential() {
+    match guarded(|| entry(account).map(|e| e.delete_credential()))? {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(SyncError::Keyring(e.to_string())),
     }
@@ -465,6 +565,87 @@ mod kept {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The keyring's lock on Android (`held`), tried on this computer: a
+    /// second holder (its own opening of the file, as another process's) waits
+    /// until the first let go, by order and not by time; the thread that holds
+    /// it takes it again without waiting; where no lock can be taken, the
+    /// secret is read or written all the same.
+    #[cfg(unix)]
+    #[test]
+    fn the_keyring_s_lock_lets_one_holder_at_a_time() {
+        use std::sync::{Arc, Mutex};
+        let folder = std::env::temp_dir().join(format!("sioul-keyring-lock-{}", std::process::id()));
+        let path = folder.join(".keyring.lock");
+        let said = Arc::new(Mutex::new(Vec::new()));
+        let (inside, first_in) = std::sync::mpsc::channel();
+        let first = {
+            let (path, said) = (path.clone(), said.clone());
+            std::thread::spawn(move || {
+                held(&path, KEYRING_WAIT, || {
+                    said.lock().unwrap().push("first in");
+                    inside.send(()).unwrap();
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    // Taken again by the thread holding it: held already, no wait.
+                    held(&path, KEYRING_WAIT, || said.lock().unwrap().push("first again")).unwrap();
+                    said.lock().unwrap().push("first out");
+                })
+                .unwrap()
+            })
+        };
+        first_in.recv().unwrap();
+        held(&path, KEYRING_WAIT, || said.lock().unwrap().push("second in")).unwrap();
+        first.join().unwrap();
+        assert_eq!(*said.lock().unwrap(), vec!["first in", "first again", "first out", "second in"]);
+        // No folder for it: the secret is read or written all the same.
+        assert_eq!(held(std::path::Path::new("/proc/no-such-folder/.keyring.lock"), KEYRING_WAIT, || 7), Ok(7));
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// A lock held past the wait (another process frozen while it held it):
+    /// the call is given up as a keyring error, never as "none kept", and
+    /// never runs unlocked; once let go, the next call takes it.
+    #[cfg(unix)]
+    #[test]
+    fn a_lock_held_too_long_is_a_keyring_error_never_none_kept() {
+        let folder = std::env::temp_dir().join(format!("sioul-keyring-busy-{}", std::process::id()));
+        let path = folder.join(".keyring.lock");
+        let (inside, first_in) = std::sync::mpsc::channel();
+        let (go, let_go) = std::sync::mpsc::channel::<()>();
+        let first = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                held(&path, KEYRING_WAIT, || {
+                    inside.send(()).unwrap();
+                    let_go.recv().unwrap();
+                })
+                .unwrap()
+            })
+        };
+        first_in.recv().unwrap();
+        let mut ran = false;
+        assert_eq!(held(&path, std::time::Duration::from_millis(100), || ran = true), Err(Busy), "given up");
+        assert!(!ran, "never run unlocked");
+        // What a reader and a writer then see: the keyring's error, not NoEntry.
+        assert!(matches!(keyring::Error::from(Busy), keyring::Error::PlatformFailure(_)));
+        assert!(matches!(SyncError::from(Busy), SyncError::Keyring(ref why) if why.contains("held by another")));
+        go.send(()).unwrap();
+        first.join().unwrap();
+        assert_eq!(held(&path, KEYRING_WAIT, || 1), Ok(1), "let go: taken");
+        assert!(KEYRING_WAIT <= std::time::Duration::from_secs(5), "under Android's five seconds of a window that does not answer");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The AI key goes through the keyring's own writers (with their lock on
+    /// Android): in a test build, which keeps nothing, kept and forgotten alike.
+    #[test]
+    fn the_ai_key_is_kept_through_the_keyring_s_writers() {
+        if !testing() {
+            return;
+        }
+        assert!(crate::shield_ai::save_api_key("sk-invented-0000").is_ok());
+        assert!(crate::shield_ai::save_api_key("  ").is_ok());
+    }
 
     /// CI's Windows job tests core, sync and the command line in one
     /// command, which turns the command line's `no-keyring` on for this

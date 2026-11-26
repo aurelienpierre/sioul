@@ -126,6 +126,8 @@ keyring = { workspace = true, features = ["apple-native"] }
 keyring.workspace = true
 android-keyring = { version = "0.2", default-features = false, features = ["ndk-context"] }
 ndk-context = "0.1"
+# The keyring's file read again when another process changed it (android.rs, `keyring_fresh`): android-keyring's own version.
+jni = "0.21"
 
 [dev-dependencies]
 # The engine's tests write their small modules in WebAssembly's text form (extensions/tests.rs).
