@@ -250,6 +250,38 @@ impl Availability {
     }
 }
 
+/// The folder a mirror of availability `id` is made in (`vdir::create_as`),
+/// the same on every device, so that two devices making it at once make one
+/// calendar on its server (an MKCALENDAR answered 405 counts as made):
+/// `busy-<the id's first eight letters>`; made again after `was` (its
+/// calendar gone), the next number (`busy-a1b2c3d4-2`, `-3`…), never the
+/// folder of before, which its server may still keep in a trash bin. The
+/// name a person reads is the mirror's own (`mirror_name`), in their language.
+pub fn mirror_folder(id: &str, was: Option<&str>) -> String {
+    let short: String = id.chars().filter(char::is_ascii_alphanumeric).take(8).collect::<String>().to_ascii_lowercase();
+    let base = format!("busy-{}", if short.is_empty() { "times" } else { &short });
+    match was.and_then(|w| w.strip_prefix(base.as_str())) {
+        Some("") => format!("{base}-2"),
+        Some(rest) => match rest.strip_prefix('-').and_then(|n| n.parse::<u32>().ok()) {
+            Some(n) => format!("{base}-{}", n + 1),
+            None => base,
+        },
+        None => base,
+    }
+}
+
+/// The accounts where `this` availability's mirror is a calendar an earlier
+/// one names too (`list`, the settings' list; two devices made one calendar
+/// for two availabilities, before 26 November 2026): one mirror calendar
+/// per availability, so the first keeps it and this one is given its own
+/// (`mirrors::keep`, `add_share`); until then nothing writes this one's
+/// blocks there, and no share of it is made on it. An availability not in
+/// the list yet comes after all of it.
+pub fn borrowed(list: &[Availability], this: &Availability) -> Vec<String> {
+    let earlier = list.iter().position(|a| a.id == this.id).map_or(list, |i| &list[..i]);
+    this.mirrors.iter().filter(|m| earlier.iter().any(|a| a.id != this.id && a.mirrors.iter().any(|o| o.account == m.account && o.calendar == m.calendar))).map(|m| m.account.clone()).collect()
+}
+
 /// What it was shared with before, by one person or by link (`[agenda.availability]`,
 /// until 5 November 2026): read once, then made an availability (`migrated`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1113,6 +1145,28 @@ mod tests {
 
     fn mine(agendas: &[&str]) -> Availability {
         Availability { id: "a1".into(), agendas: agendas.iter().map(|a| a.to_string()).collect(), ..Availability::default() }
+    }
+
+    /// A mirror's folder is the same on every device, and made again after
+    /// its calendar went, never the folder of before; two availabilities on
+    /// one calendar (settings of before 26 November 2026): the first keeps
+    /// it, the second is said to borrow it, in that account alone.
+    #[test]
+    fn one_mirror_calendar_per_availability() {
+        assert_eq!(mirror_folder("a1b2c3d4-5e6f-4a7b", None), "busy-a1b2c3d4");
+        assert_eq!(mirror_folder("a1b2c3d4-5e6f-4a7b", Some("old-busy-times")), "busy-a1b2c3d4", "a calendar of before: the availability's own folder");
+        assert_eq!(mirror_folder("a1b2c3d4-5e6f-4a7b", Some("busy-a1b2c3d4")), "busy-a1b2c3d4-2");
+        assert_eq!(mirror_folder("a1b2c3d4-5e6f-4a7b", Some("busy-a1b2c3d4-2")), "busy-a1b2c3d4-3");
+        assert_eq!(mirror_folder("A1B2C3D4", Some("busy-a1b2c3d4-x")), "busy-a1b2c3d4");
+        assert_eq!(mirror_folder("", None), "busy-times");
+        let on = |id: &str, calendars: &[(&str, &str)]| Availability { id: id.into(), mirrors: calendars.iter().map(|(a, c)| Mirror { account: (*a).into(), calendar: (*c).into(), transparent: false }).collect(), ..Availability::default() };
+        let list = [on("first", &[("cloud", "old-busy-times"), ("other", "busy-first")]), on("second", &[("cloud", "old-busy-times"), ("other", "busy-second")]), on("third", &[("other", "busy-third")])];
+        assert!(borrowed(&list, &list[0]).is_empty(), "the first keeps it");
+        assert_eq!(borrowed(&list, &list[1]), vec!["cloud".to_string()], "the second borrows it there alone");
+        assert!(borrowed(&list, &list[2]).is_empty());
+        let moved = on("second", &[("cloud", "busy-second"), ("other", "busy-second")]);
+        assert!(borrowed(&list, &moved).is_empty(), "given its own: read against the list as it was");
+        assert_eq!(borrowed(&list, &on("new", &[("other", "busy-third")])), vec!["other".to_string()], "one not in the list yet comes after it");
     }
 
     /// A day off is busy all day in the availability you share (decision 3

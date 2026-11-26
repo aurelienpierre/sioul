@@ -137,6 +137,13 @@ sioul-app/src/organized.rs	tidy_once	1	std::fs::write(&mark, VERSION)
 # sioul-app/src/mirrors.rs: this device's memory of what it asked of the servers for your availabilities, and of the plan's time for busy tasks (state): no item.
 sioul-app/src/mirrors.rs	save	1	sioul_sync::share::write_atomically(&memo_path(), text.as_bytes())
 
+# sioul-app/src/outbox.rs: this device's memory of the meetings whose server's word on each guest it reads back (state, its own): no item.
+sioul-app/src/outbox.rs	with_memory	1	sioul_core::filelock::replace(&path, text.as_bytes())
+# sioul-app/src/outbox.rs: a message of this device's outbox claimed while it is sent (`<id>.sending`), given back, or done with (state, its own): a message, no item.
+sioul-app/src/outbox.rs	unclaim	1	std::fs::rename(sending_path(&draft.id), draft.path())
+sioul-app/src/outbox.rs	finished	1	std::fs::remove_file(sending_path(id))
+sioul-app/src/outbox.rs	send_due	1	std::fs::rename(draft.path(), sending_path(&draft.id))
+sioul-app/src/outbox.rs	send_again	1	std::fs::remove_file(sending_path(&draft.id))
 # sioul-app/src/outside.rs: the outside listener's socket: no item.
 sioul-app/src/outside.rs	stop_listening	1	std::fs::remove_file(path)
 sioul-app/src/outside.rs	listen_at	1	std::fs::remove_file(path)

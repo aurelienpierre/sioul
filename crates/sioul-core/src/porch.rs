@@ -2506,6 +2506,28 @@ mod tests {
         assert_eq!(triage(forged, &strict).lane, Lane::SetAside);
     }
 
+    /// An invitation (iMIP: a text/calendar part, METHOD:REQUEST) from a
+    /// person you know is shown among the people you know, as any message of
+    /// theirs;
+    /// from an address you have not let in, it waits in the screener with its
+    /// reason ("the first message"), never lost and never set aside for
+    /// being an invitation.
+    #[test]
+    fn an_invitation_from_someone_you_know_is_shown() {
+        let senders = Senders { safe: SenderList::parse("jane@example.org"), ..Senders::default() };
+        let none = SenderList::default();
+        let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &[], now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let invitation = |from: &str| {
+            let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:lunch-1\r\nDTSTART:20991110T120000Z\r\nDTEND:20991110T130000Z\r\nSUMMARY:Lunch\r\nORGANIZER:mailto:jane@example.org\r\nATTENDEE:mailto:sam@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+            Card::from_bytes(format!("From: {from}\r\nTo: sam@example.net\r\nSubject: Invitation: Lunch\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"m\"\r\n\r\n--m\r\nContent-Type: multipart/alternative; boundary=\"a\"\r\n\r\n--a\r\nContent-Type: text/plain\r\n\r\nLunch on the 10th?\r\n--a\r\nContent-Type: text/calendar; method=REQUEST; charset=utf-8\r\n\r\n{ics}--a--\r\n--m\r\nContent-Type: application/ics; name=invite.ics\r\nContent-Disposition: attachment; filename=invite.ics\r\n\r\n{ics}--m--\r\n").as_bytes()).unwrap()
+        };
+        let known = triage(invitation("Jane <jane@example.org>"), &ctx);
+        assert_eq!((known.lane, known.reasons.last()), (Lane::People, Some(&Reason::KnownPerson)), "{:?}", known.reasons);
+        let stranger = triage(invitation("Jane <jane.other@elsewhere.example>"), &ctx);
+        assert_eq!(stranger.lane, Lane::Screener, "{:?}", stranger.reasons);
+        assert!(stranger.reasons.iter().any(|r| matches!(r, Reason::FirstMessage | Reason::NotAuthenticated)), "said why: {:?}", stranger.reasons);
+    }
+
     fn contact(categories: &[&str], emails: &[&str]) -> crate::contacts::Contact {
         crate::contacts::Contact {
             categories: categories.iter().map(|c| c.to_string()).collect(),

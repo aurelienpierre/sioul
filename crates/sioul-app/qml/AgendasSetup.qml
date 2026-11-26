@@ -298,6 +298,44 @@ ColumnLayout {
                         onTapped: one.modelData.mirror === true ? setup.availabilityAsked() : setup.toggle(one.modelData.id)
                     }
                 }
+                // A calendar of busy blocks: removed on its own line, after one question (it stops sharing).
+                Button {
+                    objectName: "agendaMirrorRemove"
+                    visible: one.modelData.mirror === true && setup.removing !== one.modelData.id
+                    text: setup.sioul.text("agenda-remove")
+                    onClicked: setup.askRemoval(one.modelData.id)
+                }
+            }
+            // The question a calendar of busy blocks asks before it goes: who stops seeing your busy times.
+            ColumnLayout {
+                visible: one.modelData.mirror === true && setup.removing === one.modelData.id
+                Layout.fillWidth: true
+                Layout.leftMargin: 34
+                spacing: 4
+
+                Label {
+                    objectName: "agendaMirrorRemoveQuestion"
+                    Layout.fillWidth: true
+                    text: setup.removal.sentence || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: setup.theme.text
+                }
+                RowLayout {
+                    spacing: 8
+
+                    Button {
+                        objectName: "agendaMirrorRemoveConfirm"
+                        visible: setup.removal.act === "mirror" || setup.removal.act === "remove"
+                        text: setup.sioul.text(setup.removal.act === "mirror" ? "agenda-remove-mirror-confirm" : "agenda-remove-confirm")
+                        onClicked: setup.remove(one.modelData.id)
+                    }
+                    Button {
+                        flat: true
+                        text: setup.sioul.text("agenda-keep")
+                        onClicked: setup.removing = ""
+                    }
+                }
             }
 
             GridLayout {

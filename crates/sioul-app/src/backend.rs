@@ -1183,6 +1183,17 @@ pub mod qobject {
         #[qinvokable]
         fn delete_said(self: &Sioul, key: &QString, start: f64, only_this: bool) -> QString;
 
+        /// What a meeting you organize says of its invitation on its card: JSON
+        /// {line, act}, act "accounts" (it waits for an account), "send-now"
+        /// (made before Sioul sent invitations), or "" (`outbox::card_line`).
+        #[qinvokable]
+        fn invitation_line(self: &Sioul, key: &QString) -> QString;
+
+        /// The button of a meeting's invitation line, by its `act` ("send-now",
+        /// "send-by-mail", "send-again": `pim::invitation_act`): the line said.
+        #[qinvokable]
+        fn invitation_act(self: Pin<&mut Sioul>, key: &QString, act: &QString) -> QString;
+
         /// The contact with this address, by file; empty when none.
         #[qinvokable]
         fn contact_for(self: &Sioul, address: &QString) -> QString;
@@ -5446,6 +5457,8 @@ impl qobject::Sioul {
         }
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
+        // The invitations Sioul sends itself, and its servers' word on those they send (outbox.rs).
+        crate::outbox::start(&self.qt_thread(), &self.shared());
         self.as_mut().set_reading(QString::from(&reading_json()));
         notes_folder_now(&self.qt_thread(), &self.shared());
         storage_move_now(&self.qt_thread());
@@ -6950,6 +6963,14 @@ impl qobject::Sioul {
 
     fn delete_said(&self, key: &QString, start: f64, only_this: bool) -> QString {
         QString::from(&pim::delete_said(&key.to_string(), start as i64, only_this))
+    }
+
+    fn invitation_line(&self, key: &QString) -> QString {
+        QString::from(&pim::invitation_line(&key.to_string()))
+    }
+
+    fn invitation_act(self: Pin<&mut Self>, key: &QString, act: &QString) -> QString {
+        QString::from(&pim::invitation_act(&key.to_string(), &act.to_string()))
     }
 
     fn contact_for(&self, address: &QString) -> QString {

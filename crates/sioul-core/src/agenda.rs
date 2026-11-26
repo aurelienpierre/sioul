@@ -4921,13 +4921,15 @@ mod tests {
     ];
     /// The window's acts that write through the door (organized.rs), named by
     /// the agenda's own writers alone (pim.rs).
-    const DOOR_ACTS: [&str; 7] = ["write", "put_back", "delete", "undelete", "replied", "adopt", "tidy_once"];
+    const DOOR_ACTS: [&str; 8] = ["write", "put_back", "delete", "undelete", "replied", "adopt", "tidy_once", "leave_to_you"];
     /// Which of pim.rs's functions call which act (second review of the
     /// organizer's door, N10): the form's save, a drag and its Undo, a
     /// deletion and its Undo, a status and its Undo, one time left out and its
     /// Undo, a guest's answer read, your own invitation added, the window's
-    /// start. A new caller in pim.rs (a watcher, a reader's thread) fails here too.
-    const DOOR_ACT_CALLERS: [(&str, &str); 15] = [
+    /// start, and the guests a server did not deliver to taken over by the
+    /// window's sending thread (the owner's word of 26 November 2026). A new
+    /// caller in pim.rs (a watcher, a reader's thread) fails here too.
+    const DOOR_ACT_CALLERS: [(&str, &str); 16] = [
         ("write_event_with", "write"),
         ("write_event_with", "put_back"),
         ("move_event", "put_back"),
@@ -4943,6 +4945,7 @@ mod tests {
         ("invitation", "replied"),
         ("answer", "adopt"),
         ("tidy_meetings", "tidy_once"),
+        ("guests_taken_over", "leave_to_you"),
     ];
 
     /// Where `word` stands in `line` as a whole name (no letter, digit or `_`

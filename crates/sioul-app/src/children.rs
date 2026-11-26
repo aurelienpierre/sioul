@@ -1038,7 +1038,7 @@ mod tests {
         assert_eq!(mine.items().len(), 1);
         // Asked of Sam, who answers in their own Sioul: the stand-in goes, no draft.
         // Counted for this event alone: other tests draft beside this one (the meetings you organize).
-        let drafts_here = || sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("part3-dentist")) || d.to.iter().any(|t| t.contains("sam@example.org"))).count();
+        let drafts_here = || sioul_core::compose::Draft::all().into_iter().chain(sioul_core::compose::Draft::outbox_all()).filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("part3-dentist")) || d.to.iter().any(|t| t.contains("sam@example.org"))).count();
         let drafts_before = drafts_here();
         let (files, _) = take_files(&key, 0, "other", &me).unwrap().unwrap();
         assert!(!stand_in.exists() && files.iter().any(|f| f.path == stand_in && f.after.is_none()), "{files:?}");

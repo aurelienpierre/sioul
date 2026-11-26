@@ -767,6 +767,35 @@ pub(crate) fn event(key: &str) -> String {
         .unwrap_or_default()
 }
 
+/// A meeting you organize whose server did not deliver some guests'
+/// invitation, written with them left to you from now on
+/// (`organized::leave_to_you`), for the window's sending thread
+/// (`outbox::take_over`), only over the text it read.
+pub(crate) fn guests_taken_over(path: &Path, was: &str, marked: &str) -> Result<(), String> {
+    crate::organized::leave_to_you(path, was, marked)
+}
+
+/// What a meeting you organize says of its invitation on its card (`outbox::card_line`), as JSON.
+pub(crate) fn invitation_line(key: &str) -> String {
+    ours(key).map(|path| json(&crate::outbox::card_line(&path))).unwrap_or_else(|| json(&serde_json::json!({ "line": "", "act": "" })))
+}
+
+/// The button of a meeting's invitation line (`outbox::card_line`): "send-now"
+/// (a meeting made before, `outbox::send_now`), "send-by-mail" (guests its
+/// server gave no sign for, `send_by_mail`), "send-again" (a message not
+/// known to have left, `send_again`). What the status line says.
+pub(crate) fn invitation_act(key: &str, act: &str) -> String {
+    let done = ours(key).ok_or_else(|| tr().text("agenda-gone", None)).and_then(|path| match act {
+        "send-now" => crate::outbox::send_now(&path),
+        "send-by-mail" => crate::outbox::send_by_mail(&path),
+        "send-again" => crate::outbox::send_again(&path),
+        _ => Err(tr().text("agenda-gone", None)),
+    });
+    match done {
+        Ok(said) | Err(said) => said,
+    }
+}
+
 /// An event's file moved to another calendar (its editor, 21 October 2026),
 /// of any account, this device's own to a server's above all, so that an
 /// event filed there by mistake reaches your other devices: noted, written
@@ -2445,7 +2474,7 @@ mod tests {
         assert_eq!(saved.legs.len(), 1, "{:?}", saved.legs);
         let local = |h: i8, m: i8| jiff::civil::date(2099, 10, 30).at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().timestamp().as_second();
         assert_eq!(agenda::first_times(&std::fs::read_to_string(&bus).unwrap(), &zone), Some((local(8, 10), local(8, 35))));
-        for draft in sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("UID:legs-organized-doctor"))) {
+        for draft in sioul_core::compose::Draft::all().into_iter().chain(sioul_core::compose::Draft::outbox_all()).filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains("UID:legs-organized-doctor"))) {
             draft.discard();
         }
         let _ = invited;
@@ -2789,7 +2818,7 @@ mod tests {
         for (to, how) in [("mid:landlord-1@mail.example", "source"), ("file:///srv/papers/scan.pdf", "link"), ("sioul:project/tenancy", "project")] {
             assert!(ties.links.iter().any(|e| e.from == event && e.to == to && e.how == how), "{to} ({how}) among your ties: {:?}", ties.links);
         }
-        let drafts: Vec<_> = sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))).collect();
+        let drafts: Vec<_> = sioul_core::compose::Draft::all().into_iter().chain(sioul_core::compose::Draft::outbox_all()).filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))).collect();
         assert_eq!(drafts.len(), 1, "the invitation drafted");
         assert!(!drafts[0].calendar.as_deref().unwrap().contains("X-SIOUL") && !drafts[0].calendar.as_deref().unwrap().contains("landlord"));
         // The form again: its fields read from your own file, the time before changed there.
@@ -2808,7 +2837,7 @@ mod tests {
         set_own_time(&saved.path, &reminded).unwrap();
         assert_eq!(std::fs::read_to_string(&saved.path).unwrap(), before, "the meeting as it was");
         assert_eq!(own().remind, "60");
-        for draft in sioul_core::compose::Draft::all().into_iter().filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))) {
+        for draft in sioul_core::compose::Draft::all().into_iter().chain(sioul_core::compose::Draft::outbox_all()).filter(|d| d.calendar.as_deref().is_some_and(|ics| ics.contains(&uid))) {
             draft.discard();
         }
         let _ = sioul_core::own_time::set(&sioul_core::own_time::default_path(), &uid, None);

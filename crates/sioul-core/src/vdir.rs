@@ -1067,12 +1067,17 @@ pub fn remove_subscribed(id: &str) -> Result<(), String> {
 /// extended MKCOL). `components` says what a calendar holds ("VTODO" for a
 /// task list). Returns it; an id already taken gets a number.
 pub fn create(kind: Kind, account: &str, name: &str, color: Option<&str>, components: &[&str]) -> Result<Collection, String> {
+    create_as(kind, account, &crate::config::slug(name), name, color, components)
+}
+
+/// `create` in the folder `id` (a mirror's, the same on every device:
+/// `availability::mirror_folder`), a number added when it is taken here.
+pub fn create_as(kind: Kind, account: &str, id: &str, name: &str, color: Option<&str>, components: &[&str]) -> Result<Collection, String> {
     // The account comes from the window or an agent (the MCP): never a path.
     if !one_folder(account) {
         return Err(format!("{account}: not an account"));
     }
-    let base = crate::config::slug(name);
-    let base = if base.is_empty() { "list".to_string() } else { base };
+    let base = if id.trim().is_empty() { "list".to_string() } else { folder_id(id) };
     let taken = |id: &str| kind.root().join(account).join(id).exists() || state_path(account, kind, id).exists();
     let id = std::iter::once(base.clone()).chain((2..100).map(|n| format!("{base}-{n}"))).find(|id| !taken(id)).ok_or_else(|| format!("{name}: no free name"))?;
     // "local": kept here only, no server to create it on. Its state first,
@@ -1248,6 +1253,19 @@ pub fn agreed_hash(path: &Path) -> Option<String> {
     let (dir, file) = (path.parent()?, path.file_name()?.to_str()?);
     let collection = collections(Kind::Calendars).into_iter().find(|c| c.dir == dir)?;
     State::load(&collection.state_path()).items.into_iter().find(|i| i.file == file).map(|i| i.hash).filter(|h| !h.is_empty())
+}
+
+/// Whether a calendar item's file is its server's own copy: the sync's last
+/// word on it is this file (`agreed_hash`), with the ETag its server gave,
+/// and no send of it waits for its copy to be fetched again
+/// (`ItemState::sent`: a server that schedules answers a PUT without an
+/// ETag, having changed what it stored). Only such a copy holds the server's
+/// word on a meeting's guests (`SCHEDULE-STATUS`).
+pub fn server_copy(path: &Path) -> bool {
+    let (Some(dir), Some(file)) = (path.parent(), path.file_name().and_then(|f| f.to_str())) else { return false };
+    let Some(collection) = collections(Kind::Calendars).into_iter().find(|c| c.dir == dir) else { return false };
+    let Ok(text) = std::fs::read(path) else { return false };
+    State::load(&collection.state_path()).items.into_iter().find(|i| i.file == file).is_some_and(|i| !i.etag.is_empty() && i.sent.is_empty() && i.hash == content_hash(&text))
 }
 
 /// A short hash of a file's content, to tell whether it changed since sync.

@@ -72,7 +72,39 @@ struct Memo {
     /// The availabilities the migration made here, to say once.
     #[serde(default)]
     moved: Vec<String>,
+    /// Each mirror seen here without its calendar, by "`<availability>`:`<account>`", and since when (`keep`).
+    #[serde(default)]
+    missing: BTreeMap<String, i64>,
+    /// Each mirror made again here, by "`<availability>`:`<account>`", until its calendar is on its server.
+    #[serde(default)]
+    remade: BTreeSet<String>,
+    /// Why a mirror could not be made (again), by "`<availability>`:`<account>`": said on its shares' lines.
+    #[serde(default)]
+    problems: BTreeMap<String, String>,
+    /// Shares made on a calendar another availability keeps, to take back there once (`marks`).
+    #[serde(default)]
+    take_back: Vec<TakeBack>,
 }
+
+/// A share made on a calendar another availability keeps (settings of before
+/// 26 November 2026), its own calendar made since: taken back there, unless
+/// that availability shares the same way with the same.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct TakeBack {
+    account: String,
+    /// The calendar's address on its server.
+    url: String,
+    way: String,
+    #[serde(default)]
+    who: String,
+}
+
+/// How long a mirror is seen without its calendar here before `keep` makes
+/// it again, and only once its account was synced since (`synced_since`): a
+/// removal on another device reaches this one by two ways, its calendar by
+/// the sync and its availability's settings by the sharing, and the second
+/// may come later. Making it again meanwhile would bring back what was removed.
+const MISSING_FOR: i64 = 10 * 60;
 
 fn memo_path() -> PathBuf {
     sioul_core::config::state_dir().join("availability.toml")
@@ -208,6 +240,166 @@ pub(crate) fn mirror_name(config: &Config, account: &str) -> String {
     match config.every_account().find(|a| a.id == account).and_then(|a| a.name.clone()).map(|n| n.trim().to_string()).filter(|n| !n.is_empty()) {
         Some(name) => say("availability-mirror-name", &[("name", name)]),
         None => tr().text("availability-calendar", None),
+    }
+}
+
+// ---------------------------------------------------------------- a mirror made again
+
+/// A mirror's key in this device's memo: "`<availability>`:`<account>`".
+fn mirror_key(availability: &str, account: &str) -> String {
+    format!("{availability}:{account}")
+}
+
+/// The accounts where `availability`'s mirror is a calendar an earlier
+/// availability keeps (`availability::borrowed`).
+fn borrowed_in(config: &Config, availability: &Availability) -> Vec<String> {
+    av::borrowed(&config.agenda.availabilities, availability)
+}
+
+/// An availability's own calendar of blocks in an account, here: none when
+/// it has no mirror there, when its calendar is gone, or when an earlier
+/// availability keeps that calendar (`borrowed_in`).
+fn own_mirror(config: &Config, availability: &Availability, account: &str) -> Option<Collection> {
+    let mirror = availability.mirror(account)?;
+    if borrowed_in(config, availability).iter().any(|a| a == account) {
+        return None;
+    }
+    collection(&mirror.account, &mirror.calendar)
+}
+
+/// Whether this device synced an account's calendars since `at`: one of them
+/// pulled whole and current then (`State::pulled`).
+fn synced_since(account: &str, at: i64) -> bool {
+    vdir::collections(Kind::Calendars).iter().filter(|c| c.account == account).any(|c| State::load(&c.state_path()).pulled.is_some_and(|p| p >= at))
+}
+
+/// An availability's mirror made (again) in an account, written into the
+/// settings: its own folder (`availability::mirror_folder`, the same on
+/// every device, so that two devices making it make one calendar), adopted
+/// when that folder is here already (another device made it), its name the
+/// mirror's; each of its shares there waiting for its server again, a link's
+/// link with it, to be made on this calendar. A share made on a calendar
+/// another availability keeps is taken back there (`TakeBack`, by `marks`).
+/// Sent by the next sync. Returns the availability as written.
+fn make_mirror(config: &Config, availability: &Availability, account: &str) -> Result<Availability, String> {
+    let key = mirror_key(&availability.id, account);
+    let was = availability.mirror(account).map(|m| m.calendar.clone());
+    let borrowed = borrowed_in(config, availability).iter().any(|a| a == account);
+    let folder = av::mirror_folder(&availability.id, was.as_deref());
+    let made = match collection(account, &folder) {
+        Some(here) => Ok(here),
+        None => vdir::create_as(Kind::Calendars, account, &folder, &mirror_name(config, account), None, &["VEVENT"]),
+    };
+    let made = match made {
+        Ok(made) => made,
+        Err(problem) => {
+            with_memo(|m| m.problems.insert(key.clone(), problem.clone()));
+            return Err(problem);
+        }
+    };
+    let old_url = was.as_deref().filter(|_| borrowed).and_then(|c| collection(account, c)).and_then(|c| on_server(&c));
+    let mut written = availability.clone();
+    written.mirrors.retain(|m| m.account != account);
+    written.mirrors.push(Mirror { account: account.to_string(), calendar: made.id.clone(), transparent: false });
+    let mut back = Vec::new();
+    for share in written.shares.iter_mut().filter(|s| s.account == account && s.way().is_some_and(Way::mirrored)) {
+        if let Some(url) = old_url.as_ref().filter(|_| !share.made.is_empty()) {
+            back.push(TakeBack { account: account.to_string(), url: url.clone(), way: share.way.clone(), who: share.who.clone() });
+        }
+        share.made.clear();
+        if share.way() == Some(Way::MirrorLink) {
+            share.link.clear();
+        }
+    }
+    sioul_core::agendas::put_availability(&crate::backend::config_path(), &written)?;
+    with_memo(|m| {
+        m.problems.remove(&key);
+        m.missing.remove(&key);
+        m.remade.insert(key.clone());
+        m.take_back.extend(back);
+    });
+    Ok(written)
+}
+
+/// Whether the sharing caught up since `at`: not set up here, or an exchange
+/// that went well since (`share::last_exchange`). A removal on another
+/// device reaches this one by the sharing's settings as well as by the
+/// calendar's sync.
+fn sharing_since(at: i64) -> bool {
+    !crate::share::configured() || crate::share::last_exchange().is_some_and(|(when, well)| well && when >= at)
+}
+
+/// Each mirror a share of `availability` needs that is not its own calendar
+/// here made (again) by `make_mirror`: at once when it has no entry, or when
+/// an earlier availability keeps its calendar (`borrowed_in`); when its
+/// calendar is gone, once seen gone for `MISSING_FOR`, its account synced
+/// since (`synced_since`) and the sharing caught up since (`sharing`, which
+/// `keep` gives as `sharing_since`): a removal on another device arrives by
+/// both, and the calendar's sync alone would bring back a share you just
+/// stopped. Its account gone from Sioul: said on its shares' lines, nothing
+/// made. Returns the availability as it now is.
+fn made_again(config: &Config, availability: &Availability, now: i64, sharing: &dyn Fn(i64) -> bool) -> Availability {
+    let mut current = availability.clone();
+    let accounts: BTreeSet<String> = current.shares.iter().filter(|s| s.way().is_some_and(Way::mirrored)).map(|s| s.account.clone()).collect();
+    for account in accounts {
+        let key = mirror_key(&current.id, &account);
+        if !config.accounts.iter().any(|a| a.id == account && a.is_dav()) {
+            with_memo(|m| m.problems.insert(key.clone(), tr().text("availability-mirror-no-account", None)));
+            continue;
+        }
+        let borrowed = borrowed_in(config, &current).contains(&account);
+        let entry = current.mirror(&account).cloned();
+        let here = entry.as_ref().and_then(|m| collection(&m.account, &m.calendar));
+        let due = match (&entry, &here) {
+            (None, _) => true,
+            (Some(_), _) if borrowed => true,
+            (Some(_), Some(calendar)) => {
+                // There: no longer missing; made again and on its server, said no more.
+                let on = on_server(calendar).is_some();
+                with_memo(|m| {
+                    m.missing.remove(&key);
+                    m.problems.remove(&key);
+                    if on {
+                        m.remade.remove(&key);
+                    }
+                });
+                false
+            }
+            (Some(_), None) => {
+                let since = with_memo(|m| *m.missing.entry(key.clone()).or_insert(now));
+                now - since >= MISSING_FOR && synced_since(&account, since) && sharing(since)
+            }
+        };
+        if !due {
+            continue;
+        }
+        match make_mirror(config, &current, &account) {
+            Ok(written) => current = written,
+            Err(problem) => eprintln!("availability: {key}: {problem}"),
+        }
+    }
+    current
+}
+
+/// What a mirrored share's line says of its calendar while it is not there
+/// (`servers::share_line`): why it could not be made again; that it is
+/// being made again, while it is gone, borrowed from another availability,
+/// or made again here and not on its server yet. None while it is there,
+/// and for a share no mirror carries.
+pub(crate) fn mirror_line(config: &Config, availability: &Availability, share: &Share) -> Option<String> {
+    if !share.way().is_some_and(Way::mirrored) {
+        return None;
+    }
+    let key = mirror_key(&availability.id, &share.account);
+    let memo = Memo::load();
+    if let Some(problem) = memo.problems.get(&key) {
+        return Some(say("availability-share-remake-failed", &[("why", problem.clone())]));
+    }
+    let remaking = || say("availability-share-remaking", &[("server", server_name(config, &share.account))]);
+    match own_mirror(config, availability, &share.account) {
+        Some(here) if on_server(&here).is_none() && memo.remade.contains(&key) => Some(remaking()),
+        Some(_) => None,
+        None => Some(remaking()),
     }
 }
 
@@ -363,13 +555,15 @@ pub(crate) fn keep(config: &Config, now: i64) -> Vec<String> {
     let words = av::Words { busy: &busy, not_known: &not_known };
     let mut changed: Vec<String> = Vec::new();
     for (availability, view) in fresh {
+        let availability = &made_again(config, availability, now, &sharing_since);
         // Only what is marked busy: the busy tasks' times, worked out here or carried over (module's words).
         let times = busy_times_now(config, Some(&availability.id), &tasks, &events, now);
         let task_time = times.time();
         let files = av::mirror_files(&events, availability, &words, &health, &task_time, now);
         let mut wrote = false;
         for mirror in &availability.mirrors {
-            let Some(collection) = collection(&mirror.account, &mirror.calendar) else { continue };
+            // Its own calendar alone: never one another availability keeps (one mirror calendar each).
+            let Some(collection) = own_mirror(config, availability, &mirror.account) else { continue };
             if write_files(&collection, &files) {
                 wrote = true;
                 changed.push(mirror.account.clone());
@@ -480,18 +674,26 @@ fn google_calendar(place: &str) -> Option<String> {
     calendars::google_id(&State::load(&collection.state_path()).url)
 }
 
-/// The mirror of an availability in an account, and its address on its server once there.
-fn mirror_url(availability: &Availability, account: &str) -> Result<String, String> {
-    let mirror = availability.mirror(account).ok_or_else(|| tr().text("availability-mirror-missing", None))?;
-    let collection = collection(&mirror.account, &mirror.calendar).ok_or_else(|| tr().text("availability-mirror-missing", None))?;
+/// The mirror of an availability in an account, its own calendar
+/// (`own_mirror`: never one another availability keeps), and its address on
+/// its server once there: where a share of it is made.
+fn mirror_url(config: &Config, availability: &Availability, account: &str) -> Result<String, String> {
+    let collection = own_mirror(config, availability, account).ok_or_else(|| tr().text("availability-mirror-missing", None))?;
     on_server(&collection).ok_or_else(|| tr().text("availability-mirror-not-yet", None))
 }
 
-/// Whether a share can be asked of its server now: a mirror's once its
+/// The calendar a share of it was made on, as its entry names it, and its
+/// address on its server: where a share is taken back.
+fn made_on(availability: &Availability, account: &str) -> Option<String> {
+    let mirror = availability.mirror(account)?;
+    on_server(&collection(&mirror.account, &mirror.calendar)?)
+}
+
+/// Whether a share can be asked of its server now: a mirror's once its own
 /// calendar is there; a link you paste once it is pasted; the rest at once.
-pub(crate) fn ready(availability: &Availability, share: &Share) -> bool {
+pub(crate) fn ready(config: &Config, availability: &Availability, share: &Share) -> bool {
     match share.way() {
-        Some(way) if way.mirrored() => mirror_url(availability, &share.account).is_ok(),
+        Some(way) if way.mirrored() => mirror_url(config, availability, &share.account).is_ok(),
         Some(Way::FastmailLink | Way::Appointments | Way::GoogleSchedule) => !share.link.trim().is_empty(),
         Some(_) => true,
         None => false,
@@ -529,7 +731,7 @@ pub(crate) fn make_share(config: &Config, availability: &Availability, share: &S
             }
         }
         Way::MirrorShare | Way::MirrorFederated | Way::MirrorLink => {
-            let url = mirror_url(availability, &account.id)?;
+            let url = mirror_url(config, availability, &account.id)?;
             if account.auth.as_deref() == Some("google") {
                 let api = google()?;
                 let calendar = calendars::google_id(&url).ok_or_else(|| tr().text("agenda-sharing-not-yet", None))?;
@@ -587,46 +789,86 @@ pub(crate) fn stop_share(config: &Config, availability: &Availability, share: &S
             calendars::google_public_busy(&google()?, &calendar, false).map(|_| ()).map_err(e)
         }
         Way::MirrorShare | Way::MirrorFederated | Way::MirrorLink => {
-            let Ok(url) = mirror_url(availability, &account.id) else { return Ok(()) };
-            if account.auth.as_deref() == Some("google") {
-                let api = google()?;
-                let Some(calendar) = calendars::google_id(&url) else { return Ok(()) };
-                let rule = if way == Way::MirrorLink { "default".to_string() } else { format!("user:{who}") };
-                return api.revoke(&calendar, &rule).map_err(e);
-            }
-            let client = sioul_sync::dav::client_for(&account).map_err(e)?;
-            match way {
-                Way::MirrorLink => calendars::dav_publish(&client, &url, false).map_err(e),
-                Way::MirrorFederated => calendars::federated_principal(who).map_or(Ok(()), |p| calendars::dav_unshare(&client, &url, &p).map_err(e)),
-                _ => {
-                    let (name, group) = who.strip_prefix("group:").map_or((who, false), |n| (n.trim(), true));
-                    calendars::principal(name, group).map_or(Ok(()), |p| calendars::dav_unshare(&client, &url, &p).map_err(e))
-                }
-            }
+            let Some(url) = made_on(availability, &account.id) else { return Ok(()) };
+            stop_on(&account, &url, way, who)
         }
         Way::FastmailLink | Way::Appointments | Way::GoogleSchedule => Ok(()),
     }
 }
 
+/// A mirror's share taken back on the calendar at `url`, as it was made.
+fn stop_on(account: &Account, url: &str, way: Way, who: &str) -> Result<(), String> {
+    let e = |error: SyncError| said(&error, &account.id);
+    if account.auth.as_deref() == Some("google") {
+        let api = GoogleApi::new(account.address.as_deref().unwrap_or_default()).map_err(e)?;
+        let Some(calendar) = calendars::google_id(url) else { return Ok(()) };
+        let rule = if way == Way::MirrorLink { "default".to_string() } else { format!("user:{who}") };
+        return api.revoke(&calendar, &rule).map_err(e);
+    }
+    let client = sioul_sync::dav::client_for(account).map_err(e)?;
+    match way {
+        Way::MirrorLink => calendars::dav_publish(&client, url, false).map_err(e),
+        Way::MirrorFederated => calendars::federated_principal(who).map_or(Ok(()), |p| calendars::dav_unshare(&client, url, &p).map_err(e)),
+        _ => {
+            let (name, group) = who.strip_prefix("group:").map_or((who, false), |n| (n.trim(), true));
+            calendars::principal(name, group).map_or(Ok(()), |p| calendars::dav_unshare(&client, url, &p).map_err(e))
+        }
+    }
+}
+
+/// The shares made on a calendar another availability keeps taken back
+/// there (`TakeBack`), once each, unless an availability whose own calendar
+/// it is shares it the same way with the same; a refusal tried again a
+/// quarter of an hour later.
+fn take_back(config: &Config, now: i64) {
+    let waiting = with_memo(|m| m.take_back.clone());
+    for back in waiting {
+        let key = format!("back:{}:{}:{}", back.url, back.way, back.who);
+        if !with_memo(|m| m.due(&key, now)) {
+            continue;
+        }
+        let kept_there = config.agenda.availabilities.iter().any(|a| {
+            a.shares.iter().any(|s| s.account == back.account && s.way == back.way && s.who.trim().eq_ignore_ascii_case(back.who.trim()) && !s.made.is_empty())
+                && own_mirror(config, a, &back.account).and_then(|c| on_server(&c)).is_some_and(|u| u == back.url)
+        });
+        let done = match (config.every_account().find(|a| a.id == back.account), Way::parse(&back.way)) {
+            _ if kept_there => Ok(()),
+            (Some(account), Some(way)) => stop_on(account, &back.url, way, back.who.trim()),
+            _ => Ok(()),
+        };
+        with_memo(|m| match done {
+            Ok(()) => {
+                m.take_back.retain(|b| *b != back);
+                m.tried.remove(&key);
+            }
+            Err(_) => {
+                m.tried.insert(key.clone(), now);
+            }
+        });
+    }
+}
+
 /// A share added to an availability, here: its mirror made in that account
-/// when its way needs one and there is none (sent by the next sync), the
-/// availability's coarseness and horizon its first audience's when it had
-/// no share yet (`availability::defaults`). The share waits for its server
-/// (`made` empty); `marks` asks it. Returns the availability as written.
+/// when its way needs one and it has no calendar of its own there (none yet,
+/// its calendar gone, or one another availability keeps: `make_mirror`,
+/// sent by the next sync), the availability's coarseness and horizon its
+/// first audience's when it had no share yet (`availability::defaults`).
+/// The share waits for its server (`made` empty); `marks` asks it. Returns
+/// the availability as written.
 pub(crate) fn add_share(config: &Config, availability: &Availability, choice: &Choice, audience: Audience, link: &str) -> Result<Availability, String> {
     let mut written = availability.clone();
     if written.shares.is_empty() {
         let d = av::defaults(audience);
         (written.rounding, written.horizon, written.closing) = (d.rounding, d.horizon, d.closing);
     }
-    if choice.way.mirrored() && written.mirror(&choice.account).is_none() {
-        let made = vdir::create(Kind::Calendars, &choice.account, &mirror_name(config, &choice.account), None, &["VEVENT"])?;
-        written.mirrors.push(Mirror { account: choice.account.clone(), calendar: made.id.clone(), transparent: false });
-    }
     let mut share = choice.share(audience);
     share.link = link.trim().to_string();
     if !written.shares.iter().any(|s| s.same(&share)) {
         written.shares.push(share);
+    }
+    if choice.way.mirrored() && own_mirror(config, &written, &choice.account).is_none() {
+        // Made (again) with the share in it, so that the share waits for this calendar.
+        return make_mirror(config, &written, &choice.account);
     }
     sioul_core::agendas::put_availability(&crate::backend::config_path(), &written)?;
     Ok(written)
@@ -634,12 +876,17 @@ pub(crate) fn add_share(config: &Config, availability: &Availability, choice: &C
 
 /// A share taken out here, once its server took it back: the last one of
 /// its availability takes the availability and its mirrors with it (each a
-/// dated copy first, as any removal). Returns the availability as it was, for Undo.
+/// dated copy first, as any removal), a mirror no share needs any more too;
+/// never a calendar another availability still names as its mirror (settings
+/// of before 26 November 2026, two availabilities on one calendar). Returns
+/// the availability as it was, for Undo.
 pub(crate) fn drop_share(availability: &Availability, share: &Share) -> Result<Availability, String> {
     let path = crate::backend::config_path();
+    let config = load_config();
+    let named_elsewhere = |mirror: &Mirror| config.agenda.availabilities.iter().any(|a| a.id != availability.id && a.mirrors.iter().any(|m| m.account == mirror.account && m.calendar == mirror.calendar));
     let left: Vec<&Share> = availability.shares.iter().filter(|s| !s.same(share)).collect();
     if left.is_empty() {
-        for mirror in &availability.mirrors {
+        for mirror in availability.mirrors.iter().filter(|m| !named_elsewhere(m)) {
             if let Some(collection) = collection(&mirror.account, &mirror.calendar) {
                 vdir::remove_collection(&collection)?;
             }
@@ -650,7 +897,7 @@ pub(crate) fn drop_share(availability: &Availability, share: &Share) -> Result<A
     sioul_core::agendas::remove_share(&path, &availability.id, share)?;
     // A mirror no share needs any more: gone too.
     for mirror in availability.mirrors.iter().filter(|m| !left.iter().any(|s| s.account == m.account && s.way().is_some_and(Way::mirrored))) {
-        if let Some(collection) = collection(&mirror.account, &mirror.calendar) {
+        if let Some(collection) = collection(&mirror.account, &mirror.calendar).filter(|_| !named_elsewhere(mirror)) {
             vdir::remove_collection(&collection)?;
         }
         sioul_core::agendas::remove_mirror(&path, &availability.id, &mirror.account)?;
@@ -675,7 +922,7 @@ pub(crate) fn marks(config: &Config) -> Vec<String> {
     let path = crate::backend::config_path();
     let mut lines = Vec::new();
     for availability in &config.agenda.availabilities {
-        for share in availability.shares.iter().filter(|s| s.made.is_empty() && ready(availability, s)) {
+        for share in availability.shares.iter().filter(|s| s.made.is_empty() && ready(config, availability, s)) {
             let key = format!("share:{}:{}:{}:{}", availability.id, share.way, share.account, share.who);
             if !with_memo(|m| m.due(&key, now)) {
                 continue;
@@ -727,6 +974,7 @@ pub(crate) fn marks(config: &Config) -> Vec<String> {
             with_memo(|m| if refused { m.tried.insert(key.clone(), now) } else { m.tried.remove(&key) });
         }
     }
+    take_back(config, now);
     working_hours(config, now);
     others_transparent(config, now);
     lines
@@ -908,5 +1156,160 @@ pub(crate) fn keeper_line(availability: &Availability, share: &Share, entries: O
     match last_write(entries, &availability.id) {
         Some((at, device)) if now - at > 3600 => format!("{base} {}", say("availability-kept-last", &[("when", when(at, now)), ("device", device)])),
         _ => base,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Settings of their own for this test's thread, with one calendars account.
+    fn settings(name: &str, account: &str) -> PathBuf {
+        sioul_core::config::stand_ins_only();
+        let dir = sioul_core::config::data_dir().join(format!("{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = dir.join("config.toml");
+        std::fs::write(&config, format!("language = \"en\"\n\n[[account]]\nid = \"{account}\"\nkind = \"dav\"\nhost = \"cloud.example.invalid\"\naddress = \"sam@example.invalid\"\n")).unwrap();
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = Some(config.clone()));
+        dir
+    }
+
+    /// A calendar as its server has it: sent, its address known, yours.
+    fn on_its_server(collection: &Collection) {
+        let mut state = State::load(&collection.state_path());
+        state.pending = false;
+        state.url = format!("https://cloud.example.invalid/remote.php/dav/calendars/sam/{}/", collection.id);
+        state.owned = Some(true);
+        state.save(&collection.state_path()).unwrap();
+    }
+
+    /// A calendar gone from its server, as the sync forgets it (`dav::forget_gone`).
+    fn gone(account: &str, id: &str) {
+        let collection = collection(account, id).unwrap();
+        std::fs::remove_dir_all(&collection.dir).unwrap();
+        std::fs::remove_file(collection.state_path()).unwrap();
+    }
+
+    fn availability(config: &Config, id: &str) -> Availability {
+        config.agenda.availabilities.iter().find(|a| a.id == id).cloned().unwrap()
+    }
+
+    /// A mirror whose calendar went (removed on another device, or on its
+    /// server) and is shared again: its calendar made again at once, in a
+    /// folder of its own, never the one of before; its share of before
+    /// waiting again with its link, to be made on the new calendar; its line
+    /// says it is being made again until the calendar is on its server. One
+    /// gone with nothing shared again: made again by `keep` alone, once seen
+    /// gone for ten minutes and its account synced since.
+    #[test]
+    fn a_mirror_removed_then_shared_again_is_made_again() {
+        let account = "mirror-remade";
+        let dir = settings("mirror-remade", account);
+        let config = load_config();
+        let first = Availability::new("By link", vec![format!("{account}/personal")], Audience::Link);
+        let link = Choice { way: Way::MirrorLink, account: account.into(), who: String::new(), why: "" };
+        let written = add_share(&config, &first, &link, Audience::Link, "").unwrap();
+        let folder = av::mirror_folder(&first.id, None);
+        assert_eq!(written.mirror(account).map(|m| m.calendar.as_str()), Some(folder.as_str()), "made in its own folder");
+        let made = collection(account, &folder).unwrap();
+        assert_eq!(made.name, mirror_name(&config, account));
+        on_its_server(&made);
+        let day = Share { made: "2026-11-25".into(), link: "https://cloud.example.invalid/p/old".into(), ..written.shares[0].clone() };
+        sioul_core::agendas::put_share(&crate::backend::config_path(), &first.id, &day).unwrap();
+        let config = load_config();
+        let shared = availability(&config, &first.id);
+        assert!(ready(&config, &shared, &shared.shares[0]) && mirror_line(&config, &shared, &shared.shares[0]).is_none(), "there: nothing more said");
+        // Gone, then shared once more with a person.
+        gone(account, &folder);
+        let remaking = say("availability-share-remaking", &[("server", server_name(&config, account))]);
+        assert_eq!(mirror_line(&config, &shared, &shared.shares[0]).as_ref(), Some(&remaking), "said, never silent");
+        let sam = Choice { way: Way::MirrorShare, account: account.into(), who: "sam".into(), why: "" };
+        let again = add_share(&config, &shared, &sam, Audience::Person, "").unwrap();
+        let second = format!("{folder}-2");
+        assert_eq!(again.mirror(account).map(|m| m.calendar.as_str()), Some(second.as_str()), "made again, never in the folder of before");
+        assert!(collection(account, &second).is_some());
+        assert!(again.shares.iter().all(|s| s.made.is_empty()) && again.shares.iter().all(|s| s.link.is_empty()), "every share waits for the new calendar: {:?}", again.shares);
+        let config = load_config();
+        let kept = availability(&config, &first.id);
+        assert_eq!((kept.shares.len(), kept.mirrors.len()), (2, 1));
+        assert!(!ready(&config, &kept, &kept.shares[0]), "not on its server yet");
+        assert_eq!(mirror_line(&config, &kept, &kept.shares[0]), Some(remaking), "until it is there");
+        on_its_server(&collection(account, &second).unwrap());
+        assert!(ready(&config, &kept, &kept.shares[0]));
+        let now = now();
+        let _ = made_again(&config, &kept, now, &|_| true);
+        assert!(mirror_line(&config, &kept, &kept.shares[0]).is_none(), "there: said no more");
+        // Gone again, nothing shared again: `keep`'s step waits ten minutes, and a sync of its account since.
+        gone(account, &second);
+        let personal = vdir::create_as(Kind::Calendars, account, "personal", "Personal", None, &["VEVENT"]).unwrap();
+        on_its_server(&personal);
+        assert_eq!(made_again(&config, &kept, now, &|_| true).mirror(account).map(|m| m.calendar.clone()), Some(second.clone()), "just seen gone: waits");
+        assert_eq!(made_again(&config, &kept, now + MISSING_FOR, &|_| true).mirror(account).map(|m| m.calendar.clone()), Some(second.clone()), "its account not synced since: waits");
+        let mut state = State::load(&personal.state_path());
+        state.pulled = Some(now + 60);
+        state.save(&personal.state_path()).unwrap();
+        assert_eq!(made_again(&config, &kept, now + MISSING_FOR, &|_| false).mirror(account).map(|m| m.calendar.clone()), Some(second.clone()), "the sharing not caught up since: waits (a removal on another device may still be on its way)");
+        let third = made_again(&config, &kept, now + MISSING_FOR, &|_| true);
+        assert_eq!(third.mirror(account).map(|m| m.calendar.clone()), Some(format!("{folder}-3")), "made again by keep");
+        assert_eq!(availability(&load_config(), &first.id).mirror(account).map(|m| m.calendar.clone()), Some(format!("{folder}-3")), "written");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        for c in vdir::collections(Kind::Calendars).into_iter().filter(|c| c.account == account) {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Two availabilities on one account, both naming one calendar (made by
+    /// two devices before 26 November 2026): read without error, the first
+    /// keeps it, nothing of the second written there nor shared from it; the
+    /// second given its own at its next turn, its share then made there; a
+    /// share of either stopped never removes the calendar the other names.
+    /// A new availability never reuses another's calendar.
+    #[test]
+    fn two_availabilities_on_one_account_get_a_calendar_each() {
+        let account = "mirror-two";
+        let dir = settings("mirror-two", account);
+        let path = crate::backend::config_path();
+        let calendar = vdir::create_as(Kind::Calendars, account, "old-busy-times", "Old busy times", None, &["VEVENT"]).unwrap();
+        on_its_server(&calendar);
+        let link = Share { audience: "link".into(), way: "mirror-link".into(), account: account.into(), ..Share::default() };
+        let both = |id: &str| Availability { id: id.into(), name: "For the team".into(), agendas: vec![format!("{account}/personal")], mirrors: vec![Mirror { account: account.into(), calendar: "old-busy-times".into(), transparent: false }], shares: vec![link.clone()], ..Availability::default() };
+        sioul_core::agendas::put_availability(&path, &both("a1b2c3d4-one")).unwrap();
+        sioul_core::agendas::put_availability(&path, &both("e5f6a7b8-two")).unwrap();
+        let config = load_config();
+        assert_eq!(config.agenda.availabilities.len(), 2, "read without error");
+        let (one, two) = (availability(&config, "a1b2c3d4-one"), availability(&config, "e5f6a7b8-two"));
+        assert!(own_mirror(&config, &one, account).is_some() && own_mirror(&config, &two, account).is_none(), "the first keeps it");
+        assert!(ready(&config, &one, &one.shares[0]) && !ready(&config, &two, &two.shares[0]), "nothing of the second shared from it");
+        assert!(mirror_line(&config, &two, &two.shares[0]).is_some());
+        // The second's share stopped: its availability goes, the calendar the first names stays.
+        drop_share(&two, &two.shares[0]).unwrap();
+        assert!(collection(account, "old-busy-times").is_some(), "the first still names it");
+        sioul_core::agendas::put_availability(&path, &two).unwrap();
+        // The second's turn: its own calendar, the first's left as it was.
+        let config = load_config();
+        let two = availability(&config, "e5f6a7b8-two");
+        let given = made_again(&config, &two, now(), &|_| false);
+        assert_eq!(given.mirror(account).map(|m| m.calendar.as_str()), Some("busy-e5f6a7b8"));
+        let config = load_config();
+        assert_eq!(availability(&config, "a1b2c3d4-one").mirror(account).map(|m| m.calendar.as_str()), Some("old-busy-times"));
+        assert_eq!(availability(&config, "e5f6a7b8-two").mirror(account).map(|m| m.calendar.as_str()), Some("busy-e5f6a7b8"));
+        assert!(av::borrowed(&config.agenda.availabilities, &availability(&config, "e5f6a7b8-two")).is_empty());
+        on_its_server(&collection(account, "busy-e5f6a7b8").unwrap());
+        let two = availability(&config, "e5f6a7b8-two");
+        assert!(ready(&config, &two, &two.shares[0]), "its share made on its own calendar");
+        // A third, new: never one of theirs.
+        let third = Availability::new("For Sam", vec![format!("{account}/personal")], Audience::Person);
+        let sam = Choice { way: Way::MirrorShare, account: account.into(), who: "sam".into(), why: "" };
+        let made = add_share(&config, &third, &sam, Audience::Person, "").unwrap();
+        let folder = made.mirror(account).map(|m| m.calendar.clone()).unwrap();
+        assert!(folder != "old-busy-times" && folder != "busy-e5f6a7b8", "{folder}");
+        crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
+        for c in vdir::collections(Kind::Calendars).into_iter().filter(|c| c.account == account) {
+            let _ = std::fs::remove_dir_all(&c.dir);
+            let _ = std::fs::remove_file(c.state_path());
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

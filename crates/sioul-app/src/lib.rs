@@ -185,6 +185,7 @@ mod mailnote;
 mod mirrors;
 mod openmail;
 mod organized;
+mod outbox;
 #[cfg(target_os = "android")]
 mod nfc;
 mod notesview;

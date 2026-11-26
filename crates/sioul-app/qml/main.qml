@@ -713,6 +713,12 @@ SioulWindow {
 
     // Mail ⚙ at one of its settings ("mail.filter", "topics.list"): where a
     // rule kept in Mail (a filter, a topic's senders) is changed.
+    // Accounts, from an event's card whose invitation waits for an account to send it.
+    function openAccounts() {
+        cardHost.leave()
+        window.page = 11
+    }
+
     function openMailSetting(key) {
         cardHost.leave()
         window.page = 2

@@ -166,6 +166,151 @@ pub fn every_guest_left_to_you(text: &str) -> String {
     if out == source { text.to_string() } else { lines::fold(&out) }
 }
 
+/// Each line naming one of `addresses` (lower case) as a guest, in every
+/// event of the meeting, changed by `change`; the organizer's never.
+fn guests_lines(text: &str, addresses: &[String], change: impl Fn(&str) -> String) -> String {
+    let organizer = organizer_of(text).map(|o| o.address.to_lowercase()).unwrap_or_default();
+    let source = lines::unfold(text);
+    let (mut inside, mut nested) = (false, 0usize);
+    let mut out = Vec::with_capacity(source.len());
+    for line in &source {
+        match lines::name(line).as_str() {
+            "BEGIN" if !inside => inside = lines::value(line).trim().eq_ignore_ascii_case("VEVENT"),
+            "BEGIN" => nested += 1,
+            "END" if inside && nested > 0 => nested -= 1,
+            "END" if inside => inside = false,
+            "ATTENDEE" if inside && nested == 0 => {
+                let who = address_of(lines::value(line));
+                if who != organizer && addresses.iter().any(|a| a.trim().eq_ignore_ascii_case(&who)) {
+                    out.push(change(line));
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        out.push(line.clone());
+    }
+    if out == source { text.to_string() } else { lines::fold(&out) }
+}
+
+/// The guests `addresses` left to you from now on (`SCHEDULE-AGENT=CLIENT`,
+/// RFC 6638 §7.1), on every line naming them: their calendar's server did
+/// not deliver their invitation (`SCHEDULE-STATUS` 3.x or 5.x, or none),
+/// Sioul sends it itself, and no later change of it reaches them twice (the
+/// owner's word of 26 November 2026). sabre/vobject then counts them as no
+/// longer among the guests it tells and sends them a CANCEL (`marks`' F1):
+/// through the same delivery that just failed, which is why Sioul sends its
+/// own message only once this mark is on the server (`Draft::after_sync`).
+pub fn left_to_you_now(text: &str, addresses: &[String]) -> String {
+    guests_lines(text, addresses, |line| with_params(line, &["SCHEDULE-AGENT", "SCHEDULE-STATUS"], &[("SCHEDULE-AGENT", "CLIENT")]))
+}
+
+/// `text` with the `SCHEDULE-STATUS` of the guests `addresses` taken out,
+/// for a write whose delivery to them Sioul then reads back: what the server
+/// writes there afterwards is this write's word (RFC 6638 §3.2.9: the server
+/// sets it), never one left from an earlier change.
+pub fn without_schedule_status(text: &str, addresses: &[String]) -> String {
+    guests_lines(text, addresses, |line| if lines::param(line, "SCHEDULE-STATUS").is_some() { with_params(line, &["SCHEDULE-STATUS"], &[]) } else { line.to_string() })
+}
+
+/// The first VEVENT's guests' lines, unfolded (its organizer's left out):
+/// the only lines sabre/dav writes `SCHEDULE-STATUS` on
+/// (`processICalendarChange`, `$newObject->VEVENT->ATTENDEE`; docs/research.md,
+/// finding 88).
+fn first_event_guests(text: &str) -> Vec<String> {
+    let organizer = organizer_of(text).map(|o| o.address.to_lowercase()).unwrap_or_default();
+    let source = lines::unfold(text);
+    let Some(range) = events(&source).into_iter().next() else { return Vec::new() };
+    let mut nested = 0usize;
+    let mut out = Vec::new();
+    for line in &source[range.start + 1..range.end.saturating_sub(1)] {
+        match lines::name(line).as_str() {
+            "BEGIN" => nested += 1,
+            "END" => nested = nested.saturating_sub(1),
+            "ATTENDEE" if nested == 0 && address_of(lines::value(line)) != organizer => out.push(line.clone()),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether `address` is a guest of the meeting's first VEVENT, where its
+/// server reports on them; a guest of some times alone is not.
+pub fn on_first_event(text: &str, address: &str) -> bool {
+    first_event_guests(text).iter().any(|l| address_of(lines::value(l)) == address.trim().to_lowercase())
+}
+
+/// Whether any guest of the meeting's first VEVENT carries a server's word
+/// (`SCHEDULE-STATUS`): none at all after a write that asked it to tell a
+/// new guest says that the server did not schedule it.
+pub fn first_event_has_status(text: &str) -> bool {
+    first_event_guests(text).iter().any(|l| lines::param(l, "SCHEDULE-STATUS").is_some())
+}
+
+/// What a calendar's server said of delivering a meeting's last message to
+/// `address` (RFC 6638 §3.2.9, `SCHEDULE-STATUS`), on their line of the first
+/// VEVENT, the only one it writes on: its status code's class, `1` or `2`
+/// delivered or sent, `3` or `5` not (sabre writes the code alone, "1.1",
+/// "3.7", "5.0"); none when it wrote none, or for a guest of some times alone.
+pub fn delivery(text: &str, address: &str) -> Option<Delivery> {
+    let line = first_event_guests(text).into_iter().find(|l| address_of(lines::value(l)) == address.trim().to_lowercase())?;
+    let status = lines::param(&line, "SCHEDULE-STATUS")?;
+    match status.trim().trim_matches('"').chars().next()? {
+        '1' | '2' => Some(Delivery::Sent),
+        '3' | '5' => Some(Delivery::NotSent),
+        _ => None,
+    }
+}
+
+/// An iTIP message's every DTSTAMP set to `stamp` (UTC, "20991110T090000Z"):
+/// the time it leaves (RFC 5546 §2.1.5: of two messages at one SEQUENCE, the
+/// later DTSTAMP wins), later than any CANCEL its server sent before: sabre's
+/// carries the file's SEQUENCE and the time of the write that marked the
+/// guest, Nextcloud's own broker the old version's SEQUENCE and stamp; neither
+/// raises the SEQUENCE (docs/research.md, finding 88). The SEQUENCE is never
+/// raised for it: the other guests' answers to the version they heard would
+/// read as older (`replied`).
+pub fn stamped(ics: &str, stamp: &str) -> String {
+    let source = lines::unfold(ics);
+    let out: Vec<String> = source.iter().map(|l| if lines::name(l) == "DTSTAMP" { format!("DTSTAMP:{stamp}") } else { l.clone() }).collect();
+    if out == source { ics.to_string() } else { lines::fold(&out) }
+}
+
+/// What a meeting's text says, whoever wrote its bytes: every line unfolded,
+/// its name and its parameters' names in capitals, the parameters sorted,
+/// their values without quotes, the server's own words on its guests
+/// (`SCHEDULE-STATUS`, `SCHEDULE-FORCE-SEND`) left out. Two copies of one
+/// write, as this device wrote it and as its server stored it again, say
+/// the same; two writes, by two devices, say different things (a time, a
+/// stamp, a guest).
+pub fn written_mark(text: &str) -> String {
+    let mut out = String::new();
+    for line in lines::unfold(text) {
+        let (head, value) = split(&line);
+        let parts = written_params(head);
+        let name = parts.first().copied().unwrap_or_default().trim().to_ascii_uppercase();
+        let mut params: Vec<String> = parts
+            .iter()
+            .skip(1)
+            .filter_map(|p| {
+                let (n, v) = p.split_once('=').unwrap_or((p, ""));
+                let n = n.trim().to_ascii_uppercase();
+                (n != "SCHEDULE-STATUS" && n != "SCHEDULE-FORCE-SEND").then(|| format!("{n}={}", v.trim().trim_matches('"')))
+            })
+            .collect();
+        params.sort();
+        out.push_str(&format!("{name};{}:{value}\n", params.join(";")));
+    }
+    crate::vdir::content_hash(out.as_bytes())
+}
+
+/// A server's word on delivering a guest's message (`delivery`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Delivery {
+    Sent,
+    NotSent,
+}
+
 /// How the guests a write adds to `text` are marked (the owner's word, 6
 /// November 2026): left to you (`Sender::Draft`, `SCHEDULE-AGENT=CLIENT`)
 /// in a meeting made in Sioul, or an event of no guest yet; unmarked, told
@@ -1766,7 +1911,8 @@ pub fn time_draft(account: &str, signature: Option<&str>, to: &[Guest], ics: Str
 /// organizer is one of `own`, with its guests' addresses.
 pub fn pending_of(uid: &str, own: &[String]) -> Vec<Pending> {
     let mut out = Vec::new();
-    for draft in crate::compose::Draft::all() {
+    // In Drafts (a message of before, or the sync's), and in this device's outbox (Sioul sends those).
+    for draft in crate::compose::Draft::all().into_iter().chain(crate::compose::Draft::outbox_all()) {
         let Some(ics) = draft.calendar.as_deref() else { continue };
         let source = lines::unfold(ics);
         let named = |name: &str| source.iter().find(|l| lines::name(l) == name).map(|l| lines::value(l).trim().to_string()).unwrap_or_default();
@@ -1792,6 +1938,46 @@ mod tests {
     /// A text with its long lines unfolded, as the tests read it.
     fn un(text: &str) -> String {
         lines::unfold(text).join("\r\n") + "\r\n"
+    }
+
+    /// What a server said of delivering each guest's message is read from
+    /// their line (RFC 6638 SCHEDULE-STATUS, as sabre writes it: the code
+    /// alone); taken out before a write whose delivery is read back; a guest
+    /// left to you from now on on every line naming them, the others and the
+    /// organizer untouched.
+    #[test]
+    fn a_server_s_word_on_each_guest_is_read_and_a_guest_taken_over() {
+        let text = event("ORGANIZER:mailto:camille@example.org\r\nATTENDEE;PARTSTAT=NEEDS-ACTION;SCHEDULE-STATUS=1.1:mailto:anne@example.net\r\nATTENDEE;SCHEDULE-STATUS=5.0:mailto:Bob@example.net\r\nATTENDEE:mailto:cleo@example.net\r\nATTENDEE;SCHEDULE-STATUS=\"3.7;Invalid\":mailto:dan@example.net\r\n");
+        assert_eq!(delivery(&text, "anne@example.net"), Some(Delivery::Sent));
+        assert_eq!(delivery(&text, "bob@example.net"), Some(Delivery::NotSent));
+        assert_eq!(delivery(&text, "cleo@example.net"), None, "none written");
+        assert_eq!(delivery(&text, "dan@example.net"), Some(Delivery::NotSent));
+        assert_eq!(delivery(&text, "nobody@example.net"), None);
+        let fresh = un(&without_schedule_status(&text, &["anne@example.net".into(), "bob@example.net".into()]));
+        assert!(fresh.contains("ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:anne@example.net") && fresh.contains("ATTENDEE:mailto:Bob@example.net") && fresh.contains("SCHEDULE-STATUS=\"3.7;Invalid\":mailto:dan"), "{fresh}");
+        let taken = un(&left_to_you_now(&text, &["bob@example.net".into()]));
+        assert!(taken.contains("ATTENDEE;SCHEDULE-AGENT=CLIENT:mailto:Bob@example.net") && taken.contains("SCHEDULE-STATUS=1.1:mailto:anne") && !taken.contains("ORGANIZER;SCHEDULE"), "{taken}");
+        assert_eq!(clients(&taken), vec!["bob@example.net".to_string()]);
+        assert!(first_event_has_status(&text) && !first_event_has_status(&event("ORGANIZER:mailto:camille@example.org\r\nATTENDEE:mailto:anne@example.net\r\n")));
+        // A guest of one time alone: no word of the server's is ever read for them.
+        let series = format!("{}BEGIN:VEVENT\r\nUID:plan-1\r\nRECURRENCE-ID:20991117T090000Z\r\nDTSTART:20991117T090000Z\r\nDTEND:20991117T100000Z\r\nORGANIZER:mailto:camille@example.org\r\nATTENDEE;SCHEDULE-STATUS=5.0:mailto:eve@example.net\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", text.trim_end_matches("END:VCALENDAR\r\n"));
+        assert!(!on_first_event(&series, "eve@example.net") && on_first_event(&series, "anne@example.net"));
+        assert_eq!(delivery(&series, "eve@example.net"), None, "never read off the first event");
+        // Stamped when it leaves, its SEQUENCE the file's.
+        let sent = un(&stamped(&text, "20991101T120000Z"));
+        assert!(sent.contains("DTSTAMP:20991101T120000Z\r\n") && sent.contains("SEQUENCE:2\r\n"));
+    }
+
+    /// One write says the same as the server stores it again (its words on
+    /// each guest added, its parameters quoted, its lines folded otherwise),
+    /// and another write says something else.
+    #[test]
+    fn a_write_is_known_whoever_wrote_its_bytes() {
+        let mine = event("ORGANIZER:mailto:camille@example.org\r\nATTENDEE;CN=Anne;PARTSTAT=NEEDS-ACTION:mailto:anne@example.net\r\n");
+        let stored = mine.replace("ATTENDEE;CN=Anne;PARTSTAT=NEEDS-ACTION:", "ATTENDEE;PARTSTAT=NEEDS-ACTION;CN=\"Anne\";SCHEDULE-STATUS=1.1:");
+        assert_eq!(written_mark(&mine), written_mark(&stored));
+        assert_eq!(written_mark(&mine), written_mark(&lines::fold(&lines::unfold(&mine))));
+        assert_ne!(written_mark(&mine), written_mark(&mine.replace("DTSTART:20991110T090000Z", "DTSTART:20991110T100000Z")));
     }
 
     fn me() -> Guest {

@@ -75,6 +75,11 @@ Item {
         signal addressesSuggested(string typed, string suggested)
         function setEventStatus(key, status) { mock.calls.push({ what: "setEventStatus", key: key, status: status }); return "" }
         function statusSaid(key, status) { return key === "/c/planning.ics" ? JSON.stringify({ ask: "invite-ask-drafts" }) : "{}" }
+        // A meeting you organize: its invitation's line (`invitationLine`), and Send the invitation now.
+        property string inviteAct: ""
+        property int invitationsSent: 0
+        function invitationLine(key) { return JSON.stringify(key === "/c/planning.ics" && mock.inviteAct !== "" ? { line: "invite-send-now-line", act: mock.inviteAct } : { line: "", act: "" }) }
+        function invitationAct(key, act) { mock.invitationsSent += 1; mock.inviteAct = ""; return "invite-send-now-done" }
         function deleteSaid(key, start, onlyThis) { return key === "/c/planning.ics" ? JSON.stringify({ ask: onlyThis ? "invite-delete-time-tells" : "invite-delete-tells" }) : "{}" }
         function eventPoint(geo, location) {
             if (geo !== "")
@@ -364,6 +369,7 @@ Item {
         function agendaAgain() { shell.agendaAsked += 1 }
         function openPage(kind, key) { shell.opened.push({ kind: kind, key: key }) }
         function openContact(key) { shell.opened.push({ kind: "contact", key: key }) }
+        function openAccounts() { shell.opened.push({ kind: "accounts" }) }
         function menuAt(menu, item) {}
         function linkFrom(source) {}
         function addLinked(kind, source) {}
@@ -587,6 +593,34 @@ Item {
             const deleted = mock.calls.filter(c => c.what === "deleteEvent")
             compare(deleted.length, 1)
             compare([deleted[0].key, deleted[0].start, deleted[0].onlyThis].join(" "), "/c/planning.ics 4000346400 true")
+        }
+
+        // A meeting made before Sioul sent invitations itself: its card says so in one line,
+        // with Send the invitation now, which sends it and then says nothing more; one whose
+        // invitation waits for an account offers Open Accounts instead; another, nothing.
+        function test_a_meeting_s_invitation_line() {
+            mock.inviteAct = ""
+            const host = makeHost()
+            host.show({ kind: "event", srcKey: "/c/planning.ics", srcStart: 4000346400 })
+            wait(20)
+            verify(!root.find(host.eventCard, "eventCardInviteLine").visible, "nothing to say")
+            mock.inviteAct = "send-now"
+            host.eventCard.read()
+            wait(20)
+            const line = root.find(host.eventCard, "eventCardInviteLine")
+            const act = root.find(host.eventCard, "eventCardInviteAct")
+            verify(line.visible && act.visible)
+            compare(line.text, "invite-send-now-line")
+            compare(act.text, "invite-send-now")
+            mouseClick(act)
+            wait(20)
+            compare(mock.invitationsSent, 1)
+            verify(!root.find(host.eventCard, "eventCardInviteLine").visible, "sent: nothing more")
+            mock.inviteAct = "accounts"
+            host.eventCard.read()
+            wait(20)
+            compare(root.find(host.eventCard, "eventCardInviteAct").text, "invite-waiting-open")
+            mock.inviteAct = ""
         }
 
         // The event card (5 November 2026): its own status chosen when it is yours, said

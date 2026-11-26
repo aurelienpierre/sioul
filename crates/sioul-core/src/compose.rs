@@ -95,6 +95,33 @@ pub struct Draft {
     /// which says the same.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub calendar: Option<String>,
+    /// Sioul sends it itself, from this device's outbox (`Draft::outbox_folder`,
+    /// never shared, never in Mail's Drafts): an invitation, its update or its
+    /// cancellation, sent at once by the device that wrote the change (the
+    /// owner's word of 26 November 2026), or once its account can send.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub outbox: bool,
+    /// When it was put in the outbox (Unix seconds): sent once the Undo of the
+    /// change it tells is no longer offered.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub queued: i64,
+    /// Why it waits, in a sentence (its account cannot send yet); "" while nothing stops it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub waiting: String,
+    /// Sent only once this calendar file is as its server has it
+    /// (`vdir::agreed_hash`): a guest taken over from a server that did not
+    /// deliver, whose new mark must reach that server first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_sync: Option<PathBuf>,
+    /// For such a message, what the write its take-over started from said
+    /// (`organizer::written_mark`): a server's copy that came back without
+    /// the mark is watched again only while it is still that write.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub taken_from: String,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
 }
 
 /// The line above a signature (RFC 3676 §4.3): readers recognise and fold what follows.
@@ -111,14 +138,31 @@ impl Draft {
         data_dir().join("drafts")
     }
 
+    /// This device's outbox (`Draft::outbox`): in its state folder, which the
+    /// sharing never carries, so that one device alone sends each message.
+    pub fn outbox_folder() -> PathBuf {
+        crate::config::state_dir().join("outbox")
+    }
+
     pub fn path(&self) -> PathBuf {
-        Draft::folder().join(format!("{}.toml", self.id))
+        let folder = if self.outbox { Draft::outbox_folder() } else { Draft::folder() };
+        folder.join(format!("{}.toml", self.id))
+    }
+
+    /// Every message in this device's outbox, the oldest first.
+    pub fn outbox_all() -> Vec<Draft> {
+        let Ok(entries) = std::fs::read_dir(Draft::outbox_folder()) else { return Vec::new() };
+        let mut found: Vec<Draft> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).filter_map(|p| Draft::load(&p)).filter(|d| d.outbox).collect();
+        found.sort_by(|a, b| (a.queued, &a.id).cmp(&(b.queued, &b.id)));
+        found
     }
 
     pub fn save(&self) -> Result<PathBuf, String> {
         let path = self.path();
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        std::fs::create_dir_all(Draft::folder()).map_err(fail)?;
+        if let Some(folder) = path.parent() {
+            std::fs::create_dir_all(folder).map_err(fail)?;
+        }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, text).map_err(fail)?;
@@ -185,12 +229,13 @@ impl Draft {
         Ok(())
     }
 
-    /// A saved draft by its name; none for a name that is not one of Sioul's.
+    /// A saved draft by its name, in Drafts or in this device's outbox; none
+    /// for a name that is not one of Sioul's.
     pub fn by_id(id: &str) -> Option<Draft> {
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric()) {
             return None;
         }
-        Draft::load(&Draft::folder().join(format!("{id}.toml")))
+        Draft::load(&Draft::folder().join(format!("{id}.toml"))).or_else(|| Draft::load(&Draft::outbox_folder().join(format!("{id}.toml"))).filter(|d| d.outbox))
     }
 
     /// The draft left after an encrypted message went to everyone but some
@@ -822,18 +867,22 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
         false => MimePart::new(kind, body),
     };
     let mut parts = vec![text_part("text/plain", text), text_part("text/html", html)];
-    // An invitation, as calendars read it: its part beside the text, its method said (RFC 6047 §2.4).
-    if let Some(ics) = draft.calendar.as_deref().filter(|c| !c.trim().is_empty()) {
-        let method = crate::lines::unfold(ics).iter().find(|l| crate::lines::name(l) == "METHOD").map(|l| crate::lines::value(l).trim().to_ascii_uppercase()).unwrap_or_else(|| "REQUEST".into());
-        parts.push(MimePart::new(ContentType::new("text/calendar").attribute("method", method).attribute("charset", "utf-8"), ics.to_string()));
+    // An invitation, as calendars read it (RFC 6047 §2.4): its part beside the text, its
+    // method said, the same as the METHOD it holds; and a copy of it attached as invite.ics,
+    // as the large calendars send theirs (`invitation_parts`).
+    let invitation = draft.calendar.as_deref().filter(|c| !c.trim().is_empty()).map(invitation_parts);
+    if let Some((part, _)) = &invitation {
+        parts.push(part.clone());
     }
     let alternative = MimePart::new("multipart/alternative", parts);
-    let files = attachments(draft, original)?;
-    let inner = if files.is_empty() {
+    let mut files = attachments(draft, original)?;
+    let attached_ics = invitation.map(|(_, copy)| copy);
+    let inner = if files.is_empty() && attached_ics.is_none() {
         alternative
     } else {
         let mut parts = vec![alternative];
-        parts.extend(files.into_iter().map(|(name, mime, bytes)| MimePart::new(mime, bytes).attachment(name)));
+        parts.extend(attached_ics);
+        parts.extend(std::mem::take(&mut files).into_iter().map(|(name, mime, bytes)| MimePart::new(mime, bytes).attachment(name)));
         MimePart::new("multipart/mixed", parts)
     };
     // The bodies: one; or, encrypted with recipients in Bcc, one for To and
@@ -926,6 +975,23 @@ pub fn build_with(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64,
     // To and Cc alone get the message; each Bcc recipient, their own copy.
     let to_and_cc = to.iter().chain(&cc).map(|(_, address)| address.clone()).collect();
     Ok(Outgoing { raw, from: from.1.to_string(), recipients: if to_and_cc_go { to_and_cc } else { Vec::new() }, apart })
+}
+
+/// An invitation's two parts (iMIP, RFC 6047 §2.4; docs/research.md, "An
+/// invitation's shape"): `text/calendar` with its `method` parameter the
+/// METHOD it holds (REQUEST when it says none), inside the
+/// multipart/alternative beside the text, which calendars read; and the same
+/// object attached as `invite.ics` (`application/ics`), as Google Calendar
+/// and Outlook send theirs, which a mail program without a calendar still
+/// offers to open. Its lines with CRLF, as iCalendar says (RFC 5545 §3.1).
+fn invitation_parts(ics: &str) -> (mail_builder::mime::MimePart<'static>, mail_builder::mime::MimePart<'static>) {
+    use mail_builder::headers::content_type::ContentType;
+    use mail_builder::mime::MimePart;
+    let method = crate::lines::unfold(ics).iter().find(|l| crate::lines::name(l) == "METHOD").map(|l| crate::lines::value(l).trim().to_ascii_uppercase()).unwrap_or_else(|| "REQUEST".into());
+    let crlf = ics.replace("\r\n", "\n").replace('\n', "\r\n");
+    let part = MimePart::new(ContentType::new("text/calendar").attribute("method", method.clone()).attribute("charset", "utf-8"), crlf.clone());
+    let copy = MimePart::new(ContentType::new("application/ics").attribute("name", "invite.ics"), crlf.into_bytes()).attachment("invite.ics");
+    (part, copy)
 }
 
 /// Quoted-printable (RFC 2045 §6.7), lines kept, CRLF, soft breaks before 76 characters.
@@ -1153,6 +1219,32 @@ mod tests {
         assert!(parsed.body_text(0).unwrap().contains("Could you take it?"));
         let plain = build(&Draft { calendar: None, ..draft }, ("Alex", "alex@example.org"), &tr, 1_790_000_000).unwrap();
         assert!(!String::from_utf8_lossy(&plain.raw).contains("text/calendar"));
+    }
+
+    /// An invitation's shape, as the large mail providers' calendars read it
+    /// (docs/research.md, "An invitation's shape"): multipart/mixed holding
+    /// the multipart/alternative of its text, its HTML and its
+    /// `text/calendar` part, whose method is the METHOD it holds (a
+    /// CANCEL's too), and the same object attached as `invite.ics`; its lines
+    /// end in CRLF; the guest's address the same in To and in its ATTENDEE.
+    #[test]
+    fn an_invitation_has_the_shape_calendars_read() {
+        use mail_parser::MimeHeaders;
+        let tr = Translator::new("en");
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nMETHOD:CANCEL\nBEGIN:VEVENT\nUID:shape-1\nORGANIZER:mailto:alex@example.org\nATTENDEE:mailto:sam@example.org\nEND:VEVENT\nEND:VCALENDAR\n";
+        let draft = Draft { to: vec!["Sam <sam@example.org>".into()], subject: "Cancelled".into(), body: "Hello".into(), calendar: Some(ics.into()), ..Draft::new("me") };
+        let out = build(&draft, ("Alex", "alex@example.org"), &tr, 1_790_000_000).unwrap();
+        let parsed = MessageParser::default().parse(&out.raw).unwrap();
+        let types: Vec<String> = parsed.parts.iter().filter_map(|p| p.content_type()).map(|c| format!("{}/{}", c.ctype(), c.subtype().unwrap_or_default()).to_ascii_lowercase()).collect();
+        assert_eq!(types, ["multipart/mixed", "multipart/alternative", "text/plain", "text/html", "text/calendar", "application/ics"], "{types:?}");
+        let calendar = parsed.parts.iter().find(|p| p.content_type().is_some_and(|c| c.subtype().is_some_and(|s| s.eq_ignore_ascii_case("calendar")))).unwrap();
+        assert_eq!(calendar.content_type().and_then(|c| c.attribute("method")), Some("CANCEL"), "its method is the METHOD it holds");
+        let body = calendar.text_contents().unwrap();
+        assert!(body.contains("METHOD:CANCEL\r\n") && body.contains("ATTENDEE:mailto:sam@example.org\r\n"), "{body:?}");
+        let copy = parsed.parts.last().unwrap();
+        assert_eq!(copy.attachment_name(), Some("invite.ics"));
+        assert!(String::from_utf8_lossy(copy.contents()).contains("UID:shape-1\r\n"));
+        assert_eq!(out.recipients, vec!["sam@example.org".to_string()]);
     }
 
     #[test]

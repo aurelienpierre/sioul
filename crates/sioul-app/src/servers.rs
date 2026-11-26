@@ -245,6 +245,11 @@ pub(crate) fn recolour(qt: &QtThread, shared: &Arc<Shared>, id: &str, colour: &s
 /// days by default; Google keeps nothing).
 pub(crate) fn removal(id: &str) -> String {
     let Some((collection, agenda, config)) = find(id) else { return json(&serde_json::json!({ "act": "none", "sentence": tr().text("agenda-gone", None) })) };
+    // A calendar of busy blocks Sioul keeps, shared: removing it stops sharing, asked first.
+    let carried = mirror_shares(&config, &collection);
+    if !carried.is_empty() {
+        return json(&serde_json::json!({ "act": "mirror", "sentence": say("agenda-remove-mirror-question", &[("who", audiences(&carried))]), "note": "" }));
+    }
     let server = server_of(&config, &collection);
     if !own(&agenda, &collection) {
         if server == "local" {
@@ -283,6 +288,9 @@ pub(crate) fn removal(id: &str) -> String {
 /// the status line says.
 pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     let Some((collection, agenda, config)) = find(id) else { return tr().text("agenda-gone", None) };
+    if sioul_core::agendas::is_mirror(&config, &collection.account, &collection.id) {
+        return remove_mirror(qt, shared, &collection);
+    }
     let said = if own(&agenda, &collection) {
         if google_primary(&config, &collection) {
             return tr().text("agenda-remove-google-primary", None);
@@ -311,6 +319,102 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, id: &str) -> String {
     crate::work::show_work(qt, shared);
     tell(qt, shared, said.clone());
     said
+}
+
+/// The shares a calendar of busy blocks carries: of each availability whose
+/// mirror it is, its shares in that account a mirror carries.
+fn mirror_shares(config: &Config, collection: &Collection) -> Vec<(Availability, Share)> {
+    let mut out = Vec::new();
+    for availability in config.agenda.availabilities.iter().filter(|a| a.mirrors.iter().any(|m| m.account == collection.account && m.calendar == collection.id)) {
+        for share in availability.shares.iter().filter(|s| s.account == collection.account && s.way().is_some_and(Way::mirrored)) {
+            out.push((availability.clone(), share.clone()));
+        }
+    }
+    out
+}
+
+/// Whom shares are for, in words: "Sam, anyone with its link".
+fn audiences(shares: &[(Availability, Share)]) -> String {
+    let mut names: Vec<String> = shares.iter().map(|(_, s)| if s.who.trim().is_empty() { tr().text("availability-by-link", None) } else { s.who.trim().trim_start_matches("group:").to_string() }).collect();
+    names.dedup();
+    names.join(", ")
+}
+
+/// A calendar of busy blocks removed, after "This calendar shows your busy
+/// times to Sam. Remove it and stop sharing?" (`removal`), in a thread: each
+/// share it carries taken back on its server, then here, as × on that share
+/// does (`mirrors::stop_share`, `drop_share`: the last share of an
+/// availability takes it with it), then the mirror's entry out of each
+/// availability that still names it, and the calendar removed (a dated copy
+/// first) when it is still here. With Undo, which shares again, its calendar
+/// made again. Returns "" (the status line says what was done).
+fn remove_mirror(qt: &QtThread, shared: &Arc<Shared>, collection: &Collection) -> String {
+    let (qt, shared, collection) = (qt.clone(), Arc::clone(shared), collection.clone());
+    std::thread::spawn(move || {
+        let carried = mirror_shares(&load_config(), &collection);
+        let mut dropped: Vec<(Availability, Share)> = Vec::new();
+        let mut problem = String::new();
+        for (availability, share) in &carried {
+            let config = load_config();
+            let Some(current) = config.agenda.availabilities.iter().find(|a| a.id == availability.id).cloned() else { continue };
+            match crate::mirrors::stop_share(&config, &current, share).and_then(|()| crate::mirrors::drop_share(&current, share)) {
+                Ok(before) => dropped.push((before, share.clone())),
+                Err(e) => {
+                    problem = e;
+                    break;
+                }
+            }
+        }
+        if problem.is_empty() {
+            let path = crate::backend::config_path();
+            for availability in load_config().agenda.availabilities.iter().filter(|a| a.mirrors.iter().any(|m| m.account == collection.account && m.calendar == collection.id)) {
+                if let Err(e) = agendas::remove_mirror(&path, &availability.id, &collection.account) {
+                    problem = e;
+                }
+            }
+            if let Some(here) = vdir::collections(Kind::Calendars).into_iter().find(|c| c.account == collection.account && c.id == collection.id)
+                && let Err(e) = vdir::remove_collection(&here)
+            {
+                problem = e;
+            }
+        }
+        crate::pim::nudge(&shared, &collection.account);
+        if !dropped.is_empty() {
+            let line = say("agenda-mirror-removed", &[("who", audiences(&dropped))]);
+            crate::mail::offer_back(&qt, &shared, line, move |qt, shared| {
+                // Each share again, the last dropped first: its availability as it now is, else as it was.
+                for (before, share) in dropped.iter().rev() {
+                    if let Err(e) = share_again(before, share) {
+                        return e;
+                    }
+                }
+                crate::pim::nudge(shared, &collection.account);
+                ask_servers(qt, shared);
+                String::new()
+            });
+        }
+        if !problem.is_empty() {
+            tell(&qt, &shared, problem);
+        }
+        crate::agenda::show_agenda(&qt, &shared);
+        let answer = availability_json();
+        let _ = qt.queue(move |mut sioul| sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from("availability"), cxx_qt_lib::QString::from(&answer)));
+    });
+    String::new()
+}
+
+/// A share stopped here shared again (its Undo): on its availability as the
+/// settings now hold it, else as it was before, without the share and with
+/// the mirrors still here; its mirror made again where it is gone
+/// (`mirrors::add_share`).
+fn share_again(before: &Availability, share: &Share) -> Result<(), String> {
+    let config = load_config();
+    let again = config.agenda.availabilities.iter().find(|a| a.id == before.id).cloned().unwrap_or_else(|| {
+        let kept: Vec<Mirror> = before.mirrors.iter().filter(|m| vdir::collections(Kind::Calendars).iter().any(|c| c.account == m.account && c.id == m.calendar)).cloned().collect();
+        Availability { mirrors: kept, shares: before.shares.iter().filter(|s| !s.same(share)).cloned().collect(), ..before.clone() }
+    });
+    let choice = sioul_core::availability::Choice { way: share.way().unwrap_or(Way::MirrorLink), account: share.account.clone(), who: share.who.clone(), why: "" };
+    crate::mirrors::add_share(&config, &again, &choice, share.audience().unwrap_or(Audience::Person), &share.link).map(|_| ())
 }
 
 // ---------------------------------------------------------------- sharing
@@ -501,6 +605,10 @@ fn admin_now() -> bool {
 fn share_line(config: &Config, availability: &Availability, share: &Share) -> String {
     let server = crate::mirrors::server_name(config, &share.account);
     let who = share.who.trim_start_matches("group:").to_string();
+    // Its calendar being made again, or why it cannot be.
+    if let Some(line) = crate::mirrors::mirror_line(config, availability, share) {
+        return line;
+    }
     if share.made.is_empty() && share.way().is_some_and(Way::mirrored) {
         return say("availability-share-waiting", &[("who", if who.is_empty() { tr().text("availability-by-link", None) } else { who }), ("server", server)]);
     }
@@ -734,13 +842,9 @@ pub(crate) fn stop_availability(qt: &QtThread, shared: &Arc<Shared>, text: &str)
                 }
                 let line = say("availability-stopped-for", &[("who", if share.who.is_empty() { tr().text("availability-by-link", None) } else { share.who.trim_start_matches("group:").to_string() })]);
                 crate::mail::offer_back(&qt, &shared, line, move |qt, shared| {
-                    let config = load_config();
                     // As it was, but for the mirrors gone with it: made again by the share.
-                    let kept: Vec<Mirror> = before.mirrors.iter().filter(|m| vdir::collections(Kind::Calendars).iter().any(|c| c.account == m.account && c.id == m.calendar)).cloned().collect();
-                    let again = Availability { mirrors: kept, shares: before.shares.iter().filter(|s| !s.same(&share)).cloned().collect(), ..before.clone() };
-                    let choice = sioul_core::availability::Choice { way: share.way().unwrap_or(Way::MirrorLink), account: share.account.clone(), who: share.who.clone(), why: "" };
-                    match crate::mirrors::add_share(&config, &again, &choice, share.audience().unwrap_or(Audience::Person), &share.link) {
-                        Ok(_) => {
+                    match share_again(&before, &share) {
+                        Ok(()) => {
                             crate::pim::nudge(shared, &share.account);
                             ask_servers(qt, shared);
                             String::new()

@@ -144,6 +144,7 @@ CardFrame {
         card.reminder = card.event ? JSON.parse(card.sioul.eventReminder(card.event.key, card.event.start) || "{}") : ({})
         pairing.read()
         part.read()
+        invitation.read()
     }
 
     function readReminder() {
@@ -653,6 +654,49 @@ CardFrame {
                 enabled: guest.modelData.contact !== ""
                 cursorShape: Qt.PointingHandCursor
                 onTapped: card.window.openContact(guest.modelData.contact)
+            }
+        }
+    }
+    // A meeting you organize: what its invitation does now, in one line (`invitationLine`):
+    // waiting for an account, with the way to Accounts; not known to have left, with "Send it
+    // again"; about to leave; guests its server gave no sign for, with "Send it by mail"; or
+    // made before Sioul sent invitations itself, with "Send the invitation now".
+    ColumnLayout {
+        id: invitation
+
+        property var shown: ({ line: "", act: "" })
+
+        function read() {
+            invitation.shown = card.there && card.event.organized === true ? JSON.parse(card.sioul.invitationLine(card.event.key) || "{}") : ({ line: "", act: "" })
+        }
+
+        visible: (invitation.shown.line || "") !== ""
+        Layout.fillWidth: true
+        spacing: 4
+
+        Label {
+            objectName: "eventCardInviteLine"
+            Layout.fillWidth: true
+            text: invitation.shown.line || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            color: card.theme.text
+            font.pixelSize: 13
+        }
+        Button {
+            objectName: "eventCardInviteAct"
+            // Each act's button: Open Accounts, Send the invitation now, Send it by mail, Send it again.
+            readonly property var words: ({ "accounts": "invite-waiting-open", "send-now": "invite-send-now", "send-by-mail": "invite-send-by-mail", "send-again": "invite-send-again" })
+
+            visible: (invitation.shown.act || "") !== ""
+            text: card.sioul.text(words[invitation.shown.act] || "invite-send-now")
+            onClicked: {
+                if (invitation.shown.act === "accounts") {
+                    card.window.openAccounts()
+                    return
+                }
+                card.said(card.sioul.invitationAct(card.event.key, invitation.shown.act))
+                invitation.read()
             }
         }
     }
