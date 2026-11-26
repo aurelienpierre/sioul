@@ -1663,9 +1663,18 @@ Item {
                             message.modelData.spam_word || "", message.modelData.attachments.length > 0 ? page.sioul.text("notice-attached") : ""].filter(t => !!t)
                     note: message.modelData.summary || ""
                     source: page.sourceOf(message.modelData)
+                    // A rule made from it (docs/rules.md): never from mail no rule sees, as the engine's
+                    // own gate says it in `held` (`wiring::engine::held`), whatever the lane: a stranger's,
+                    // a public address's, set aside, hostile, a filter's catch, unproven, in a junk or
+                    // trash folder. A row that does not say it is offered nothing.
+                    more: message.modelData.held !== false ? [] : [{ id: "rule", text: page.sioul.text("rules-from-this"), icon: "" }]
                     onOpened: page.openKey = message.modelData.key
                     onReadPressed: page.say("read", page.mailRow(message.modelData))
                     onDismissPressed: page.say("dismiss", page.mailRow(message.modelData))
+                    onChosen: id => {
+                        if (id === "rule")
+                            page.window.ruleFromMail(message.modelData.key)
+                    }
 
                     // In the review queue: your word, Spam or Not spam, ten seconds to undo.
                     Flow {

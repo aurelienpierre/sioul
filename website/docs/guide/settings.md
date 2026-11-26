@@ -8,7 +8,7 @@ description: Sioul's settings - one place for what belongs to Sioul as a whole, 
 
 **Settings** is the sliders icon at the bottom of the left column; on a phone, and in any window under 720 pixels wide, the places are in the drawer that ☰ opens, and Settings is at its bottom. It holds what belongs to Sioul as a whole; what belongs to one page is on that page, behind its ⚙ ([below](#each-pages-own-settings)). Each setting says in one sentence what it changes, and is saved as soon as you change it: nothing to confirm, nothing to apply. Your settings follow you to your other devices when you share between them; your passwords never do.
 
-The Settings page has a tab for each of the sections below, from **Display** to **AI agents**, across the top of the page. What sets a phone up is on its card in **Devices**. **Words**, after **What reaches you**, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
+The Settings page has a tab for each of the sections below, from **Display** to **AI agents**, across the top of the page. What sets a phone up is on its card in **Devices**. **Rules**, after **What reaches you**, holds what Sioul does when something happens ([below](#rules)); **Words**, after it, holds the words Sioul recognises things by ([further down](#words)). The arrow keys move from one tab to the next once the row of tabs has the focus. In a window too narrow for every name, the row scrolls sideways: its cut end fades, and the arrow at that end brings the next tab into view.
 
 <figure markdown="span">
   [![Settings on a computer, on its first tab: across the top, the tabs Display, Hours, What reaches you, Words, Reminders, Pauses, Sharing, Devices, Invoices and AI agents; under Display, "Language and appearance" with Language, Colours, Show the places' names beside their icons and Show passwords as you type, each with its sentence; then "How text reads" with Font, Size and Line spacing.](../assets/screens/settings-tabs.png){ loading=lazy }](../assets/screens/settings-tabs.png "Open the picture at full size")
@@ -62,6 +62,10 @@ One page for when each thing reaches you: Sioul decides what gets through, and w
 - **What comes when**: every row at every time, a word in each cell, a press to change it.
 
 See [What reaches you, and when](notifications.md).
+
+## Rules {#rules}
+
+One list of sentences, "when this happens, do that": your own rules, each with its switch, **Edit**, **✕** and what it did lately; the rules kept elsewhere (a project's routes, a budget's mail rules, Mail's filters, a topic's senders), said the same way, each opening where it is kept; **Add a rule…**, from nothing or from a message. A second tab, **Presets**, holds the rules that come with Sioul. See [Rules](rules.md).
 
 ## Reminders {#reminders}
 

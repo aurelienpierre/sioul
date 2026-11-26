@@ -109,6 +109,8 @@ Panel {
     property bool revealed: false
     // Set aside as hostile and not yet asked for: nothing of it shows.
     readonly property bool gated: reader.item !== null && reader.item.hidden === true && !reader.revealed
+    // A rule can start from the message open (its menu asked as it opens; the Porch never holds it).
+    property bool ruleOffered: false
     // Its folder's purpose ("inbox", "trash", "junk", "archive", "all"…), for the
     // actions that fit there.
     readonly property string role: reading && reading.role ? reading.role : ""
@@ -495,6 +497,9 @@ Panel {
         SioulMenu {
             id: more
 
+            // Whether a rule can start from the message: the engine's own judgement, once per opening.
+            onAboutToShow: reader.ruleOffered = reader.reading !== null && reader.sioul.ruleOffered(reader.key)
+
             // First, with their words, the actions the row has no room for.
             Instantiator {
                 model: reader.folds.folded
@@ -546,6 +551,14 @@ Panel {
                 height: visible ? implicitHeight : 0
                 text: reader.sioul.text("routetasks-like-this")
                 onTriggered: reader.window.routeTaskFromMail(reader.key)
+            }
+            // One rule, "when such a message arrives, do that", from this one (docs/rules.md);
+            // never from mail the Porch holds (`wiring::engine::held`), asked as the menu opens.
+            MenuItem {
+                visible: reader.reading !== null && reader.ruleOffered
+                height: visible ? implicitHeight : 0
+                text: reader.sioul.text("rules-from-this")
+                onTriggered: reader.window.ruleFromMail(reader.key)
             }
             MenuSeparator {}
             MenuItem {

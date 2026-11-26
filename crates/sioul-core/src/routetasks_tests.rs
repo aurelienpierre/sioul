@@ -138,11 +138,16 @@ impl Shop {
 
     /// The tasks `files` make on a device that knows the tasks `known` and the ties `ties`.
     fn arrive(&self, files: &[PathBuf], known: &dyn Fn(&str) -> bool, ties: &LocalLinks) -> Outcome {
+        self.arrive_at(files, known, ties, "2026-11-23T12:00")
+    }
+
+    /// The same, the device's clock at `now`.
+    fn arrive_at(&self, files: &[PathBuf], known: &dyn Fn(&str) -> bool, ties: &LocalLinks, now: &str) -> Outcome {
         let workdays = Workdays::new(&[], DaysOff::default());
         let list = self.list.clone();
         let lists = move |_: &Model| Some(list.clone());
         let zone = jiff::tz::TimeZone::UTC;
-        let now = "2026-11-23T12:00".parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
+        let now = now.parse::<jiff::civil::DateTime>().unwrap().to_zoned(zone.clone()).unwrap();
         let own = vec!["you@you.example.org".to_string()];
         let making = Making { config: &self.config, own: &own, lists: &lists, workdays: &workdays, known, ties, zone: &zone, now: &now };
         on_arrival(&self.gate, &self.store, files, &making, &self.dir.join("links.toml"))
@@ -300,5 +305,21 @@ fn the_mail_already_here_makes_tasks_once_when_asked() {
     let mut tied = LocalLinks::default();
     tied.add("mid:sale-4@example.org", "sioul:project/gift-cards", "project");
     assert_eq!(already_here(&shop.gate, &by_text, "gift-cards", "r1", &index, &Making { ties: &tied, ..making }).len(), 1);
+    let _ = std::fs::remove_dir_all(&shop.dir);
+}
+
+/// Two devices whose clocks differ write the same bytes for one message:
+/// the task is stamped from the message's arrival, so that their servers see
+/// one task, never one "changed on both sides".
+#[test]
+fn two_devices_write_the_same_bytes() {
+    let shop = Shop::new("bytes", shop_route());
+    let sale = shop.store("Shop <shop@example.org>", GENUINE, "[New sale] Gift card", "2026-11-20");
+    let nobody = |_: &str| false;
+    let made = shop.arrive_at(std::slice::from_ref(&sale), &nobody, &LocalLinks::default(), "2026-11-23T12:00").made;
+    let first = std::fs::read_to_string(&made[0].path).unwrap();
+    std::fs::remove_file(&made[0].path).unwrap();
+    shop.arrive_at(&[sale], &nobody, &LocalLinks::default(), "2026-11-24T09:31").made;
+    assert_eq!(std::fs::read_to_string(&made[0].path).unwrap(), first);
     let _ = std::fs::remove_dir_all(&shop.dir);
 }

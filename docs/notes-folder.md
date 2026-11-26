@@ -52,6 +52,7 @@ Before projects and cases became one thing, the file was `sioul-cases.toml` and 
 - **Every routing keeps its reason** ("sender's domain: impots.example"), shown on request.
 - **Routes are edited** on the project's page ("Mail that comes here by itself") or in the Porch's lane for the project.
 - **A route may make a task of each message it takes** (`makes`): below, "Routes that make tasks".
+- **Routes are rules too**: Settings ▸ Rules shows each route, and each route that makes tasks with its model, as a rule of the same shape, read-only and edited here; the engine never runs them a second time ([rules.md](rules.md#what-exists-read-as-rules)). Mail is tied to its projects and route tasks are made by the one function every device runs when mail arrives, the phone's background step included ([rules.md](rules.md#where-rules-run)).
 
 ## Routes that make tasks
 The design of 23 November 2026, part 2 (Supplies: [supplies.md](supplies.md)): mail from an identified sender, with given words in its subject ("[New sale]"), becomes a task in a project and a list, so that what needs a hand enters the plan. Code: `sioul_core::routetasks` (the making), `sioul_core::projects` (the model and the route in the file), `crates/sioul-app/src/routetasks.rs` and `qml/RouteTask.qml` (the window).

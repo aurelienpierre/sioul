@@ -19,8 +19,9 @@
 //!   first estimate and the supplies it will use, the model's; where it came
 //!   from kept on it (`ORIGIN`, `mid:<Message-ID>`); nothing of the mail's
 //!   text copied;
-//! - **once**: its UID made from the project and the message (`uid`), so
-//!   that two devices write the same file, never two tasks; tied to its
+//! - **once**: its UID made from the project and the message (`uid`), its
+//!   stamps from the message's arrival, so that two devices write the same
+//!   bytes in the same file, never two tasks; tied to its
 //!   message in `links.toml` (`how = "made"`, `MADE`), which travels between
 //!   devices: a task tied so is never made again, even once deleted
 //!   (`made_before`);
@@ -321,7 +322,9 @@ pub fn make(card: &Card, takers: &[Taker], making: &Making, out: &mut Outcome) {
     if card.from_address.as_deref().is_some_and(|from| making.own.iter().any(|own| own.eq_ignore_ascii_case(from.trim()))) {
         return;
     }
-    let arrived = crate::porch::sent(card).and_then(|at| jiff::Timestamp::from_second(at).ok()).map_or_else(|| making.now.date(), |t| t.to_zoned(making.zone.clone()).date());
+    // Stamped from when the message came, never this device's clock: two devices write the same bytes.
+    let stamp = crate::porch::sent(card).and_then(|at| jiff::Timestamp::from_second(at).ok()).map_or_else(|| making.now.clone(), |t| t.to_zoned(making.zone.clone()));
+    let arrived = stamp.date();
     for taker in takers {
         let uid = uid(&taker.project.id, &name);
         if made_before(&uid, making.known, making.ties) || out.ties.iter().any(|e| e.from == links::task_uri(&uid)) {
@@ -338,7 +341,7 @@ pub fn make(card: &Card, takers: &[Taker], making: &Making, out: &mut Outcome) {
             out.ties.push(tie);
             continue;
         }
-        let written = task_text(taker, &card.subject, due, &uid, &address, making.zone, making.now).and_then(|text| crate::vdir::write_item(&path, &text));
+        let written = task_text(taker, &card.subject, due, &uid, &address, making.zone, &stamp).and_then(|text| crate::vdir::write_item(&path, &text));
         match written {
             Ok(()) => {
                 out.ties.push(tie);

@@ -133,6 +133,7 @@ mod appointments;
 // texts: what a computer attaches, made fit for a multimedia message (pictures with Qt: cpp/pictures.cpp).
 #[cfg(not(target_os = "android"))]
 mod attach;
+mod arrivals;
 mod attachments;
 mod backend;
 mod bank;
@@ -206,6 +207,7 @@ mod phonemsgs;
 // texts: SMS phase (b).
 mod texts;
 mod thingsearch;
+mod wiring;
 mod pim;
 mod projects;
 // Settings ▸ What reaches you, in words, and a person's sheet (docs/attention.md).

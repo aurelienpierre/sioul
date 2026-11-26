@@ -283,6 +283,8 @@ pub mod mailnote;
 // mailpass: readers of every message kept on this device, each read once (money, topics).
 pub mod mailpass;
 pub mod mailto;
+// IBANs, card numbers and social security numbers hidden from what is copied out of mail.
+pub mod masking;
 // mms: multimedia messages sent from a computer through the phone (docs/texts.md).
 pub mod mms;
 pub mod money;
@@ -375,5 +377,7 @@ pub mod view;
 pub mod voicemail;
 pub mod weather;
 pub mod window;
+// The wiring: "when this happens, do that" (docs/rules.md).
+pub mod wiring;
 pub mod words;
 pub mod zone;

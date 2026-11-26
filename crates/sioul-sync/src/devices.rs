@@ -183,6 +183,15 @@ pub struct Entry {
     /// unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub topics: u32,
+    /// Whether its Sioul has the rules' stores (`share::RULES`, the list, and
+    /// `share::RULES_ACTS`, each device's record of what they did;
+    /// `sioul_core::wiring`): 1 from a build that has them, 0 from an older
+    /// one (0.1.0), which neither reads nor runs a rule. They travel only once
+    /// every other device that counts says 1 (`share::rules_shared`), as your
+    /// word on topics does. An older Sioul reads the entry as before, the
+    /// field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub rules: u32,
     /// Whether its Sioul follows what you said each device is for
     /// (docs/areas.md, "Which device tells"): `AREAS` (1) from a build that
     /// reads its own line of the settings' table (`[device."<id>"]`: its

@@ -41,6 +41,17 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
+# The extensions' interpreter, optimised in debug builds too, so that an
+# extension's refresh and the extensions' tests run at a usable speed. Its
+# stack is bounded by wasmi's feature `auto-dispatch` (crates/sioul-sync's
+# Cargo.toml), not by this: the debug assertions stay on here, and with them
+# wasmi runs its loop, never a chain of calls one per instruction.
+[profile.dev.package.wasmi]
+opt-level = 3
+[profile.dev.package.wasmi_ir]
+opt-level = 3
+[profile.dev.package.wasmi_core]
+opt-level = 3
 
 [workspace.dependencies]
 mail-parser = "0.11"

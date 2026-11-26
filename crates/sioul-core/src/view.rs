@@ -127,6 +127,10 @@ pub struct ItemView {
     pub tone: String,
     /// Its words are not shown (hostile): no sender's name, subject or text until you ask.
     pub hidden: bool,
+    /// Kept from every rule, by the engine's own gate (`wiring::engine::held`):
+    /// set aside, held, caught as spam, unproven or forged, in a junk or trash
+    /// folder, whatever its lane. "Make a rule from this…" is not offered.
+    pub held: bool,
     /// What it asks, in one neutral line, when an AI read it.
     pub summary: String,
     /// Its notice (`notices`): its id the same on every device, its state
@@ -458,6 +462,7 @@ fn item_view(t: &Triaged, store: Option<&ProjectStore>, tr: &Translator, config:
         topic: t.assessment.as_ref().map(|a| tr.topic(a.topic)).unwrap_or_default(),
         tone: t.assessment.as_ref().map_or(String::new(), |a| format!("{:?}", a.tone).to_lowercase()),
         hidden: false,
+        held: crate::wiring::engine::held(t),
         summary: t.assessment.as_ref().map(|a| a.summary.clone()).unwrap_or_default(),
         notice: crate::notices::Notice::default(),
     };
@@ -2277,6 +2282,23 @@ host = "imap.example.com"
         // Nothing said of it: nothing offered.
         let plain = item_view(&triaged(Lane::Screener, vec![Reason::FirstMessage]), None, &tr, &Config::default(), "");
         assert_eq!((plain.spam, plain.review, plain.spam_word.as_str()), (false, false, ""));
+    }
+
+    /// "Make a rule from this…" goes by the engine's own gate, not by the
+    /// lane: a message nothing proves is held from every rule in a project's
+    /// lane or among the codes too, a forged one and the screener's as well;
+    /// proven mail in a project's lane is not.
+    #[test]
+    fn a_message_held_from_rules_says_so_in_any_lane() {
+        let tr = Translator::new("en");
+        let card = Card::from_bytes(b"From: Desk <desk@quick-parcels.test>\r\nSubject: Your parcel\r\n\r\nYour parcel left the depot.\r\n").unwrap();
+        let triaged = |lane: Lane, trust: Trust, reasons: Vec<Reason>| Triaged { card: card.clone(), lane, trust, code: None, reasons, priority: Priority::Average, checks: None, assessment: None };
+        let held = |t: Triaged| item_view(&t, None, &tr, &Config::default(), "").held;
+        assert!(held(triaged(Lane::Project("parcels".into()), Trust::Unverified, vec![Reason::NotAuthenticated])), "unproven, in a project's lane");
+        assert!(held(triaged(Lane::RightNow, Trust::Unverified, vec![Reason::NotAuthenticated])), "unproven, among the codes");
+        assert!(held(triaged(Lane::Project("parcels".into()), Trust::Forged, Vec::new())), "forged, in a project's lane");
+        assert!(held(triaged(Lane::Screener, Trust::Verified, vec![Reason::FirstMessage])), "a stranger in the screener");
+        assert!(!held(triaged(Lane::Project("parcels".into()), Trust::Verified, Vec::new())), "proven, in a project's lane");
     }
 
     /// The closed Porch names its next opening among work's and admin's

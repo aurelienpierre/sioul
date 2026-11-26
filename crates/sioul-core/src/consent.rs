@@ -68,6 +68,9 @@ pub struct Consent {
     pub health_unread: bool,
     /// What another shares for its availability alone, by address: never given to an agent (`keep_private`).
     private: BTreeSet<String>,
+    /// What a rule or a route made of a message, and that message: kept
+    /// from agents with its account (`keep_accounts`).
+    made: Vec<(String, String)>,
     /// What is a person's kept from agents, by address (`keep_persons`): a
     /// closed person's papers and address, others' health papers.
     persons: BTreeSet<String>,
@@ -76,7 +79,7 @@ pub struct Consent {
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new(), persons: BTreeSet::new() }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new(), persons: BTreeSet::new(), made: Vec::new() }
     }
 
     /// Keeps the events of the agendas shared for their availability alone
@@ -240,6 +243,9 @@ impl Consent {
         let folders: Vec<&std::path::PathBuf> = self.kept_accounts.values().collect();
         let kept: Vec<String> = mail.iter().filter(|(_, m)| folders.iter().any(|f| m.path.starts_with(f))).map(|(id, _)| id.clone()).collect();
         self.kept_mail.extend(kept);
+        // What a rule or a route made of such mail is kept too.
+        let made: Vec<String> = self.made.iter().filter(|(_, mail)| self.kept_by_account(Some(mail), None)).map(|(made, _)| made.clone()).collect();
+        self.private.extend(made);
     }
 
     /// Whether an account's mail is kept from agents whatever its projects (`keep_accounts`).
@@ -347,6 +353,20 @@ impl Consent {
                     consent.tie(&links::draft_uri(&draft.id), &id);
                 }
             }
+        }
+        // What a rule or a route made of a message (a task, a paper: `how = "made"`) is in
+        // the message's projects too, so that it is kept from agents as its message is,
+        // whatever project it says itself (docs/rules.md).
+        for edge in edges.iter().filter(|e| e.how == crate::routetasks::MADE) {
+            let (made, mail) = match (links::kind_of(&edge.from), links::kind_of(&edge.to)) {
+                (_, Kind::Mail) => (&edge.from, &edge.to),
+                (Kind::Mail, _) => (&edge.to, &edge.from),
+                _ => continue,
+            };
+            for id in consent.tied.get(mail).cloned().unwrap_or_default() {
+                consent.tie(made, &id);
+            }
+            consent.made.push((made.clone(), mail.clone()));
         }
         // A contact the project is for: its address, or its name or organisation.
         for project in &loaded.projects {
@@ -529,6 +549,7 @@ impl Consent {
 mod tests {
     use super::*;
     use crate::projects::Route;
+    use crate::links::{Edge, LocalLinks};
     use crate::mailindex::{MailIndex, MailRef};
     use crate::tasks::{Relation, Task};
 
@@ -583,6 +604,37 @@ mod tests {
         let consent = Consent::of(&loaded, true, None);
         assert!(!consent.allows(&links::task_uri("z1")) && !consent.allows(&links::event_uri("zb")), "the closed project's task and its block");
         assert!(consent.allows(&links::event_uri("ob")) && consent.allows(&links::event_uri("nb")));
+    }
+
+    /// What a rule or a route made of a message (`how = "made"`) is kept from
+    /// agents as its message is: in a closed project's message's project,
+    /// whatever project the task says itself; kept with a kept account's
+    /// message; one made of an open project's message stays as it was.
+    #[test]
+    fn what_a_rule_made_is_kept_as_its_message() {
+        let edge = |from: String, to: String, how: &str| Edge { from, to, how: how.into() };
+        let mut mail = MailIndex::default();
+        mail.insert("w@contoso.example", MailRef { subject: "Payslip".into(), path: "/data/mail/work/cur/1:2,S".into(), ..Default::default() });
+        let tasks = vec![
+            Task { uid: "t-closed".into(), title: "Pay the tax".into(), projects: vec!["lumen".into()], ..Task::default() },
+            Task { uid: "t-open".into(), title: "Mock-ups".into(), ..Task::default() },
+        ];
+        let local = LocalLinks {
+            links: vec![
+                edge(links::mail_uri("tax@example.org"), links::project_uri("closed"), "link"),
+                edge(links::mail_uri("quote@example.org"), links::project_uri("lumen"), "link"),
+                edge(links::task_uri("t-closed"), links::mail_uri("tax@example.org"), crate::routetasks::MADE),
+                edge(links::task_uri("t-open"), links::mail_uri("quote@example.org"), crate::routetasks::MADE),
+                edge(links::paper_uri("p-work"), links::mail_uri("w@contoso.example"), crate::routetasks::MADE),
+            ],
+        };
+        let loaded = Loaded { mail, tasks, local, projects: vec![project("lumen", true), project("closed", false)], ..Loaded::default() };
+        let mut consent = Consent::of(&loaded, true, None);
+        assert!(!consent.allows(&links::task_uri("t-closed")), "made of the closed project's message, though it says an open one");
+        assert!(consent.allows(&links::task_uri("t-open")) && consent.allows(&links::paper_uri("p-work")));
+        consent.keep_accounts([("work".to_string(), std::path::PathBuf::from("/data/mail/work"))], &loaded.mail);
+        assert!(!consent.allows(&links::paper_uri("p-work")), "made of a kept account's message");
+        assert!(consent.allows(&links::task_uri("t-open")));
     }
 
     /// The pharmacy and renewal errands are health, whatever their projects:

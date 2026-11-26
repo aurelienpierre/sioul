@@ -10415,3 +10415,835 @@ routetasks-days-missing-line = Its number of business days is missing: each task
 routetasks-in-list = in { $list }
 routetasks-made = “{ $title }” is in { $list }, made from a message, asked for { $day }.
 routetasks-made-many = { $Count } tasks were made from messages, in { $list }.
+
+## The wiring: rules, their declarations and what they did (docs/rules.md).
+rules-type-message = A message
+rules-type-task = A task
+rules-type-event = An event
+rules-type-movement = A money movement
+rules-type-supply = A supply
+rules-type-call = A call
+rules-type-paper = A paper
+rules-type-letter = A paper letter
+rules-type-contract = A contract
+rules-type-invoice = An invoice
+rules-type-site = A site
+rules-type-clock = The clock
+rules-type-none = Sioul
+rules-event-message-arrives = arrives
+rules-event-message-is-sent = is sent
+rules-event-message-is-said-spam = is said to be spam
+rules-event-task-is-made = is made
+rules-event-task-is-done = is done
+rules-event-task-is-put-off = is put off
+rules-event-task-comes-due = comes due
+rules-event-event-is-made = is made
+rules-event-event-moves = moves
+rules-event-event-starts-soon = starts soon
+rules-event-event-is-over = is over
+rules-event-movement-appears = appears
+rules-event-movement-did-not-leave = did not leave on its day
+rules-event-movement-day-comes = comes to its day
+rules-event-supply-runs-low = runs low
+rules-event-supply-comes-in = comes in
+rules-event-call-rings = rings
+rules-event-call-is-missed = is missed
+rules-event-call-is-answered = is answered
+rules-event-paper-renewal-nears = is due for renewal soon
+rules-event-letter-scan-arrives = is scanned
+rules-event-contract-notice-nears = nears its last day of notice
+rules-event-invoice-is-issued = is issued
+rules-event-invoice-is-due = comes due
+rules-event-site-offers-file = offers a file
+rules-event-site-notifies = sends a notification
+rules-event-clock-moment-begins = a moment of your day begins
+rules-event-clock-day-comes = a day begins
+rules-field-message-sender = its sender
+rules-field-message-sender-domain = its sender's domain
+rules-field-message-from = From
+rules-field-message-reply-to = the address answers go to
+rules-field-message-circle = who its sender is to you
+rules-field-message-card = its sender's card
+rules-field-message-to = To
+rules-field-message-cc = Cc
+rules-field-message-account = the address it came to
+rules-field-message-subject = its subject
+rules-field-message-text = its text
+rules-field-message-anywhere = anywhere in it
+rules-field-message-attachment = an attachment's name
+rules-field-message-attachment-type = the type of an attachment
+rules-field-message-list = its mailing list
+rules-field-message-size = its size
+rules-field-message-date = the day it came
+rules-field-message-weekday = the day of the week it came
+rules-field-message-hour = the time it came
+rules-field-message-topic = its topic
+rules-field-message-project = its project
+rules-field-message-kind = what Sioul recognises in it
+rules-field-message-amount = the amount it states
+rules-field-message-spam = what your spam filter says of it
+rules-field-message-folder = the folder it came into
+rules-field-task-title = its title
+rules-field-task-list = its list
+rules-field-task-project = its project
+rules-field-task-tag = its tag
+rules-field-task-contact = its contact
+rules-field-task-draft = a draft it holds
+rules-field-event-title = its title
+rules-field-event-calendar = its calendar
+rules-field-event-project = its project
+rules-field-event-guests = its guests
+rules-test-is = is
+rules-test-is-not = is not
+rules-test-contains = contains
+rules-test-not-contains = does not contain
+rules-test-has-words = has the words
+rules-test-exists = is there
+rules-test-missing = is not there
+rules-test-above = is above
+rules-test-below = is below
+rules-test-before = is before
+rules-test-after = is after
+rules-test-between = is between
+rules-choice-circle-known = someone you know
+rules-choice-circle-safe = safe
+rules-choice-circle-neutral = neutral
+rules-choice-circle-restricted = restricted
+rules-choice-circle-stranger = a stranger
+rules-choice-attachment-type-pdf = a PDF
+rules-choice-attachment-type-image = a picture
+rules-choice-attachment-type-document = a document
+rules-choice-attachment-type-archive = an archive
+rules-choice-attachment-type-calendar = an invitation
+rules-choice-attachment-type-audio = a sound
+rules-choice-attachment-type-video = a video
+rules-choice-attachment-type-text = a text
+rules-choice-kind-code = a code
+rules-choice-kind-password = a temporary password
+rules-choice-kind-password-reset = a password reset
+rules-choice-kind-sign-in-link = a sign-in link
+rules-choice-kind-confirmation = an address to confirm
+rules-choice-kind-invitation = an invitation
+rules-choice-kind-newsletter = a newsletter
+rules-choice-kind-payment-received = money received
+rules-choice-kind-payment-made = a payment made (a receipt)
+rules-choice-kind-order = an order
+rules-choice-kind-bill = a bill
+rules-choice-kind-refund = a refund
+rules-choice-kind-payment-refused = a payment refused
+rules-choice-kind-sign-in-notice = a sign-in notice
+rules-choice-kind-site-waits = something waiting on a site
+rules-choice-kind-parcel = a parcel
+rules-choice-kind-bounce = a message that did not reach someone
+rules-choice-kind-renewal = a renewal
+rules-choice-kind-reply = a reply to something you sent
+rules-choice-spam-spam = spam
+rules-choice-spam-doubt = a doubt
+rules-action-message-tie-to-project = tie it to a project
+rules-action-message-give-topic = give it a topic
+rules-action-message-keep-attachments = keep its attachments in Papers
+rules-action-message-move-to-folder = move it to a folder
+rules-action-message-archive = archive it
+rules-action-message-junk = put it with spam
+rules-action-message-mark-read = mark it read
+rules-action-message-flag = flag it
+rules-action-message-keyword = give it a keyword
+rules-action-message-trash = put it in the trash
+rules-action-message-never-topic = never give it a topic
+rules-action-message-tie-to-task = tie it to its task
+rules-action-message-tie-to-site = tie it to its site
+rules-action-message-leave-list = leave its list
+rules-action-task-make = make a task from a model
+rules-action-task-mark-done = mark it done
+rules-action-task-set-date = set its date
+rules-action-task-tag = give it a tag
+rules-action-task-move-to-list = move it to a list
+rules-action-task-add-step = add a step
+rules-action-task-set-aside = set it aside
+rules-action-task-estimate = give it a first estimate
+rules-action-event-make = make an event
+rules-action-event-move = move it
+rules-action-event-pause = pause its series
+rules-action-event-answer = write the answer into it
+rules-action-movement-join = join it to the movement it tells of
+rules-action-movement-plan = plan a money movement
+rules-action-supply-take-out = take the supplies out of the stock
+rules-action-call-decline = decline it
+rules-action-paper-keep = keep it as a paper
+rules-action-letter-read = read it
+rules-action-none-tell = tell you
+rules-action-none-do-not-disturb = turn do-not-disturb on or off
+rules-param-project = The project
+rules-param-topic = The topic
+rules-param-type = Which attachments
+rules-param-name = Whose name contains
+rules-param-kind = The paper's type
+rules-param-title = Its name
+rules-param-for = Whom it is for
+rules-param-folder = The folder
+rules-param-model = The model
+rules-param-days = Business days after it came
+rules-param-date = The date
+rules-param-tag = The tag
+rules-param-list = The list
+rules-param-calendar = The calendar
+rules-param-minutes = Minutes
+rules-param-budget = The budget
+rules-param-direction = In or out
+rules-param-amount = The amount
+rules-param-label = Its label
+rules-param-preset = The preset it stands for
+rules-param-level = How
+rules-param-words = What the notice says
+rules-level-now = As soon as the moment allows
+rules-level-quiet = Quietly, only in the rule's history
+rules-once-tie = The tie itself: the same pair on every device, made once.
+rules-once-topic = Your word on the message, written once; never over a word of yours.
+rules-once-paper = Each file kept once, by the rule, the message and the file's content; a file kept already gets the tie.
+rules-once-server = Marked on the server before it is done, as mail filters do.
+rules-once-made = Made once, with a name worked out from the rule and what triggered it, the same on every device.
+rules-once-record = Written once in the record of acts every device reads.
+rules-once-tell = Told once, by the device that keeps your notices.
+rules-refused-no-project = The project it names is no longer there.
+rules-refused-no-topic = The topic it names is no longer there.
+rules-refused-your-word = You gave this message a topic yourself: yours stands.
+rules-refused-no-id = This message has no identifier to give it a topic by.
+rules-refused-infected = The antivirus refused an attachment: none of this message's files is kept.
+rules-refused-no-papers = Papers have no folder on this device yet.
+rules-refused-no-attachment = This message holds no attachment the rule names.
+rules-refused-deletes = A rule never deletes anything.
+rules-refused-sends = A rule never sends anything.
+rules-refused-pays = A rule never moves money.
+rules-refused-setting = A rule never changes a setting or another rule.
+rules-refused-health = A rule never touches health.
+rules-refused-no-model = The model it names is no longer there.
+rules-refused-no-list = There is no task list to write in.
+rules-refused-read-only = That list can only be read.
+rules-refused-meeting = A meeting with other guests is never changed.
+rules-refused-own = A rule never acts on what it made itself.
+rules-refused-chain = Three rules in a row already acted: the chain stops here.
+rules-refused-write = It could not be written.
+rules-problem-unknown = A newer Sioul wrote this rule: it is kept as it is, and runs on the devices that know it.
+rules-problem-no-when = Say what happens.
+rules-problem-coming = This comes in a later version: the rule waits until then.
+rules-problem-no-condition = Say which messages: at least one condition.
+rules-problem-value = A condition has no value yet.
+rules-problem-forbidden = A rule never sends, deletes, moves money, nor changes a setting or health.
+rules-problem-no-action = Say what is done.
+rules-problem-param = Something the action needs is missing.
+rules-newer-format = Your rules were written by a newer Sioul: they are shown here, and change on the devices that run it.
+rules-tell-title = A message for one of your rules
+rules-tell-body = { $from }: { $subject }
+rules-tell-body-code = { $from }: a message holding a code
+rules-runs-route = Runs when mail arrives on each device, and each time the project's page is shown.
+rules-runs-route-task = Runs when mail arrives on each device, once per message.
+rules-runs-mail-rule = Read when the budgets show their mail.
+rules-runs-filter = Runs on the server at each fetch, on whichever device fetches first.
+rules-runs-topic = Read each time mail's topics are given.
+rules-file-type-any = Every attachment
+rules-for-me = You
+# Settings ▸ Rules: "when this happens, do that" (docs/rules.md, RulesTab.qml, RuleEditor.qml).
+settings-tab-rules = Rules
+settings-about-rules = When something happens, what Sioul does: your rules, and those kept with your projects, budgets, filters and topics.
+rules-tab-own = Your rules
+rules-tab-presets = Presets
+rules-about = Each rule says what Sioul does when something happens. A rule acts on what comes after it is saved; each thing it does is said once, with Undo.
+rules-presets-about = The rules that come with Sioul: what it does by itself, as it always did, said the same way. A line you can change leads to where it is set; copying one to make your own comes in a later version.
+rules-none = No rule yet. Add one here, or from a message: “Make a rule from this…” in its menu.
+rules-add = Add a rule…
+rules-switch = This rule on
+rules-remove = Remove this rule
+rules-removed = Rule removed: { $sentence }
+rules-switched-on = Rule on: { $sentence }
+rules-switched-off = Rule off: { $sentence } It stays in the list.
+rules-saved = Rule saved: { $sentence }
+rules-saved-past = Rule saved: { $sentence } { $done }
+rules-lately = { $n ->
+        [one] What it did lately (one)
+       *[other] What it did lately ({ $n })
+    }
+rules-not-this-one = Not for this one
+rules-not-this-one-said = This rule leaves that one alone from now on.
+rules-from-this = Make a rule from this…
+rules-kept-project = Kept with the project { $project }, among its routes; changed on its page.
+rules-kept-budget = Kept with the budget { $budget }, among the mail that becomes its lines; no page changes it yet.
+rules-kept-filters = Kept among Mail's filters; changed in Mail ⚙ ▸ Filters, where their order is kept too.
+rules-kept-filters-stop = The filters after it are not asked once it acts.
+rules-kept-topics = Kept with the topic { $topic }; changed in Mail ⚙ ▸ Topics.
+rules-kept-off = It is off where it is kept.
+rules-open-project = Open the project
+rules-open-budget = Open Money
+rules-open-filters = Open the filters
+rules-open-topics = Open the topics
+rules-unknown = Written by a newer Sioul: kept as it is, and not run on this device.
+rules-read-only = Your rules were written by a newer Sioul: they are shown, and nothing runs or changes on this device until it is brought up to date.
+rules-not-read = Your rules could not be read: { $error }
+rules-editor-new = New rule
+rules-editor-edit = Edit the rule
+rules-when = When
+rules-then = Then
+rules-when-type = What it watches
+rules-when-event = What happens to it
+rules-match = Which conditions
+rules-match-all = Every condition holds
+rules-match-any = One of them is enough
+rules-add-condition = Add a condition
+rules-condition-remove = Remove this condition
+rules-field = What it reads
+rules-test = How it compares
+rules-then-action = What it does
+rules-choose-action = Choose what it does…
+rules-choose = Choose…
+rules-later = { $name } (later)
+rules-optional = { $name } (if you want)
+rules-chosen-here = Chosen here
+rules-taken-from = From what triggered it
+rules-value-text = A word or a phrase
+rules-value-words = Words or phrases, separated by commas
+rules-value-addresses = Addresses, separated by commas
+rules-value-domains = Domains, such as example.org, separated by commas
+rules-value-size = A size, such as 5 MB
+rules-value-time = A time, such as 18:00
+rules-value-pattern = Words, with {"{"}sender{"}"}, {"{"}month{"}"}, {"{"}year{"}"}, {"{"}subject{"}"} or {"{"}file{"}"} where the message's own go
+rules-value-and = and
+rules-value-until = { $name }, until
+rules-value-none-yet = None yet
+rules-model-new = A new model of task
+rules-model-name = Its name
+rules-model-name-hint = Pay a bill, Check a statement…
+rules-model-prefix = Before each task's title
+rules-model-prefix-hint = Pay:
+rules-model-list = Its list
+rules-model-list-usual = The usual list
+rules-model-days = Asked after, in business days
+rules-model-keep = Keep this model
+rules-preview-title = What it would have done in the last 30 days
+rules-preview-looking = Looking through the last 30 days…
+rules-preview-none = Nothing in the last 30 days: it acts on what comes from now on.
+rules-preview-some = { $n ->
+        [one] One message in the last 30 days:
+       *[other] { $n } messages in the last 30 days:
+    }
+rules-preview-more = and { $n } more
+rules-preview-line = { $day }, { $who }: { $does }
+rules-act-put-back = Undone: put back as it was. The rule leaves that one alone from now on.
+rules-act-kept = It changed since, so it stays as it is. The rule leaves that one alone from now on.
+rules-also-past = { $n ->
+        [one] Also for this message, once
+       *[other] Also for these { $n } messages, once each
+    }
+rules-not-understood = This rule could not be read: { $error }
+rules-act-waiting = { $when }, { $Subject }: { $why }
+rules-act-back = { $when }: { $line } Taken back since.
+rules-act-left = { $when }: { $line } Undo found it changed, so it stays as it is.
+rules-act-out = { $when }: { $line } Taken out since: the antivirus refused its file.
+rules-removed-for-good = Rule removed for good: { $sentence }
+rules-remove-newer-title = Remove a rule from a newer Sioul?
+rules-remove-newer = A newer version of Sioul wrote this rule. Removed here, it cannot be put back from this device.
+rules-remove-for-good = Remove for good
+rules-place = { $n ->
+        [one] { $name }: one rule
+       *[other] { $name }: { $count } rules
+    }
+rules-place-project = The project { $project }
+rules-place-budget = The budget { $budget }
+rules-place-filters = Mail's filters
+rules-place-topic = The topic { $topic }
+rules-preset-off = Off where it is set.
+rules-preset-where = Change it where it is set
+rules-presets-message = Mail
+rules-presets-task = Tasks
+rules-presets-event = Events
+rules-presets-movement = Money
+rules-presets-supply = Supplies
+rules-presets-call = Calls
+rules-presets-paper = Papers
+rules-presets-letter = Letters
+rules-presets-contract = Contracts
+rules-presets-invoice = Invoices
+rules-presets-site = Sites
+rules-presets-clock = Days and moments
+rules-presets-none = Sioul
+rules-default-task-make-project = Unless you choose: its project, else the model's.
+rules-default-task-make-title = Unless you choose: its subject, without the words the rule looks for.
+rules-default-task-make-days = Unless you choose: as many business days as the model says.
+rules-default-none-tell-level = Unless you choose: as soon as the moment allows.
+rules-default-none-tell-words = Unless you choose: who sent it and its subject.
+rules-default-message-keep-attachments-type = Unless you choose: its PDFs.
+rules-default-message-keep-attachments-name = Unless you choose: whatever their names.
+rules-default-message-keep-attachments-kind = Unless you choose: guessed from the file's name, then the subject.
+rules-default-message-keep-attachments-title = Unless you choose: the file's name.
+rules-default-message-keep-attachments-for = Unless you choose: you.
+rules-message-gone = No rule can start from this message: it is no longer here, or the Porch holds it (a stranger's, set aside, unproven, in spam or the trash), and rules never see such mail.
+rules-act-when = { $when }: { $line }
+rules-act-undone = { $when }: { $line } Undone since.
+rules-model-of = { $model } ({ $project })
+rules-done-past = { $n ->
+        [0] Nothing in the last 30 days called for it.
+        [one] Done once for the last 30 days.
+       *[other] Done for { $n } messages of the last 30 days.
+    }
+rules-preset-not-copied = This preset cannot be copied yet: Sioul does it by itself as it always has.
+rules-add-title = Add a rule
+rules-start-blank = Start from nothing
+rules-start-message = From a message
+rules-start-find = A few words of its subject or its sender
+rules-start-looking = Looking for the messages of the last 30 days a rule can see…
+rules-start-no-message = No message of the last 30 days is here yet.
+rules-start-none-found = No message of the last 30 days has these words.
+rules-start-preset = From a preset
+rules-start-preset-later = Starting from a preset, one of the rules that come with Sioul, comes in a later version.
+rules-preset-title = Comes with Sioul
+rules-preset-details = What you can change
+rules-preset-later = Sioul does this by itself, as it always has: its details become yours to change in a later version.
+rules-preset-copy = Copy to make my own
+rules-preset-open = Details
+
+# A rule in words (crates/sioul-core/src/wiring/words.rs): whole phrases per
+# event, condition and action, their values as inserts, joined by the code.
+rule-sentence = { $when }: { $then }.
+rule-when-shared = { $when }:
+rule-quoted = “{ $text }”
+rule-join-comma = {", "}
+rule-join-and = {" "}and{" "}
+rule-join-or = {" "}or{" "}
+rule-a-message = a message
+rule-a-message-first = A message
+rule-heading-any = When { $type } { $event }
+rule-heading-message-arrives = When a message arrives
+rule-heading-message-is-sent = When a message is sent
+rule-heading-task-is-made = When a task is made
+rule-heading-task-is-done = When a task is done
+rule-heading-task-is-put-off = When a task is put off
+rule-heading-task-comes-due = When a task comes due
+rule-heading-event-is-made = When an event is made
+rule-heading-event-moves = When an event moves
+rule-heading-event-starts-soon = When an event starts soon
+rule-heading-event-is-over = When an event is over
+rule-heading-movement-appears = When a money movement appears
+rule-heading-movement-did-not-leave = When a payment did not leave on its day
+rule-when-message-says = When a message{ $from } { $says }{ $rest }
+rule-says-code = holds a code
+rule-says-password = holds a password
+rule-says-password-reset = offers to reset a password
+rule-says-sign-in-link = holds a link to sign in
+rule-says-confirmation = asks you to confirm something
+rule-says-invitation = holds an invitation
+rule-says-newsletter = is a newsletter
+rule-says-payment = tells of a payment
+rule-says-payment-received = says money came in
+rule-says-payment-made = says a payment was made
+rule-says-order = confirms an order
+rule-says-bill = brings a bill
+rule-says-refund = announces a refund
+rule-says-payment-refused = says a payment was refused
+rule-says-sign-in-notice = says someone signed in
+rule-says-site-waits = says something waits for you on a site
+rule-says-parcel = tells of a parcel
+rule-says-bounce = says a message could not be delivered
+rule-says-renewal = announces a renewal
+rule-says-reply = answers something you sent
+rule-circle-known = someone you know
+rule-circle-safe = someone in your Safe circle
+rule-circle-neutral = one of your contacts
+rule-circle-restricted = someone in your Restricted circle
+rule-circle-stranger = a stranger
+rule-if-any = where { $field } { $test } { $value }
+rule-if-message-sender = from { $value }
+rule-if-message-sender-domain = from anyone at { $value }
+rule-if-message-from = { $test ->
+        [not-contains] whose sender does not contain { $value }
+        [is] whose sender is { $value }
+        [is-not] whose sender is not { $value }
+       *[contains] whose sender contains { $value }
+    }
+rule-if-message-reply-to = { $test ->
+        [not-contains] whose reply address does not contain { $value }
+        [is] whose reply address is { $value }
+        [is-not] whose reply address is not { $value }
+       *[contains] whose reply address contains { $value }
+    }
+rule-if-message-circle = { $test ->
+        [is-not] not from { $value }
+       *[is] from { $value }
+    }
+rule-if-message-card = { $test ->
+        [exists] from someone in your contacts
+        [missing] from someone not in your contacts
+       *[is] from { $value }
+    }
+rule-if-message-to = { $test ->
+        [not-contains] not sent to an address containing { $value }
+        [is] sent to { $value }
+        [is-not] not sent to { $value }
+       *[contains] sent to an address containing { $value }
+    }
+rule-if-message-cc = { $test ->
+        [not-contains] with no copy to an address containing { $value }
+        [is] with a copy to { $value }
+        [is-not] with no copy to { $value }
+       *[contains] with a copy to an address containing { $value }
+    }
+rule-if-message-account = { $test ->
+        [is-not] at another address than { $value }
+       *[is] at your address { $value }
+    }
+rule-if-message-subject = { $test ->
+        [contains] whose subject contains { $value }
+        [not-contains] whose subject does not contain { $value }
+        [is] whose subject is { $value }
+        [is-not] whose subject is not { $value }
+       *[has-words] with { $value } in its subject
+    }
+rule-if-message-text = { $test ->
+        [contains] whose text contains { $value }
+        [not-contains] whose text does not contain { $value }
+       *[has-words] with { $value } in its text
+    }
+rule-if-message-anywhere = { $test ->
+        [not-contains] without { $value } anywhere in it
+       *[contains] with { $value } anywhere in it
+    }
+rule-if-message-attachment = { $test ->
+        [missing] without an attachment
+        [contains] with an attachment named with { $value }
+        [not-contains] with no attachment named with { $value }
+       *[exists] with an attachment
+    }
+rule-if-message-attachment-type = { $test ->
+        [is-not] without { $value } attached
+       *[is] with { $value } attached
+    }
+rule-if-message-list = { $test ->
+        [missing] not from a newsletter nor a list
+        [contains] from the list { $value }
+        [not-contains] not from the list { $value }
+       *[exists] from a newsletter or a list
+    }
+rule-if-message-size = { $test ->
+        [below] smaller than { $value }
+       *[above] larger than { $value }
+    }
+rule-if-message-date = { $test ->
+        [before] before { $value }
+        [between] between { $value } and { $until }
+       *[after] after { $value }
+    }
+rule-if-message-weekday = { $test ->
+        [is-not] on a day other than { $value }
+       *[is] on { $value }
+    }
+rule-if-message-hour = { $test ->
+        [before] before { $value }
+        [between] between { $value } and { $until }
+       *[after] from { $value } on
+    }
+rule-if-message-topic = { $test ->
+        [is-not] outside the topic { $value }
+       *[is] in the topic { $value }
+    }
+rule-if-message-project = { $test ->
+        [is-not] not for the project { $value }
+       *[is] for the project { $value }
+    }
+rule-if-message-kind = { $test ->
+        [is-not] in which Sioul does not recognise { $value }
+       *[is] in which Sioul recognises { $value }
+    }
+rule-if-message-amount = { $test ->
+        [below] for less than { $value }
+       *[above] for more than { $value }
+    }
+rule-from-message-subject = its subject
+rule-from-message-project = its project
+rule-from-message-sender = its sender
+rule-from-message-amount = the amount it states
+rule-do-unchosen = (what it does, still to choose)
+rule-do-any = { $action }: { $params }
+rule-do-message-tie-to-project = { $project-from ->
+        [yes] { $same ->
+            [no] tie its message to the project of its conversation
+           *[yes] tie it to the project of its conversation
+        }
+       *[no] { $same ->
+            [no] tie its message to the project { $project }
+           *[yes] tie it to the project { $project }
+        }
+    }
+rule-do-message-give-topic = { $topic-from ->
+        [yes] { $same ->
+            [no] give its message the topic Sioul finds for it
+           *[yes] give it the topic Sioul finds for it
+        }
+       *[no] { $same ->
+            [no] give its message the topic { $topic }
+           *[yes] give it the topic { $topic }
+        }
+    }
+rule-do-message-never-topic = { $same ->
+        [no] never give its message the topic { $topic }
+       *[yes] never give it the topic { $topic }
+    }
+rule-do-message-move-to-folder = { $same ->
+        [no] move its message into { $folder }
+       *[yes] move it into { $folder }
+    }
+rule-do-message-archive = { $same ->
+        [no] archive its message
+       *[yes] archive it
+    }
+rule-do-message-junk = { $same ->
+        [no] move its message to the junk, as spam
+       *[yes] move it to the junk, as spam
+    }
+rule-do-message-mark-read = { $same ->
+        [no] mark its message read
+       *[yes] mark it read
+    }
+rule-do-message-flag = { $same ->
+        [no] flag its message
+       *[yes] flag it
+    }
+rule-do-message-keyword = { $same ->
+        [no] give its message the keyword { $name }
+       *[yes] give it the keyword { $name }
+    }
+rule-do-message-trash = { $same ->
+        [no] move its message to the trash
+       *[yes] move it to the trash
+    }
+rule-do-message-keep-attachments = { $same ->
+        [no] keep { $which } of its message in Papers
+       *[yes] keep { $which } in Papers
+    }
+rule-do-message-keep-attachments-name = , if their name contains { $value }
+rule-do-message-keep-attachments-kind = , as { $value }
+rule-do-message-keep-attachments-title = , named { $value }
+rule-do-message-keep-attachments-for = , for { $value }
+rule-attachments-any = its attachments
+rule-attachments-pdf = its PDFs
+rule-attachments-image = its pictures
+rule-attachments-document = its documents
+rule-attachments-archive = its archives
+rule-attachments-calendar = its invitations
+rule-attachments-audio = its sounds
+rule-attachments-video = its videos
+rule-attachments-text = its text files
+rule-for-me = you
+rule-do-task-make = make a task from the model { $model }
+rule-do-task-make-project = { $from ->
+        [yes] , in its project
+       *[no] , in the project { $value }
+    }
+rule-do-task-make-title = { $from ->
+        [yes] , titled with { $value }
+       *[no] , titled { $value }
+    }
+rule-do-task-make-days = { $n ->
+        [one] , asked one business day after it came
+       *[other] , asked { $count } business days after it came
+    }
+rule-do-task-mark-done = { $same ->
+        [no] mark its task done
+       *[yes] mark it done
+    }
+rule-do-task-set-date = { $same ->
+        [no] ask its task for { $date }
+       *[yes] ask it for { $date }
+    }
+rule-do-task-tag = { $same ->
+        [no] give its task the tag { $tag }
+       *[yes] give it the tag { $tag }
+    }
+rule-do-task-move-to-list = { $same ->
+        [no] move its task to { $list }
+       *[yes] move it to { $list }
+    }
+rule-do-task-add-step = { $same ->
+        [no] add the step { $title } to its task
+       *[yes] add the step { $title } to it
+    }
+rule-do-event-make = make the event { $title } in { $calendar }
+rule-do-event-move = { $same ->
+        [no] move its event by { $minutes } minutes
+       *[yes] move it by { $minutes } minutes
+    }
+rule-do-movement-plan = { $direction ->
+        [credit] propose money coming into the budget { $budget }
+       *[debit] propose a payment for the budget { $budget }
+    }
+rule-do-movement-plan-amount = { $from ->
+        [yes] , of the amount it states
+       *[no] , of { $value }
+    }
+rule-do-movement-plan-label = , as { $value }
+rule-do-none-tell = { $level ->
+        [quiet] keep it quietly in this rule's history
+       *[now] tell you
+    }
+rule-do-none-tell-words = tell you { $words }
+rule-heading-message-is-said-spam = When you say a message is spam
+rule-heading-supply-runs-low = When a supply runs low
+rule-heading-supply-comes-in = When a supply comes in
+rule-heading-call-rings = When a call rings
+rule-heading-call-is-missed = When a call is missed
+rule-heading-call-is-answered = When a call is answered
+rule-heading-paper-renewal-nears = When a paper is soon to renew
+rule-heading-letter-scan-arrives = When a letter's scan arrives
+rule-heading-contract-notice-nears = When a contract's notice day nears
+rule-heading-invoice-is-issued = When an invoice is issued
+rule-heading-invoice-is-due = When an invoice is due
+rule-heading-site-offers-file = When a site offers a file
+rule-heading-site-notifies = When a site notifies you
+rule-heading-clock-moment-begins = When a moment of the day begins
+rule-heading-clock-day-comes = When a new day comes
+rule-heading-movement-day-comes = When a payment's day comes
+rule-if-message-spam = { $test ->
+        [is-not] that your spam filter does not call spam
+       *[is] that your spam filter calls spam
+    }
+rule-if-message-folder = { $test ->
+        [is-not] outside { $value }
+       *[is] in { $value }
+    }
+rule-from-message-topic = the topic Sioul finds for it
+rule-do-message-tie-to-project-plain = { $same ->
+        [no] tie its message to a project
+       *[yes] tie it to a project
+    }
+rule-do-message-give-topic-plain = { $same ->
+        [no] give its message a topic
+       *[yes] give it a topic
+    }
+rule-do-task-make-plain = make a task
+rule-do-message-tie-to-task = { $same ->
+        [no] tie its message to its task
+       *[yes] tie it to its task
+    }
+rule-do-message-tie-to-site = { $same ->
+        [no] tie its message to its site
+       *[yes] tie it to its site
+    }
+rule-do-message-leave-list = { $same ->
+        [no] leave its message's list
+       *[yes] leave its list
+    }
+rule-do-event-answer = write the answer into its event
+rule-do-movement-join = { $same ->
+        [yes] join it to the payment it is
+       *[no] join it to the payment it tells of
+    }
+rule-do-movement-plan-plain = { $same ->
+        [yes] count it in its budget
+       *[no] count the payment it tells of in its budget
+    }
+rule-do-supply-take-out = take what it used out of your supplies
+rule-do-task-set-aside = set its preparation aside
+rule-do-task-estimate = give it a first estimate
+rule-do-task-set-date-plain = { $same ->
+        [no] ask its task for another day
+       *[yes] ask it for another day
+    }
+rule-do-event-pause = pause its series
+rule-do-event-make-plain = make a matching event
+rule-do-event-move-plain = { $same ->
+        [no] move its time blocks along
+       *[yes] move it along
+    }
+rule-do-call-decline = { $same ->
+        [no] decline its call
+       *[yes] decline it
+    }
+rule-do-letter-read = { $same ->
+        [no] read its letter
+       *[yes] read it
+    }
+rule-do-paper-keep = keep it in Papers
+rule-do-none-do-not-disturb = turn do-not-disturb on
+rule-a-paper = its attachment
+rule-folder-junk = your junk folder
+rule-folder-inbox = your inbox
+rule-folder-trash = your trash
+rule-folder-archive = your archive
+rule-folder-sent = your sent mail
+rule-folder-named = the folder { $name }
+rule-insert = ‹{ $name }›
+rule-insert-sender = sender
+rule-insert-month = month
+rule-insert-year = year
+rule-insert-subject = subject
+rule-insert-file = file name
+rule-act-tie = { $wrote ->
+        [no] { $Subject } was in the project { $project } already.
+       *[yes] { $Subject } tied to the project { $project }.
+    }
+rule-act-task = { $wrote ->
+        [no] { $Subject }: its task was there already.
+       *[yes] { $Subject }: a task made from it.
+    }
+rule-act-topic = { $wrote ->
+        [no] { $Subject } had the topic { $topic } already.
+       *[yes] { $Subject } given the topic { $topic }.
+    }
+rule-act-tell = { $Subject }: told.
+rule-act-paper = { $wrote ->
+        [no] { $Subject }: { $paper } was in Papers already.
+       *[yes] { $Subject }: { $paper } is in Papers now.
+    }
+rule-act-other = { $Subject }: done.
+rules-refused-code-told = A message holding a code is told by its own notice: no rule tells it again.
+rules-refused-elsewhere = Another device keeps your notices: it tells this message, or this one does once it keeps them.
+rules-refused-too-large = Its attachments are too large to keep as papers by a rule: keep them yourself if you want them.
+rules-problem-reserved = This rule comes with Sioul or is read from where it is edited: change it there.
+rules-paper-taken-out = “{ $title }” was taken out of your papers: the antivirus refused its file.
+papers-unchecked = Not checked by an antivirus.
+rules-refused-moment = The moment does not let a notice come now: it waits, and is told when it can within the week.
+rules-problem-domain = A domain reads as example.org, without an @: an address goes under "its sender".
+rules-problem-address = An address reads as name@example.org: a domain alone goes under "its sender's domain".
+rules-problem-time = A time reads as 18:00.
+rules-problem-date = A day reads as 2026-10-01.
+rules-problem-size = A size reads as 5 MB or 500 KB.
+
+# Each preset, the rule that comes with Sioul, said as it is done today (RulesTab.qml, Presets).
+rule-preset-conversation-follows-project = When a message answers one that belongs to a project, it goes into that project too.
+rule-preset-github-mail = When GitHub mails about an issue or a pull request you follow as a task, the message is tied to that task.
+rule-preset-spam-filter-moves = When your own spam filter judges a stranger's message to be spam, it does what you chose for that verdict: moves it to spam, flags it, or leaves it.
+rule-preset-proven-mail-brought-back = When your provider calls spam a message whose sender Sioul verified, from a domain you deal with, Sioul does what you chose for proven mail: brings it back from the Junk folder to your inbox, leaves it in the Junk folder and shows it marked among your mail, or does nothing.
+rule-preset-topics-given = When a message arrives, Sioul gives it the topic its words and its sender point to, unless you gave it one yourself.
+rule-preset-codes-told = When a message holds a code, a password, a reset or a link to sign in, it is shown at once under Right now and told, whatever the hour.
+rule-preset-new-mail-told = When new mail arrives, Sioul tells you of it as the moment and its sender's circle allow, newsletters only if you ask.
+rule-preset-spam-leaves-list = When you say a message is spam and its list offers to leave in one click, Sioul leaves that list after ten seconds to undo.
+rule-preset-invitation-replies-read = When you open a message that answers an invitation, its answer is written into the event.
+rule-preset-money-mail-planned = When a message tells of a payment, a bill, an order or a refund, Sioul proposes it as a line of your budgets.
+rule-preset-money-mail-joined = When a message tells of a payment already counted in your budgets, it is joined to it without a question.
+rule-preset-site-announced = When you open a message from a sender one of your sites names, it is tied to that site.
+rule-preset-supplies-used = When a task is done, the supplies it planned to use are taken out of your stock.
+rule-preset-resupply-task = When a supply runs low, a task to buy more is made, once.
+rule-preset-repeating-task-next-turn = When a repeating task is done, it comes back at its next turn.
+rule-preset-bigger-task-closes = When the last step of a bigger task is done, the bigger task is done too.
+rule-preset-wait-over-told = When a task is done, what waits for it starts its clock, and you are told when the wait is over.
+rule-preset-time-blocks-follow = When a task changes, is put off or is done, the time blocks kept for it follow.
+rule-preset-first-estimate = When a task is made, Sioul writes its first estimate, its energy and its areas, which you can change.
+rule-preset-date-asked-reminded = When the date asked of a task comes near, you are reminded as many days before as you chose.
+rule-preset-event-reminded = When an event comes near, you are reminded as long before as you chose.
+rule-preset-preparation-set-aside = When an appointment is over, the task that prepared it is set aside and the one it was for is closed.
+rule-preset-paired-task-follows = When an appointment moves, the date of its paired task and its journeys follow.
+rule-preset-child-event-asked = When an event comes into a child's agenda without anyone to take them, you are asked once who does.
+rule-preset-child-event-follow-up = When a child's event of a kind that comes back is over, a task to follow it up is made.
+rule-preset-conflict-said = When someone else's change makes two events clash, it is said once.
+rule-preset-series-paused = When vacations or holidays come, the events of a series that stop then are paused.
+rule-preset-availability-mirrored = When an event is made in an agenda you mirror, a busy event is kept in step where your availability is shown.
+rule-preset-plan-fills-days = Each day, the plan places your tasks in the hours you keep for them.
+rule-preset-do-not-disturb-by-reasons = When a moment begins for a reason you left on in What reaches you (while you sleep, during the pauses, while busy), do-not-disturb turns on on every device, and off after.
+rule-preset-work-hours-over = When your work hours are over, you are told once.
+rule-preset-books-thresholds = When your invoices come near a threshold of your books, you are told once.
+rule-preset-calls-screened = When a call rings on a phone, it rings or goes to voicemail as that phone's calls say.
+rule-preset-missed-call-task = When a call from someone in your address books is missed, a task to call back is made, and when a call of yours to them does not reach them, a task to call again: each while its switch is on in the Porch's settings, under Calls.
+rule-preset-call-closes-task = When a call goes through, the task to call back that person is done.
+rule-preset-bank-line-joined = When a line of your bank's export comes in, it is joined to the payment it is, and an invoice it pays is marked paid.
+rule-preset-budget-presets-counted = When the day of a regular payment comes, it is counted in its budget.
+rule-preset-contract-notice-told = When a contract's notice day comes near, you are reminded.
+rule-preset-invoice-due-told = When an invoice you issued is due and not paid, you are reminded as many days before as you chose.
+rule-preset-letter-read = When a scan arrives in your letters' inbox, it is read and shown as a letter.
+rule-preset-paper-renewal-told = When a paper is soon to renew, you are reminded.
+rule-preset-site-file-kept = When a site offers a file, it is kept where you asked, and as a paper at once.
