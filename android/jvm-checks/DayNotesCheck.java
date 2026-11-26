@@ -35,9 +35,9 @@ public final class DayNotesCheck
     static int checked = 0;
 
     /** "Work hours are over", at the end of the day's last work or admin hours. */
-    static final String WORK = "{\"tag\":\"day:work:2026-10-14\",\"about\":\"sioul:day/work:2026-10-14\",\"kind\":\"work-over\",\"class\":\"informative\",\"group\":\"informative\",\"lasts_ms\":300000,\"ends\":1792000000000,\"pierce\":false,\"title\":\"Work hours are over\",\"body\":\"The work day can be closed, with a word on how it went if you like.\",\"actions\":[{\"label\":\"Close the work day\",\"open\":\"sioul:day/work:2026-10-14\"}],\"public\":null,\"words\":{}}";
+    static final String WORK = "{\"tag\":\"day:work:2026-10-14\",\"about\":\"sioul:day/work:2026-10-14\",\"kind\":\"work-over\",\"class\":\"informative\",\"group\":\"informative\",\"lasts_ms\":300000,\"ends\":1792000000000,\"pierce\":false,\"title\":\"Work hours are over\",\"body\":\"The work day can be closed, with a word on how it went if you like.\",\"actions\":[{\"label\":\"Work done for today\",\"open\":\"sioul:day/work:2026-10-14\"}],\"public\":null,\"words\":{}}";
     /** The night's own notice, as its wind-down begins, its review still to give. */
-    static final String NIGHT = "{\"tag\":\"day:night:2026-10-14\",\"about\":\"sioul:need/sleep\",\"kind\":\"needs\",\"class\":\"informative\",\"group\":\"informative\",\"lasts_ms\":300000,\"ends\":1792000000000,\"pierce\":false,\"title\":\"Wind down\",\"body\":\"22:30\",\"actions\":[{\"label\":\"Close the whole day\",\"open\":\"sioul:day/night:2026-10-14\"},{\"label\":\"Options…\",\"open\":\"sioul:need/sleep\"}],\"public\":null,\"words\":{}}";
+    static final String NIGHT = "{\"tag\":\"day:night:2026-10-14\",\"about\":\"sioul:need/sleep\",\"kind\":\"needs\",\"class\":\"informative\",\"group\":\"informative\",\"lasts_ms\":300000,\"ends\":1792000000000,\"pierce\":false,\"title\":\"Wind down\",\"body\":\"22:30\",\"actions\":[{\"label\":\"Day done, before sleep\",\"open\":\"sioul:day/night:2026-10-14\"},{\"label\":\"Options…\",\"open\":\"sioul:need/sleep\"}],\"public\":null,\"words\":{}}";
     /** The same, that night's review given already: its options alone. */
     static final String GIVEN = "{\"tag\":\"day:night:2026-10-14\",\"about\":\"sioul:need/sleep\",\"kind\":\"needs\",\"class\":\"informative\",\"group\":\"informative\",\"lasts_ms\":300000,\"ends\":1792000000000,\"pierce\":false,\"title\":\"Wind down\",\"body\":\"22:30\",\"actions\":[{\"label\":\"Options…\",\"open\":\"sioul:need/sleep\"}],\"public\":null,\"words\":{}}";
     /** A meal at its time, on a phone nobody's computer is in use beside. */
@@ -130,15 +130,15 @@ public final class DayNotesCheck
 
     public static void main(String[] args) throws Exception
     {
-        expect("the end of work", buttons(WORK), "sioul:day/work:2026-10-14; Close the work day: sioul:day/work:2026-10-14");
-        expect("the night, its review to give", buttons(NIGHT), "sioul:need/sleep; Close the whole day: sioul:day/night:2026-10-14 | Options…: sioul:need/sleep");
+        expect("the end of work", buttons(WORK), "sioul:day/work:2026-10-14; Work done for today: sioul:day/work:2026-10-14");
+        expect("the night, its review to give", buttons(NIGHT), "sioul:need/sleep; Day done, before sleep: sioul:day/night:2026-10-14 | Options…: sioul:need/sleep");
         expect("the night, its review given", buttons(GIVEN), "sioul:need/sleep; Options…: sioul:need/sleep");
         expect("a meal", buttons(MEAL), "sioul:need/meal:0; Options…: sioul:need/meal:0");
         Notices.Said work = Notices.Said.of(new JSONObject(WORK));
         expect("to know, its own group", (work.actionable ? "act" : "know") + " " + work.group + " " + work.lastsMs + " " + work.endsMs + " " + work.pierce + " " + work.tag, "know informative 300000 1792000000000 false day:work:2026-10-14");
         expect("no lock screen's words given: Sioul's for a reminder", work.publicTitle, null);
         // What a notice of Sioul's does not open, a button without words: left out.
-        expect("strangers left out", buttons("{\"tag\":\"x\",\"about\":\"/data/x\",\"actions\":[{\"label\":\"Settings\",\"open\":\"sioul:settings/words\"},{\"label\":\"Close\",\"open\":\"sioul:day/settings\"},{\"label\":\"\",\"open\":\"sioul:day/work:2026-10-14\"},{\"label\":\"A file\",\"open\":\"file:///sdcard/x\"},{\"label\":\"Close the work day\",\"open\":\"sioul:day/work:2026-10-14\"}]}"), "; Close the work day: sioul:day/work:2026-10-14");
+        expect("strangers left out", buttons("{\"tag\":\"x\",\"about\":\"/data/x\",\"actions\":[{\"label\":\"Settings\",\"open\":\"sioul:settings/words\"},{\"label\":\"Close\",\"open\":\"sioul:day/settings\"},{\"label\":\"\",\"open\":\"sioul:day/work:2026-10-14\"},{\"label\":\"A file\",\"open\":\"file:///sdcard/x\"},{\"label\":\"Work done for today\",\"open\":\"sioul:day/work:2026-10-14\"}]}"), "; Work done for today: sioul:day/work:2026-10-14");
         // Android shows three buttons at most.
         expect("three at most", Notices.Said.of(new JSONObject("{\"actions\":[{\"label\":\"a\",\"open\":\"sioul:porch\"},{\"label\":\"b\",\"open\":\"sioul:porch\"},{\"label\":\"c\",\"open\":\"sioul:porch\"},{\"label\":\"d\",\"open\":\"sioul:porch\"}]}")).buttons.size(), 3);
         expect("nothing given", Notices.Said.of(new JSONObject("{}")).buttons.size(), 0);
