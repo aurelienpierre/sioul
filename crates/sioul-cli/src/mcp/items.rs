@@ -19,6 +19,7 @@
 //! stay as the agent left them (`agentwrites`).
 
 use super::access;
+use super::mask;
 use super::read::{self, Desk};
 use super::tools::{Answer, Args};
 use crate::{Session, one_line};
@@ -155,6 +156,8 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
         sioul_core::anchors::mark(&mut read);
         edit.margins = read[0].margins;
     }
+    // Its notes as an agent reads any text: a code or a password in them masked, as `agenda` masks them.
+    edit.notes = masked_notes(s, &edit.notes);
     let mut data = event_json(&found, &edit, s);
     data["clock"] = json!(clock);
     if !clock.is_empty() {
@@ -192,7 +195,34 @@ fn minutes(args: &Args, name: &str) -> Result<Option<u32>, String> {
     Ok(args.has(name).then(|| args.number(name, 0, 0, 1440)).transpose()?.map(|m| m as u32))
 }
 
+/// Refuses a text an agent gives back holding one of the masks' own marks
+/// ("[code hidden]", "[link hidden]", the password sentence, "[IBAN …"): it
+/// was shown the masked text, and writing it would put the marks in the
+/// person's event or task and erase what they hide (second review of
+/// leaks-money, item 3). The hidden parts are changed in the window.
+fn refuse_marks(args: &Args, fields: &[&str]) -> Result<(), String> {
+    fn strings<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
+        match value {
+            Value::String(s) => out.push(s),
+            Value::Array(items) => items.iter().for_each(|v| strings(v, out)),
+            Value::Object(map) => map.values().for_each(|v| strings(v, out)),
+            _ => {}
+        }
+    }
+    for field in fields {
+        let mut found = Vec::new();
+        if let Some(value) = args.raw(field) {
+            strings(value, &mut found);
+        }
+        if let Some(mark) = found.iter().find_map(|text| mask::mark_in(text)) {
+            return Err(format!("“{field}” holds “{mark}”, what Sioul hides from agents: written, it would replace what it hides. Give the text without it, or leave “{field}” as it is; the hidden parts are changed in Sioul's window."));
+        }
+    }
+    Ok(())
+}
+
 pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
+    refuse_marks(args, &["title", "location", "notes"])?;
     let loaded = Loaded::read(&s.config);
     let consent = access::of(s, &loaded);
     let found = find_event(&consent, &args.needed("event")?)?;
@@ -390,6 +420,15 @@ pub fn delete_event(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 /// A checklist as data: each item's place, group, words, state, detail.
+/// Notes as an agent is given them: masked as a message is (`mask::message`):
+/// a code, a code or a password after its word, a sign-in link hidden.
+fn masked_notes(s: &Session, notes: &str) -> String {
+    if notes.trim().is_empty() {
+        return notes.to_string();
+    }
+    mask::message(&sioul_core::words::Words::of(&s.config), "", notes).1
+}
+
 fn checklist_json(notes: &str) -> Value {
     Value::Array(checklist::items(notes).iter().map(|i| json!({ "number": i.number, "group": i.group, "text": i.text, "state": i.mark.id(), "detail": i.detail })).collect())
 }
@@ -653,6 +692,7 @@ fn groups_asked(args: &Args) -> Result<Vec<checklist::Group>, String> {
 pub const MOST_ITEMS: usize = 60;
 
 pub fn set_checklist(s: &Session, args: &Args) -> Result<Answer, String> {
+    refuse_marks(args, &["groups"])?;
     let desk = Desk::read(s);
     let holder = holder(s, &desk, &args.needed("of")?)?;
     let groups = groups_asked(args)?;
@@ -723,6 +763,8 @@ pub fn get_task(s: &Session, args: &Args) -> Result<Answer, String> {
     let task = find_open_task(s, &desk, &args.needed("task")?)?;
     // Its steps in their order, those kept from agents left out.
     let (lines, steps) = steps_shown(&desk, &task.uid);
+    // Its notes as an agent reads any text: a code or a password in them masked.
+    let task = Task { notes: masked_notes(s, &task.notes), ..task };
     let mut data = task_json(&task);
     data["steps"] = steps;
     // Its supplies (docs/supplies.md): what it plans, and done, what it used, each with its supply's name.
@@ -882,6 +924,7 @@ pub fn move_step(s: &Session, args: &Args) -> Result<Answer, String> {
 }
 
 pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
+    refuse_marks(args, &["title", "location", "notes"])?;
     let desk = Desk::read(s);
     let task = find_open_task(s, &desk, &args.needed("task")?)?;
     may_change(&desk.consent, &links::task_uri(&task.uid))?;

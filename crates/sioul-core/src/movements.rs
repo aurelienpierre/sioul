@@ -517,6 +517,20 @@ impl Movement {
     }
 }
 
+/// What a source said "Not the same" is kept apart from, in its movement:
+/// for one of your lines, another line of the movement first (two lines of
+/// one message read as one payment: the lines are what was folded, whatever
+/// joined them since, the bank's line among them; second review of
+/// leaks-money, item 4); else the movement's steadiest other source.
+pub fn apart_key<'a>(m: &'a Movement, source: &str) -> Option<&'a str> {
+    if source.starts_with("line:")
+        && let Some(line) = m.sources.iter().find(|s| s.key != source && s.kind == Kind::Line)
+    {
+        return Some(&line.key);
+    }
+    steadiest_of(m.sources.iter().filter(|s| s.key != source))
+}
+
 /// The steadiest key among `sources` (`Movement::steady_key`'s order): a bank
 /// line's, a line's with an id, an occurrence's, a letter's, an invoice's, a
 /// mail's, a hold's, a digest's last; a contract's never.
@@ -1389,12 +1403,22 @@ pub fn derive_with_gone(input: &Input, from: Date, to: Date, today: Date) -> (Ve
     }
 
     // 2. The lines of the file; one standing for a fixed preset joins its occurrence.
+    // A line repeating an earlier one's message and amount is that payment
+    // again: it joins the earlier one's movement (`budget::repeated_lines`).
+    let repeats = crate::budget::repeated_lines(ledger);
     for (place, line) in ledger.lines.iter().enumerate() {
         // A bank account's movement counted in memory (`with_bank`) is no line of the file.
         if line.links.iter().any(|k| k.starts_with("bank:")) {
             continue;
         }
         let key = lines[place].clone();
+        // Probably the same: Not the same beside it keeps them two from then on.
+        if let Some(m) = repeats.get(&place).and_then(|&first| out.iter_mut().find(|m| m.has(&lines[first]) && !apart_from(&key, m))) {
+            let mut source = Source::new(Kind::Line, key, crate::links::budget_uri(&line.budget, place));
+            source.probable = true;
+            m.sources.push(source);
+            continue;
+        }
         let (docs, links) = documents(&line.links);
         let told = docs.iter().any(|d| d.kind.announces());
         let state = match (line.planned, told) {
@@ -2116,6 +2140,18 @@ pub fn counted_with_gone(ledger: &Ledger, movements: &[Movement], gone: &[Moveme
         }
     }
     let keys = line_keys(ledger);
+    // A line repeating an earlier one's message, amount and day counts
+    // nothing: the earlier one counts it, while the two are one movement
+    // (Not the same keeps them two, each counted).
+    let repeats: std::collections::BTreeMap<usize, usize> = crate::budget::repeated_lines(ledger)
+        .into_iter()
+        .filter(|(again, first)| movements.iter().any(|m| m.has(&keys[*again]) && m.has(&keys[*first])))
+        .collect();
+    for &place in repeats.keys() {
+        let line = &mut out.lines[place];
+        (line.amount, line.gross) = (Money::ZERO, None);
+        line.fees.clear();
+    }
     let declared = |key: &str| key.strip_prefix("bank:").or_else(|| key.strip_prefix("hold:")).and_then(|rest| rest.rsplit_once('/')).is_some_and(|(account, _)| ledger.bank_accounts.iter().any(|a| a.id == account));
     let preset_of = |key: &str| -> Option<(usize, Date)> {
         let (preset, day) = key.strip_prefix("preset:")?.rsplit_once('/')?;
@@ -2144,7 +2180,7 @@ pub fn counted_with_gone(ledger: &Ledger, movements: &[Movement], gone: &[Moveme
             continue;
         }
         let bank = m.sources.iter().find(|s| matches!(s.kind, Kind::Bank | Kind::Hold) && declared(&s.key)).map(|s| s.key.clone());
-        let file: Vec<usize> = m.sources.iter().filter(|s| s.kind == Kind::Line).filter_map(|s| keys.iter().position(|k| *k == s.key)).collect();
+        let file: Vec<usize> = m.sources.iter().filter(|s| s.kind == Kind::Line).filter_map(|s| keys.iter().position(|k| *k == s.key)).filter(|i| !repeats.contains_key(i)).collect();
         let occurrence = m.sources.iter().find(|s| s.kind == Kind::Preset).and_then(|s| preset_of(&s.key));
         // Where the files place it, and where it is.
         let natural: Vec<String> = if file.is_empty() { occurrence.map(|(i, _)| vec![ledger.presets[i].budget.clone()]).unwrap_or_default() } else { file.iter().map(|&i| ledger.lines[i].budget.clone()).collect() };

@@ -1417,19 +1417,90 @@ pub fn remove_line_by_key(path: &Path, key: &str) -> Result<bool, String> {
     })
 }
 
+/// Whether a line's link names a message: its Message-ID, its digest in an
+/// account (`sioul:mail/…`), or the file an older Sioul named it by, inside a
+/// mail folder (`…/cur/…`, `…/new/…`). Any other file (a lease, a quote's
+/// PDF) may stand behind several payments, and names none.
+pub fn is_message_key(link: &str) -> bool {
+    let in_mail_folder = |path: &str| ["/cur/", "/new/", "\\cur\\", "\\new\\"].iter().any(|folder| path.contains(folder));
+    link.starts_with("mid:") || link.starts_with(crate::mailfind::DIGEST_SCHEME) || link.strip_prefix("file:").is_some_and(in_mail_folder)
+}
+
+/// The lines that repeat an earlier line's message (`is_message_key`) with
+/// its amount and its day, each with that earlier line's place: one payment
+/// recorded twice (on two devices, or from two views, before a message was
+/// recorded once). Read as one: the repeat joins the first's movement,
+/// probably, with Not the same beside it, and counts nothing
+/// (`movements::derive`, `movements::counted`); the file keeps both. Another
+/// day or another amount is another payment (a quote paid in three months).
+pub fn repeated_lines(ledger: &Ledger) -> std::collections::BTreeMap<usize, usize> {
+    let mut first: std::collections::BTreeMap<(&str, i64, Date), usize> = std::collections::BTreeMap::new();
+    let mut out = std::collections::BTreeMap::new();
+    for (place, line) in ledger.lines.iter().enumerate() {
+        if line.links.iter().any(|k| k.starts_with("bank:")) {
+            continue;
+        }
+        let messages: Vec<&str> = line.links.iter().map(|l| l.trim()).filter(|l| is_message_key(l)).collect();
+        if let Some(&earlier) = messages.iter().find_map(|m| first.get(&(*m, line.amount.cents(), line.date))) {
+            out.insert(place, earlier);
+            continue;
+        }
+        for message in messages {
+            first.entry((message, line.amount.cents(), line.date)).or_insert(place);
+        }
+    }
+    out
+}
+
 /// Writes a line at the end of the budget file, keeping its comments, with a
-/// comment saying where it came from.
+/// comment saying where it came from. A message is counted in one line: a
+/// line from a message a line holds already is not written again (`record_line_once`).
 pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String> {
+    record_line_once(path, line, origin).map(|_| ())
+}
+
+/// `record_line`, returning the id of the line that holds it and whether it
+/// was written: the new one; or, for a line from a message (`is_message_key`)
+/// that a line of the file holds already with the same amount and day (the
+/// same payment added from two views, by an agent, or received at two
+/// addresses), that line's, nothing written; another amount or day is
+/// another part, written. Its id, when it comes without one, is made from
+/// the message, the amount and the day (`ids::of_message`): two devices that
+/// record the same payment before they meet write one line, which the
+/// sharing merges by its id (docs/accounting.md, "One message, one line").
+pub fn record_line_once(path: &Path, line: &Line, origin: &str) -> Result<(String, bool), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
         let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
+        let messages: Vec<&str> = line.links.iter().map(|l| l.trim()).filter(|l| is_message_key(l)).collect();
+        if !messages.is_empty()
+            && let Some(held) = doc.get("line").and_then(Item::as_array_of_tables).and_then(|lines| {
+                let same_message = |t: &Table| t.get("links").and_then(Item::as_array).is_some_and(|links| links.iter().any(|l| l.as_str().is_some_and(|l| messages.contains(&l.trim()))));
+                let cents = |t: &Table| t.get("amount").and_then(|a| a.as_float().or_else(|| a.as_integer().map(|i| i as f64))).map(|a| (a * 100.0).round() as i64);
+                let day = |t: &Table| t.get("date").and_then(|d| d.as_datetime().map(|d| d.to_string()).or_else(|| d.as_str().map(str::to_string)));
+                lines.iter().find(|t| same_message(t) && cents(t) == Some(line.amount.cents()) && day(t).as_deref() == Some(line.date.to_string().as_str()))
+            })
+        {
+            return Ok((held.get("id").and_then(Item::as_str).unwrap_or_default().to_string(), false));
+        }
         let mut table = Table::new();
         // Its own id, given now (`ids`) unless the line came with one: your
         // devices merge each line by it, so that two lines the same stay two
-        // (docs/database.md, "The format of what travels").
-        table["id"] = value(if line.id.trim().is_empty() { crate::ids::new() } else { line.id.trim().to_string() });
+        // (docs/database.md, "The format of what travels"); a message's line
+        // takes the message's (`ids::of_message`), the same on every device.
+        let id = match (line.id.trim(), messages.first()) {
+            ("", Some(message)) => crate::ids::of_message(message, line.amount.cents(), &line.date.to_string()),
+            ("", None) => crate::ids::new(),
+            (id, _) => id.to_string(),
+        };
+        // An id a line of the file holds already (the payment recorded, then
+        // changed, then recorded again from its mail): a new one, never two
+        // lines under one id, which would make changing one change the other.
+        let held = |id: &str| doc.get("line").and_then(Item::as_array_of_tables).is_some_and(|lines| lines.iter().any(|t| t.get("id").and_then(Item::as_str) == Some(id)));
+        let id = if held(&id) { crate::ids::new() } else { id };
+        table["id"] = value(id.as_str());
         table["budget"] = value(line.budget.as_str());
         let date = toml_edit::Date { year: line.date.year() as u16, month: line.date.month() as u8, day: line.date.day() as u8 };
         table["date"] = value(toml_edit::Datetime { date: Some(date), time: None, offset: None });
@@ -1481,7 +1552,7 @@ pub fn record_line(path: &Path, line: &Line, origin: &str) -> Result<(), String>
         std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
         std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Money);
-        Ok(())
+        Ok((id, true))
     })
 }
 

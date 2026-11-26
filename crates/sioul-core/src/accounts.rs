@@ -301,6 +301,35 @@ pub fn balance_of(bank: &Bank, account: &BankAccount) -> Option<(Date, Money)> {
     bank.accounts.iter().filter(|a| account.owns(&a.id)).filter_map(|a| a.balance).max_by_key(|(day, _)| *day)
 }
 
+/// What an export's account is called wherever it is said outside its card
+/// in the window (to an agent, in a notice): the card that owns it, by the
+/// name you gave it; else the bank its export named and the last four
+/// characters of its number ("Example Bank …0042"), or "Account …0042"; the
+/// bank's name alone, or "Your account", when the export gave no number.
+/// Never the export file's name, which Sioul 0.1.0 kept as the account's
+/// title ("Download", or the whole number when a bank names its files so),
+/// and never a whole number (`bank::masked_name`), whatever a card is called.
+pub fn export_name(ledger: &Ledger, account: &bank::Account, tr: &crate::i18n::Translator) -> String {
+    if let Some(card) = account_of(ledger, &account.id).filter(|c| !c.title.trim().is_empty()) {
+        return bank::masked_name(card.title.trim());
+    }
+    let kept: Vec<char> = account.id.chars().filter(|c| c.is_alphanumeric()).collect();
+    let numbered = kept.len() >= 4 && kept.iter().any(char::is_ascii_digit);
+    let named = account.bank.trim();
+    match (numbered, named.is_empty()) {
+        (true, false) => format!("{} …{}", bank::masked_name(named), kept[kept.len() - 4..].iter().collect::<String>()),
+        (true, true) => {
+            let mut args = crate::i18n::args();
+            args.set("last", kept[kept.len() - 4..].iter().collect::<String>());
+            tr.text("bank-account-ending", Some(&args))
+        }
+        (false, false) => bank::masked_name(named),
+        // "account", the name Sioul gives an export that names none; or a word of the export's own.
+        (false, true) if account.id.is_empty() || account.id == "account" => tr.text("ahead-your-account", None),
+        (false, true) => bank::masked_name(&account.id),
+    }
+}
+
 /// Whether a card's names cannot all be one account: two of them with
 /// balances on the same day that differ. One card then covers two real
 /// accounts: the newest balance alone is shown (`balance_of`), and movements
@@ -705,7 +734,7 @@ mod tests {
         let m = |account: &str, id: &str, date: &str, cents: i64, label: &str| Movement { account: account.into(), date: day(date), amount: Money(cents), label: label.into(), id: id.into() };
         Bank {
             root: std::path::PathBuf::new(),
-            accounts: vec![Account { id: "0123456A".into(), title: String::new(), balance: Some((day("2026-10-02"), Money(40000))) }],
+            accounts: vec![Account { id: "0123456A".into(), title: String::new(), bank: String::new(), balance: Some((day("2026-10-02"), Money(40000))) }],
             movements: vec![
                 m("0123456A", "m1", "2026-10-01", -25000, "PRLV SCI EXEMPLE"),
                 m("0123456A", "m2", "2026-10-02", -1200, "CB CINEMA LE PALACE"),
@@ -811,7 +840,7 @@ mod tests {
     fn one_account_under_two_names_counts_its_money_once() {
         let ledger = ledger();
         let mut bank = bank();
-        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), balance: Some((day("2026-09-30"), Money(39000))) });
+        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), bank: String::new(), balance: Some((day("2026-09-30"), Money(39000))) });
         let first = bank.movements[0].clone();
         bank.movements.push(Movement { account: "mybank".into(), ..first });
         let card = &ledger.bank_accounts[0];
@@ -832,9 +861,30 @@ mod tests {
         let card = &ledger.bank_accounts[0];
         let (day_of, money) = bank().accounts.iter().find(|a| card.owns(&a.id)).and_then(|a| a.balance).unwrap();
         let mut bank = bank();
-        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), balance: Some((day_of, money)) });
+        bank.accounts.push(Account { id: "mybank".into(), title: String::new(), bank: String::new(), balance: Some((day_of, money)) });
         assert!(!two_accounts_in_one(&bank, card), "the same balance the same day: one account");
         bank.accounts.last_mut().unwrap().balance = Some((day_of, Money(money.cents() + 12_345)));
         assert!(two_accounts_in_one(&bank, card), "two balances the same day: two accounts");
+    }
+
+    /// An export's account outside the window: its card's name, never the
+    /// export file's name an older Sioul kept as its title, never a whole
+    /// number, even in a card's name.
+    #[test]
+    fn an_export_account_is_said_by_a_safe_name() {
+        let tr = crate::i18n::Translator::new("en");
+        let mut ledger = ledger();
+        let export = |id: &str, title: &str, bank: &str| Account { id: id.into(), title: title.into(), bank: bank.into(), balance: None };
+        // Owned by a card: the name the person gave it.
+        assert_eq!(export_name(&ledger, &export("0123456A", "12345678K0389876540042", ""), &tr), "My bank");
+        assert_eq!(export_name(&ledger, &export("paypal", "Download", ""), &tr), "PayPal");
+        // No card: the bank and the last four, or "Account …"; the file's name never.
+        assert_eq!(export_name(&ledger, &export("12345678K0389876540042", "12345678K0389876540042", ""), &tr), "Account …0042");
+        assert_eq!(export_name(&ledger, &export("FR7630006000011234567890189", "", "Example Bank"), &tr), "Example Bank …0189");
+        assert_eq!(export_name(&ledger, &export("account", "Download", ""), &tr), "Your account");
+        assert_eq!(export_name(&ledger, &export("account", "Download", "Example Bank"), &tr), "Example Bank");
+        // A card named after its number: said by its last four.
+        ledger.bank_accounts[0].title = "Compte 1234567K038".into();
+        assert_eq!(export_name(&ledger, &export("0123456A", "", ""), &tr), "Compte …K038");
     }
 }

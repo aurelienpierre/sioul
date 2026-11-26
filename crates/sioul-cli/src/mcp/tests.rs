@@ -145,8 +145,9 @@ fn make(root: &Path) -> PathBuf {
     .unwrap();
     std::fs::write(store.join("notes/letters.md"), "# Letters to the CAF\n\nRent receipts go in the blue folder.\n\n- [ ] scan the September receipt\n- [ ] pay FR76 3000 6000 0112 3456 7890 189\n").unwrap();
     std::fs::write(store.join("sioul-budgets.toml"), "[[budget]]\nid = \"home\"\ntitle = \"Home\"\nperiod = \"month\"\ntarget = 0\n\n[[preset]]\nbudget = \"home\"\nlabel = \"Rent\"\namount = -600\nevery = \"month\"\nday = 1\n\n[[reserve]]\nid = \"savings\"\ntitle = \"Savings account\"\nbalance = 3000\nas_of = 2026-10-01\n").unwrap();
-    // A bank account kept under its IBAN, as an export names it.
-    std::fs::write(store.join("sioul-bank.toml"), "[[account]]\nid = \"FR7630006000011234567890189\"\nbalance = 845.10\nas_of = 2026-10-03\n").unwrap();
+    // A bank account kept under its IBAN, as an export names it, with the
+    // title Sioul 0.1.0 gave it: its export file's name, here the bank's whole account number.
+    std::fs::write(store.join("sioul-bank.toml"), "[[account]]\nid = \"FR7630006000011234567890189\"\ntitle = \"12345678K0389876540042\"\nbalance = 845.10\nas_of = 2026-10-03\n").unwrap();
     let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Tasks", None, &["VTODO"]).unwrap();
     let edit = TaskEdit { title: "Find the rent receipt".into(), projects: vec!["housing".into()], estimate: 10, ..TaskEdit::default() };
     vdir::write_item(&list.dir.join("receipt.ics"), &tasks::new_task(&edit, "receipt", &jiff::tz::TimeZone::system(), &Zoned::now()).unwrap()).unwrap();
@@ -250,6 +251,8 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
         sms("sms-6", &["+33199005678"], "Here is your PIN: 7314", 57),
         sms("sms-7", &["+33199005678"], "Pottery class on Thursday evening. Code: 2958", 56),
         sms("sms-8", &["+33199005678"], "Your provisional code is 48291357.", 55),
+        // A label at its line's start, after another line (`codes::detect_text` reads the text with its line breaks).
+        sms("sms-9", &["+33199005678"], "Bring the cake\nCode: 7319", 54),
     ];
     let log = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-1");
     sioul_core::texts::append(&log, &texts, &seal, None).unwrap();
@@ -831,12 +834,13 @@ fn reading_round_trip() {
     // An address written before the one name, "project", still opens it.
     let tied = call(&mut server, "links", json!({ "uri": "sioul:case/housing" }));
     assert!(text(&tied).contains("Find the rent receipt"), "{}", text(&tied));
-    // Budgets, the bank account named by its IBAN masked.
+    // Budgets, the bank account named by its last four: never by the export
+    // file's name an older Sioul kept as its title, never by a whole number.
     let budgets = call(&mut server, "budgets", json!({}));
     let said = text(&budgets);
     assert_eq!(budgets["isError"], false, "{said}");
-    assert!(said.contains("Home (") && said.contains("Savings account") && said.contains("[IBAN …0189]"), "{said}");
-    assert!(!budgets.to_string().contains("30006000"), "{budgets}");
+    assert!(said.contains("Home (") && said.contains("Savings account") && said.contains("Account …0189"), "{said}");
+    assert!(!budgets.to_string().contains("30006000") && !budgets.to_string().contains("12345678K038"), "{budgets}");
 }
 
 /// What an answer must never hold: the closed project's word, as its titles, subjects and notes write it.
@@ -2092,7 +2096,7 @@ fn texts_only_when_allowed_and_never_sent() {
     let words = call(&mut server, "texts", json!({ "conversation": "+33199005678" }));
     let said = text(&words);
     assert!(said.contains("[This message gives a password") && said.contains("Here is your PIN: [code hidden]") && said.contains("Code: [code hidden]") && said.contains("code is [code hidden]"), "{said}");
-    for secret in ["Lune-Rouge", "7314", "2958", "48291357"] {
+    for secret in ["Lune-Rouge", "7314", "2958", "48291357", "7319"] {
         assert!(!words.to_string().contains(secret) && !call(&mut server, "texts", json!({})).to_string().contains(secret), "{secret}: {words}");
         let found = call(&mut server, "search_texts", json!({ "query": secret }));
         assert!(found["structuredContent"]["found"].as_array().unwrap().is_empty(), "{secret}: {found}");
@@ -2184,6 +2188,12 @@ fn codes_in_every_form() {
     // The mailbox (part 6) masks it as search does.
     let boxed = call(&mut server, "mailbox", json!({}));
     assert!(text(&boxed).contains("[code hidden] is your sign-in code") && !boxed.to_string().contains("551204") && !boxed.to_string().contains("482 913"), "{boxed}");
+    // A reply's subject ("Re: …") as the draft gives it back, and as `links` and `find` list the draft: masked too.
+    let reply = call(&mut server, "draft_reply", json!({ "message": "mid:code-2@shop.example", "body": "Thank you." }));
+    assert_eq!(reply["isError"], false, "{reply}");
+    assert!(text(&reply).contains("[code hidden] is your sign-in code") && !reply.to_string().contains("551204"), "{reply}");
+    let found = call(&mut server, "find", json!({ "query": "sign-in", "kind": "draft" }));
+    assert!(!found.to_string().contains("551204"), "{found}");
 }
 
 #[test]
@@ -2637,6 +2647,9 @@ fn masks() {
     home();
     assert_eq!(mask::text("IBAN FR76 3000 6000 0112 3456 7890 189, thanks"), "IBAN [IBAN …0189], thanks");
     assert_eq!(mask::text("FR7630006000011234567890189"), "[IBAN …0189]");
+    // A bank line's key under an export's own name for its account: its number by its last four; a card's id stays.
+    assert_eq!(mask::text("sioul:movement/bank:12345678K0389876540042/9f3a"), "sioul:movement/bank:…0042/9f3a");
+    assert_eq!(mask::text("hold:1234567K038/h1 and bank:my-bank/m1"), "hold:…K038/h1 and bank:my-bank/m1");
     assert_eq!(mask::text("GB82 WEST 1234 5698 7654 32 EUR"), "[IBAN …5432] EUR");
     assert_eq!(mask::text("card 4111 1111 1111 1111."), "card [card …1111].");
     assert_eq!(mask::text("NIR: 1 85 05 78 006 084 91"), "NIR: [social security number hidden]");
@@ -2692,6 +2705,135 @@ fn every_secret_of_a_message() {
     // An ordinary message keeps its links and its numbers.
     let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Lunch", "See https://example.org/menu, table 4821, 12 345 €.");
     assert_eq!(body, "See https://example.org/menu, table 4821, 12 345 €.");
+}
+
+/// A code of letters and digits, as the window detects it, is masked for
+/// agents too (second review of leaks-money, item 1).
+#[test]
+fn codes_of_letters_and_digits_are_masked() {
+    home();
+    let words = sioul_core::words::Words::builtin_ref();
+    for (subject, body, code) in [("Steam", "Login Code: F7G2K", "F7G2K"), ("Bienvenue", "Votre code : AB12CD", "AB12CD"), ("Your sign-in code", "Your sign-in code is K7Q-2M9.", "K7Q-2M9")] {
+        let (subject, masked) = mask::message(words, subject, body);
+        assert!(masked.contains("[code hidden]") && !masked.contains(code) && !subject.contains(code), "{body:?} → {masked:?}");
+    }
+    // Capitals and digits that no phrase names a code stay as written.
+    let (_, plain) = mask::message(words, "Order", "Your parcel REF12AB34 left the depot.");
+    assert_eq!(plain, "Your parcel REF12AB34 left the depot.");
+}
+
+/// A label on its own line, as a text or a mail writes it, masked for agents
+/// as the window detects it (review of leaks-money, item 1): the mask reads
+/// each piece with its line breaks (`codes::detect_text`), and a piece cut
+/// inside a line never starts one, so a line break makes a label only where
+/// the text has one.
+#[test]
+fn a_label_on_its_own_line_is_masked() {
+    home();
+    let words = sioul_core::words::Words::builtin_ref();
+    for text in ["Bring the cake\nCode: 7319", "See you Tuesday\nCode: 2958"] {
+        let (_, masked) = mask::message(words, "", text);
+        assert!(masked.contains("Code: [code hidden]") && !masked.contains("7319") && !masked.contains("2958"), "{text:?} → {masked:?}");
+    }
+    let (_, password) = mask::message(words, "", "Hello\nPassword: Lune-Rouge-58");
+    assert!(!password.contains("Lune-Rouge"), "{password}");
+    // No line break, nor an earlier colon on another line, makes a password of a sentence.
+    for text in ["We meet at 10:30, bring your Password: open Settings first.", "Meet at 10:30.\nThen change your Password: open Settings."] {
+        let (_, plain) = mask::message(words, "", text);
+        assert_eq!(plain, text, "{text:?}");
+    }
+    // Far down a long text, a label at its own line's start is still read; one inside a line is not.
+    let filler = "A line of news, read and read again. ".repeat(40);
+    let (_, far) = mask::message(words, "", &format!("{filler}\nCode: 6150"));
+    assert!(!far.contains("6150"), "{far}");
+    let (_, inside) = mask::message(words, "", &format!("{filler}the gate Code: 6150 is the old one."));
+    assert!(inside.contains("6150"), "{inside}");
+}
+
+/// An event's and a task's notes reach agents masked as a message is
+/// (review of leaks-money, item 6): `get_event` and `get_task` as `agenda`
+/// masks them, a code after its word never given nor its link.
+#[test]
+fn notes_reach_agents_masked() {
+    home();
+    let mut server = server();
+    let notes = "Door at the back.\nCode: 7319\nThe call: https://meet.example/j/81234567890?pwd=Ab12Cd34Ef56";
+    let task = call(&mut server, "add_task", json!({ "title": "Fetch the keys", "projects": ["housing"], "notes": notes }));
+    assert_eq!(task["isError"], false, "{task}");
+    let got = call(&mut server, "get_task", json!({ "task": task["structuredContent"]["uri"] }));
+    let event = call(&mut server, "add_event", json!({ "title": "Keys", "start": "2026-12-03T09:30", "end": "2026-12-03T10:00", "notes": notes }));
+    assert_eq!(event["isError"], false, "{event}");
+    let seen = call(&mut server, "get_event", json!({ "event": event["structuredContent"]["uri"] }));
+    for answer in [&got, &seen] {
+        let given = answer.to_string();
+        assert_eq!(answer["isError"], false, "{answer}");
+        assert!(given.contains("Door at the back") && given.contains("[code hidden]") && !given.contains("7319") && !given.contains("Ab12Cd34Ef56"), "{given}");
+    }
+    // Written back as it was shown, the masks' marks would erase what they hide: refused, nothing written (second review, item 3).
+    let shown_notes = got["structuredContent"]["notes"].as_str().unwrap().to_string();
+    let back = format!("{shown_notes}\nBring a torch.");
+    let task_uri = task["structuredContent"]["uri"].clone();
+    let event_uri = event["structuredContent"]["uri"].clone();
+    for (tool, arguments) in [
+        ("update_task", json!({ "task": task_uri, "notes": back })),
+        ("update_event", json!({ "event": event_uri, "notes": back })),
+        ("update_event", json!({ "event": event_uri, "location": "Gate [code hidden]" })),
+        ("set_checklist", json!({ "of": task_uri, "groups": [{ "items": ["[link hidden]"] }] })),
+    ] {
+        let refused = call(&mut server, tool, arguments);
+        assert_eq!(refused["isError"], true, "{tool}: {refused}");
+        assert!(text(&refused).contains("what Sioul hides from agents"), "{tool}: {refused}");
+    }
+    let file = PathBuf::from(task["structuredContent"]["file"].as_str().unwrap());
+    let ics = std::fs::read_to_string(&file).unwrap().replace("\r\n ", "");
+    assert!(ics.contains("7319") && !ics.contains("[code hidden]"), "{ics}");
+    // Without a mark, written.
+    let fine = call(&mut server, "update_task", json!({ "task": task_uri, "title": "Fetch the keys, early" }));
+    assert_eq!(fine["isError"], false, "{fine}");
+}
+
+/// A link that signs in whoever opens it, in a message that says nothing of
+/// a code (an order's "see your order", a meeting's link with its password, a
+/// magic link, a token after "#"): hidden wherever it is written, in mail and
+/// in every other text an agent is given. Ordinary links stay.
+#[test]
+fn links_that_sign_in_are_hidden_wherever_they_are() {
+    home();
+    let order = "Your order is on its way. See your order: https://shop.example/orders/5512/authenticate?key=Zq4fK2a8Lm0Qx, thanks!";
+    let (_, body) = mask::message(sioul_core::words::Words::builtin_ref(), "Your order 5512", order);
+    assert_eq!(body, "Your order is on its way. See your order: [link hidden], thanks!");
+    for link in [
+        "https://shop.example/orders/5512/authenticate?key=Zq4fK2a8Lm0Qx",
+        "https://meet.example/j/81234567890?pwd=Ab12Cd34Ef56",
+        "https://app.example/login/magic/9fK2a8Lm0Qx7Zt4Wp1Rv",
+        "https://app.example/callback#access_token=eyJhbGciOiJIUzI1NiJ9",
+        "https://files.example/invoice.pdf?X-Amz-Signature=3f9a8b7c6d5e4f3a&X-Amz-Expires=600",
+        "www.example.org/account?auth_token=Q1w2E3r4T5y6&amp;lang=fr",
+        "HTTPS://SHOP.EXAMPLE/ACCOUNT/LOGIN?TOKEN=ABCDEF123456",
+        // A password before the host, a link wrapped in another, a token in the path alone.
+        "ftp://jdupont:Xk82pq@files.example/report.pdf",
+        "https://redirect.example/r?url=https%3A%2F%2Fapp.example%2Fopen%3Ftoken%3DQ1w2E3r4T5y6",
+        "https://app.example/e/eyJhbGciOiJIUzI1NiJ9.eyJ1IjoxfQ.c2lnbmF0dXJl",
+        "https://app.example/s/9fK2a8Lm0Qx7Zt4Wp1RvYb3Nc6Hd5JeQ8",
+        "https://app.example/callback?code=4Fz9Kq2Lm7Xw1Rt8Pv3Bn6",
+    ] {
+        assert_eq!(mask::text(&format!("Open {link} now.")), "Open [link hidden] now.", "{link}");
+    }
+    for plain in [
+        "https://shop.example/orders/5512",
+        "https://shop.example/login",
+        "https://shop.example/account/confirm-email",
+        "https://click.example/ls/click?upn=u001.Zm9vYmFy-2FZm9vYmFy",
+        "https://example.org/search?keyword=shoes&page=2",
+        "https://shop.example/cart?code=SPRING2026",
+        "https://docs.example/d/1AbCdEfGh2IjKlMnOp3QrStUv/edit?usp=sharing",
+        "https://shop.example/reset?key=abc",
+        "https://blog.example/posts?author=jean-dupont",
+        "https://news.example/login?utm_campaign=2026-11-weekly-digest",
+        "https://shop.example/account?login=jdupont",
+    ] {
+        assert_eq!(mask::text(&format!("Open {plain} now.")), format!("Open {plain} now."), "{plain}");
+    }
 }
 
 // The spam filter's tools, and `sioul spam`'s reports.

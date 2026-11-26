@@ -60,11 +60,11 @@ pub struct InvoicePaid {
 
 /// An export taken in (see the module's notes). `statement` as `bank::read`
 /// gives it, its account named already (a card's own name when the export
-/// gives none).
-pub fn take_in(root: &Path, statement: &Statement, title: &str, words: &crate::words::Words, today: Date, device: &str) -> Result<TakenIn, String> {
+/// gives none). Nothing names the account after the file (`Bank::import`).
+pub fn take_in(root: &Path, statement: &Statement, words: &crate::words::Words, today: Date, device: &str) -> Result<TakenIn, String> {
     let account = if statement.account.is_empty() { "account".to_string() } else { statement.account.clone() };
     let known: BTreeSet<(String, String)> = Bank::load(root)?.movements.iter().map(|m| (m.account.clone(), m.id.clone())).collect();
-    let added = Bank::change(root, |bank| bank.import(statement, title))?;
+    let added = Bank::change(root, |bank| bank.import(statement))?;
     // Its holds: what this export says is not final yet, in place of what the last one said.
     let holds: Vec<Hold> = statement.pending.iter().map(|m| Hold { account: account.clone(), id: m.id.clone(), date: m.date, amount: m.amount, label: m.label.clone() }).collect();
     let held = Store::load(root).map(|s| s.holds.iter().any(|h| h.account == account)).unwrap_or(false);
@@ -277,6 +277,7 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
     if waiting.is_empty() && !mail.iter().any(recorded) {
         return Ok(0);
     }
+    let transfer = |l: &MailLine| l.payment.kind == PaymentKind::Paid && crate::payments::is_transfer(words, &l.subject);
     let bank_words = &words.bank;
     let facts: Vec<usize> = (0..movements.list.len()).filter(|&j| movements.list[j].way != Way::Between && movements.list[j].place != Place::Unplaced).collect();
     let expected: Vec<crate::matching::Side> = waiting
@@ -289,7 +290,8 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
                 sum: Sum::Exact(signed),
                 currency: l.payment.amount.as_ref().map_or("EUR", |a| a.currency).to_string(),
                 day: l.due.unwrap_or(l.date),
-                evidence: if l.due.is_some() { Evidence::Bill } else { evidence_of(l.payment.kind) },
+                // Your bank's notice of your transfer: its amount exactly, up to six weeks before what it settles.
+                evidence: if l.due.is_some() { Evidence::Bill } else if transfer(l) { Evidence::Notice } else { evidence_of(l.payment.kind) },
                 accounts: Vec::new(),
                 names: [l.payment.party.as_str(), l.label.as_str()].iter().map(|n| crate::matching::tokens(bank_words, n)).collect(),
                 refs: l.refs.clone(),
@@ -335,6 +337,31 @@ pub fn join_mails(root: &Path, words: &crate::words::Words, mail: &mut [MailLine
             taken.extend(set.iter().copied());
             let others: Vec<String> = set.iter().skip(1).map(|&j| movements.list[j].steady_key().to_string()).collect();
             links.push((movements.list[set[0]].steady_key().to_string(), l.key.clone(), true, l.signed().unwrap_or_default(), l.date, l.label.clone(), others, None));
+        }
+    }
+    // Your bank's notice of your transfer that no name or near day joined: the
+    // one payment planned or announced of its amount exactly, from its day to
+    // six weeks after, is proposed as the one it settles ("probably the same
+    // as …", Not the same beside it), as a bank's line would be; two of that
+    // amount, none (the owner's report of 24 November 2026: a bill paid a
+    // month early stayed "to pay").
+    let paired: BTreeSet<usize> = pairs.iter().map(|p| p.expected).collect();
+    for (e, &i) in waiting.iter().enumerate().filter(|(e, i)| !paired.contains(e) && transfer(&mail[**i])) {
+        let l = &mail[i];
+        let Some(signed) = l.signed() else { continue };
+        let (start, until) = Evidence::Notice.window(l.date);
+        let candidates: Vec<usize> = facts
+            .iter()
+            .enumerate()
+            .filter(|&(f, &j)| {
+                let m = &movements.list[j];
+                !taken.contains(&j) && matches!(m.state, State::Planned | State::Announced) && !m.has_kind(Kind::Bank) && sides[f].way == expected[e].way && sides[f].day >= start && sides[f].day <= until && m.sum.amount() == signed
+            })
+            .map(|(_, &j)| j)
+            .collect();
+        if let [j] = candidates[..] {
+            taken.insert(j);
+            links.push((movements.list[j].steady_key().to_string(), l.key.clone(), true, signed, l.date, l.label.clone(), Vec::new(), None));
         }
     }
     // What a processor's mail told of the payments it joined: what the payer
@@ -713,8 +740,9 @@ impl Payment {
 
     /// Written into the budget file as a line of `budget`, planned when its
     /// day is to come, the message or letter in its links, with a comment
-    /// saying where it came from (`origin`). Returns the line's id.
-    pub fn record(&self, root: &Path, today: Date, origin: &str) -> Result<String, String> {
+    /// saying where it came from (`origin`). Returns the line's id, and
+    /// whether it was written: the same payment a line holds already is not.
+    pub fn record(&self, root: &Path, today: Date, origin: &str) -> Result<(String, bool), String> {
         let path = root.join(crate::budget::LEDGER);
         let fail = |e: &str| format!("{}: {e}", path.display());
         if !self.amount.is_finite() || self.amount == 0.0 {
@@ -725,10 +753,12 @@ impl Payment {
         if !ledger.budgets.iter().any(|b| b.id == self.budget) {
             return Err(fail("a budget is needed"));
         }
-        let id = crate::ids::new();
         let label = if self.label.trim().is_empty() { self.source.clone() } else { self.label.trim().to_string() };
+        // A message's line takes an id made from the message, its amount and its
+        // day (`ids::of_message`); the same payment a line holds already is not
+        // counted twice: that line's id comes back, with `false`, nothing written.
         let line = Line {
-            id: id.clone(),
+            id: String::new(),
             budget: self.budget.clone(),
             date: day,
             amount: Money::from_units(self.amount),
@@ -739,8 +769,7 @@ impl Payment {
             preset: None,
             ..Line::default()
         };
-        crate::budget::record_line(&path, &line, origin)?;
-        Ok(id)
+        crate::budget::record_line_once(&path, &line, origin)
     }
 }
 
@@ -1175,7 +1204,8 @@ pub fn make(root: &Path, tr: &crate::i18n::Translator, new: &New, origin: &str, 
     }
     let fees: Vec<Fee> = new.fees.iter().map(|f| Fee { from: FeeFrom::Hand, amount: f.amount.abs(), ..*f }).collect();
     let (gross, net, fees) = figures(new.gross, new.net, &fees).ok_or_else(|| tr.text("movement-figures", None))?;
-    let id = crate::ids::new();
+    // Tied to a message: the message's id, as every line recorded from it has (`ids::of_message`).
+    let id = new.ties.iter().map(|t| t.trim()).find(|t| crate::budget::is_message_key(t)).map_or_else(crate::ids::new, |m| crate::ids::of_message(m, net.cents(), &new.day.to_string()));
     let line = Line {
         id: id.clone(),
         budget: new.budget.clone(),
@@ -1192,9 +1222,16 @@ pub fn make(root: &Path, tr: &crate::i18n::Translator, new: &New, origin: &str, 
         account: new.account.clone(),
         ..Line::default()
     };
-    crate::budget::record_line(&path, &line, origin)?;
+    // A message is counted in one line: tied to a message a line holds already, nothing is written.
+    let (held, written) = crate::budget::record_line_once(&path, &line, origin)?;
+    if !written {
+        let mut args = crate::i18n::args();
+        args.set("address", crate::links::movement_uri(&format!("line:{held}")));
+        return Err(tr.text("movement-message-counted", Some(&args)));
+    }
     super::said();
-    Ok(Act { address: crate::links::movement_uri(&format!("line:{id}")), said: effect(tr, &ledger, &[], &[(new.budget.clone(), net)], new.day) })
+    // Named by the id it was written under: a new one when the file held this one already.
+    Ok(Act { address: crate::links::movement_uri(&format!("line:{held}")), said: effect(tr, &ledger, &[], &[(new.budget.clone(), net)], new.day) })
 }
 
 /// The movement an address names in the notes folder's books, and the books.

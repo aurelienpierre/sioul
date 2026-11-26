@@ -37,6 +37,10 @@ pub struct Movement {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Statement {
     pub account: String,
+    /// The bank the export names, when it does (OFX's `<ORG>`, camt's
+    /// account servicer's `<Nm>`): what the account is called with its last
+    /// four characters (`accounts::export_name`), never the file's name.
+    pub bank: String,
     pub movements: Vec<Movement>,
     /// The balance and its day, when the export gives one.
     pub balance: Option<(Date, Money)>,
@@ -193,6 +197,7 @@ fn read_ofx(text: &str) -> Statement {
             "BALAMT" if in_ledger => balance_amount = parse_amount(&value),
             "DTASOF" if in_ledger => balance_date = parse_date(&value),
             "ACCTID" if statement.account.is_empty() => statement.account = value,
+            "ORG" if statement.bank.is_empty() => statement.bank = value,
             _ => {
                 if let Some((date, amount, name, memo, id)) = current.as_mut() {
                     match tag.as_str() {
@@ -241,6 +246,7 @@ fn read_camt(text: &str) -> Result<Statement, String> {
     let statements: Vec<XmlNode> = doc.descendants().filter(|n| n.tag_name().name() == "Stmt").collect();
     let Some(first) = statements.first() else { return Err("no statement".into()) };
     statement.account = account_of(*first);
+    statement.bank = text_at(*first, &["Acct", "Svcr", "FinInstnId", "Nm"]).unwrap_or_default();
     for stmt in statements.iter().copied().filter(|s| account_of(*s) == statement.account) {
         let mut closing: Option<(Date, Money)> = None;
         for balance in stmt.children().filter(|c| c.tag_name().name() == "Bal") {
@@ -575,7 +581,13 @@ fn fee_on_top(c: &Columns, rows: &[(Vec<String>, Columns)]) -> bool {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Account {
     pub id: String,
+    /// What Sioul 0.1.0 and older wrote here: the export file's name
+    /// ("Download", or the account's whole number when the bank names its
+    /// files so). Kept as it is in the file, never shown outside the window
+    /// (`accounts::export_name`); a newer Sioul writes none.
     pub title: String,
+    /// The bank the export named (`Statement::bank`), when it did.
+    pub bank: String,
     pub balance: Option<(Date, Money)>,
 }
 
@@ -632,7 +644,7 @@ impl Bank {
             .iter()
             .filter_map(|a| {
                 let a = a.as_table()?;
-                Some(Account { id: text_of(a.get("id")), title: text_of(a.get("title")), balance: date_of(a.get("as_of")).zip(money_of(a.get("balance"))) })
+                Some(Account { id: text_of(a.get("id")), title: text_of(a.get("title")), bank: text_of(a.get("bank")), balance: date_of(a.get("as_of")).zip(money_of(a.get("balance"))) })
             })
             .collect();
         let movements = list("movement")
@@ -645,8 +657,11 @@ impl Bank {
         Ok(Bank { root: root.to_path_buf(), accounts, movements })
     }
 
-    /// A statement taken in: new movements added (by id), the balance kept when newer.
-    pub fn import(&mut self, statement: &Statement, title: &str) -> Imported {
+    /// A statement taken in: new movements added (by id), the balance kept
+    /// when newer. A new account is named by nothing the file says of itself
+    /// (its file's name, its number): only the bank the export names is kept,
+    /// and what it is called is said where it is shown (`accounts::export_name`).
+    pub fn import(&mut self, statement: &Statement) -> Imported {
         let account = if statement.account.is_empty() { "account".to_string() } else { statement.account.clone() };
         let mut new = 0;
         for m in &statement.movements {
@@ -659,10 +674,13 @@ impl Bank {
         let place = match self.accounts.iter().position(|a| a.id == account) {
             Some(at) => at,
             None => {
-                self.accounts.push(Account { id: account.clone(), title: title.to_string(), balance: None });
+                self.accounts.push(Account { id: account.clone(), bank: statement.bank.clone(), ..Account::default() });
                 self.accounts.len() - 1
             }
         };
+        if self.accounts[place].bank.is_empty() && !statement.bank.is_empty() {
+            self.accounts[place].bank = statement.bank.clone();
+        }
         if let Some((date, amount)) = statement.balance
             && self.accounts[place].balance.is_none_or(|(old, _)| date >= old)
         {
@@ -689,6 +707,9 @@ impl Bank {
             t["id"] = toml_edit::value(&a.id);
             if !a.title.is_empty() {
                 t["title"] = toml_edit::value(&a.title);
+            }
+            if !a.bank.is_empty() {
+                t["bank"] = toml_edit::value(&a.bank);
             }
             if let Some((d, m)) = a.balance {
                 t["balance"] = money(m);
@@ -737,6 +758,60 @@ impl Bank {
         let day = known.iter().map(|(d, _)| *d).max()?;
         Some((day, known.iter().map(|(_, m)| *m).sum()))
     }
+}
+
+/// The digits a stretch holds at least to be an account's number where a
+/// name is said outside the window: fewer are a year, a branch, a card's last four.
+const NUMBER_DIGITS: usize = 8;
+
+/// A name as it may be said outside the window (to an agent, in a notice, in
+/// a log): every stretch that holds an account's number, whatever its form
+/// ("12345678901", "1234567K038", "FR76 3000 6000 …", "12345 67890 …"), said
+/// by its last four characters ("…K038"), as an IBAN or a card is masked.
+/// Groups of letters and digits that each hold a digit, one space or hyphen
+/// apart, are one stretch; the rest stays as written ("Savings 2026").
+pub fn masked_name(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    let apart = |c: char| matches!(c, ' ' | '\u{a0}' | '\u{202f}' | '\u{2009}' | '\u{2007}' | '-');
+    let group_end = |at: usize| at + chars[at..].iter().take_while(|c| c.is_alphanumeric()).count();
+    let mut out = String::with_capacity(name.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if !chars[i].is_alphanumeric() || (i > 0 && chars[i - 1].is_alphanumeric()) {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        // The stretch from here: groups that each hold a digit, one separator between two.
+        let (mut at, mut end) = (i, i);
+        loop {
+            let to = group_end(at);
+            if !chars[at..to].iter().any(char::is_ascii_digit) {
+                break;
+            }
+            end = to;
+            if to + 1 < chars.len() && apart(chars[to]) && chars[to + 1].is_alphanumeric() {
+                at = to + 1;
+            } else {
+                break;
+            }
+        }
+        if end == i {
+            let to = group_end(i);
+            out.extend(&chars[i..to]);
+            i = to;
+            continue;
+        }
+        let kept: Vec<char> = chars[i..end].iter().copied().filter(|c| c.is_alphanumeric()).collect();
+        if kept.iter().filter(|c| c.is_ascii_digit()).count() >= NUMBER_DIGITS {
+            out.push('…');
+            out.extend(&kept[kept.len() - 4..]);
+        } else {
+            out.extend(&chars[i..end]);
+        }
+        i = end;
+    }
+    out
 }
 
 /// The words of a label that can name a payment: folded, three letters at
@@ -1011,12 +1086,59 @@ mod tests {
         let csv = "Date;Libellé;Montant\n01/10/2026;LOYER;-780,00\n01/10/2026;LOYER;-780,00\n02/10/2026;SALAIRE;1200,00\n";
         let statement = read(csv).unwrap();
         let mut bank = Bank::load(&root).unwrap();
-        assert_eq!(bank.import(&statement, "Courant"), Imported { read: 3, new: 3 }, "two same movements on one day are two");
-        assert_eq!(bank.import(&statement, "Courant"), Imported { read: 3, new: 0 });
+        assert_eq!(bank.import(&statement), Imported { read: 3, new: 3 }, "two same movements on one day are two");
+        assert_eq!(bank.import(&statement), Imported { read: 3, new: 0 });
         bank.save().unwrap();
         let again = Bank::load(&root).unwrap();
         assert_eq!(again.movements, bank.movements);
         assert_eq!(again.accounts, bank.accounts);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An account made from an export is named by nothing the file says of
+    /// itself: no title (Sioul 0.1.0 wrote the file's name there, "Download"
+    /// or the account's whole number), the bank the export names kept beside
+    /// it; a title an older Sioul wrote stays in the file as it was.
+    #[test]
+    fn an_export_names_no_account_after_its_file() {
+        let root = std::env::temp_dir().join(format!("sioul-bank-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let ofx = "OFXHEADER:100\n<OFX><SIGNONMSGSRSV1><SONRS><FI><ORG>Example Bank<FID>99999</FI></SONRS></SIGNONMSGSRSV1><BANKMSGSRSV1><STMTTRNRS><STMTRS><BANKACCTFROM><ACCTID>12345678K0389876540042</BANKACCTFROM>\n<STMTTRN>\n<DTPOSTED>20261001\n<TRNAMT>-12.00\n<FITID>N1\n<NAME>BAKERY\n</STMTTRN></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+        let statement = read(ofx).unwrap();
+        assert_eq!((statement.account.as_str(), statement.bank.as_str()), ("12345678K0389876540042", "Example Bank"));
+        let mut bank = Bank::load(&root).unwrap();
+        bank.import(&statement);
+        assert_eq!((bank.accounts[0].title.as_str(), bank.accounts[0].bank.as_str()), ("", "Example Bank"));
+        // An older Sioul's title, the export's file name: kept in the file, untouched.
+        bank.accounts[0].title = "Download".into();
+        bank.save().unwrap();
+        let text = std::fs::read_to_string(root.join(MANIFEST)).unwrap();
+        assert!(text.contains("title = \"Download\"") && text.contains("bank = \"Example Bank\""), "{text}");
+        let again = Bank::load(&root).unwrap();
+        assert_eq!(again.accounts, bank.accounts);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An account's number in a name, whatever its form, said by its last
+    /// four characters outside the window; years, short numbers and words stay.
+    #[test]
+    fn a_name_never_says_a_whole_account_number() {
+        for (name, said) in [
+            ("12345678K0389876540042", "…0042"),
+            ("1234567K038", "…K038"),
+            ("Compte 1234567K038 courant", "Compte …K038 courant"),
+            ("FR76 3000 6000 0112 3456 7890 189", "…0189"),
+            ("12345 67890 1234567K038 74", "…3874"),
+            ("12-3456-7890", "…7890"),
+            ("Main 12345678", "Main …5678"),
+            ("Savings 2026", "Savings 2026"),
+            ("Livret A", "Livret A"),
+            ("Account 1234567", "Account 1234567"),
+            ("PayPal", "PayPal"),
+            ("", ""),
+        ] {
+            assert_eq!(masked_name(name), said, "{name}");
+        }
     }
 }

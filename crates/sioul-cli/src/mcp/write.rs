@@ -541,17 +541,20 @@ fn recipient(entry: &str) -> Result<String, String> {
 }
 
 /// A draft saved, said as the window says it, with what it holds. Saved
-/// under a name no other draft has: never over another one.
-fn draft_saved(s: &Session, draft: &Draft) -> Result<Answer, String> {
+/// under a name no other draft has: never over another one. Its subject as
+/// mail is given to agents (`mask::message`, with `excerpt`, the text of the
+/// message answered): "Re: 482913 is your verification code" gives no code.
+fn draft_saved(s: &Session, draft: &Draft, excerpt: &str) -> Result<Answer, String> {
     draft.save()?;
     let uri = links::draft_uri(&draft.id);
+    let subject = super::mask::message(&sioul_core::words::Words::of(&s.config), &draft.subject, excerpt).0;
     let text = format!(
         "{}\nTo: {}\nSubject: {}\n<{uri}>\n(Not sent: the person reads it in Sioul's window and sends it themselves.)",
         s.tr.text("compose-kept", None),
         draft.to.iter().chain(&draft.cc).map(|r| one_line(r)).collect::<Vec<_>>().join(", "),
-        one_line(&draft.subject)
+        one_line(&subject)
     );
-    let data = json!({ "id": draft.id, "uri": uri, "account": draft.account, "to": draft.to, "cc": draft.cc, "subject": draft.subject, "encrypt": draft.encrypt, "sent": false });
+    let data = json!({ "id": draft.id, "uri": uri, "account": draft.account, "to": draft.to, "cc": draft.cc, "subject": subject, "encrypt": draft.encrypt, "sent": false });
     Ok(Answer { text, data })
 }
 
@@ -590,7 +593,7 @@ pub fn draft_reply(s: &Session, args: &Args) -> Result<Answer, String> {
     // An answer to encrypted mail is encrypted too; the window says when it cannot be.
     let encrypted = sioul_core::maildir::read_one(&path).and_then(|c| c.headers.first("Content-Type").map(|t| t.trim().to_ascii_lowercase().starts_with("multipart/encrypted"))).unwrap_or(false);
     draft.encrypt = encrypted;
-    draft_saved(s, &draft)
+    draft_saved(s, &draft, &judged.card.excerpt)
 }
 
 pub fn draft_message(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -615,7 +618,7 @@ pub fn draft_message(s: &Session, args: &Args) -> Result<Answer, String> {
     draft.body = body;
     draft.add_signature(account.signature.as_deref());
     draft.links = links;
-    draft_saved(s, &draft)
+    draft_saved(s, &draft, "")
 }
 
 /// Writes what makes a tie: a note through the notes, a task or an event as an item of its collection.

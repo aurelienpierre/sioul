@@ -147,6 +147,12 @@ impl Shield {
     }
 }
 
+/// A draft's title (its subject, often a reply's "Re: …") as an agent sees
+/// it: masked as a subject is (`mask::message`), a code in it hidden.
+pub(super) fn draft_title(s: &Session, title: &str) -> String {
+    mask::message(&sioul_core::words::Words::of(&s.config), title, "").0
+}
+
 /// A message's title and detail (its sender) as an agent sees them,
 /// wherever it is listed: its subject masked with what its text says (a code
 /// in the subject, its phrase below); nothing of either when it is hostile
@@ -1211,7 +1217,12 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
     // tied to one; any not in a project while those are closed), and lines tied
     // to a closed project; their movements too, and what names them.
     let consent = access::of(s, &Loaded::read(&s.config));
-    let (ledger, closed, kept_labels) = open_ledger(books.counted.clone(), &consent);
+    let (mut ledger, closed, kept_labels) = open_ledger(books.counted.clone(), &consent);
+    // Each card's name with any whole account number in it said by its last
+    // four, here and in every sentence and chart name made from it.
+    for card in &mut ledger.bank_accounts {
+        card.title = sioul_core::bank::masked_name(&card.title);
+    }
     let open: std::collections::BTreeSet<&str> = ledger.budgets.iter().map(|b| b.id.as_str()).collect();
     let movements: Vec<sioul_core::movements::Movement> = books.movements.iter().filter(|m| m.place.budgets().iter().all(|b| open.contains(b)) && !kept_labels.contains(&m.label)).cloned().collect();
     // The bank accounts are in no project: as things outside projects are.
@@ -1223,13 +1234,15 @@ pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
         account.title = mask::text(&account.title);
     }
     let mut lines = view::budgets_lines(&shown);
-    // Each export's account and its last balance, its name masked (an IBAN: "[IBAN …0189]").
+    // Each export's account and its last balance, by a name that is neither
+    // the export file's (which Sioul 0.1.0 kept as its title) nor its whole
+    // number: its card's, else its bank's and its last four (`accounts::export_name`).
     let accounts: Vec<Value> = bank
         .accounts
         .iter()
         .filter(|a| a.balance.is_some())
         .map(|account| {
-            let name = mask::text(if account.title.is_empty() { &account.id } else { &account.title });
+            let name = mask::text(&sioul_core::accounts::export_name(&ledger, account, &s.tr));
             let balance = account.balance.map(|(date, amount)| s.say("bank-balance", &[("amount", s.tr.money(amount)), ("date", s.tr.day_in(date, today))])).unwrap_or_default();
             json!({ "name": name, "balance": balance })
         })
@@ -1444,7 +1457,11 @@ fn related_rows(s: &Session, shield: Option<&Shield>, related: &[taskview::Relat
     related
         .iter()
         .map(|r| {
-            let (title, detail) = if r.kind == Kind::Mail { mail_shown(s, shield, Path::new(&r.key), &r.title, &r.detail) } else { (r.title.clone(), r.detail.clone()) };
+            let (title, detail) = match r.kind {
+                Kind::Mail => mail_shown(s, shield, Path::new(&r.key), &r.title, &r.detail),
+                Kind::Draft => (draft_title(s, &r.title), r.detail.clone()),
+                _ => (r.title.clone(), r.detail.clone()),
+            };
             json!({ "uri": r.uri, "kind": r.kind, "title": title, "detail": detail, "how": r.how, "when": r.when, "found": r.found })
         })
         .collect()
@@ -1481,7 +1498,11 @@ pub fn links(s: &Session, args: &Args) -> Result<Answer, String> {
     let shown: Vec<String> = view.things.iter().map(|t| t.uri.clone()).collect();
     let closed = access::kept_around(&built.index, &consent, &base, &shown);
     // Mail as agents see it: subjects masked, hostile senders unnamed; the chain's own sentences left out, which hold raw titles.
-    let words = |t: &chain::ChainNode| if t.kind == Kind::Mail { mail_shown(s, shield.as_ref(), Path::new(&t.key), &t.title, &t.detail) } else { (t.title.clone(), t.detail.clone()) };
+    let words = |t: &chain::ChainNode| match t.kind {
+        Kind::Mail => mail_shown(s, shield.as_ref(), Path::new(&t.key), &t.title, &t.detail),
+        Kind::Draft => (draft_title(s, &t.title), t.detail.clone()),
+        _ => (t.title.clone(), t.detail.clone()),
+    };
     let mut lines = Vec::new();
     let mut things = Vec::new();
     for t in &view.things {

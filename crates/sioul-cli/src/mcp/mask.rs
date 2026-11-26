@@ -16,8 +16,17 @@ const LINK: &str = "[link hidden]";
 const NIR: &str = "[social security number hidden]";
 const PASSWORD: &str = "[This message gives a password: its words stay in Sioul's window.]";
 
+/// The masks' own marks, as an agent may give them back: a text holding one
+/// is what the agent was shown, not what the person wrote.
+const MARKS: &[&str] = &[CODE, LINK, NIR, "[This message gives a password", "[IBAN …", "[card …"];
+
+/// The first of the masks' marks a text holds, if any.
+pub fn mark_in(text: &str) -> Option<&'static str> {
+    MARKS.iter().copied().find(|mark| text.contains(mark))
+}
+
 /// A message's subject and text as an agent gets them, when it carries a
-/// short-lived secret (`codes::detect`): every code hidden wherever it is
+/// short-lived secret (`codes::detect_text`): every code hidden wherever it is
 /// written, spaced or not; every link hidden, as good as the code (a reset,
 /// a sign-in link, an address to confirm); a password's message kept whole
 /// from the agent, as where the password sits is not known. Then the numbers
@@ -54,12 +63,14 @@ struct Secrets {
 const PIECE: usize = 5000;
 const OVERLAP: usize = 200;
 
-/// Every secret of a message. `codes::detect` reads the first 6000
-/// characters, the first phrase it knows and the code beside it, and says one
-/// kind: so each number that could be a code is asked about with the words
-/// around it, in a text where codes printed apart ("4 8 2 9 1 3") are joined
-/// too; and the rest is read piece by piece with every digit blanked, so that
-/// a password or a link further on is not hidden behind a code.
+/// Every secret of a message. `codes::detect_text` reads a text with its
+/// line breaks (a label at a line's start counts: "Bring the cake\nCode:
+/// 7319"), the first 6000 characters, the first phrase it knows and the code
+/// beside it, and says one kind: so each number that could be a code is
+/// asked about with the words around it, in a text where codes printed apart
+/// ("4 8 2 9 1 3") are joined too; and the rest is read piece by piece with
+/// every digit blanked, so that a password or a link further on is not
+/// hidden behind a code. A piece cut inside a line never starts one (`piece_of`).
 fn secrets(words: &Words, subject: &str, body: &str) -> Secrets {
     let chars: Vec<char> = format!("{subject}\n{body}").chars().collect();
     let mut found = Secrets::default();
@@ -78,8 +89,7 @@ fn secrets(words: &Words, subject: &str, body: &str) -> Secrets {
     let mut start = 0;
     loop {
         let end = (start + PIECE).min(blank.len());
-        let piece: String = blank[start..end].iter().collect();
-        if let Some(kind) = codes::detect(&words.codes, &piece, "").map(|s| s.kind)
+        if let Some(kind) = codes::detect_text(&words.codes, &piece_of(&blank, start, end)).map(|s| s.kind)
             && !found.kinds.contains(&kind)
         {
             found.kinds.push(kind);
@@ -99,18 +109,27 @@ fn secrets(words: &Words, subject: &str, body: &str) -> Secrets {
 const BEFORE: [usize; 4] = [250, 170, 90, 30];
 const AFTER: usize = 170;
 
-/// The codes a text holds, as `codes::detect` reads them.
+/// A stretch of a text as `codes::detect_text` is given it: cut inside a
+/// line, it starts after "… ", so that a label the cut left at its start is
+/// not taken for one at a line's start ("…at 10:30, bring your Password:
+/// open Settings" is none, wherever the cut falls).
+fn piece_of(chars: &[char], start: usize, end: usize) -> String {
+    let text: String = chars[start..end].iter().collect();
+    if start > 0 && !matches!(chars[start - 1], '\n' | '\r') { format!("… {text}") } else { text }
+}
+
+/// The codes a text holds, as `codes::detect_text` reads them.
 fn codes_in(words: &Words, chars: &[char]) -> Vec<String> {
     let mut found: Vec<String> = Vec::new();
     for at in (0..chars.len()).filter(|&i| could_be_code(chars, i)) {
         let end = (at + AFTER).min(chars.len());
         for before in BEFORE {
-            let piece: String = chars[at.saturating_sub(before)..end].iter().collect();
+            let piece = piece_of(chars, at.saturating_sub(before), end);
             // The codes found already, hidden: the next one comes out.
             let mut piece = found.iter().fold(piece, |piece, code| hide_code(&piece, code));
             let mut new = false;
             for _ in 0..4 {
-                let Some(code) = codes::detect(&words.codes, &piece, "").and_then(|s| s.code) else { break };
+                let Some(code) = codes::detect_text(&words.codes, &piece).and_then(|s| s.code) else { break };
                 piece = hide_code(&piece, &code);
                 if !found.contains(&code) {
                     found.push(code);
@@ -126,9 +145,17 @@ fn codes_in(words: &Words, chars: &[char]) -> Vec<String> {
 }
 
 /// Whether a code could start here, as `codes::detect` takes one: four to
-/// eight digits that are not a year, or three and three ("482 913").
+/// eight digits that are not a year, or three and three ("482 913"); or
+/// capitals and digits as a code of letters and digits is printed ("F7G2K",
+/// "AB12CD", "K7Q-2M9"), which the detector reads right after its phrase.
 fn could_be_code(chars: &[char], at: usize) -> bool {
-    if !chars[at].is_ascii_digit() || (at > 0 && (chars[at - 1].is_alphanumeric() || chars[at - 1] == '+')) {
+    if at > 0 && (chars[at - 1].is_alphanumeric() || chars[at - 1] == '+') {
+        return false;
+    }
+    if mixed_at(chars, at) {
+        return true;
+    }
+    if !chars[at].is_ascii_digit() {
         return false;
     }
     let run = chars[at..].iter().take_while(|c| c.is_ascii_digit()).count();
@@ -139,6 +166,20 @@ fn could_be_code(chars: &[char], at: usize) -> bool {
         5..=8 => true,
         _ => false,
     }
+}
+
+/// A token of a letters-and-digits code's shape starts here, as the detector
+/// takes one (`codes`' mixed codes): five to ten capitals, digits and single
+/// hyphens, two capitals and two digits at least, a word of its own.
+fn mixed_at(chars: &[char], at: usize) -> bool {
+    let run = chars[at..].iter().take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || **c == '-').count();
+    if chars.get(at + run).is_some_and(|c| c.is_alphanumeric()) {
+        return false;
+    }
+    let token: String = chars[at..at + run].iter().collect::<String>().trim_end_matches('-').to_string();
+    let letters = token.chars().filter(char::is_ascii_uppercase).count();
+    let digits = token.chars().filter(char::is_ascii_digit).count();
+    (5..=10).contains(&token.chars().count()) && letters >= 2 && digits >= 2 && !token.contains("--") && !token.starts_with('-')
 }
 
 /// What may stand between the characters of a code as it is printed: a
@@ -237,6 +278,16 @@ pub fn text(text: &str) -> String {
     let mut i = 0;
     while i < chars.len() {
         let starts_word = i == 0 || !chars[i - 1].is_alphanumeric();
+        if starts_word && let Some((end, hidden)) = bank_key_at(&chars, i) {
+            out.push_str(&hidden);
+            i = end;
+            continue;
+        }
+        if let Some(end) = signing_link_at(&chars, i) {
+            out.push_str(LINK);
+            i = end;
+            continue;
+        }
         if starts_word && let Some((end, hidden)) = iban_at(&chars, i).or_else(|| nir_at(&chars, i)).or_else(|| card_at(&chars, i)) {
             out.push_str(&hidden);
             i = end;
@@ -246,6 +297,26 @@ pub fn text(text: &str) -> String {
         i += 1;
     }
     out
+}
+
+/// A bank line's or a hold's key (`bank:<account>/<id>`, `hold:<account>/<id>`,
+/// alone or in a movement's address) whose account is an export's own name
+/// for it: its whole number said by its last four (`bank::masked_name`), as
+/// a card's name is. A declared account's key names its card instead, and
+/// stays whole. Returns where the account's name ends (its `/`) and what replaces it.
+fn bank_key_at(chars: &[char], start: usize) -> Option<(usize, String)> {
+    let head: String = chars.get(start..start + 5)?.iter().collect();
+    if head != "bank:" && head != "hold:" {
+        return None;
+    }
+    let from = start + 5;
+    let slash = chars[from..].iter().take(60).position(|c| *c == '/')? + from;
+    if slash == from || chars[from..slash].iter().any(|c| matches!(c, '\n' | '\r' | '"' | '<' | '>')) {
+        return None;
+    }
+    let account: String = chars[from..slash].iter().collect();
+    let masked = sioul_core::bank::masked_name(&account);
+    (masked != account).then(|| (slash, format!("{head}{masked}")))
 }
 
 /// Every text of an answer's data masked as `text` masks it: the data says
@@ -267,16 +338,7 @@ fn hide_links(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
     while i < chars.len() {
-        let starts = i == 0 || !(chars[i - 1].is_alphanumeric() || matches!(chars[i - 1], '+' | '-' | '.' | '_' | '/' | '@' | '%' | '='));
-        if starts && link_at(&chars[i..]) {
-            let mut end = i;
-            while end < chars.len() && !chars[end].is_whitespace() && !matches!(chars[end], '<' | '>' | '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}') {
-                end += 1;
-            }
-            // A sentence's own stop stays after it.
-            while end > i + 1 && matches!(chars[end - 1], '.' | ',' | ';' | ':' | '!' | '?') {
-                end -= 1;
-            }
+        if let Some(end) = link_end(&chars, i) {
             out.push_str(LINK);
             i = end;
             continue;
@@ -285,6 +347,128 @@ fn hide_links(text: &str) -> String {
         i += 1;
     }
     out
+}
+
+/// Where the link that starts at `i` ends, if one does: its characters up to
+/// a space or a bracket, a sentence's own stop left after it.
+fn link_end(chars: &[char], i: usize) -> Option<usize> {
+    let starts = i == 0 || !(chars[i - 1].is_alphanumeric() || matches!(chars[i - 1], '+' | '-' | '.' | '_' | '/' | '@' | '%' | '='));
+    if !starts || !link_at(&chars[i..]) {
+        return None;
+    }
+    let mut end = i;
+    while end < chars.len() && !chars[end].is_whitespace() && !matches!(chars[end], '<' | '>' | '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}') {
+        end += 1;
+    }
+    while end > i + 1 && matches!(chars[end - 1], '.' | ',' | ';' | ':' | '!' | '?') {
+        end -= 1;
+    }
+    Some(end)
+}
+
+/// A link that starts at `i` and opens something signed in, wherever it is
+/// written (an order's "see your order" link, a meeting's link with its
+/// password, a magic link): where it ends. Such a link is as good as a
+/// password, in any message, whatever else it says (`carries_secret`).
+fn signing_link_at(chars: &[char], i: usize) -> Option<usize> {
+    let end = link_end(chars, i)?;
+    let link: String = chars[i..end].iter().collect();
+    carries_secret(&link).then_some(end)
+}
+
+/// The names of a link's parameters that hand a secret over, whatever their
+/// value of eight characters or more: the key, the token, the signature, the
+/// password. Compared lowercase, "_", "-" and "." aside; a name ending in
+/// "token" or "key" ("access_token", "apikey") or naming an authorisation
+/// ("auth", "authcode", "authorization"; never "author") counts too.
+const SECRET_NAMES: &[&str] = &["key", "token", "otp", "sig", "signature", "jwt", "pwd", "pass", "password", "passwd", "secret", "oobcode"];
+
+/// Names that hand a secret over only with an opaque value (`opaque`): "?login=jdupont" is a name, "?login=9fK2…" signs in.
+const OPAQUE_NAMES: &[&str] = &["login", "signin", "session", "sessionid", "sid", "ticket", "magic", "code", "state", "nonce", "hash"];
+
+/// Words of a path that say a link signs in, resets or confirms: with an
+/// opaque value beside them (`opaque`), the link carries what signs in.
+const SIGNING_PATHS: &[&str] = &[
+    "authenticate", "authentication", "auth", "login", "log-in", "signin", "sign-in", "sign_in", "magic", "magic-link", "magiclink", "sso", "verify", "verification", "confirm",
+    "confirmation", "activate", "activation", "reset", "reset-password", "password", "passwordless", "token", "otp", "unlock",
+];
+
+/// Whether a link carries what signs in whoever opens it, without the
+/// message saying so: a password before its host ("ftp://user:pass@host");
+/// a parameter named for a key, a token, a signature or a password whose
+/// value is eight characters or more ("…/authenticate?key=…", "…/j/123?pwd=…"),
+/// or for a session or a login whose value is opaque, in its query, after its
+/// "#", or in a link it wraps ("?url=https%3A…%3Ftoken%3D…"); a path word that
+/// signs in, resets or confirms beside an opaque value ("…/login/magic/9fK2…");
+/// or a token in its path alone (a JWT, or an opaque value of 32 characters
+/// or more). A plain page ("…/login", "…/orders/1234", "?author=jean-dupont",
+/// a campaign's "?utm_campaign=2026-11-weekly-digest", a tracking link's
+/// "?upn=…") is none.
+fn carries_secret(link: &str) -> bool {
+    let lower = link.to_ascii_lowercase();
+    let decoded = percent_decoded(&lower);
+    // A password before the host.
+    let after_scheme = |text: &str| text.split_once("://").map(|(_, rest)| rest.split(['/', '?', '#']).next().unwrap_or("").to_string());
+    if after_scheme(&lower).is_some_and(|authority| authority.split_once('@').is_some_and(|(user, _)| user.contains(':'))) {
+        return true;
+    }
+    // Every parameter, of the link and of any link it wraps.
+    let mut values = Vec::new();
+    for param in decoded.split(['?', '&', '#']).skip(1).map(|p| p.trim_start_matches("amp;")) {
+        let Some((name, value)) = param.split_once('=') else { continue };
+        let name: String = name.chars().filter(|c| !matches!(c, '_' | '-' | '.')).collect();
+        let authorises = (name.starts_with("auth") && !name.starts_with("author")) || name == "authorization";
+        let strong = SECRET_NAMES.contains(&name.as_str()) || name.ends_with("token") || name.ends_with("key") || authorises || name.contains("signature");
+        if (strong && value.chars().count() >= 8) || (OPAQUE_NAMES.contains(&name.as_str()) && opaque(value)) {
+            return true;
+        }
+        // A campaign's or a tracking link's own words are no token.
+        if !name.starts_with("utm") {
+            values.push(value.to_string());
+        }
+    }
+    // The path after its host.
+    let path = decoded.split(['?', '#']).next().unwrap_or("");
+    let path = path.split_once("://").map_or(path, |(_, rest)| rest);
+    let segments: Vec<&str> = path.split('/').skip(1).filter(|s| !s.is_empty()).collect();
+    if segments.iter().any(|s| jwt(s) || (opaque(s) && s.chars().count() >= 32)) {
+        return true;
+    }
+    let signing = segments.iter().any(|s| SIGNING_PATHS.contains(s));
+    signing && segments.iter().map(|s| s.to_string()).chain(values).any(|v| opaque(&v))
+}
+
+/// A link's "%XX" read once ("%3D" is "="), so that a link it wraps is read too.
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && let Some(byte) = text.get(i + 1..i + 3).and_then(|hex| u8::from_str_radix(hex, 16).ok())
+        {
+            out.push(byte);
+            i += 3;
+            continue;
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A value no person types: twenty characters or more of letters, digits,
+/// "-", "_", "." and "%", with a run of eight or more that mixes letters and
+/// digits ("9fK2a8Lm", never "2026-11-weekly-digest", whose parts are words and a date).
+fn opaque(value: &str) -> bool {
+    let mixed = value.split(['-', '_', '.', '%']).any(|run| run.chars().count() >= 8 && run.chars().all(|c| c.is_ascii_alphanumeric()) && run.chars().any(|c| c.is_ascii_digit()) && run.chars().any(|c| c.is_ascii_alphabetic()));
+    value.chars().count() >= 20 && value.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '%' | '.')) && mixed
+}
+
+/// A JSON Web Token: three parts of base64url joined by dots, the first a JSON object's ("eyJ").
+fn jwt(value: &str) -> bool {
+    let parts: Vec<&str> = value.split('.').collect();
+    parts.len() == 3 && parts[0].starts_with("eyj") && parts.iter().all(|p| p.len() >= 4 && p.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_')))
 }
 
 /// Whether a link starts the text.

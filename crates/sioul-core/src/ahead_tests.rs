@@ -99,6 +99,47 @@ fn the_account_holds_every_payment_until_the_pay() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// An occasional receipt never ends the stretch (the owner's report of 24
+/// November 2026: a small payment received ended it, and what was left was
+/// said "a day"): the regular income does, past a client's payment too; and
+/// with the income expected today, what is left is said without a per day.
+#[test]
+fn a_small_receipt_never_ends_the_stretch() {
+    let root = folder("receipt");
+    let ledger = format!(
+        "{SALARIED}[[line]]\nid = 'paid'\nbudget = 'studio'\ndate = 2026-11-08\namount = 35\nlabel = 'A client'\nlinks = ['mid:paid-1@pay.example']\n\
+         [[line]]\nid = 'inv'\nbudget = 'studio'\ndate = 2026-11-21\namount = 900\nlabel = 'Client B'\nplanned = true\n"
+    );
+    write(&root, &ledger, SALARIED_BANK);
+    let today = day("2026-11-10");
+    let main = &aheads(&root, today)[0];
+    assert_eq!(main.income.as_ref().map(|i| (i.label.as_str(), i.day.to_string())), Some(("Salary", "2026-11-28".to_string())), "{main:#?}");
+    assert_eq!(main.days, 18);
+    let tr = Translator::new("en");
+    assert!(sentences(main, &tr, today)[1].ends_with(" a day."), "{:?}", sentences(main, &tr, today));
+    // Without a recurring income, the receipt still ends nothing: the client's payment does.
+    let irregular = ledger.replace("[[preset]]\nid = 'pay'\nbudget = 'home'\nlabel = 'Salary'\namount = 2000\nevery = 'month'\nday = 28\n", "");
+    write(&root, &irregular, SALARIED_BANK);
+    let main = &aheads(&root, today)[0];
+    assert_eq!(main.income.as_ref().map(|i| i.label.as_str()), Some("Client B"), "{main:#?}");
+    // A recurring income too small to be one (a fifth of the largest, €50) ends nothing either.
+    let small = format!("{irregular}[[preset]]\nid = 'tip'\nbudget = 'home'\nlabel = 'A small transfer'\namount = 12\nevery = 'month'\nday = 15\n");
+    write(&root, &small, SALARIED_BANK);
+    let main = &aheads(&root, today)[0];
+    assert_eq!(main.income.as_ref().map(|i| i.label.as_str()), Some("Client B"), "{main:#?}");
+    // The pay expected today (the bank's file older): what is left, no "a day".
+    write(&root, &ledger, SALARIED_BANK);
+    let today = day("2026-11-28");
+    let main = &aheads(&root, today)[0];
+    assert_eq!(main.income.as_ref().map(|i| i.day), Some(today));
+    for tr in [Translator::new("en"), Translator::new("fr")] {
+        let said = sentences(main, &tr, today);
+        assert!(said.iter().all(|l| !l.contains(" a day") && !l.contains("par jour")), "{said:?}");
+        assert!(said.iter().any(|l| l.ends_with("until it comes in, today.") || l.starts_with("Reste à vivre jusqu’à son arrivée, aujourd’hui")), "{said:?}");
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// Irregular income: the next client's payment is said with its doubt, and
 /// what the account would do without it, when that changes the answer; the
 /// chart draws it as a lighter second line.

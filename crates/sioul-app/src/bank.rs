@@ -427,7 +427,7 @@ fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
         Ok(s) => s,
         Err(_) => return (false, say("bank-unreadable", &[("file", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())])),
     };
-    let title = path.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // Never named after the file ("Download", or the account's whole number): `accounts::export_name`.
     let mut statement = statement;
     if !account.is_empty() {
         // Kept under its own number when it gives one, which the account learns; else under the account.
@@ -441,7 +441,7 @@ fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
     // sharing takes too; its holds kept apart, its new lines resolved against what
     // was planned and announced (`movements::acts::take_in`).
     let words = sioul_core::words::Words::of(&config);
-    let added = match sioul_core::movements::acts::take_in(&root, &statement, &title, &words, sioul_core::zone::now().date(), &crate::notices::here_id()) {
+    let added = match sioul_core::movements::acts::take_in(&root, &statement, &words, sioul_core::zone::now().date(), &crate::notices::here_id()) {
         Ok(added) => added,
         Err(e) => return (false, e),
     };

@@ -158,6 +158,15 @@ pub struct Payments {
     pub not_payments: Vec<String>,
     pub refund: Vec<String>,
     pub paid: Vec<String>,
+    /// A payment made, read in a subject only ("Paiement de la commande …"):
+    /// in a text, the same words may tell of one still waiting.
+    pub paid_in_subject: Vec<String>,
+    /// Your bank saying, in a subject, that it took your transfer in ("prise
+    /// en compte de votre virement"): a payment made, which may settle one
+    /// planned up to six weeks later, of its amount exactly
+    /// (`movements::acts::join_mails`). Read in a subject only: "votre
+    /// virement de … vers votre livret" in a text is a move to savings.
+    pub transfer: Vec<String>,
     pub received: Vec<String>,
     pub order: Vec<String>,
     pub bill: Vec<String>,

@@ -5797,8 +5797,9 @@ impl qobject::Sioul {
             let found = mail.iter().find(|l| l.key == key).ok_or_else(|| tr().text("note-no-amount", None))?;
             let line = found.line(&budget).ok_or_else(|| tr().text("note-no-amount", None))?;
             let origin = say("budget-origin-mail", &[("subject", found.subject.clone()), ("sender", found.sender.clone()), ("date", sioul_core::zone::now().date().to_string())]);
-            budget::record_line(&path, &line, &origin)?;
-            Ok::<String, String>(say("ui-line-added", &[("budget", ledger.budget_title(&budget).to_string())]))
+            // "Added" only when it was: the same payment a line holds already writes nothing.
+            let (_, written) = budget::record_line_once(&path, &line, &origin)?;
+            Ok::<String, String>(say(if written { "ui-line-added" } else { "ui-line-already" }, &[("budget", ledger.budget_title(&budget).to_string())]))
         })();
         let line = outcome.unwrap_or_else(|e| e);
         self.as_mut().set_status(QString::from(&line));

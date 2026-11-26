@@ -72,6 +72,16 @@ fn shown(lines: Vec<String>) -> Vec<String> {
     lines.iter().map(|l| mask::text(l)).collect()
 }
 
+/// A movement's data as an agent gets it: masked as text is, its account's
+/// id too when a card named after its number gave it one (`bank::masked_name`).
+fn movement_data(ledger: &sioul_core::budget::Ledger, m: &Movement) -> Value {
+    let mut data = mask::json(moneylist::data(ledger, m));
+    if let Some(account) = data["account"].as_str().map(sioul_core::bank::masked_name) {
+        data["account"] = Value::String(account);
+    }
+    data
+}
+
 fn way_of(args: &Args) -> Result<Option<Way>, String> {
     Ok(match args.text("way")?.as_deref() {
         None => None,
@@ -157,7 +167,7 @@ pub fn movements(s: &Session, args: &Args) -> Result<Answer, String> {
         lines.push(s.say("movements-more", &[("page", (page.page + 2).to_string())]));
     }
     lines.extend(access::left_out(kept));
-    let rows: Vec<Value> = page.movements.iter().map(|m| mask::json(moneylist::data(&o.books.ledger, m))).collect();
+    let rows: Vec<Value> = page.movements.iter().map(|m| movement_data(&o.books.ledger, m)).collect();
     let total = page.total.map(|t| json!({ "gross": t.gross.cents() as f64 / 100.0, "net": t.net.cents() as f64 / 100.0 }));
     Ok(Answer { text: lines.join("\n"), data: json!({ "movements": rows, "page": page.page + 1, "more": page.more, "total": total, "kept_from_agents": kept }) })
 }
@@ -167,7 +177,7 @@ pub fn get_movement(s: &Session, args: &Args) -> Result<Answer, String> {
     let m = o.find(&args.needed("movement")?)?;
     let today = sioul_core::zone::now().date();
     let lines = shown(moneylist::detail_words(&s.tr, &o.books.ledger, m, today));
-    Ok(Answer { text: lines.join("\n"), data: mask::json(moneylist::data(&o.books.ledger, m)) })
+    Ok(Answer { text: lines.join("\n"), data: movement_data(&o.books.ledger, m) })
 }
 
 pub fn add_movement(s: &Session, args: &Args) -> Result<Answer, String> {
@@ -305,6 +315,25 @@ pub fn money_mail(s: &Session, args: &Args) -> Result<Answer, String> {
         o.consent.allows_mail(Some(&id), card.as_ref()) && row.budgets.iter().all(|b| o.open.contains(b))
     };
     let (rows, kept): (Vec<_>, Vec<_>) = page.rows.into_iter().partition(|r| allowed(r));
+    // Each subject as mail gives it to agents (`mask::message`, with what its text says): a code in it hidden,
+    // and a row found only by the digits of what is hidden left out, as `search_mail` finds nothing by them.
+    let looked = sioul_core::words::Words::of(&s.config);
+    let fold = |text: &str| sioul_core::text::fold(text).into_iter().collect::<String>();
+    let asked: Vec<String> = query.text.split_whitespace().map(fold).collect();
+    let rows: Vec<sioul_core::moneyindex::MailRow> = rows
+        .into_iter()
+        .map(|r| {
+            let excerpt = sioul_core::maildir::read_one(&r.path).map(|card| card.excerpt).unwrap_or_default();
+            let subject = mask::message(&looked, &r.subject, &excerpt).0;
+            sioul_core::moneyindex::MailRow { subject, ..r }
+        })
+        // Words with digits must be found in what is shown: an amount, a reference, never a hidden code.
+        .filter(|r| {
+            let amount = r.amount.map(|a| a.cents().abs()).map(|c| format!("{}.{:02} {},{:02}", c / 100, c % 100, c / 100, c % 100)).unwrap_or_default();
+            let shown = fold(&format!("{} {} {} {amount}", r.who, r.sender, r.subject));
+            asked.iter().filter(|w| w.chars().any(|c| c.is_ascii_digit())).all(|w| shown.contains(w.as_str()))
+        })
+        .collect();
     let mut lines: Vec<String> = Vec::new();
     for row in &rows {
         let words = shown(sioul_core::moneyindex::row_words(&s.tr, &o.books.ledger, row));

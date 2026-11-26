@@ -693,6 +693,24 @@
    "thank you for your payment",
    "subscription has been renewed"
   ],
+  "payments.paid_in_subject": [
+   "paiement de la commande",
+   "paiement de votre commande",
+   "payment for your order",
+   "payment of your order",
+   "payment for order",
+   "payment of order"
+  ],
+  "payments.transfer": [
+   "prise en compte de votre virement",
+   "votre virement a bien ete pris en compte",
+   "votre virement a ete pris en compte",
+   "votre virement a bien ete enregistre",
+   "your transfer request has been received",
+   "we have received your transfer request",
+   "transfer request received",
+   "your transfer has been taken into account"
+  ],
   "payments.received": [
    "vous avez recu un paiement",
    "paiement recu",

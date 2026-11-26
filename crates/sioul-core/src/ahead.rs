@@ -17,18 +17,21 @@
 //!   (planned, announced, not final yet), a day passed and not yet in an
 //!   export counted today; everyday estimates are not payments, and what is
 //!   left is for them;
-//! - **the next income**: the first money in expected that is neither moved
-//!   between your own accounts nor a refund, worth at least a fifth of the
-//!   largest coming (and €50): the pay, the benefits, a client's payment. A
-//!   recurring one, or one a letter or a mail announced, is sure; a planned
-//!   line or an invoice of yours is said with its doubt ("if Client A pays by
-//!   the 20th"; Berman et al. 2016, research §2.6);
+//! - **the next income**: money in expected that is neither moved between
+//!   your own accounts nor a refund, worth at least a fifth of the largest
+//!   coming (and €50); the regular income among them when one recurs (the
+//!   next occurrence of a recurring payment in: the pay, the benefits), else
+//!   the first: a client's payment. Never money a message says came already (a receipt,
+//!   a payment received): it is in, nothing to wait for. A recurring one, or
+//!   one a letter or a mail announced, is sure; a planned line or an invoice
+//!   of yours is said with its doubt ("if Client A pays by the 20th"; Berman
+//!   et al. 2016, research §2.6);
 //! - **the lowest point** of the balance carried with those payments until
 //!   the income (GnuCash's "Future Minimum"), the payment that brings it there;
 //! - **what is left for everyday spending**: that lowest point above what the
 //!   account keeps (its floor), less the past year's unusual spending for
 //!   those days (Sussman & Alter 2012: exceptional expenses are forgotten),
-//!   and per day;
+//!   and per day; with the income expected today, no per day;
 //! - **short**: the first payment the balance would not hold, and what tops
 //!   it up (the reserves in their order, each above its floor, asked its delay ahead);
 //! - with no income expected within two months, how long the account and its
@@ -270,8 +273,20 @@ pub fn of(ledger: &Ledger, bank: &Bank, movements: &[Movement], today: Date) -> 
         // Still to come: what its day has not reached yet, or what the exports could not show
         // yet (a week before their last day at most: further back, it would be not seen).
         let coming: Vec<&Movement> = mine.iter().copied().filter(|m| matches!(m.state, State::Planned | State::Announced | State::NotFinal) && m.day > shifted(as_of, -7) && m.day <= horizon && m.way != Way::Between).collect();
-        let largest = coming.iter().filter(|m| may_be_income(m) && m.day <= shifted(today, INCOME_DAYS)).map(|m| prudent(m).cents()).max().unwrap_or(0);
-        let is_income = |m: &Movement| may_be_income(m) && prudent(m).cents() >= (largest / 5).max(INCOME_FLOOR);
+        // The incomes the stretch may end at: never money a message says came
+        // already (a receipt, a payment received: it is in, nothing to wait
+        // for); the regular income when one recurs (a recurring payment in),
+        // else the largest ones (the owner's report of 24 November 2026: a
+        // small occasional receipt ended the period, and what was left was
+        // divided by one day).
+        let received = |m: &Movement| m.state == State::Announced && m.evidence == Some(Evidence::Card);
+        let recurring = |m: &Movement| m.sources.iter().any(|s| s.kind == Kind::Preset);
+        let awaited = |m: &Movement| may_be_income(m) && !received(m) && m.day <= shifted(today, INCOME_DAYS);
+        let largest = coming.iter().filter(|m| awaited(m)).map(|m| prudent(m).cents()).max().unwrap_or(0);
+        // Large enough to end a stretch: a fifth of the largest coming, and €50; a recurring €12 is no pay.
+        let large = |m: &Movement| prudent(m).cents() >= (largest / 5).max(INCOME_FLOOR);
+        let regular = coming.iter().any(|m| awaited(m) && recurring(m) && large(m));
+        let is_income = |m: &Movement| may_be_income(m) && !received(m) && large(m) && (!regular || recurring(m));
         let mut flows: Vec<(Flow, &Movement)> = coming
             .iter()
             .map(|m| {
@@ -446,7 +461,8 @@ pub fn shortfall_notices(root: &Path, words: &crate::words::Words, tr: &Translat
                 address: "sioul:budget/".into(),
                 at: s.day.to_zoned(crate::zone::current()).map_or(0, |z| z.timestamp().as_millisecond()),
                 when: tr.day_in(s.day, today),
-                who: if s.title.is_empty() { tr.text("ahead-your-account", None) } else { s.title.clone() },
+                // A notice leaves the window (the phone, the system's notifications): no whole account number in it.
+                who: if s.title.is_empty() { tr.text("ahead-your-account", None) } else { crate::bank::masked_name(&s.title) },
                 what: s.sentence(tr, today),
                 ..crate::notices::Notice::new(crate::notices::Kind::Money, id, "money")
             }
@@ -519,8 +535,13 @@ pub fn sentences(a: &Ahead, tr: &Translator, today: Date) -> Vec<String> {
     if a.left.cents() > 0 {
         let mut args = i18n::args();
         args.set("left", tr.money(about(a.left)));
-        args.set("per_day", tr.money(about(Money(a.left.cents() / a.days.max(1)))));
-        said.push(tr.text("ahead-left", Some(&args)));
+        if income.day <= today {
+            // Expected today (or its day passed and the bank's file does not show it yet): no day to share it over.
+            said.push(tr.text("ahead-left-today", Some(&args)));
+        } else {
+            args.set("per_day", tr.money(about(Money(a.left.cents() / a.days.max(1)))));
+            said.push(tr.text("ahead-left", Some(&args)));
+        }
     } else {
         said.push(tr.text("ahead-left-none", None));
     }

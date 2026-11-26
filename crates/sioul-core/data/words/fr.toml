@@ -155,6 +155,13 @@ paid = [
     "prelevement effectue", "a ete preleve", "avons preleve", "confirmation de paiement", "paiement accepte",
     "merci pour votre paiement", "abonnement a ete renouvele",
 ]
+# A payment made, read in a subject only: in a text, the same words may tell of one still waiting.
+paid_in_subject = ["paiement de la commande", "paiement de votre commande"]
+# Your bank saying, in a subject, that it took your transfer in: a payment made, which may settle one planned weeks later.
+transfer = [
+    "prise en compte de votre virement", "votre virement a bien ete pris en compte", "votre virement a ete pris en compte",
+    "votre virement a bien ete enregistre",
+]
 # Money that came in.
 received = [
     "vous avez recu un paiement", "paiement recu", "vous avez recu un virement", "vous avez recu un don", "nouveau don",

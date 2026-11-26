@@ -62,9 +62,11 @@ pub(crate) fn add(edit: &str) -> String {
     let origin = if edit.payment.source.starts_with("sioul:letter/") { "payment-origin-letter" } else { "payment-origin-mail" };
     let origin = say(origin, &[("title", edit.title.clone()), ("date", today.to_string())]);
     match edit.payment.record(&root, today, &origin) {
-        Ok(_) => {
+        Ok((_, written)) => {
+            // "Added" only when it was: the same payment a line holds already writes nothing.
             let ledger = sioul_core::budget::Ledger::load(&root).unwrap_or_default();
-            json!({ "said": say("ui-line-added", &[("budget", ledger.budget_title(&edit.payment.budget).to_string())]) }).to_string()
+            let said = if written { "ui-line-added" } else { "ui-line-already" };
+            json!({ "said": say(said, &[("budget", ledger.budget_title(&edit.payment.budget).to_string())]) }).to_string()
         }
         Err(problem) => json!({ "problem": problem }).to_string(),
     }
@@ -200,8 +202,8 @@ pub(crate) fn not_same(key: &str, source: &str) -> String {
         Err(problem) => return problem,
     };
     let movement = &books.movements[at];
-    // Apart from the movement's steadiest key among its other sources.
-    let Some(other) = movements::steadiest_of(movement.sources.iter().filter(|s| s.key != source)) else { return String::new() };
+    // Apart from another of its lines when it is one (two lines of one message read as one), else its steadiest key.
+    let Some(other) = movements::apart_key(movement, source) else { return String::new() };
     acts::not_same_paid(&root, source, other, &crate::notices::here_id()).err().unwrap_or_default()
 }
 

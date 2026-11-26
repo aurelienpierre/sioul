@@ -149,6 +149,13 @@ paid = [
     "you paid", "your receipt", "payment confirmation", "payment successful", "thank you for your payment",
     "subscription has been renewed",
 ]
+# A payment made, read in a subject only: in a text, the same words may tell of one still waiting.
+paid_in_subject = ["payment for your order", "payment of your order", "payment for order", "payment of order"]
+# Your bank saying, in a subject, that it took your transfer in: a payment made, which may settle one planned weeks later.
+transfer = [
+    "your transfer request has been received", "we have received your transfer request", "transfer request received",
+    "your transfer has been taken into account",
+]
 # Money that came in.
 received = ["you received a payment", "payment received", "new donation", "payout"]
 # A merchant's order confirmation.

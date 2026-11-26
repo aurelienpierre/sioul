@@ -84,7 +84,7 @@ pub fn detect(words: &Words, card: &Card) -> Option<Payment> {
         return None;
     }
     let start: String = card.excerpt.chars().take(READ).collect();
-    let kind = kind_in(words, &subject).or_else(|| order_subject(words, &subject)).or_else(|| kind_in(words, &fold(&start)))?;
+    let kind = kind_in(words, &subject).or_else(|| paid_in_subject(words, &subject)).or_else(|| order_subject(words, &subject)).or_else(|| kind_in(words, &fold(&start)))?;
     Some(read(words, card, kind, &start))
 }
 
@@ -197,6 +197,21 @@ fn kind_in(words: &Words, folded: &[char]) -> Option<PaymentKind> {
         .map(|(kind, _)| kind)
 }
 
+/// Whether a message's subject is your bank saying it took your transfer in
+/// (`Payments::transfer`): a payment made, which may settle one planned weeks
+/// later, of its amount exactly (`movements::acts::join_mails`).
+pub fn is_transfer(words: &Words, subject: &str) -> bool {
+    let folded = fold(subject);
+    words.payments.transfer.iter().any(|w| find_word(&folded, w, 0).is_some())
+}
+
+/// A payment made, said by the subject alone (`Payments::paid_in_subject`,
+/// `Payments::transfer`): the same words in a text may tell of one waiting.
+fn paid_in_subject(words: &Words, folded: &[char]) -> Option<PaymentKind> {
+    let said = |list: &[String]| list.iter().any(|w| find_word(folded, w, 0).is_some());
+    (said(&words.payments.paid_in_subject) || said(&words.payments.transfer)).then_some(PaymentKind::Paid)
+}
+
 /// "Commande FR000000 confirmée": the order and its confirmation, apart.
 fn order_subject(words: &Words, folded: &[char]) -> Option<PaymentKind> {
     let said = |list: &[String]| list.iter().any(|w| find_word(folded, w, 0).is_some());
@@ -278,6 +293,36 @@ mod tests {
         assert_eq!((billed.kind, cents(&billed), billed.party.as_str()), (PaymentKind::Bill, Some(2999), "Opérateur"));
         let receipt = detect(&card(PAY, "Reçu de votre paiement", "Merci.\r\nPaiement de\r\nMoi Même\r\nPaiement à\r\nExemple Web\r\nshop@example.org\r\n84,99 € EUR\r\n-8,49 € EUR\r\n76,50 € EUR")).unwrap();
         assert_eq!((receipt.kind, cents(&receipt), receipt.party.as_str()), (PaymentKind::Paid, Some(7650), "Exemple Web"));
+    }
+
+    /// The bank's notice of your own transfer and a payment for an order are
+    /// money paid, read by their words, never by their senders (the owner's
+    /// report of 24 November 2026); a payee added, without an amount, is none.
+    #[test]
+    fn transfer_notices_and_payments_for_an_order() {
+        let words = crate::words::Words::builtin();
+        let transfer = card("Ma Banque <notifications@bank.example>", "Prise en compte de votre virement de 912,40 €", "Bonjour,\r\nVotre virement de 912,40 € vers EXEMPLE SA a bien été pris en compte.");
+        let read = super::detect(&words, &transfer).unwrap();
+        assert_eq!((read.kind, cents(&read)), (PaymentKind::Paid, Some(91_240)));
+        assert!(is_transfer(&words, &transfer.subject));
+        let sent = card("Bank <alerts@bank.example>", "Your transfer request has been received", "Your transfer of £320.00 to Example Ltd will leave today.");
+        assert_eq!(super::detect(&words, &sent).map(|p| p.kind), Some(PaymentKind::Paid));
+        assert!(is_transfer(&words, &sent.subject));
+        // Read in the subject only, and only the bank taking a transfer in: a move to savings, an order still waiting, are none.
+        let savings = card("Ma Banque <notifications@bank.example>", "Votre virement de 300,00 € vers votre livret", "Le virement est programmé.");
+        assert!(!is_transfer(&words, &savings.subject) && super::detect(&words, &savings).map(|p| p.kind) != Some(PaymentKind::Paid));
+        let waiting = card("Atelier <no-reply@atelier.example>", "Votre commande A-55120", "Le paiement de votre commande est en attente.");
+        assert_ne!(super::detect(&words, &waiting).map(|p| p.kind), Some(PaymentKind::Paid));
+        let order = card("Atelier <no-reply@atelier.example>", "Paiement de la commande A-55120 (96.15 EUR)", "Bonjour,\r\nVous trouverez votre reçu en pièce jointe.");
+        let read = super::detect(&words, &order).unwrap();
+        assert_eq!((read.kind, cents(&read)), (PaymentKind::Paid, Some(9_615)));
+        assert!(!is_transfer(&words, &order.subject));
+        let english = card("Shop <no-reply@shop.example>", "Payment for your order #5512", "Total: €42.50");
+        assert_eq!(super::detect(&words, &english).map(|p| p.kind), Some(PaymentKind::Paid));
+        let payee = card("Ma Banque <notifications@bank.example>", "Votre liste de destinataires a changé", "Exemple SA figure désormais parmi vos destinataires.");
+        assert_eq!(super::detect(&words, &payee), None);
+        let received = card("Ma Banque <notifications@bank.example>", "Vous avez reçu un virement", "Vous avez reçu un virement de 64,00 €.");
+        assert_eq!(super::detect(&words, &received).map(|p| p.kind), Some(PaymentKind::Received), "someone else's transfer is money in");
     }
 
     /// A processor's mail that states its fee or its net: both read, checked
