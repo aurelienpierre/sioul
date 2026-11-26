@@ -459,11 +459,6 @@ Item {
         return [lane.about].concat(lane.rules || []).filter(t => !!t).join("\n\n")
     }
 
-    // A lane whose mail the rules never see (`wiring::engine::held`).
-    function heldLane(key) {
-        return ["screener", "review", "set-aside", "hostile"].indexOf(key) >= 0 || key.startsWith("public")
-    }
-
     // A message as AddMenu ties things to it.
     function sourceOf(item) {
         return { uri: page.sioul.uriOf("mail", item.key), kind: "mail", key: item.key, title: item.subject, name: item.sender, address: item.hidden ? "" : item.address, known: !item.screener }
@@ -1668,10 +1663,11 @@ Item {
                             message.modelData.spam_word || "", message.modelData.attachments.length > 0 ? page.sioul.text("notice-attached") : ""].filter(t => !!t)
                     note: message.modelData.summary || ""
                     source: page.sourceOf(message.modelData)
-                    // A rule made from it (docs/rules.md): never from mail the Porch holds, which no rule
-                    // sees (`wiring::engine::held`): a stranger's, a public address's, set aside, hostile,
-                    // your filter's catch, unproven.
-                    more: page.heldLane(lane.modelData.key) || message.modelData.hidden === true || !!message.modelData.review || message.modelData.trust_level === "forged" ? [] : [{ id: "rule", text: page.sioul.text("rules-from-this"), icon: "" }]
+                    // A rule made from it (docs/rules.md): never from mail no rule sees, as the engine's
+                    // own gate says it in `held` (`wiring::engine::held`), whatever the lane: a stranger's,
+                    // a public address's, set aside, hostile, a filter's catch, unproven, in a junk or
+                    // trash folder. A row that does not say it is offered nothing.
+                    more: message.modelData.held !== false ? [] : [{ id: "rule", text: page.sioul.text("rules-from-this"), icon: "" }]
                     onOpened: page.openKey = message.modelData.key
                     onReadPressed: page.say("read", page.mailRow(message.modelData))
                     onDismissPressed: page.say("dismiss", page.mailRow(message.modelData))
