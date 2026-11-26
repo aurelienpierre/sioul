@@ -185,6 +185,18 @@
 #   log line that could carry the call, the window and the site reordered.
 #   androidx.webkit is stood in for (androidx/: its WebViewFeature's names,
 #   no web view), never part of Sioul's program.
+# - UsbFilesCheck: Sioul's files read over USB, for a diagnosis (UsbFiles):
+#   the shell's uid alone answered (in every user); an address resolved inside
+#   one of the four roots (config, data, state, Sioul's own cache) as the
+#   system resolves it, refused when it climbs out, decodes a "/" or a NUL or
+#   follows a link out of its root; never, however named, an OpenPGP key's
+#   secret part, the home card's codes, the doses other devices said, the
+#   sharing's memory nor a health record (their names read from share.rs and
+#   sioul-app's health.rs); a folder listed, the one asked first as ".", what
+#   is never given left out; read from the manifest, the one exported
+#   provider, off until turned on, DUMP required, in a process of its own, no
+#   grants; read from the sources, the shell and the switch checked first,
+#   "r" alone opened, nothing logged by Sioul.
 # - MmsCheck, compiled and run apart: the multimedia messages Rust writes
 #   (mms-samples.jsonl, which sioul-core's `mms` tests keep equal to what its
 #   encoder writes now) read by Android's own parser, as Android's MMS service
@@ -210,7 +222,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 src="$root/android/package/src"
-checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck ChosenCheck MailOpenCheck EventOpenCheck QuietCheck HeldCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck)
+checks=(DecideCheck TableCheck KeyCheck LogCheck ModeCheck HeardCheck CardCheck AgendaCheck MessagesCheck TextsCheck AttachmentsCheck ChannelsCheck StepsCheck DayNotesCheck RepliesCheck SecurityKeyCheck CcidCheck DoseAlarmsCheck EventNotesCheck RecentsCheck ShareCheck ChosenCheck MailOpenCheck EventOpenCheck QuietCheck HeldCheck SilenceCheck NoticesCheck SignInCheck SiteScreenCheck UsbFilesCheck)
 json_url=https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
 json_sha256=3cf6cd6892e32e2b4c1c39e0f52f5248a2f5b37646fdfbb79a66b46b618414ed
 

@@ -8,9 +8,10 @@
 //! do-not-disturb access, exact alarms, no battery restriction; and, while
 //! starred people both ways is on, the permission to modify contacts), each
 //! with what it is for in a few words, its state (given, not given, cannot
-//! tell) and one button that asks Android or opens its page; and Android's
-//! restricted settings' card (`access::restricted`). On a computer, another
-//! phone's card shows what that phone says of itself, read only.
+//! tell) and one button that asks Android or opens its page; Android's
+//! restricted settings' card (`access::restricted`); and its switch for
+//! Sioul's files read over USB, for a diagnosis (`files_row`). On a computer,
+//! another phone's card shows what that phone says of itself, read only.
 
 use crate::backend::tr;
 use serde_json::{Value, json};
@@ -71,6 +72,29 @@ pub(crate) fn checklist(a: &Allowed, tr: &Translator) -> Vec<Value> {
         .collect()
 }
 
+/// Sioul's files read from a computer over USB, for a diagnosis
+/// (UsbFiles.java; docs/android.md, "Sioul's files over USB"): this phone's
+/// switch, as a setting's row (`SettingRow.qml`, kind "bool"), off unless
+/// turned on. Its state is Android's own (the provider's component on or
+/// off): this phone's alone, never in a file of Sioul's nor in the sharing.
+/// Pure: tested below.
+pub(crate) fn files_row(on: bool, tr: &Translator) -> Value {
+    json!({
+        "key": "files-usb",
+        "kind": "bool",
+        "label": tr.text("phone-files-usb", None),
+        "help": tr.text("phone-files-usb-help", None),
+        "value": on,
+        "choices": [],
+    })
+}
+
+/// Whether a computer can read Sioul's files over USB now, on this phone;
+/// off in the demo's pictures, which have no Android to ask.
+fn files_here() -> bool {
+    crate::steps::java("files-usb", "{}") == true
+}
+
 /// The demo profile's pictures of a phone (`SIOUL_DEMO` with
 /// `SIOUL_GRAB_PHONE`, tools/demo/run.sh): a phone's card stood in on a
 /// computer, which has no Android to ask.
@@ -106,12 +130,13 @@ fn allowed_here() -> Option<Allowed> {
 
 /// This phone's own card, as JSON: {phone, allow: \[lines\], restricted
 /// (`access::restricted_card`), webview (this device's web view in one
-/// line: `siteview::card_line`)}; {phone: false} elsewhere. Read when the
+/// line: `siteview::card_line`), files (the switch for Sioul's files over
+/// USB: `files_row`)}; {phone: false} elsewhere. Read when the
 /// window comes back too: back from Sioul's page in Android, the accesses
 /// still held are asked again by themselves (`back`, `access::restricted_back`).
 pub(crate) fn view() -> String {
     match allowed_here() {
-        Some(allowed) => json!({ "phone": true, "allow": checklist(&allowed, tr()), "restricted": crate::access::restricted_card(), "webview": crate::siteview::card_line_here() }).to_string(),
+        Some(allowed) => json!({ "phone": true, "allow": checklist(&allowed, tr()), "restricted": crate::access::restricted_card(), "webview": crate::siteview::card_line_here(), "files": files_row(files_here(), tr()) }).to_string(),
         None => json!({ "phone": false }).to_string(),
     }
 }
@@ -125,7 +150,8 @@ pub(crate) fn back() -> String {
 }
 
 /// A line's button: Android's question, or its page for that access; "sims":
-/// Android's page of the SIMs. The card again.
+/// Android's page of the SIMs; "files-usb-on" and "files-usb-off": Sioul's
+/// files read over USB, allowed or not (`files_row`). The card again.
 pub(crate) fn ask(what: &str) -> String {
     match what {
         "role" => {
@@ -155,6 +181,10 @@ pub(crate) fn ask(what: &str) -> String {
         }
         // "Android greys the switch?": the restricted settings' card, shown from now on (M13).
         "restricted" => crate::access::restricted_open(),
+        // Sioul's files read over USB, for a diagnosis: Android's state of the provider (UsbFiles.java).
+        "files-usb-on" | "files-usb-off" => {
+            crate::steps::java("files-usb-set", &json!({ "on": what == "files-usb-on" }).to_string());
+        }
         _ => {}
     }
     view()
@@ -191,6 +221,25 @@ mod tests {
                         assert!(![" :", " ;", " ?", " !", "'"].iter().any(|bad| words.contains(bad)), "{words}");
                     }
                 }
+            }
+        }
+    }
+
+    /// The switch for Sioul's files over USB: a setting's row of kind "bool",
+    /// its value as Android says it, its name and the line saying what it
+    /// opens, in the running language (`tr()`), never a key.
+    #[test]
+    fn files_over_usb_is_one_switch() {
+        for on in [false, true] {
+            let row = files_row(on, tr());
+            assert_eq!(row["key"], "files-usb");
+            assert_eq!(row["kind"], "bool");
+            assert_eq!(row["value"], on);
+            assert_eq!(row["label"], tr().text("phone-files-usb", None));
+            assert_eq!(row["help"], tr().text("phone-files-usb-help", None));
+            for key in ["label", "help"] {
+                let words = row[key].as_str().unwrap();
+                assert!(!words.is_empty() && !words.starts_with("phone-files-usb"), "{key}: {words}");
             }
         }
     }

@@ -3,8 +3,8 @@
 <!-- Sioul's Android manifest: Qt 6.11's own (qtbase, src/android/templates),
      with Sioul's name and icon, the network, the keyboard pushing the window
      up rather than covering it, no cloud backup, the doses' alarms, the
-     alarm at waking, the events' reminders, and the pauses' do-not-disturb,
-     tile and shortcut.
+     alarm at waking, the events' reminders, the pauses' do-not-disturb,
+     tile and shortcut, and Sioul's files read over USB while allowed.
      androiddeployqt fills the "INSERT" parts. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.aurelienpierre.sioul"
@@ -209,6 +209,29 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/qtprovider_paths"/>
         </provider>
+
+        <!-- Sioul's files read from a computer, for a diagnosis (UsbFiles.java;
+             docs/android.md, "Sioul's files over USB"): off here, turned on
+             and off by the person on this phone's card in Settings ▸ Devices
+             (Android's state of this component, never Sioul's files nor the
+             sharing). While on, the shell alone is answered: Android lets in
+             only a caller holding DUMP, which the shell holds and no app a
+             person installs can, and the provider checks the shell's uid at
+             each call. That uid is adb's: a computer allowed to debug the
+             phone, or on the phone an adb client or an app given adb's
+             access (Shizuku). Read only, inside config, data, state and
+             Sioul's cache, never an OpenPGP key's secret part, the home
+             card's codes nor a health record; in a process of its own,
+             without Qt. Exported for the shell, which is not an app; no app
+             is granted its addresses. -->
+        <provider
+            android:name="com.aurelienpierre.sioul.UsbFiles"
+            android:authorities="${applicationId}.debug"
+            android:process=":files"
+            android:enabled="false"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:grantUriPermissions="false" />
 
         <!-- Sioul's card on the home screen (package/src/com/aurelienpierre/
              sioul/HomeCard.java; docs/android.md, "The card on the home

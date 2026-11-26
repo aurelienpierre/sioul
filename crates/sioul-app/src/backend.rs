@@ -1785,8 +1785,9 @@ pub mod qobject {
         fn device_say(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
         /// This phone's own card in Settings ▸ Devices, as JSON (`phonecard::view`):
-        /// `{ phone, allow, restricted }`, what Android must allow and its restricted
-        /// settings' card; `{ phone: false }` elsewhere.
+        /// `{ phone, allow, restricted, webview, files }`, what Android must allow,
+        /// its restricted settings' card, its web view in one line and the switch
+        /// for Sioul's files read over USB; `{ phone: false }` elsewhere.
         #[qinvokable]
         fn phone_card(self: Pin<&mut Sioul>) -> QString;
 
@@ -1798,7 +1799,8 @@ pub mod qobject {
 
         /// A line of what Android must allow pressed (`phonecard::ask`): "role",
         /// "contacts", "history", "notifications", "texts", "dnd", "alarms",
-        /// "battery", "stars": Android's question or its page. The card again.
+        /// "battery", "stars": Android's question or its page; "files-usb-on",
+        /// "files-usb-off": Sioul's files read over USB allowed or not. The card again.
         #[qinvokable]
         fn phone_allow(self: Pin<&mut Sioul>, what: &QString) -> QString;
 

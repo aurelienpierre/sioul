@@ -9,9 +9,10 @@
 // other apps' notifications and each app, conversation and site by time
 // (AppNotesSetup.qml, its two parts), messages on your computers
 // (PhoneMessagesSetup.qml), texts (TextsSetup.qml), the call screening's own
-// settings and where a declined call goes (CallsSetup.qml), and
-// do-not-disturb on this phone (DndSetup.qml), and its web view in one line
-// (where sites open: siteview.rs). Another phone's card says that
+// settings and where a declined call goes (CallsSetup.qml), do-not-disturb
+// on this phone (DndSetup.qml), Diagnosis (Sioul's files read from a computer
+// over USB, its switch: phonecard.rs's `files_row`, UsbFiles.java), and its
+// web view in one line (where sites open: siteview.rs). Another phone's card says that
 // Android's accesses are set on that phone; on a computer, it lists each app,
 // conversation and site with times of its own, read and changed there too
 // (AppNotesSetup.qml's part "lists"). The card is in the device's Details
@@ -41,7 +42,7 @@ ColumnLayout {
     property bool here: false
     // What the core says of its calls (`calls_line::view`); none for a device that is not a phone.
     property var calls: null
-    // What this phone says of itself (`phonecard::view`): {phone, allow, restricted, webview}; {phone: false} elsewhere.
+    // What this phone says of itself (`phonecard::view`): {phone, allow, restricted, webview, files}; {phone: false} elsewhere.
     property var own: ({ phone: false })
     // A phone's width: Calls as a list of rows, what Android must allow in a column.
     property bool narrow: false
@@ -59,7 +60,7 @@ ColumnLayout {
 
     // The blocks shown, in words: changed only when one comes or goes, so that a
     // reload (what this phone says of itself, read again) keeps them and what is unfolded.
-    readonly property string blocks: card.phoneHere ? ["apps", "lists", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd"]).join(" ") : card.listsHere ? "lists" : ""
+    readonly property string blocks: card.phoneHere ? ["apps", "lists", "messages", "texts"].concat(card.sioul.telephony === true ? ["screening"] : []).concat(["dnd", "files"]).join(" ") : card.listsHere ? "lists" : ""
 
     // A door's part in view: its section unfolded, and returned to be scrolled to.
     function reveal(part) {
@@ -206,7 +207,7 @@ ColumnLayout {
                 objectName: "block-" + block.modelData
                 active: block.made
                 Layout.fillWidth: true
-                sourceComponent: block.modelData === "apps" ? apps : block.modelData === "lists" ? lists : block.modelData === "messages" ? messages : block.modelData === "texts" ? texts : block.modelData === "screening" ? screening : dnd
+                sourceComponent: block.modelData === "apps" ? apps : block.modelData === "lists" ? lists : block.modelData === "messages" ? messages : block.modelData === "texts" ? texts : block.modelData === "screening" ? screening : block.modelData === "files" ? files : dnd
             }
         }
     }
@@ -262,6 +263,20 @@ ColumnLayout {
             sioul: card.sioul
             theme: card.theme
             part: "phone"
+        }
+    }
+    // Diagnosis: Sioul's files read from a computer over USB, one switch, this
+    // phone's alone (Android's own state of UsbFiles.java's provider); the card
+    // again from Android once turned, so that the switch says what holds.
+    Component {
+        id: files
+
+        SettingRow {
+            objectName: "filesUsb"
+            setting: card.own.files || ({ key: "files-usb", kind: "bool", label: "", help: "", value: false, choices: [] })
+            sioul: card.sioul
+            theme: card.theme
+            onSave: (key, value) => card.ownSaid(JSON.parse(card.sioul.phoneAllow(value === true ? "files-usb-on" : "files-usb-off") || "{}"))
         }
     }
 }

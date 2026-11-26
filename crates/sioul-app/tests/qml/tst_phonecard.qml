@@ -25,8 +25,10 @@
 // once laid out (`shown`); on a computer, each app by time listed in a
 // phone's card once some have times. On this phone, a line counts the
 // accesses Android has not given, only while one is missing, its door
-// opening What Android must allow. A reload keeps the cards and what is
-// unfolded. Run by tools/qml-test.sh. To see the cards, set
+// opening What Android must allow. Diagnosis, on this phone alone: one
+// switch for Sioul's files read over USB, off, its line under it, turned on
+// and off through `phoneAllow`, saying what Android then holds. A reload
+// keeps the cards and what is unfolded. Run by tools/qml-test.sh. To see the cards, set
 // `pictures` below to a folder (a change of your own, not to commit).
 
 import QtQuick
@@ -63,6 +65,9 @@ Item {
         property bool allGiven: false
         // How the window left its pages, on this device (`viewFlag`): unsaid, false.
         property var flags: ({})
+        // Sioul's files read over USB, as Android holds the switch; refused: a press changes nothing.
+        property bool filesOn: false
+        property bool filesRefused: false
 
         // The sharing's news (Texts' section listens to it).
         signal sharedIn(string stores)
@@ -165,11 +170,14 @@ Item {
                 phone: true,
                 allow: [line("role", "given"), line("contacts", "given"), line("history", "not-given"), line("notifications", "not-given"), line("texts", "not-given"), line("dnd", "given"), line("alarms", "given"), line("battery", "unknown")],
                 webview: "Web view: Android System WebView 142.0.7444.90. Sites open in Sioul.",
+                files: { key: "files-usb", kind: "bool", label: "Let a computer read Sioul's files over USB (for diagnosis)", help: "While this is on, a computer you allowed to debug this phone can read the files Sioul keeps here.", value: mock.filesOn, choices: [] },
                 restricted: { intro: "Sioul was installed from a file.", steps: [{ step: "notice", said: "Let Android show its notice.", button: "Show Android's notice", done: mock.steps.notice }, { step: "info", said: "Open Sioul's page in Android.", button: "Open Sioul's page", done: mock.steps.info }, { step: "back", said: "Come back to Sioul.", button: "Ask again now", done: mock.steps.back }], works: mock.steps.back, cannot: "Sioul cannot see the setting itself." }
             })
         }
         function phoneAllow(what) {
             mock.asked = mock.asked.concat(["allow " + what])
+            if ((what === "files-usb-on" || what === "files-usb-off") && !mock.filesRefused)
+                mock.filesOn = what === "files-usb-on"
             return mock.phoneCard()
         }
         function restrictedStep(step) {
@@ -327,6 +335,8 @@ Item {
             tab.ids = []
             mock.flags = {}
             mock.allGiven = false
+            mock.filesOn = false
+            mock.filesRefused = false
             shownSpy.clear()
             wait(10)
             root.width = width
@@ -627,6 +637,47 @@ Item {
             tab.view = Object.assign({}, tab.view, { rows: rows })
             wait(20)
             verify(named("setting:devices.here") === card && named("foldCalls").open, "the card kept through a rename")
+        }
+
+        // Diagnosis: Sioul's files read over USB, one switch on this phone's own
+        // card, off until turned on; what Android holds said back, a refusal too.
+        function test_files_over_usb_on_this_phone_alone() {
+            reload(412, true)
+            pressDetails("phone")
+            const fold = named("fold-files")
+            verify(fold !== null && showing(fold), "Diagnosis among this phone's sections")
+            compare(fold.title, "phone-card-files")
+            verify(named("block-files") === null || named("block-files").item === null, "made once unfolded")
+            press(fold)
+            wait(20)
+            const row = named("filesUsb")
+            verify(row !== null && showing(row) && within(row), "the switch, within the page")
+            const toggle = walk(row, i => i.checked !== undefined && i.toggled !== undefined && showing(i), [])[0]
+            verify(toggle !== undefined, "a switch")
+            verify(!toggle.checked, "off by default")
+            verify(walk(row, i => i.text !== undefined && String(i.text).indexOf("can read the files Sioul keeps here") >= 0 && showing(i), []).length > 0, "its line, what it opens")
+            toggle.toggle()
+            toggle.toggled()
+            wait(20)
+            compare(mock.asked[mock.asked.length - 1], "allow files-usb-on")
+            verify(named("filesUsb").setting.value === true && toggle.checked, "on, as Android holds it")
+            toggle.toggle()
+            toggle.toggled()
+            wait(20)
+            compare(mock.asked[mock.asked.length - 1], "allow files-usb-off")
+            verify(!toggle.checked, "off again")
+            // Android refuses: the switch says what holds.
+            mock.filesRefused = true
+            toggle.toggle()
+            toggle.toggled()
+            wait(20)
+            compare(mock.asked[mock.asked.length - 1], "allow files-usb-on")
+            verify(!toggle.checked, "refused: still off")
+            save("phone-card-files")
+            // Another phone's card, from a computer: no switch of this phone's there.
+            reload(1400, false)
+            pressDetails("phone")
+            verify(named("fold-files") === null || !showing(named("fold-files")), "on this phone alone")
         }
     }
 }
