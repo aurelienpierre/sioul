@@ -1119,6 +1119,12 @@ pub mod qobject {
         #[qinvokable]
         fn set_agenda_field(self: Pin<&mut Sioul>, id: &QString, field: &QString, value: &QString) -> QString;
 
+        /// An agenda's "Counts as busy time" turned (`busytime::set`): kept where
+        /// it is kept, and on its server where it keeps the mark; returns what
+        /// went wrong, else "".
+        #[qinvokable]
+        fn set_agenda_busy(self: Pin<&mut Sioul>, id: &QString, counts: bool) -> QString;
+
         /// A pair of the matrix of conflicts ticked or not; returns what went wrong, else "".
         #[qinvokable]
         fn set_agendas_compared(self: Pin<&mut Sioul>, a: &QString, b: &QString, ticked: bool) -> QString;
@@ -3099,10 +3105,6 @@ pub mod qobject {
         /// The calendar an extension's agenda goes into: `choice` "new:<account>" or "place:<account/id>".
         #[qinvokable]
         fn extension_calendar(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, choice: &QString);
-
-        /// Whether an extension's agenda counts as the person's own busy time (`[extensions.busy]`).
-        #[qinvokable]
-        fn extension_busy(self: Pin<&mut Sioul>, id: &QString, agenda: &QString, counts: bool);
 
         /// The address book an extension's set of contacts goes into: `choice` "new:<account>" or "place:<account/id>".
         #[qinvokable]
@@ -6740,7 +6742,21 @@ impl qobject::Sioul {
     }
 
     fn agendas_setup(&self) -> QString {
-        QString::from(&crate::agenda::setup())
+        // The accounts whose last sync went wrong: their agendas' "Synced" says so.
+        let problems: std::collections::BTreeSet<String> = self.shared().statuses.lock().map(|s| s.iter().filter(|(_, (_, problem))| *problem).map(|(account, _)| account.clone()).collect()).unwrap_or_default();
+        QString::from(&crate::agenda::setup(&problems))
+    }
+
+    fn set_agenda_busy(self: Pin<&mut Self>, id: &QString, counts: bool) -> QString {
+        let (qt, shared) = (self.qt_thread(), self.shared());
+        let problem = crate::busytime::set(&qt, &shared, &id.to_string(), counts);
+        if problem.is_empty() {
+            // What holds your time changed: the plan, the hours, do-not-disturb, your availability.
+            pim::show_pim(&qt, &shared);
+            work::show_work(&qt, &shared);
+            crate::homecard::now();
+        }
+        QString::from(&problem)
     }
 
     fn subscribe_officials(&self) -> QString {
@@ -9146,10 +9162,6 @@ impl qobject::Sioul {
 
     fn extension_calendar(self: Pin<&mut Self>, id: &QString, agenda: &QString, choice: &QString) {
         crate::extensions::choose_calendar(&self.qt_thread(), &self.shared(), &id.to_string(), &agenda.to_string(), &choice.to_string());
-    }
-
-    fn extension_busy(self: Pin<&mut Self>, id: &QString, agenda: &QString, counts: bool) {
-        crate::extensions::choose_busy(&self.qt_thread(), &id.to_string(), &agenda.to_string(), counts);
     }
 
     fn extension_book(self: Pin<&mut Self>, id: &QString, set: &QString, choice: &QString) {

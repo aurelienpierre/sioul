@@ -584,8 +584,20 @@ pub(crate) fn sharing(qt: &QtThread, shared: &Arc<Shared>, id: &str, change: Cha
             }
             Err(problem) => json(&serde_json::json!({ "problem": problem })),
         };
+        if let Ok(mut last) = LAST_SHARING.lock() {
+            last.insert(id.clone(), answer.clone());
+        }
         let _ = qt.queue(move |mut sioul| sioul.as_mut().agenda_shared(cxx_qt_lib::QString::from(&id), cxx_qt_lib::QString::from(&answer)));
     });
+}
+
+/// Each agenda's sharing as its server last answered in this process, by
+/// place: shown at once when Your agendas opens again, while it is asked anew.
+static LAST_SHARING: std::sync::Mutex<std::collections::BTreeMap<String, String>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// The agenda's sharing as its server last answered here (`sharing`), as its row reads it; null none yet.
+pub(crate) fn last_sharing(id: &str) -> serde_json::Value {
+    LAST_SHARING.lock().ok().and_then(|last| last.get(id).and_then(|text| serde_json::from_str(text).ok())).unwrap_or(serde_json::Value::Null)
 }
 
 // ---------------------------------------------------------------- your availabilities

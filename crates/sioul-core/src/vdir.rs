@@ -1120,6 +1120,13 @@ pub struct State {
     /// hold no time and make no conflict (`agendas`, `overlaps::takes_time`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub transparent: bool,
+    /// For calendars: its server keeps that mark (it answered
+    /// `schedule-calendar-transp`, opaque or transparent), so that the
+    /// agenda's "Counts as busy time" is read and written there
+    /// (`agendas::busy_time`). Absent in a state written before 26 November
+    /// 2026 or by an older Sioul: not known until the next listing.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub transp_known: bool,
     /// Made here: the next sync creates it on the server, then sends its items.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub pending: bool,
@@ -1410,12 +1417,40 @@ pub fn calendar_transparent(account: &str, id: &str) -> bool {
     marks_of(&state_path(account, Kind::Calendars, id)).transparent
 }
 
+/// What a calendar's server says of it as a whole, as its last sync read it,
+/// for its agenda's "Counts as busy time" (`agendas::busy_time`): its mark
+/// (`schedule-calendar-transp`), transparent or not, when its server keeps
+/// one; and whether it is yours (`State::owned`), when its server says.
+pub fn calendar_server(account: &str, id: &str) -> crate::agendas::Server {
+    if account == SUBSCRIBED || account == LOCAL {
+        return crate::agendas::Server::default();
+    }
+    let marks = marks_of(&state_path(account, Kind::Calendars, id));
+    crate::agendas::Server { mark: marks.transp_known.then_some(marks.transparent), owned: marks.owned }
+}
+
+/// A calendar's mark as its server now keeps it, once Sioul wrote it there
+/// (`schedule-calendar-transp`, the agenda's switch): its sync state says it
+/// at once, before the next listing reads it back.
+pub fn note_calendar_mark(account: &str, id: &str, transparent: bool) -> Result<(), String> {
+    let path = state_path(account, Kind::Calendars, id);
+    if !path.exists() {
+        return Err(format!("{account}/{id}: no sync state"));
+    }
+    let mut state = State::load(&path);
+    state.transparent = transparent;
+    state.transp_known = true;
+    state.save(&path)
+}
+
 /// What a calendar's sync state says of it as a whole.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct Marks {
     read_only: bool,
     components: Vec<String>,
     transparent: bool,
+    transp_known: bool,
+    owned: Option<bool>,
 }
 
 /// A calendar's read-only mark and what it may hold, from its sync state
@@ -1437,7 +1472,7 @@ fn marks_of(state: &Path) -> Marks {
     // of ef8c0ca, low 21): the marks last read meanwhile, read again next time.
     match std::fs::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
         Some(read) => {
-            let marks = Marks { read_only: read.read_only, components: read.components, transparent: read.transparent };
+            let marks = Marks { read_only: read.read_only, components: read.components, transparent: read.transparent, transp_known: read.transp_known, owned: read.owned };
             seen.insert(state.to_path_buf(), (when, size, marks.clone()));
             marks
         }

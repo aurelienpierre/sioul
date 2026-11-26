@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// A calendar subscribed by its address (SubscribeForm.qml, AgendasSetup.qml;
+// A calendar subscribed by its address (SubscribeForm.qml, AgendasSetup.qml, AgendaCard.qml;
 // 18 November 2026) on a stand-in for Sioul, at a computer's width and at a
 // phone's (412): Agenda ⚙ ▸ Your agendas offers "Subscribe to a calendar…",
 // whose form says where Moodle and PRONOTE show their address, offers the
@@ -44,8 +44,10 @@ Item {
 
         function text(key) { return key }
         function textWith(key, name, value) { return key + ":" + value }
+        function textArgs(key, args) { return key + ":" + args }
         function agendasSetup() { return JSON.stringify(root.view) }
         function setAgendaField(id, field, value) { return "" }
+        function setAgendaBusy(id, counts) { mock.calls = mock.calls.concat([["busy", id, counts]]); return "" }
         function readAgendaSharing(id) { mock.calls = mock.calls.concat([["sharing", id]]) }
         // As `subscriptions::officials` orders them: the person's country first, when it has some.
         function subscribeOfficials() {
@@ -74,11 +76,11 @@ Item {
         function household() { return "{}" }
     }
 
-    readonly property var row: ({ colour: "#4c6b5c", events: true, tasks: false, whose: "yours", person: "", area: "admin+leisure", reaches: "all-day", access: "read", server_read_only: true, for_work: false, said: false, kept_hidden: false, parent: "", parent_address: "", parent_answers: "mail", standing: [], titles: false })
+    readonly property var row: ({ colour: "#4c6b5c", events: true, tasks: false, whose: "yours", person: "", area: "admin+leisure", reaches: "all-day", access: "read", server_read_only: true, for_work: false, said: false, kept_hidden: false, parent: "", parent_address: "", parent_answers: "mail", standing: [], titles: false, busy_time: { counts: false, from: "default", server: false, pending: false, changeable: true, line: "" }, synced: "Read Wed 19 Nov 08:00.", synced_warn: false, shared_with: null })
     readonly property var view: ({
         agendas: [
             Object.assign({}, root.row, { id: "subscribed/timetable", name: "Lycée timetable", place: "example.org", server: null, subscription: { id: "timetable", url: "https://school.example.org/calendar/export_execute.php?userid=7&authtoken=0123", name: "", holidays: "", days_off: false, after_class: false, line: "Read Wed 19 Nov 08:00." } }),
-            Object.assign({}, root.row, { id: "subscribed/zone-a", name: "Zone A", place: "opendatasoft.com", server: null, subscription: { id: "zone-a", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", name: "Zone A", holidays: "school", days_off: false, after_class: true, line: "Not read on this device yet." } }),
+            Object.assign({}, root.row, { id: "subscribed/zone-a", name: "Zone A", place: "opendatasoft.com", server: null, busy_time: { counts: false, from: "holidays", server: false, pending: false, changeable: false, short: "agenda-busy-short-holidays", line: "agenda-busy-holidays" }, subscription: { id: "zone-a", url: "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics", name: "Zone A", holidays: "school", days_off: false, after_class: true, line: "Not read on this device yet." } }),
             // An entry that does not read here (F20): its line, and Stop alone.
             Object.assign({}, root.row, { id: "subscribed/unread", name: "Unread", place: "example.org", server: null, subscription: { id: "unread", url: "", name: "", holidays: "", days_off: false, after_class: false, engagements: false, unread: true, line: "This calendar's settings do not read here." } })
         ],
@@ -119,8 +121,22 @@ Item {
     }
 
     // Nothing wider than the panel: the form and the lines fit a phone.
+    // The items of `item`, but inside the agendas' table, which scrolls sideways within its own
+    // width rather than cut a value: the table itself counts, never what it scrolls.
+    function outside(item, test, out) {
+        out = out || []
+        for (let i = 0; i < item.children.length; i++) {
+            const child = item.children[i]
+            if (test(child))
+                out.push(child)
+            if (child.objectName !== "agendaTable")
+                root.outside(child, test, out)
+        }
+        return out
+    }
+
     function fits(item) {
-        const wide = root.all(item, c => c.visible && c.width > 0 && c.mapToItem(item, 0, 0).x + c.width > item.width + 1)
+        const wide = root.outside(item, c => c.visible && c.width > 0 && c.mapToItem(item, 0, 0).x + c.width > item.width + 1)
         return wide.filter(c => !(c instanceof Repeater))
     }
 
@@ -141,7 +157,7 @@ Item {
 
         function test_the_form_offers_an_address_and_the_official_calendars(data) {
             root.width = data.width
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
             const open = root.one(setup, "agendaSubscribe")
             verify(open.visible, "Subscribe to a calendar… beside New agenda…")
             mouseClick(open)
@@ -168,7 +184,9 @@ Item {
             // Whose it is: the control of each agenda's line (WhoseFields.qml), Léa chosen.
             root.one(form, "agendaWhose").activated(1)
             root.one(form, "agendaPerson").activated(1)
-            mouseClick(root.one(form, "subscribeMake"))
+            waitForRendering(setup)
+            const make = root.one(form, "subscribeMake")
+            mouseClick(make)
             const sent = mock.calls.find(c => c[0] === "subscribe")[1]
             compare(sent.url, "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics")
             compare(sent.id, "fr-school-zone-a", "kept under the official calendar's id")
@@ -191,9 +209,11 @@ Item {
         // them chosen fills the form; a country with no school holidays here offers none.
         function test_another_country_s_calendars(data) {
             root.width = data.width
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
+            waitForRendering(setup)
             mouseClick(root.one(setup, "agendaSubscribe"))
             const form = root.one(setup, "subscribeForm")
+            waitForRendering(setup)
             const another = root.one(form, "subscribeAnotherCountry")
             verify(another.visible)
             mouseClick(another)
@@ -240,9 +260,11 @@ Item {
         // The person's country first, whichever it is: the United Kingdom's own, France's on asking.
         function test_the_person_s_country_comes_first() {
             mock.home = "GB"
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
+            waitForRendering(setup)
             mouseClick(root.one(setup, "agendaSubscribe"))
             const form = root.one(setup, "subscribeForm")
+            waitForRendering(setup)
             compare(root.one(form, "subscribeOfficial").text, "subscribe-official:United Kingdom")
             compare(root.one(form, "subscribePublic").count, 2)
             compare(root.one(form, "subscribePublic").textAt(1), "Public holidays · Scotland")
@@ -255,9 +277,11 @@ Item {
         function test_a_country_with_none_is_said_and_the_others_offered() {
             root.width = 412
             mock.home = "DE"
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
+            waitForRendering(setup)
             mouseClick(root.one(setup, "agendaSubscribe"))
             const form = root.one(setup, "subscribeForm")
+            waitForRendering(setup)
             compare(root.one(form, "subscribeOfficial").text, "subscribe-official-none:Germany")
             verify(!root.one(form, "subscribeAnotherCountry").visible, "the countries are offered already")
             const countries = root.one(form, "subscribeCountry")
@@ -280,9 +304,11 @@ Item {
         // is added, off unless ticked, and sent; one of holidays never shows the tick.
         function test_a_calendar_of_events_may_be_your_busy_time(data) {
             root.width = data.width
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
+            waitForRendering(setup)
             mouseClick(root.one(setup, "agendaSubscribe"))
             const form = root.one(setup, "subscribeForm")
+            waitForRendering(setup)
             const busy = root.one(form, "subscribeBusy")
             verify(busy.visible, "a calendar of events, as the form opens")
             verify(!busy.checked, "off unless ticked")
@@ -335,9 +361,11 @@ Item {
         // An address typed: no official id; the server's refusal said, the form kept.
         function test_a_refusal_is_said_and_the_form_stays() {
             root.width = 412
-            const setup = createTemporaryObject(setupComponent, root)
+            const setup = made()
+            waitForRendering(setup)
             mouseClick(root.one(setup, "agendaSubscribe"))
             const form = root.one(setup, "subscribeForm")
+            waitForRendering(setup)
             const publics = root.one(form, "subscribePublic")
             publics.currentIndex = 1
             publics.activated(1)
@@ -363,79 +391,111 @@ Item {
             return [{ tag: "computer", width: 1344 }, { tag: "phone", width: 412 }]
         }
 
-        // Its line on this device, Refresh now, Change the address, Stop asked once; no server's block.
+        // An agenda's card, opened: what it holds.
+        function card(setup, id) {
+            setup.openCard(id)
+            const dialog = setup.card()
+            tryCompare(dialog, "opened", true)
+            waitForRendering(dialog.contentItem)
+            return dialog.contentItem
+        }
+
+        // The page, laid out before anything is pressed (its rows would otherwise lie under the first press).
+        function made() {
+            const setup = createTemporaryObject(setupComponent, root)
+            waitForRendering(setup)
+            return setup
+        }
+
+        // The card closed, and gone from over the window before the next test.
+        function closeCard(setup) {
+            const dialog = setup.card()
+            if (dialog === null)
+                return
+            dialog.close()
+            tryCompare(dialog, "visible", false)
+        }
+
+        function shown(item, name) {
+            return root.named(item, name).filter(c => c.visible)
+        }
+
+        // Its line on this device, Refresh now, Change the address, Stop asked once, in its card;
+        // no server's block, no server asked who sees it.
         function test_a_subscribed_agenda_s_line(data) {
             root.width = data.width
-            const setup = createTemporaryObject(setupComponent, root)
-            setup.toggle("subscribed/timetable")
+            const setup = made()
+            const timetable = card(setup, "subscribed/timetable")
+            wait(100)
             compare(mock.calls.filter(c => c[0] === "sharing").length, 0, "no server asked who sees it")
-            const lines = root.named(setup, "subscriptionLine").filter(l => l.visible)
+            const lines = shown(timetable, "subscriptionLine")
             compare(lines.length, 1)
             compare(lines[0].text, "Read Wed 19 Nov 08:00.")
-            verify(root.named(setup, "agendaRename").every(f => !f.visible) && root.named(setup, "agendaRemove").every(b => !b.visible), "no server's rename nor removal")
-            mouseClick(root.named(setup, "subscriptionRefresh").find(b => b.visible))
+            verify(shown(timetable, "agendaRename").length === 0 && shown(timetable, "agendaRemove").length === 0, "no server's rename nor removal")
+            mouseClick(shown(timetable, "subscriptionRefresh")[0])
             compare(mock.calls[mock.calls.length - 1], ["refresh", "timetable"])
-            mouseClick(root.named(setup, "subscriptionChange").find(b => b.visible))
-            const address = root.named(setup, "subscriptionAddress").find(f => f.visible)
+            mouseClick(shown(timetable, "subscriptionChange")[0])
+            const address = shown(timetable, "subscriptionAddress")[0]
             compare(address.text, "https://school.example.org/calendar/export_execute.php?userid=7&authtoken=0123", "your own address, to change")
             address.text = "https://school.example.org/calendar/export_execute.php?userid=7&authtoken=4567"
-            mouseClick(root.named(setup, "subscriptionAddressSave").find(b => b.visible))
+            mouseClick(shown(timetable, "subscriptionAddressSave")[0])
             compare(mock.calls[mock.calls.length - 1], ["field", "timetable", "url", "https://school.example.org/calendar/export_execute.php?userid=7&authtoken=4567"])
-            mouseClick(root.named(setup, "subscriptionStop").find(b => b.visible))
+            mouseClick(shown(timetable, "subscriptionStop")[0])
             compare(mock.calls.filter(c => c[0] === "stop").length, 0, "asked first")
-            mouseClick(root.named(setup, "subscriptionStopConfirm").find(b => b.visible))
+            mouseClick(shown(timetable, "subscriptionStopConfirm")[0])
             compare(mock.calls[mock.calls.length - 1], ["stop", "timetable"])
+            tryCompare(setup.card(), "visible", false, 1000, "stopped: its card closes")
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
 
         // A calendar of school holidays: its kind and after class; whether its days count as days
         // off is Settings ▸ Hours' alone (24 November 2026), so no switch of it here.
         function test_a_holidays_calendar_says_its_kind() {
-            const setup = createTemporaryObject(setupComponent, root)
-            setup.toggle("subscribed/zone-a")
-            const kind = root.named(setup, "subscriptionKind").find(k => k.visible)
-            compare(kind.currentIndex, 2)
-            const after = root.named(setup, "subscriptionAfterClass").find(b => b.visible)
-            verify(after.checked)
-            compare(root.named(setup, "subscriptionDaysOff").filter(b => b.visible).length, 0, "the days off: Settings ▸ Hours' alone")
-            compare(root.named(setup, "subscriptionLine").find(l => l.visible).text, "Not read on this device yet.")
+            const setup = made()
+            const zone = card(setup, "subscribed/zone-a")
+            compare(shown(zone, "subscriptionKind")[0].currentIndex, 2)
+            verify(shown(zone, "subscriptionAfterClass")[0].checked)
+            compare(shown(zone, "subscriptionDaysOff").length, 0, "the days off: Settings ▸ Hours' alone")
+            compare(shown(zone, "subscriptionLine")[0].text, "Not read on this device yet.")
+            closeCard(setup)
         }
 
-        // The review's F41: "Count these as my busy time" offered on a calendar of events,
-        // never on one of holidays, off until ticked, then sent; its colour chosen here.
+        // The review's F41, on its row since 26 November 2026: "Counts as busy time" on a calendar
+        // of events, off until turned, then sent; on one of holidays shown off and not to be turned;
+        // its colour chosen on its row.
         function test_own_engagements_and_its_colour() {
-            const setup = createTemporaryObject(setupComponent, root)
-            setup.toggle("subscribed/timetable")
-            const boxes = root.named(setup, "subscriptionEngagements").filter(b => b.visible)
-            compare(boxes.length, 1, "on the calendar of events alone")
-            verify(!boxes[0].checked, "off unless ticked")
-            compare(boxes[0].text, "agenda-busy-time", "the form's and the extension's words")
-            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).map(l => l.text), ["agenda-busy-time-help"])
-            mouseClick(boxes[0])
-            verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "engagements" && c[3] === "true"), JSON.stringify(mock.calls))
-            const dots = root.named(setup, "subscriptionColour").filter(d => d.visible)
-            verify(dots.length > 0)
-            mouseClick(dots[1])
+            const setup = made()
+            const switches = root.named(setup, "agendaBusy")
+            const timetable = switches[0]
+            verify(timetable.visible && timetable.enabled && !timetable.checked, "off unless turned")
+            timetable.toggle()
+            timetable.toggled()
+            compare(mock.calls[mock.calls.length - 1], ["busy", "subscribed/timetable", true])
+            verify(!switches[1].visible, "holidays act through the days off alone: no switch")
+            compare(root.named(root.named(setup, "agendaSetup")[1], "agendaBusyLine")[0].text, "agenda-busy-short-holidays", "and its cell says why")
+            compare(shown(setup, "agendaBusyLegend").length, 1, "what it does, said once")
+            compare(shown(setup, "subscriptionEngagements").length, 0, "one place: its row")
+            // Its colour, chosen in place on its row, kept with its settings.
+            mouseClick(root.named(root.named(setup, "agendaSetup")[0], "agendaRowColour")[0])
+            tryVerify(() => root.all(root.Overlay.overlay, c => c.objectName === "agendaColour" && c.visible).length === 8)
+            mouseClick(root.all(root.Overlay.overlay, c => c.objectName === "agendaColour" && c.visible)[1])
             verify(mock.calls.some(c => c[0] === "field" && c[1] === "timetable" && c[2] === "colour"), JSON.stringify(mock.calls))
-            setup.toggle("subscribed/timetable")
-            setup.toggle("subscribed/zone-a")
-            compare(root.named(setup, "subscriptionEngagements").filter(b => b.visible).length, 0, "holidays act through the days off alone")
-            compare(root.named(setup, "subscriptionEngagementsHelp").filter(l => l.visible).length, 0)
         }
 
         // The review's F19 and F20: settings that do not read: the line says so, and Stop alone is offered.
         function test_a_calendar_whose_settings_do_not_read() {
             root.width = 412
-            const setup = createTemporaryObject(setupComponent, root)
-            setup.toggle("subscribed/unread")
-            const lines = root.named(setup, "subscriptionLine").filter(l => l.visible)
+            const setup = made()
+            const unread = card(setup, "subscribed/unread")
+            const lines = shown(unread, "subscriptionLine")
             compare(lines.length, 1)
             compare(lines[0].text, "This calendar's settings do not read here.")
-            compare(root.named(setup, "subscriptionRefresh").filter(b => b.visible).length, 0)
-            compare(root.named(setup, "subscriptionChange").filter(b => b.visible).length, 0)
-            compare(root.named(setup, "subscriptionName").filter(b => b.visible).length, 0)
-            compare(root.named(setup, "subscriptionStop").filter(b => b.visible).length, 1, "Stop stays")
+            compare(shown(unread, "subscriptionRefresh").length, 0)
+            compare(shown(unread, "subscriptionChange").length, 0)
+            compare(shown(unread, "subscriptionName").length, 0)
+            compare(shown(unread, "subscriptionStop").length, 1, "Stop stays")
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
+            closeCard(setup)
         }
     }
 }

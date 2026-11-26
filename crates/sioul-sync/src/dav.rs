@@ -646,6 +646,10 @@ pub struct Listed {
     /// For calendars: it takes none of your time as a whole (RFC 6638 §9.1,
     /// `schedule-calendar-transp` transparent); opaque when the server says nothing.
     pub transparent: bool,
+    /// For calendars: the server keeps that mark for it (it answered
+    /// `schedule-calendar-transp`, opaque or transparent: Nextcloud, Murena),
+    /// so that Sioul's switch "Counts as busy time" reads and writes it there.
+    pub transp_known: bool,
     /// Whose it is, as the server says (`owned_by_you`); none when it does not.
     pub owned: Option<bool>,
     /// For address books: those it is shared with to write (Nextcloud's
@@ -742,7 +746,8 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
             ctag: response.text(CALSERVER, "getctag"),
             sync_token: response.text(DAV, "sync-token"),
             components: response.prop(CALDAV, "supported-calendar-component-set").map(|p| p.comps.clone()).unwrap_or_default(),
-            transparent: response.prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")),
+            transparent: calendar_mark(&response) == Some(true),
+            transp_known: calendar_mark(&response).is_some(),
             owned: owned_by_you(response, me.as_deref()),
             writers: response.prop(OWNCLOUD, "invite").map(|p| p.writers.clone()).unwrap_or_default(),
             writers_known: response.prop(OWNCLOUD, "invite").is_some(),
@@ -751,6 +756,18 @@ pub fn collections(client: &Client, kind: Kind, home: &str) -> Result<Vec<Listed
         });
     }
     Ok(found)
+}
+
+/// A calendar's mark as a whole (RFC 6638 §9.1, `schedule-calendar-transp`):
+/// transparent (true) or opaque (false) when its server keeps one; none when
+/// it answers nothing for it (a server without scheduling, Google's).
+fn calendar_mark(response: &Response) -> Option<bool> {
+    let prop = response.prop(CALDAV, "schedule-calendar-transp")?;
+    prop.children.iter().filter(|(n, _)| n == CALDAV).find_map(|(_, k)| match k.as_str() {
+        "transparent" => Some(true),
+        "opaque" => Some(false),
+        _ => None,
+    })
 }
 
 /// What a sync of one account did.
@@ -1203,6 +1220,7 @@ fn listed_here(account: &str, id: &str) -> Option<Listed> {
         sync_token: state.sync_token.clone(),
         components: state.components.clone(),
         transparent: state.transparent,
+        transp_known: state.transp_known,
         owned: state.owned,
         writers: state.writers.clone(),
         writers_known: state.writers_known,
@@ -1300,6 +1318,7 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
             state.read_only = collection.read_only;
             state.components = collection.components.clone();
             state.transparent = collection.transparent;
+            state.transp_known = collection.transp_known;
             // Whose it is, when the server says; what it said before kept when it says nothing now.
             if collection.owned.is_some() {
                 state.owned = collection.owned;
@@ -1887,6 +1906,7 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
     state.read_only = listed.read_only;
     state.components = listed.components.clone();
     state.transparent = listed.transparent;
+    state.transp_known = listed.transp_known;
     // Its tasks and events in the form a phone's account manager can send
     // back (`sioul_core::interop`), never in a calendar you only read: every
     // item sent in that form (`own_form_of`, at the push: one moved in from a
@@ -3846,7 +3866,7 @@ mod tests {
         let state = State::load(&club.state_path());
         assert!(!state.renamed && !state.recoloured);
         // A listing names it otherwise: it keeps its folder's id by its address.
-        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, owned: Some(true), writers: Vec::new(), writers_known: false }];
+        let mut listed = vec![Listed { kind: Kind::Calendars, url: format!("{base}/cal/swimming"), id: "another-name".into(), name: "Swimming club".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, transp_known: false, owned: Some(true), writers: Vec::new(), writers_known: false }];
         keep_ids("p5-sync", Kind::Calendars, &mut listed);
         assert_eq!(listed[0].id, club.id);
         // Whose it is, from the listing: its owner against your principal; else unknown.
@@ -5858,6 +5878,12 @@ mod tests {
         assert_eq!(responses[0].prop(CALDAV, "supported-calendar-component-set").unwrap().comps, vec!["VEVENT"]);
         // A calendar that takes none of your time as a whole (RFC 6638 §9.1), as `collections` reads it.
         assert!(responses[0].prop(CALDAV, "schedule-calendar-transp").is_some_and(|p| p.children.iter().any(|(n, k)| n == CALDAV && k == "transparent")));
+        assert_eq!(calendar_mark(&responses[0]), Some(true), "its server keeps the mark: transparent");
+        // Opaque is a mark kept too; a 404 for it (a server without scheduling) is none.
+        let opaque = xml.replace("<cal:transparent/>", "<cal:opaque/>");
+        assert_eq!(calendar_mark(&multistatus(&opaque).unwrap().0[0]), Some(false));
+        let none = xml.replace("<cal:schedule-calendar-transp><cal:transparent/></cal:schedule-calendar-transp>", "").replace("<d:getctag/>", "<d:getctag/><cal:schedule-calendar-transp/>");
+        assert_eq!(calendar_mark(&multistatus(&none).unwrap().0[0]), None);
         assert!(responses[0].prop(CALSERVER, "getctag").is_none());
         assert_eq!(responses[1].status, Some(404));
     }
@@ -5963,7 +5989,7 @@ mod stars_tests {
             state.items.push(ItemState { href: format!("{BOOK}{file}"), file: file.to_string(), etag: "\"1\"".into(), hash: String::new(), size: 0, mtime: 0, ..ItemState::default() });
         }
         state.save(&vdir::state_path(account, Kind::Contacts, id)).unwrap();
-        Listed { kind: Kind::Contacts, url: format!("{base}{BOOK}"), id: id.into(), name: "Contacts".into(), color: None, read_only: false, ctag: None, sync_token: None, components: Vec::new(), transparent: false, owned: Some(true), writers: Vec::new(), writers_known: true }
+        Listed { kind: Kind::Contacts, url: format!("{base}{BOOK}"), id: id.into(), name: "Contacts".into(), color: None, read_only: false, ctag: None, sync_token: None, components: Vec::new(), transparent: false, transp_known: false, owned: Some(true), writers: Vec::new(), writers_known: true }
     }
 
     /// A favourite added; someone on the list marked; unmarked there, off

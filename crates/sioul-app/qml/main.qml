@@ -1831,9 +1831,8 @@ SioulWindow {
                 () => agendaPage.openAgendaLine(JSON.parse(sioul.availability()).items.slice(-1)[0].mirrors[0]),
                 () => {},
                 () => {},
-                () => agendaPage.revealSetting("agendaLink"),
-                () => {},
-                () => agendaPage.grabSettings(grabber.folder + "/agenda-link.png"),
+                () => grabber.saveWindow("agenda-link"),
+                () => agendaPage.openAgendaLine(""),
                 () => agendaPage.openSettings(false),
                 () => {},
                 () => grabber.saveCounted("agenda-day", agendaPage),
@@ -1961,12 +1960,48 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agendas.png"),
-                // One agenda's line open (part 5): its name, colour, removal and who sees it.
+                // The agendas' table at a computer's widths, each value whole (26 November 2026), then the usual width again.
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1020
+                },
+                () => {},
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.saveWindow("agenda-settings-agendas-1020")
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1280
+                },
+                () => {},
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.saveWindow("agenda-settings-agendas-1280")
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1600
+                },
+                () => {},
+                () => {},
+                () => {
+                    if (!window.phoneGrab)
+                        grabber.saveWindow("agenda-settings-agendas-1600")
+                },
+                () => {
+                    if (!window.phoneGrab)
+                        window.width = 1100
+                },
+                () => {},
+                // One agenda's card (part 5; 26 November 2026): its name, colour, removal and who sees it.
                 () => agendaPage.openAgendaLine("cloud/personal"),
                 () => {},
                 () => {},
-                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agenda-line.png"),
-                () => agendaPage.openAgendaLine("cloud/personal"),
+                () => grabber.saveWindow("agenda-settings-agenda-line"),
+                () => agendaPage.openAgendaLine(""),
                 // Whose it is in the form that makes a calendar (24 November 2026): someone else's, a name typed;
                 // then a partner's line, what another person's agenda does said under its control.
                 () => agendaPage.openNewAgenda("someone", "Kim"),
@@ -1977,8 +2012,8 @@ SioulWindow {
                 () => agendaPage.openAgendaLine("cloud/sam"),
                 () => {},
                 () => {},
-                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-partner-line.png"),
-                () => agendaPage.openAgendaLine("cloud/sam"),
+                () => grabber.saveWindow("agenda-settings-partner-line"),
+                () => agendaPage.openAgendaLine(""),
                 () => agendaPage.openSettings(true, "conflicts"),
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-conflicts.png"),
@@ -4424,9 +4459,8 @@ SioulWindow {
                 () => agendaPage.openAgendaLine("subscribed/fr-school-zone-a"),
                 () => {},
                 () => {},
-                () => agendaPage.revealSetting("subscriptionLine"),
-                () => {},
-                () => agendaPage.grabSettings(grabber.folder + "/calendars-agenda-line.png"),
+                () => grabber.saveWindow("calendars-agenda-line"),
+                () => agendaPage.openAgendaLine(""),
                 () => agendaPage.askSubscribe(),
                 () => {},
                 () => {},
@@ -5260,7 +5294,8 @@ SioulWindow {
                 () => agendaPage.openAgendaLine("cloud/lea"),
                 () => {},
                 () => {},
-                () => agendaPage.grabSettings(grabber.folder + "/agenda-lea-line.png"),
+                () => grabber.saveWindow("agenda-lea-line"),
+                () => agendaPage.openAgendaLine(""),
                 () => agendaPage.openSettings(false),
                 () => window.close()
             ]

@@ -45,15 +45,20 @@ ColumnLayout {
     readonly property var choices: ["yours", "child", "parent", "partner", "someone", "shared"]
     // The roles that name one of your people (docs/persons.md).
     readonly property bool namesPerson: ["child", "partner", "parent", "someone"].indexOf(fields.whose) >= 0
+    // The role's own control shown; off where the role is chosen beside it (an agenda's row,
+    // its card then holding whose name alone: AgendaCard.qml).
+    property bool roleShown: true
 
     spacing: fields.theme.labelGap
 
     Label {
+        visible: fields.roleShown
         text: fields.sioul.text("agenda-whose")
         color: fields.theme.text
     }
     PlainComboBox {
         objectName: "agendaWhose"
+        visible: fields.roleShown
         Layout.fillWidth: true
         model: fields.choices.map(w => fields.sioul.text("agenda-whose-" + w))
         currentIndex: Math.max(0, fields.choices.indexOf(fields.whose))

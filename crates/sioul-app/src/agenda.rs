@@ -329,8 +329,9 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     // Invited: your own answer, as you gave it (none yet: "needs-action").
     let own_answer = if o.with_others { people.iter().find(|p| p["you"] == true && p["organizer"] == false).and_then(|p| p["answer"].as_str()).unwrap_or_default().to_string() } else { String::new() };
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
-    // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
-    let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
+    // Its agenda free as a whole (its one switch, Busy time, its server's mark among what decides it;
+    // review of edef0091, F1): no event of it marks you busy, and its own Busy is not offered.
+    let calendar_free = sioul_core::agendas::marks_of(&calendar).transparent;
     // Whose agenda it is, beside what brought it: "Kim's agenda · From Skolengo" (24 November 2026).
     // An agenda for its availability alone is titled by its own name already: nothing more.
     // A calendar named after them already ("Léa"): nothing more either.
@@ -841,8 +842,12 @@ fn write_filter(change: impl FnOnce(&FilterNow) -> Option<sioul_core::agendas::O
 /// and task lists) with what it is, what was said of it and what may be
 /// chosen; then the matrix of conflicts between the agendas that take
 /// events, each pair with whether its box is ticked and what it shows
-/// unsaid. Read when the panel opens (the collections and the configuration).
-pub(crate) fn setup() -> String {
+/// unsaid. Read when the panel opens, from what this device knows alone
+/// (the collections, their sync states and the configuration): nothing is
+/// asked of a server here (26 November 2026); who sees each one comes after,
+/// into its row (`servers::sharing`), its last answer here shown meanwhile.
+/// `problems`: the accounts whose last sync went wrong.
+pub(crate) fn setup(problems: &std::collections::BTreeSet<String>) -> String {
     let config = load_config();
     let agendas = sioul_core::agendas::all(&config);
     let matrix = sioul_core::agendas::Matrix::of(&config, &agendas);
@@ -851,7 +856,10 @@ pub(crate) fn setup() -> String {
     let rows: Vec<serde_json::Value> = agendas
         .iter()
         .map(|a| {
-            let place = collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| c.place(&config)).unwrap_or_default();
+            let collection = collections.iter().find(|c| sioul_core::agendas::place(c) == a.id);
+            let place = collection.map(|c| c.place(&config)).unwrap_or_default();
+            let subscription = crate::subscriptions::row(&config, &a.id);
+            let synced = collection.map(|c| crate::busytime::synced(c, problems, &subscription)).unwrap_or_default();
             serde_json::json!({
                 "id": a.id,
                 "name": a.name,
@@ -883,7 +891,26 @@ pub(crate) fn setup() -> String {
                 // None for a calendar subscribed by its address: no server to rename it on, nothing shared from here.
                 "server": if a.account == sioul_core::vdir::SUBSCRIBED { serde_json::Value::Null } else { collections.iter().find(|c| sioul_core::agendas::place(c) == a.id).map(|c| crate::servers::line_of(&config, c, a)).unwrap_or_default() },
                 // A calendar subscribed by its address: its address, what it holds, its line on this device; null for another.
-                "subscription": crate::subscriptions::row(&config, &a.id),
+                "subscription": subscription,
+                // "Counts as busy time" (`agendas::busy_time`, `busytime`): its value, where it comes
+                // from, whether its server keeps it, whether the switch may change it, and what to say.
+                "busy_time": {
+                    "counts": a.busy_time.counts,
+                    "from": a.busy_time.from,
+                    "server": a.busy_time.server_keeps,
+                    "pending": a.busy_time.pending,
+                    "changeable": a.busy_time.changeable() && a.events && !a.mirror,
+                    "differs": a.busy_time.differs,
+                    "short": crate::busytime::short(a),
+                    "line": crate::busytime::line(a),
+                },
+                // When it was last synced, from this device's own knowledge, in one form for every agenda;
+                // its sentence; warm when its last sync or reading went wrong.
+                "synced": synced.short,
+                "synced_full": synced.full,
+                "synced_warn": synced.warn,
+                // Who sees it, as its server last answered on this device (none yet: null); asked again once the page shows.
+                "shared_with": crate::servers::last_sharing(&a.id),
                 // A calendar of busy blocks Sioul keeps for your availability (Agenda ⚙ ▸ Your availability), and for which.
                 "mirror": a.mirror,
                 "kept_for": if a.mirror { config.agenda.availabilities.iter().find(|x| x.mirrors.iter().any(|m| format!("{}/{}", m.account, m.calendar) == a.id)).map(|x| x.name.clone()).unwrap_or_default() } else { String::new() },

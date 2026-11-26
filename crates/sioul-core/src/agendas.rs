@@ -210,11 +210,27 @@ pub struct Said {
     /// their name, `parent_address` where invitations go.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_person: Option<String>,
+    /// "Counts as busy time", your word (26 November 2026): "yes" or "no"
+    /// (`busy_time`). Where its server keeps the mark (`schedule-calendar-transp`:
+    /// Nextcloud, Murena) and the agenda is yours, the word waits here only
+    /// until its server has it, then the server keeps it alone, so that its own
+    /// setting and this switch are one. A Sioul 0.1.0 skips it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busy_time: Option<String>,
 }
 
 impl Said {
     /// The fields an agenda's settings may write.
-    pub const FIELDS: [&'static str; 12] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person", "role"];
+    pub const FIELDS: [&'static str; 13] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person", "role", "busy_time"];
+
+    /// "Counts as busy time" as you said it (`busy_time`); None unsaid, or a word this Sioul does not know.
+    pub fn busy_word(&self) -> Option<bool> {
+        match self.busy_time.as_deref().map(|w| w.trim().to_ascii_lowercase()) {
+            Some(w) if w == "yes" => Some(true),
+            Some(w) if w == "no" => Some(false),
+            _ => None,
+        }
+    }
 
     /// Whose it is, as said: `whose`, or `role` where `whose` says "shared"
     /// (someone else's: `Said::role`); None when unsaid or a word this Sioul
@@ -294,6 +310,10 @@ pub struct Agenda {
     /// no agenda of yours to compare, filter, plan around or pick from.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub mirror: bool,
+    /// Whether it counts as your busy time, and why (`busy_time`): the one
+    /// value its events are read with for your busy time, your plan, your
+    /// availability and do-not-disturb's "While busy".
+    pub busy_time: BusyTime,
 }
 
 impl Agenda {
@@ -327,7 +347,7 @@ impl Agenda {
         let child = whose == Whose::Child;
         let word = |field: &Option<String>| if child { field.as_deref().map(str::trim).unwrap_or_default().to_string() } else { String::new() };
         let standing = if child { said.holders.iter().filter_map(|(k, w)| Some((crate::holders::Kind::parse(k)?, crate::holders::Who::parse(w)?))).collect() } else { BTreeMap::new() };
-        Agenda {
+        let mut agenda = Agenda {
             id: place(collection),
             account: collection.account.clone(),
             name: collection.name.clone(),
@@ -349,7 +369,10 @@ impl Agenda {
             titles: said.titles.as_deref().is_some_and(|t| t.trim().eq_ignore_ascii_case("shown")),
             said: said.clone(),
             mirror: is_mirror(config, &collection.account, &collection.id),
-        }
+            busy_time: BusyTime::default(),
+        };
+        agenda.busy_time = busy_time(&agenda, config, vdir::calendar_server(&collection.account, &collection.id));
+        agenda
     }
 
     /// Not yours: shown, warned of as the matrix says, never holding your time.
@@ -499,10 +522,16 @@ pub struct Marks {
     pub theirs: bool,
     pub busy: bool,
     pub work: bool,
-    /// It takes none of your time as a whole: its server says so
-    /// (`vdir::calendar_transparent`), or it is a calendar subscribed by its
-    /// address you did not say holds your own engagements (`subscribed::takes_no_time`).
+    /// It takes none of your time as a whole: an agenda of yours that does
+    /// not count as your busy time (`busy_time`, its one switch); one not
+    /// yours, as before the switch, when its server says so
+    /// (`vdir::calendar_transparent`) or it is a calendar subscribed by its
+    /// address you did not say holds your own engagements
+    /// (`subscribed::takes_no_time`), so that a child's events still meet
+    /// yours in the matrix of conflicts.
     pub transparent: bool,
+    /// Not yours, and you said it counts as your busy time (`Occurrence::counted`).
+    pub counted: bool,
     /// A personal agenda you keep out of your work hours (`Reach::OutsideWork`).
     pub outside_work: bool,
     /// A child's agenda.
@@ -517,9 +546,117 @@ pub struct Marks {
 pub fn marks_of(collection: &Collection) -> Marks {
     let config = read_config();
     let agenda = agenda_of(collection, &config);
-    // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
-    let transparent = vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id));
-    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, other_person: agenda.whose.another_person(), titles: agenda.titles }
+    let counts = agenda.busy_time.counts;
+    let transparent = if !agenda.theirs() {
+        !counts
+    } else {
+        // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
+        !counts && (vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id)))
+    };
+    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, counted: agenda.theirs() && counts, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, other_person: agenda.whose.another_person(), titles: agenda.titles }
+}
+
+// ---------------------------------------------------------------- counts as busy time
+
+/// What a calendar's server says of it as a whole (`vdir::calendar_server`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Server {
+    /// Its mark (`schedule-calendar-transp`, RFC 6638 §9.1): transparent
+    /// (true) or opaque, where its server keeps one (Nextcloud, Murena).
+    pub mark: Option<bool>,
+    /// Whether it is yours, where its server says (`vdir::State::owned`).
+    pub owned: Option<bool>,
+}
+
+/// Where an agenda's "Counts as busy time" comes from (`BusyTime::from`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BusySource {
+    /// Nothing said: an agenda of yours counts, one you did not author does not.
+    #[default]
+    Default,
+    /// Another person's own agenda (a partner's, another parent's, someone
+    /// else's): never your time, not to be changed (24 November 2026).
+    Theirs,
+    /// A calendar of holidays: it acts through your days off alone.
+    Holidays,
+    /// Your word, kept in Sioul's settings: `Said::busy_time`, a subscribed
+    /// calendar's `engagements`, the choices of the extensions writing into it.
+    Word,
+    /// Its server's mark, read at its last sync.
+    Server,
+}
+
+/// Whether an agenda counts as your busy time: one value per agenda, its
+/// one switch in Agenda ⚙ ▸ Your agendas, read by everything that counts
+/// your busy time (`agenda::read_occurrences`: the plan, your availability
+/// and its calendars of busy times, do-not-disturb's "While busy").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct BusyTime {
+    pub counts: bool,
+    pub from: BusySource,
+    /// Its server keeps the mark: the switch writes it there too, so that
+    /// its server's free/busy (who invites you on a Nextcloud) says the same.
+    pub server_keeps: bool,
+    /// Your word differs from its server's mark: written there at the next sync.
+    pub pending: bool,
+    /// Nothing said, and its server keeps a mark that says otherwise (a
+    /// child's or a shared agenda on your own Nextcloud, opaque by its
+    /// default): its server's free/busy counts it when others invite you,
+    /// Sioul does not; said on its row, never written there unasked.
+    pub differs: bool,
+}
+
+impl BusyTime {
+    /// Whether the switch may change it: never for another person's agenda nor a calendar of holidays.
+    pub fn changeable(&self) -> bool {
+        !matches!(self.from, BusySource::Theirs | BusySource::Holidays)
+    }
+}
+
+/// Whether `agenda` counts as your busy time (26 November 2026; the rule of
+/// 22 November: another person's time is never yours by default):
+/// 1. another person's own agenda never (`Whose::another_person`);
+/// 2. a calendar subscribed by its address by your word (`engagements`), off
+///    unless said; a calendar of holidays never (its days off act);
+/// 3. your word (`Said::busy_time`), turned on its row; an extension's choices
+///    (`[extensions.busy]`) decide its own events' marks alone, never the
+///    calendar's value (review of edef0091, F7);
+/// 4. an agenda of yours: its server's mark where its server keeps one
+///    (Nextcloud's own "transparent" and this switch are one setting), else it
+///    counts, unless its server says it is someone else's;
+/// 5. a child's or a shared agenda: not unless you said so.
+pub fn busy_time(agenda: &Agenda, config: &Config, server: Server) -> BusyTime {
+    let server_keeps = server.mark.is_some();
+    let make = |counts: bool, from: BusySource| BusyTime { counts, from, server_keeps, pending: false, differs: false };
+    if agenda.whose.another_person() {
+        return make(false, BusySource::Theirs);
+    }
+    if agenda.account == vdir::SUBSCRIBED {
+        let id = agenda.id.strip_prefix(&format!("{}/", vdir::SUBSCRIBED)).unwrap_or(&agenda.id);
+        return match config.agenda.subscriptions.get(id) {
+            Some(feed) if feed.holidays().is_some() => make(false, BusySource::Holidays),
+            Some(feed) if feed.engagements.is_some() => make(feed.engagements(), BusySource::Word),
+            _ => make(false, BusySource::Default),
+        };
+    }
+    if let Some(word) = agenda.said.busy_word() {
+        // Its server's mark the other way: your word goes there at the next sync.
+        return BusyTime { pending: server.mark == Some(word), ..make(word, BusySource::Word) };
+    }
+    match (agenda.whose, server.mark) {
+        (Whose::Yours, Some(transparent)) => make(!transparent, BusySource::Server),
+        (Whose::Yours, None) => make(server.owned != Some(false), BusySource::Default),
+        // A child's or a shared one its server counts (opaque) while nothing was said: said on its row.
+        (_, Some(transparent)) => BusyTime { differs: !transparent, ..make(false, BusySource::Default) },
+        (_, None) => make(false, BusySource::Default),
+    }
+}
+
+/// The extensions' agendas written into the calendar at `place`
+/// (`[extensions.calendars]`), as `"<extension>/<agenda>"`.
+pub fn extension_agendas(config: &Config, place: &str) -> Vec<String> {
+    config.extensions.calendars.iter().filter(|(_, p)| p.as_str() == place).map(|(key, _)| key.clone()).collect()
 }
 
 /// Whether you chose to keep an agenda from every writer: read only, or its
@@ -668,6 +805,8 @@ fn set_one(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String
         "person" | "parent_person" => Some(value.to_string()),
         "titles" if value.eq_ignore_ascii_case("shown") => Some("shown".to_string()),
         "titles" => return Err(format!("{value}: shown, or nothing")),
+        "busy_time" if value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("no") => Some(value.to_ascii_lowercase()),
+        "busy_time" => return Err(format!("{value}: yes, no, or nothing")),
         _ => return Err(format!("{field}: not a field of an agenda")),
     };
     edit_agenda_table(path, "calendars", |calendars| {
@@ -2027,5 +2166,72 @@ mod tests {
         assert!(mirror.mirror && old.mirror && !personal.mirror);
         let matrix = Matrix::of(&config, &[mirror.clone(), personal.clone()]);
         assert!(matrix.usual(&personal.id, &personal.id) && !matrix.usual(&mirror.id, &mirror.id) && !matrix.usual(&mirror.id, &personal.id));
+    }
+
+    /// "Counts as busy time" (26 November 2026), one value per agenda:
+    /// another person's never, whatever is said; a subscribed calendar by its
+    /// word (`engagements`), a calendar of holidays never; your word, else the
+    /// extensions' choices when they agree; yours by its server's mark, else
+    /// yes unless its server says it is someone else's; a child's or a shared
+    /// one only by your word, never by a server's opaque default; a word its
+    /// server's mark differs from waits to be written there.
+    #[test]
+    fn counts_as_busy_time_is_one_value_per_agenda() {
+        let of_with = |config: &Config, account: &str, id: &str, said: Said, server: Server| {
+            let agenda = Agenda::of(&collection(account, id, &["VEVENT"]), &said, config, false, &|| true);
+            busy_time(&agenda, config, server)
+        };
+        let plain = Config::default();
+        let of = |said: Said, server: Server| of_with(&plain, "a", "cal", said, server);
+        let mark = |transparent: bool| Server { mark: Some(transparent), owned: Some(true) };
+        let word = |w: &str| Said { busy_time: Some(w.into()), ..Said::default() };
+        assert_eq!(of(Said::default(), Server::default()), BusyTime { counts: true, from: BusySource::Default, server_keeps: false, pending: false, differs: false }, "yours, no server mark: it counts");
+        assert_eq!(of(Said::default(), mark(true)), BusyTime { counts: false, from: BusySource::Server, server_keeps: true, pending: false, differs: false }, "its server's transparent");
+        assert!(of(Said::default(), mark(false)).counts, "its server's opaque");
+        assert!(!of(Said::default(), Server { mark: None, owned: Some(false) }).counts, "a calendar you did not author: not by default");
+        assert_eq!(of(word("no"), mark(false)), BusyTime { counts: false, from: BusySource::Word, server_keeps: true, pending: true, differs: false }, "your word, not yet on its server");
+        assert!(!of(word("no"), mark(true)).pending, "your word, its server already says it");
+        assert_eq!(of(word("maybe"), mark(true)).from, BusySource::Server, "a word this Sioul does not know is unsaid");
+        let child = Said { whose: Some("child".into()), ..Said::default() };
+        assert!(!of(child.clone(), mark(false)).counts, "a child's agenda on your server: never by its opaque default");
+        assert!(of(Said { busy_time: Some("yes".into()), ..child }, mark(false)).counts, "a child's by your word");
+        assert!(!of(Said { whose: Some("shared".into()), ..Said::default() }, Server::default()).counts, "a shared one: not unless said");
+        let partner = of(Said { whose: Some("partner".into()), busy_time: Some("yes".into()), ..Said::default() }, mark(false));
+        assert!(!partner.counts && partner.from == BusySource::Theirs && !partner.changeable(), "another person's: never, not to be changed");
+        // A subscribed calendar: its word is `engagements`; holidays never.
+        let feeds = config("[agenda.subscriptions.timetable]\nurl = \"https://calendar.example.org/t.ics\"\nengagements = true\n\n[agenda.subscriptions.days]\nurl = \"https://calendar.example.org/h.ics\"\nholidays = \"public\"\nengagements = true\n\n[agenda.subscriptions.club]\nurl = \"https://calendar.example.org/c.ics\"\n");
+        assert_eq!(of_with(&feeds, vdir::SUBSCRIBED, "timetable", Said::default(), Server::default()).from, BusySource::Word);
+        assert!(of_with(&feeds, vdir::SUBSCRIBED, "timetable", Said::default(), Server::default()).counts);
+        let holidays = of_with(&feeds, vdir::SUBSCRIBED, "days", Said::default(), Server::default());
+        assert!(!holidays.counts && !holidays.changeable());
+        assert!(!of_with(&feeds, vdir::SUBSCRIBED, "club", Said::default(), Server::default()).counts, "unsaid: off");
+        // The extensions writing into it: their choices mark their own events alone, never the
+        // calendar's value (F7: a pupil's lessons never silence your own events in it, nor reach your server).
+        let lessons = config("[extensions.calendars]\n\"school/p-1\" = \"a/cal\"\n\"school/p-2\" = \"a/cal\"\n\n[extensions.busy]\n\"school/p-1\" = false\n\"school/p-2\" = false\n");
+        assert_eq!(extension_agendas(&lessons, "a/cal"), vec!["school/p-1".to_string(), "school/p-2".to_string()]);
+        let by_extension = of_with(&lessons, "a", "cal", Said::default(), mark(false));
+        assert_eq!(by_extension, BusyTime { counts: true, from: BusySource::Server, server_keeps: true, pending: false, differs: false }, "its server's mark, the lessons' choice aside");
+        assert!(!of_with(&lessons, "a", "cal", word("no"), mark(false)).counts, "your word decides the calendar");
+        // A child's agenda its server counts while nothing was said: said, never written.
+        let opaque_child = of(Said { whose: Some("child".into()), ..Said::default() }, mark(false));
+        assert!(!opaque_child.counts && opaque_child.differs && !opaque_child.pending);
+        assert!(!of(Said { whose: Some("child".into()), ..Said::default() }, mark(true)).differs, "transparent there too: nothing to say");
+        // A child's or a shared agenda you said counts holds your time; another person's never.
+        let counted = crate::agenda::Occurrence { theirs: true, counted: true, start: 0, end: 3600, ..crate::agenda::Occurrence::default() };
+        assert!(counted.holds_time() && crate::busy::own_event(&counted));
+        assert!(!crate::agenda::Occurrence { counted: false, ..counted.clone() }.holds_time());
+        // The word is written leniently, read back, and taken out with "".
+        let dir = std::env::temp_dir().join(format!("sioul-busy-word-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(&path, "").unwrap();
+        set_field(&path, "a/cal", "busy_time", "No").unwrap();
+        assert!(set_field(&path, "a/cal", "busy_time", "often").is_err());
+        let read: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(read.agenda.calendars["a/cal"].busy_word(), Some(false));
+        set_field(&path, "a/cal", "busy_time", "").unwrap();
+        let read: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(!read.agenda.calendars.contains_key("a/cal"), "taken out, its table with it");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

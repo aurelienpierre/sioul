@@ -1060,7 +1060,8 @@ fn working_hours(config: &Config, now: i64) {
 /// time when others invite you (research/availability-sharing.md §5.3).
 fn others_transparent(config: &Config, now: i64) {
     let done = with_memo(|m| m.transparent.clone());
-    for agenda in sioul_core::agendas::all(config).into_iter().filter(|a| a.whose != sioul_core::agendas::Whose::Yours && a.busy() && !done.contains(&a.id)) {
+    // Never one you said counts as your busy time (`busytime`): its server keeps your word.
+    for agenda in sioul_core::agendas::all(config).into_iter().filter(|a| a.whose != sioul_core::agendas::Whose::Yours && a.busy() && !a.busy_time.counts && !done.contains(&a.id)) {
         let Some(account) = config.accounts.iter().find(|x| x.id == agenda.account && kind_of(x) == ServerKind::Nextcloud) else { continue };
         let Some(url) = by_place(&agenda.id).and_then(|c| on_server(&c)) else { continue };
         let key = format!("transparent:{}", agenda.id);
@@ -1129,7 +1130,7 @@ fn last_write(entries: Option<&(String, Vec<sioul_sync::devices::Entry>)>, id: &
 }
 
 /// A time as Mail's rows say it: "14:05" today, "yesterday at 18:10", else its date.
-fn when(at: i64, now: i64) -> String {
+pub(crate) fn when(at: i64, now: i64) -> String {
     let zone = sioul_core::zone::current();
     let (Ok(then), Ok(today)) = (jiff::Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone())), jiff::Timestamp::from_second(now).map(|t| t.to_zoned(zone))) else { return String::new() };
     let time = then.strftime("%H:%M").to_string();

@@ -130,7 +130,10 @@ SafePopup {
     x: parent ? parent.width - width : 0
     y: 0
     // Two fifths of the window and a little more, 520 to 760 pixels; all of a phone's (Theme.qml).
-    width: !parent ? 520 : panel.theme.sideWidth(panel.roomWidth)
+    // A panel that holds a table at a glance (Agenda ⚙'s agendas, 26 November 2026) spans the
+    // view, a margin left on the page under it; its other settings keep a readable width.
+    readonly property bool wide: panel.rows.some(row => row.kind === "agendas")
+    width: !parent ? 520 : panel.wide && panel.roomWidth >= 720 ? panel.roomWidth - (panel.roomWidth >= 1100 ? 48 : 0) : panel.theme.sideWidth(panel.roomWidth)
     height: parent ? panel.roomHeight : 600
     padding: panel.theme.gap
     modal: false
@@ -214,6 +217,8 @@ SafePopup {
 
                             objectName: "setting:" + modelData.key
                             Layout.fillWidth: true
+                            // Beside a table at a glance, a setting of one value keeps a readable width.
+                            Layout.maximumWidth: panel.wide && ["agendas", "conflicts"].indexOf(modelData.kind) < 0 ? panel.theme.readable : -1
                             setting: modelData
                             sioul: panel.sioul
                             theme: panel.theme

@@ -344,6 +344,9 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
             for meeting in &report.meetings {
                 tell(qt, shared, meeting_set_aside_line(meeting));
             }
+            // "Counts as busy time" said while its server could not be told: told now (`busytime`).
+            crate::busytime::synced_now(&account.id);
+            crate::busytime::keep_account(&account.id);
             // Events came or went: your availabilities' mirrors kept from this fresher view (design-availability-sharing §3).
             if report.received + report.removed > 0 {
                 crate::servers::availability_upkeep(qt, shared);

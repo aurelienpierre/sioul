@@ -47,11 +47,14 @@ pub fn event_marked(event: &Occurrence) -> bool {
     !event.cancelled && !event.declined && !event.transparent && (!event.all_day || event.opaque)
 }
 
-/// Whether an event is the person's own: of an agenda of theirs, not one
-/// someone else shares (`theirs`) nor one that gives its availability only
-/// (`Occurrence::busy`), and no task's time block (`task`), which is its task's.
+/// Whether an event is the person's own: of an agenda of theirs, or one
+/// someone else shares that they said counts as their busy time
+/// (`Occurrence::counted`), not one that gives its availability only
+/// (`Occurrence::busy`) unless they said that one counts too (review of
+/// edef0091, F2: the plan and the availability already count it), and no
+/// task's time block (`task`), which is its task's.
 pub fn own_event(event: &Occurrence) -> bool {
-    !event.theirs && !event.busy && event.task.is_empty()
+    (!event.theirs || event.counted) && (!event.busy || event.counted) && event.task.is_empty()
 }
 
 /// Whether an event holds the person busy for do-not-disturb: their own,

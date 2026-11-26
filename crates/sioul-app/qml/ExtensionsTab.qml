@@ -247,26 +247,6 @@ Item {
                                 }
                             }
                         }
-                        // Whether its lessons count as your own busy time: the extension's
-                        // suggestion by default (a pupil's lessons off, your own appointments on);
-                        // the same words, and the same line under them, as a subscribed calendar's tick.
-                        // Not offered for another person's agenda: never your time; its events are
-                        // written free unless you said otherwise (`extensions::busy_default`).
-                        Switch {
-                            objectName: "extensionBusy:" + agenda.modelData.id
-                            visible: agenda.modelData.theirs !== true
-                            text: tab.sioul.text("agenda-busy-time")
-                            checked: agenda.modelData.busy === true
-                            onToggled: tab.sioul.extensionBusy(offer.modelData.id, agenda.modelData.id, checked)
-                        }
-                        Label {
-                            objectName: "extensionBusyHelp:" + agenda.modelData.id
-                            visible: agenda.modelData.theirs !== true
-                            Layout.fillWidth: true
-                            text: tab.sioul.text("agenda-busy-time-help")
-                            wrapMode: Text.Wrap
-                            color: tab.theme.muted
-                        }
                     }
                 }
                 // Each set of contacts it brought: its name as the extension gave it (plain text,

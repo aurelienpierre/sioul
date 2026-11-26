@@ -86,9 +86,6 @@ Item {
         function extensionCalendar(id, agenda, choice) {
             mock.asked = mock.asked.concat(["calendar " + id + " " + agenda + " " + choice])
         }
-        function extensionBusy(id, agenda, counts) {
-            mock.asked = mock.asked.concat(["busy " + id + " " + agenda + " " + counts])
-        }
         function extensionBook(id, contactSet, choice) {
             mock.asked = mock.asked.concat(["book " + id + " " + contactSet + " " + choice])
         }
@@ -211,9 +208,9 @@ Item {
 
         function test_each_agenda_says_where_its_lessons_go_and_a_calendar_is_chosen() {
             const tab = make([offer({ installed: true, enabled: true, signedIn: true, agendas: [
-                { id: "p-1", name: "Timetable: <b>Alex</b>", line: "Choose the calendar.", warn: true, place: "", busy: false },
-                { id: "p-2", name: "Timetable: Sam", line: "In Kids: 140 lessons.", warn: false, place: "local/kids", busy: true },
-                { id: "p-3", name: "Lessons", line: "In Lessons: 12 lessons.", warn: false, place: "local/lessons", busy: false, theirs: true, whose: "Lessons is Kim's agenda. Its events are theirs." }
+                { id: "p-1", name: "Timetable: <b>Alex</b>", line: "Choose the calendar.", warn: true, place: "" },
+                { id: "p-2", name: "Timetable: Sam", line: "In Kids: 140 lessons.", warn: false, place: "local/kids" },
+                { id: "p-3", name: "Lessons", line: "In Lessons: 12 lessons.", warn: false, place: "local/lessons", theirs: true, whose: "Lessons is Kim's agenda. Its events are theirs." }
             ] })])
             const shown = texts(tab, []).join("\n")
             verify(shown.indexOf("Timetable: <b>Alex</b>") >= 0, "a name the extension gave, as plain text: " + shown)
@@ -241,17 +238,12 @@ Item {
             compare(mock.asked, ["new cloud Timetable: <b>Alex</b> partner true false", "person cloud/new person p-sam", "calendar timetable p-1 place:cloud/new"])
             verify(find(tab, "extensionNewCalendar:p-1") === null, "closed once made")
             mock.asked = []
-            // The busy toggle shows the choice (or the extension's suggestion), and sends the flip.
-            compare(find(tab, "extensionBusy:p-1").checked, false, "a pupil's lessons are not your busy time by default")
-            compare(find(tab, "extensionBusy:p-1").text, "agenda-busy-time", "the words of a subscribed calendar's tick")
-            compare(find(tab, "extensionBusyHelp:p-1").text, "agenda-busy-time-help", "and the line under them")
-            compare(find(tab, "extensionBusy:p-2").checked, true, "chosen to count as busy")
-            // Another person's agenda: whose said in words, no busy choice offered.
+            // Whether its lessons count as busy time is its calendar's own switch, in Your agendas
+            // (26 November 2026): none here, for any agenda.
+            verify(find(tab, "extensionBusy:p-1") === null && find(tab, "extensionBusy:p-2") === null)
+            // Another person's agenda: whose said in words.
             compare(find(tab, "extensionAgendaWhose:p-3").text, "Lessons is Kim's agenda. Its events are theirs.")
-            verify(find(tab, "extensionAgendaWhose:p-3").visible && !find(tab, "extensionBusy:p-3").visible && !find(tab, "extensionBusyHelp:p-3").visible)
-            find(tab, "extensionBusy:p-1").toggle()
-            find(tab, "extensionBusy:p-1").toggled()
-            compare(mock.asked[mock.asked.length - 1], "busy timetable p-1 true", "the flip goes back to Sioul")
+            verify(find(tab, "extensionAgendaWhose:p-3").visible)
         }
 
         function test_each_set_says_where_its_contacts_go_and_a_book_is_chosen() {

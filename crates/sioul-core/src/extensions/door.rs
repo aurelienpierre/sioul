@@ -33,9 +33,12 @@
 //!   counts this agenda as their own busy time, `TRANSP:TRANSPARENT`
 //!   otherwise. The extension only suggests a default (`AgendaReply::busy`:
 //!   Planity true, a pupil's Skolengo false); the person's per-agenda choice
-//!   (`[extensions.busy]`, resolved before the door is called) decides. An
-//!   own event written OPAQUE reaches Sioul's real busy (`busy::holds_you`);
-//!   nothing in `busy.rs` changes.
+//!   (`[extensions.busy]`, resolved before the door is called; written by its
+//!   calendar's switch in Your agendas) decides. A lesson held with the other
+//!   mark is written again at the next refresh, whatever its hash says, so
+//!   that a choice made on a device that does not run the extension reaches
+//!   it. An own event written OPAQUE reaches Sioul's real busy
+//!   (`busy::holds_you`); nothing in `busy.rs` changes.
 
 use super::reply::AgendaReply;
 use crate::{agenda, lines, vdir};
@@ -198,12 +201,14 @@ fn marked(object: &str, uid: &str, category: &str, hash: &str, words: &Words, bu
 }
 
 /// An event of the extension's found in a calendar: its file, the hash it
-/// carries (none when a server dropped the line), its first times.
+/// carries (none when a server dropped the line), its first times, and
+/// whether it is written free (`TRANSP:TRANSPARENT`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
     pub path: PathBuf,
     pub hash: Option<String>,
     pub times: Option<(i64, i64)>,
+    pub free: bool,
 }
 
 /// The events of `dir` whose UID is of the form `super::event_uid` gives for
@@ -219,7 +224,8 @@ pub fn held(dir: &Path, extension: &str, agenda: &str) -> BTreeMap<String, Held>
         }
         let unfolded = lines::unfold(&text);
         let hash = unfolded.iter().find(|l| lines::raw_name(l) == HASH_LINE).map(|l| lines::value(l).trim().to_string()).filter(|h| !h.is_empty());
-        found.insert(uid, Held { path, hash, times: agenda::first_times(&text, &TimeZone::UTC) });
+        let free = unfolded.iter().any(|l| lines::name(l) == "TRANSP" && lines::value(l).trim().eq_ignore_ascii_case("TRANSPARENT"));
+        found.insert(uid, Held { path, hash, times: agenda::first_times(&text, &TimeZone::UTC), free });
     }
     found
 }
@@ -280,7 +286,11 @@ pub fn plan(dir: &Path, lessons: &[Lesson], held: &BTreeMap<String, Held>, noted
         match held.get(&lesson.uid) {
             Some(there) => {
                 let known = there.hash.as_deref().or_else(|| noted.get(&lesson.uid).map(String::as_str));
-                if known == Some(lesson.hash.as_str()) {
+                // Its busy mark is not part of its hash: one written the other way (the agenda's
+                // switch turned since, on any device) is written again, so that the device that
+                // runs the extension follows the shared choice at its next refresh.
+                let free = lesson.text.contains("TRANSP:TRANSPARENT");
+                if known == Some(lesson.hash.as_str()) && there.free == free {
                     plan.unchanged += 1;
                 } else {
                     plan.write.push((there.path.clone(), lesson.text.clone(), lesson.uid.clone(), lesson.hash.clone()));
@@ -577,10 +587,9 @@ mod tests {
     /// written `TRANSP:OPAQUE`, one they do not `TRANSP:TRANSPARENT`; and an
     /// OPAQUE lesson, the person's own and needing no answer, reaches Sioul's
     /// real busy (`busy::holds_you`), so two can clash, while a free one does
-    /// not. Each a first write into its own calendar: the busy mark is Sioul's,
-    /// not part of the lesson's hash, so re-taking the same lesson would not
-    /// rewrite it (a flip propagates through `take_out_of` and a refresh, the
-    /// way a calendar change does).
+    /// not. The busy mark is Sioul's, not part of the lesson's hash, and a
+    /// lesson held with the other mark is written again (`plan`), so that a
+    /// choice turned on a device that does not run the extension reaches it.
     #[test]
     fn a_busy_agenda_is_written_opaque_and_holds_you() {
         const EXT: &str = "busy-test";
@@ -609,6 +618,11 @@ mod tests {
         let free = free_read.iter().find(|o| o.summary == "Maths").expect("the free lesson read back");
         assert!(crate::busy::own_event(free) && !crate::busy::event_marked(free), "a TRANSPARENT lesson is own but not busy");
         assert!(!crate::busy::holds_you(free), "a free lesson does not hold you busy");
+        // The choice turned since, on any device (its calendar's switch, review of edef0091, F6):
+        // the same lesson written again with its new mark at the next refresh, then left as it is.
+        assert_eq!(take(EXT, &reply, &free_cal, &words(), true).unwrap().written, 1, "its mark differs: written again");
+        assert!(text_of(&free_cal, &uid).contains("TRANSP:OPAQUE"));
+        assert_eq!(take(EXT, &reply, &free_cal, &words(), true).unwrap().unchanged, 1, "the same mark: nothing written");
     }
 
     /// Only events whose UID has the extension's form are touched: the

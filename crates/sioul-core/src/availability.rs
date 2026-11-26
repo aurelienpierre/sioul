@@ -721,7 +721,8 @@ pub fn days_off_spans(days_off: &crate::vacations::DaysOff, window: (i64, i64), 
 /// are made one, so that nothing says how many things fill a time. With
 /// `closing`, one last block "Not known yet" from the window's end on.
 /// Never an event of an agenda that is not the person's (`theirs`): another person's busy time,
-/// a co-worker's lessons say, is theirs to share, not the person's (review of 3346ff96, 3).
+/// a co-worker's lessons say, is theirs to share, not the person's (review of 3346ff96, 3); a
+/// child's or a shared agenda only once the person said it counts as their busy time (`counted`).
 pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words, health: &BTreeSet<String>, tasks: &TaskTime, window: (i64, i64)) -> Vec<Block> {
     let (from, to) = window;
     let step = availability.step();
@@ -734,7 +735,7 @@ pub fn blocks(events: &[Occurrence], availability: &Availability, words: &Words,
     };
     let mut found: Vec<Block> = events
         .iter()
-        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && !e.theirs && e.task.is_empty() && e.end > e.start && e.end > from && e.start < to)
+        .filter(|e| availability.agendas.iter().any(|a| *a == e.agenda) && crate::busy::event_marked(e) && (!e.theirs || e.counted) && e.task.is_empty() && e.end > e.start && e.end > from && e.start < to)
         .map(|e| {
             let (start, end) = outward(e.start - i64::from(e.margins.before.min(24 * 60)) * 60, e.end + i64::from(e.margins.after.min(24 * 60)) * 60);
             Block { start, end, word: word_of(e) }

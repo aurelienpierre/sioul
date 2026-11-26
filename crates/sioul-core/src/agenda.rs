@@ -113,6 +113,12 @@ pub struct Occurrence {
     /// the matrix says, never holding your time (`holds_time`).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub theirs: bool,
+    /// Its agenda is not yours (a child's, or one shared with you) and you
+    /// said it counts as your busy time (`agendas::BusyTime`): it holds your
+    /// time as one of yours does (`holds_time`, `busy::own_event`, your
+    /// availability). Never another person's own (a partner's).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub counted: bool,
     /// Its agenda gives its availability only: its title is the agenda's
     /// name, without place, notes, guests or alarms, whatever its file says
     /// (`file_occurrences_as`).
@@ -172,10 +178,11 @@ impl Occurrence {
 
     /// Whether it takes time from the plan, your hours and your meals
     /// (`plan::event_spans`, `capacity`): not cancelled, not transparent, not
-    /// declined by you, of an agenda of yours (a partner's busy time is not
-    /// yours: `agendas`). Whole days are left out where times are counted.
+    /// declined by you, of an agenda of yours or one you said counts as your
+    /// busy time (`counted`; a partner's busy time is never yours:
+    /// `agendas::busy_time`). Whole days are left out where times are counted.
     pub fn holds_time(&self) -> bool {
-        !self.cancelled && !self.transparent && !self.declined && !self.theirs
+        !self.cancelled && !self.transparent && !self.declined && (!self.theirs || self.counted)
     }
 
     /// Whether it is another person's alone: of a partner's or another
@@ -677,11 +684,15 @@ fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::
         }
         let status = text_of(component, &ICalendarProperty::Status).to_ascii_uppercase();
         let transp = text_of(component, &ICalendarProperty::Transp);
-        // A calendar transparent as a whole (its server's `schedule-calendar-transp`) takes no time.
-        let transparent = transp.eq_ignore_ascii_case("TRANSPARENT") || marks.transparent;
+        let own_free = transp.eq_ignore_ascii_case("TRANSPARENT");
+        // An agenda that does not count as your busy time as a whole (`agendas::Marks::transparent`,
+        // its one switch, its server's `schedule-calendar-transp` among what decides it) takes no time.
+        let transparent = own_free || marks.transparent;
         let opaque = transp.eq_ignore_ascii_case("OPAQUE") && !marks.transparent;
-        // Availability only: a time marked free is no busy time, and is left out.
-        if busy && transparent {
+        // Availability only: a time its own event marks free is no busy time, and is left out. One
+        // whose agenda does not count as yours still shows as a busy band (another parent's, whose
+        // calendar a server keeps transparent for you), holding none of your time.
+        if busy && own_free {
             continue;
         }
         let occurrence = if busy {
@@ -700,6 +711,9 @@ fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::
                 cancelled: status == "CANCELLED",
                 tentative: status == "TENTATIVE",
                 read_only: true,
+                // Its band is its owner's busy time (`children::busy_then` reads it so); it leaves
+                // you free only when the agenda is yours and does not count as your busy time.
+                transparent: marks.transparent && !marks.theirs,
                 clock: if all_day { String::new() } else { clock.clone() },
                 ..Occurrence::default()
             }
@@ -742,7 +756,7 @@ fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::
             }
         };
         let rid = if component.is_recurrent_or_override() { changed.get(&event.comp_id).cloned().unwrap_or_else(|| rid_of_start(start, all_day, zone)) } else { String::new() };
-        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, other_person: marks.other_person, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
+        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, counted: marks.counted, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, other_person: marks.other_person, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
     }
     found
 }
@@ -5987,5 +6001,24 @@ mod tests {
         assert_eq!(year_ago, summaries(read_occurrences(&path, &calendar(), &crate::agendas::marks_of(&calendar()), now - 365 * 86_400, now - 300 * 86_400, &paris(), &own)));
         assert!(year_ago.is_empty());
         let _ = std::fs::remove_file(path);
+    }
+
+    /// Another parent's busy times (an agenda for its availability only, not
+    /// yours) whose calendar its server keeps transparent for you (Nextcloud's
+    /// default for a share, and Sioul's own `mirrors::others_transparent`):
+    /// its bands are read, as their owner's busy time, holding none of yours;
+    /// a band its own event marks free is left out (review of edef0091: every
+    /// band was dropped before 26 November 2026).
+    #[test]
+    fn another_parent_s_busy_bands_show_whatever_their_calendar_s_mark() {
+        let text = |uid: &str, transp: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nSUMMARY:Dentist\r\n{transp}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let marks = crate::agendas::Marks { id: "a/sam".into(), name: "Sam".into(), theirs: true, busy: true, transparent: true, other_person: true, ..crate::agendas::Marks::default() };
+        let (from, to) = (at("2026-11-04T00:00"), at("2026-11-05T00:00"));
+        let band = file_occurrences_marked(&write_temp("sam-band.ics", &text("sam-1", "")), &calendar(), &marks, from, to, &paris(), &[]);
+        assert_eq!(band.len(), 1, "the band is read");
+        assert!(band[0].busy && band[0].theirs && !band[0].transparent && !band[0].holds_time(), "their busy time, none of yours: {:?}", band[0]);
+        assert_eq!(band[0].summary, "Sam", "the agenda's name, nothing of what the event says");
+        let free = file_occurrences_marked(&write_temp("sam-free.ics", &text("sam-2", "TRANSP:TRANSPARENT\r\n")), &calendar(), &marks, from, to, &paris(), &[]);
+        assert!(free.is_empty(), "a band its own event marks free is left out");
     }
 }

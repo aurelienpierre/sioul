@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-// Agenda ⚙'s block of the agendas (several agendas): each calendar and task
-// list, folded to a line, opened to say whose it is (yours, a child's,
-// another parent's, a partner's, shared with you) and whose name, what it is
-// for (work, your admin, leisure), when a personal one reaches you (all day,
-// or outside work hours), and what you may do with it (read and write, read
-// only, its availability only; never writing where its server keeps it read
-// only). What Sioul saw decides until you say; each change is saved at once,
-// into the configuration, and travels with the settings (`agendas::set_field`).
-// "Keep hidden" hides one for good on this device, whatever the hours, until
-// "Show again" (`agenda::keep_hidden`, this device's own). A child's agenda
-// names the other parent who may take its events, how they answer (an
-// invitation in their mail, or their own Sioul), and who usually takes each
-// kind (part 3); below the agendas, where your stand-ins of each kind go and
-// the follow-up tasks (`children`). On its server (part 5, `servers`): "New
-// agenda…" makes one with its role; yours are renamed, recoloured and
-// removed (asked in one sentence, a dated copy first), someone else's
-// stopped showing; each says who sees it, shared with a person or by a link
-// where its server shares. Your availability is its own block, below
-// (AvailabilitySetup.qml).
+// Agenda ⚙'s block of the agendas (several agendas), at a glance (26
+// November 2026): one table, one row per calendar and task list, every
+// property in a column, no fold to open: its colour and name (its account
+// under it), whose it is, what it is for, when it reaches you, what you may
+// do with it, whether it counts as your busy time, who sees it, when it was
+// synced. Each value whole, in a few words (the full words in its menu's
+// list, a sentence as its tooltip), each column as wide as its widest value;
+// wider than the page, the table scrolls sideways rather than cut one. Its
+// colour, whose it is, what for, when and what you may do are changed on the
+// row (its dot, its menus), busy time by its switch; the rest, which needs
+// more room, in the agenda's card, Details… (AgendaCard.qml, headed
+// sections), never a setting the row changes. On a phone, one block per
+// agenda, each value under its label. What Sioul saw decides until you say;
+// each change is saved at once, into the configuration, and travels with the
+// settings (`agendas::set_field`). Nothing is asked of a server before the
+// page shows: what this device knows comes at once, and who sees each agenda
+// arrives into its row when its server answers, a quiet mark meanwhile
+// (`readAgendaSharing`, asked once the page is drawn). "Counts as busy time"
+// is the agenda's one switch (`busytime`): its server's own mark where it
+// keeps one (Nextcloud's "transparent"). Below the agendas, where your
+// stand-ins of each kind go and the follow-up tasks (`children`). Your
+// availability is its own block (AvailabilitySetup.qml).
 
 pragma ComponentBehavior: Bound
 
@@ -39,10 +42,11 @@ ColumnLayout {
     property var view: ({ agendas: [], pairs: [], children: { kinds: [], yours: [], follow_ups: true, any: false } })
     property string viewText: ""
     property string problem: ""
-    // The agendas opened, by place, while the panel lives.
-    property var opened: ({})
-    // Each agenda's sharing as its server last answered (`agendaShared`), by place.
+    // Each agenda's sharing as its server last answered (`agendaShared`, else the row's
+    // `shared_with`, its last answer on this device), by place.
     property var sharing: ({})
+    // The agendas whose sharing is being asked of their server now, by place: a quiet mark on their row.
+    property var reading: ({})
     // The removal asked of an agenda: its place, and what it would do (`agendaRemoval`).
     property string removing: ""
     property var removal: ({})
@@ -51,11 +55,134 @@ ColumnLayout {
     // "Subscribe to a calendar…" open (SubscribeForm.qml).
     property bool subscribing: false
     readonly property var colours: ["#4c6b5c", "#3f6f8f", "#7a5c99", "#b07d3f", "#a3504f", "#5f7f3a", "#5b6470", "#c06c8d"]
+    // The table at a glance where there is room for it; else one block per agenda (a phone, a narrow window).
+    // The table where a computer gives room for it; on a phone, one block per agenda.
+    readonly property bool wide: setup.width >= 760
+    readonly property int gap: 10
+    // A block's labels, on a phone.
+    readonly property int labelWidth: 120
+    // The table's columns, by their heading's words, each as wide as its widest value
+    // (`measure`), the room left shared among them; wider than the page, the table scrolls
+    // sideways rather than cut a word (the coordinator's notes of 26 November 2026).
+    readonly property var columns: ["agenda-col-name", "agenda-whose", "agenda-for", "agenda-reaches", "agenda-access", "agenda-col-busy", "agenda-sharing", "agenda-col-synced", ""]
+    // Each column's widest value now (`measure`), in pixels.
+    property var need: []
+    readonly property int needed: setup.need.reduce((a, b) => a + b, 0) + setup.gap * (setup.columns.length - 1)
+    // The table's own width: its columns', or the page's when it is wider.
+    readonly property int tableWidth: Math.max(setup.width, setup.needed)
 
     // A calendar of busy blocks pressed: Agenda ⚙ ▸ Your availability, where it is kept, shown.
     signal availabilityAsked
 
     readonly property var areas: ["work", "admin", "leisure"]
+
+    // A value of the table changed in place: its words and a ▾, its choices in a menu; one
+    // chosen (`chosen`), or, for several (what it is for), each ticked or not (`toggledOne`).
+    component MenuCell: Button {
+        id: cell
+
+        property var theme
+        property var choices: []
+        property var labels: []
+        property string current: ""
+        property bool several: false
+        property var ticked: []
+        // The words shown; the chosen one's by default.
+        property string shown: cell.labels[Math.max(0, cell.choices.indexOf(cell.current))] || ""
+
+        signal chosen(string value)
+        signal toggledOne(string value, bool on)
+
+        // The choice at `index` taken, as its menu item does.
+        function choose(index) {
+            if (cell.several)
+                cell.toggledOne(cell.choices[index], cell.ticked.indexOf(cell.choices[index]) < 0)
+            else if (cell.choices[index] !== cell.current)
+                cell.chosen(cell.choices[index])
+        }
+
+        flat: true
+        leftPadding: 8
+        rightPadding: 6
+        text: cell.shown
+        onClicked: cellMenu.popup(cell, 0, cell.height)
+
+        contentItem: RowLayout {
+            spacing: 4
+
+            Label {
+                Layout.fillWidth: true
+                text: cell.text
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                color: cell.theme ? cell.theme.text : "black"
+            }
+            Label {
+                text: "▾"
+                color: cell.theme ? cell.theme.muted : "gray"
+            }
+        }
+
+        Menu {
+            id: cellMenu
+
+            Repeater {
+                model: cell.choices.length
+
+                delegate: MenuItem {
+                    id: item
+
+                    required property int index
+
+                    checkable: true
+                    checked: cell.several ? cell.ticked.indexOf(cell.choices[item.index]) >= 0 : cell.choices[item.index] === cell.current
+                    text: cell.theme ? cell.theme.plain(cell.labels[item.index] || "") : ""
+                    onTriggered: {
+                        cell.choose(item.index)
+                        // What the settings say once read again, never the tick's own toggle.
+                        item.checked = Qt.binding(() => cell.several ? cell.ticked.indexOf(cell.choices[item.index]) >= 0 : cell.choices[item.index] === cell.current)
+                    }
+                }
+            }
+        }
+    }
+
+    // A column's width in the table: its widest value, and its share of the room left (but the Details… column's).
+    function columnWidth(index) {
+        const own = setup.need[index] || 0
+        const spare = setup.width - setup.needed
+        if (spare <= 0 || index === setup.columns.length - 1)
+            return own
+        const growing = setup.needed - (setup.need[setup.columns.length - 1] || 0) - setup.gap * (setup.columns.length - 1)
+        return own + Math.floor(spare * own / Math.max(1, growing))
+    }
+
+    // A text's width in a cell's font: `kind` "bold" (a name, a heading), "small" (under a name), else plain.
+    function measure(text, kind) {
+        const metrics = kind === "bold" ? boldMetrics : kind === "small" ? smallMetrics : plainMetrics
+        metrics.text = text
+        return Math.ceil(metrics.advanceWidth)
+    }
+
+    // Each column's widest value, its heading's among them: read again with the agendas and their sharing.
+    function measureColumns() {
+        const rows = setup.view.agendas || []
+        const cell = text => setup.measure(text, "") + setup.measure("▾", "") + 22
+        const widest = (values, at) => values.reduce((most, v) => Math.max(most, v), at)
+        const heading = i => setup.columns[i] === "" ? 0 : setup.measure(setup.sioul.text(setup.columns[i]), "bold")
+        const named = rows.map(a => Math.max(setup.measure(a.name, "bold"), setup.measure(a.place || "", "small")))
+        setup.need = [
+            Math.max(heading(0), Math.min(220, widest(named, 80)) + 24),
+            widest(rows.map(a => a.mirror === true ? setup.measure(setup.whoseWords(a), "") : cell(setup.whoseWords(a))), heading(1)),
+            widest(rows.filter(a => a.mirror !== true).map(a => cell(setup.areaWords(String(a.area).split("+")))), heading(2)),
+            widest(rows.filter(a => a.mirror !== true).map(a => cell(setup.reachesWords(a))), heading(3)),
+            widest(rows.filter(a => a.mirror !== true).map(a => cell(setup.accessWords(a))), heading(4)),
+            widest(rows.map(a => setup.measure((a.busy_time || {}).short || "", "small")), Math.max(heading(5), switchProbe.implicitWidth)),
+            Math.min(260, widest(rows.map(a => setup.measure(setup.sharedWords(a, setup.sharing[a.id] || null), "") + 16), heading(6))),
+            Math.min(200, widest(rows.map(a => setup.measure(a.synced || "", "")), heading(7))),
+            detailsProbe.implicitWidth
+        ]
+    }
 
     // Read again; `kept`, the same answer changes nothing (its rows, their open menus, stay).
     function read(kept) {
@@ -68,12 +195,114 @@ ColumnLayout {
         } catch (e) {
             setup.view = { agendas: [], pairs: [], children: { kinds: [], yours: [], follow_ups: true, any: false } }
         }
+        // Who sees each one, as its server last answered on this device, until it answers anew.
+        const next = Object.assign({}, setup.sharing)
+        let added = false
+        for (const agenda of setup.view.agendas || []) {
+            if (next[agenda.id] === undefined && agenda.shared_with) {
+                next[agenda.id] = agenda.shared_with
+                added = true
+            }
+        }
+        if (added)
+            setup.sharing = next
+        setup.measureColumns()
+    }
+
+    // Who sees each agenda on a server, asked once the page is drawn, each answer into its row.
+    function askSharing() {
+        const reading = Object.assign({}, setup.reading)
+        const asked = []
+        for (const agenda of setup.view.agendas || []) {
+            if (agenda.mirror === true || !agenda.server || agenda.server.server === "local" || agenda.subscription)
+                continue
+            reading[agenda.id] = true
+            asked.push(agenda.id)
+        }
+        setup.reading = reading
+        for (const id of asked)
+            setup.sioul.readAgendaSharing(id)
     }
 
     // One field written ("" back to what Sioul saw); the agendas read again.
     function save(id, field, value) {
         setup.problem = setup.sioul.setAgendaField(id, field, value)
         setup.read()
+    }
+
+    // "Counts as busy time" turned: kept where it is kept, and on its server where it keeps the mark.
+    function setBusy(id, counts) {
+        setup.problem = setup.sioul.setAgendaBusy(id, counts)
+        setup.read()
+    }
+
+    // One of what it is for ticked or not, the others as they are.
+    function toggleArea(agenda, area, on) {
+        const now = String(agenda.area).split("+")
+        setup.save(agenda.id, "area", setup.areas.filter(a => a === area ? on : now.indexOf(a) >= 0).join("+"))
+    }
+
+    // A row's values in a few words, whole in their cell; the full words stay in each menu's list.
+    // What it is for: "Admin + Leisure".
+    function areaWords(on) {
+        return setup.areas.filter(a => on.indexOf(a) >= 0).map(a => setup.sioul.text("agenda-area-short-" + a)).join(" + ")
+    }
+
+    // Whose it is: "Yours", "Child · Léa"; a calendar of busy blocks, what it is kept for.
+    function whoseWords(agenda) {
+        if (agenda.mirror === true)
+            return agenda.kept_for ? setup.sioul.textWith("agenda-mirror-kept-for", "name", agenda.kept_for) : setup.sioul.text("agenda-mirror-kept")
+        const role = setup.sioul.text("agenda-whose-short-" + agenda.whose)
+        return (agenda.person || "") !== "" ? setup.sioul.textArgs("agenda-whose-short-person", JSON.stringify({ role: role, name: agenda.person })) : role
+    }
+
+    // When it reaches you: "All day", "Outside work"; one for work alone, "Work hours".
+    function reachesWords(agenda) {
+        return setup.sioul.text("agenda-reaches-short-" + (String(agenda.area).split("+").indexOf("work") >= 0 ? "work" : agenda.reaches))
+    }
+
+    // What you may do: "Read, write", "Read only", "Busy only".
+    function accessWords(agenda) {
+        return setup.sioul.text("agenda-access-short-" + agenda.access)
+    }
+
+    // Who sees it, in its row: the names its server gave, "Only you", a link; this device's own
+    // sharing for one here; by its address for a calendar read by it; "" before any answer (its
+    // quiet mark shows). The server's sentence is its tooltip, and its card's.
+    function sharedWords(agenda, share) {
+        if (agenda.subscription)
+            return setup.sioul.text("agenda-shared-address")
+        if (!agenda.server || agenda.server.server === "local")
+            return setup.sioul.text("agenda-shared-here")
+        if (share === null)
+            return ""
+        if ((share.problem || "") !== "" || share.sharer === undefined || share.sharer === "none")
+            return setup.sioul.text("agenda-shared-unknown")
+        const names = (share.people || []).map(p => p.name).join(", ")
+        if (share.link)
+            return names === "" ? setup.sioul.text("agenda-shared-link-alone") : setup.sioul.textWith("agenda-shared-link", "who", names)
+        return names === "" ? setup.sioul.text("agenda-shared-only-you") : names
+    }
+
+    // A colour chosen on its row: a calendar read by its address keeps it in its settings; yours, on its server.
+    function recolour(agenda, colour) {
+        if (agenda.subscription)
+            setup.saveSubscription(agenda.subscription.id, "colour", colour)
+        else {
+            setup.problem = setup.sioul.recolourAgenda(agenda.id, colour)
+            setup.read()
+        }
+    }
+
+    // Its card, over the page.
+    function openCard(id) {
+        const card = agendaCard.now()
+        card.show(id)
+    }
+
+    // The card open now, or null (the window's pictures, the tests).
+    function card() {
+        return agendaCard.item
     }
 
     // Sioul's window, with its own properties (its locale), for the person's form.
@@ -97,16 +326,6 @@ ColumnLayout {
         dialog.field = field
         const relation = field === "parent_person" ? "other-parent" : ({ child: "child", partner: "partner", parent: "other-parent" })[agenda.whose] || ""
         dialog.begin("", "", relation, field === "parent_person" && agenda.person_id ? [agenda.person_id] : [])
-    }
-
-    function toggle(id) {
-        const next = Object.assign({}, setup.opened)
-        next[id] = !next[id]
-        setup.opened = next
-        // Who sees it, asked of its server when its line opens.
-        const agenda = setup.view.agendas.find(a => a.id === id)
-        if (next[id] && agenda && agenda.server && agenda.server.server !== "local")
-            setup.sioul.readAgendaSharing(id)
     }
 
     // The removal asked first, in one sentence; done on the second press.
@@ -139,6 +358,10 @@ ColumnLayout {
             const next = Object.assign({}, setup.sharing)
             next[id] = JSON.parse(answer || "{}")
             setup.sharing = next
+            const reading = Object.assign({}, setup.reading)
+            delete reading[id]
+            setup.reading = reading
+            setup.measureColumns()
         }
     }
 
@@ -176,7 +399,18 @@ ColumnLayout {
 
     objectName: "agendasSetup"
     spacing: 4
-    Component.onCompleted: setup.read()
+    Component.onCompleted: {
+        setup.read()
+        asking.start()
+    }
+
+    // Who sees each one asked once the page is drawn, never before it shows.
+    Timer {
+        id: asking
+
+        interval: 60
+        onTriggered: setup.askSharing()
+    }
 
     Label {
         visible: setup.about !== ""
@@ -223,14 +457,13 @@ ColumnLayout {
         persons: setup.view.persons || ({})
         visible: setup.subscribing
         Layout.fillWidth: true
+        // A form keeps a readable width beside the table.
+        Layout.maximumWidth: setup.theme.readable
         sioul: setup.sioul
         theme: setup.theme
         onDone: id => {
             setup.subscribing = false
             setup.read()
-            const opened = Object.assign({}, setup.opened)
-            opened["subscribed/" + id] = true
-            setup.opened = opened
         }
         onCancelled: setup.subscribing = false
     }
@@ -239,6 +472,7 @@ ColumnLayout {
 
         visible: setup.making
         Layout.fillWidth: true
+        Layout.maximumWidth: setup.theme.readable
         sioul: setup.sioul
         theme: setup.theme
         accounts: setup.view.accounts || []
@@ -250,686 +484,512 @@ ColumnLayout {
         onKept: setup.making = false
     }
 
-    Repeater {
-        model: setup.view.agendas
+    // What the columns are measured with (`measure`): a cell's fonts, a switch, Details….
+    Label {
+        id: probe
 
-        delegate: ColumnLayout {
-            id: one
+        visible: false
+    }
+    TextMetrics {
+        id: plainMetrics
 
-            required property var modelData
-            readonly property bool open: setup.opened[one.modelData.id] === true
-            readonly property var on: String(one.modelData.area).split("+")
+        font: probe.font
+    }
+    TextMetrics {
+        id: boldMetrics
 
-            objectName: "agendaSetup"
-            Layout.fillWidth: true
+        font.family: probe.font.family
+        font.pixelSize: probe.font.pixelSize
+        font.weight: Font.DemiBold
+    }
+    TextMetrics {
+        id: smallMetrics
+
+        font.family: probe.font.family
+        font.pixelSize: 13
+    }
+    Switch {
+        id: switchProbe
+
+        visible: false
+    }
+    Button {
+        id: detailsProbe
+
+        visible: false
+        flat: true
+        text: setup.sioul.text("agenda-details")
+    }
+
+    // "Counts as busy time", said once for every row's switch.
+    Label {
+        objectName: "agendaBusyLegend"
+        visible: (setup.view.agendas || []).length > 0
+        Layout.fillWidth: true
+        Layout.maximumWidth: setup.theme.readable * 1.4
+        text: setup.sioul.text("agenda-busy-legend")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.muted
+    }
+
+    // The table, its own width: wider than the page, it scrolls sideways rather than cut a value.
+    Flickable {
+        id: table
+
+        objectName: "agendaTable"
+        Layout.fillWidth: true
+        Layout.preferredHeight: rowsColumn.implicitHeight + (sideways.visible ? sideways.height : 0)
+        contentWidth: setup.wide ? setup.tableWidth : width
+        contentHeight: rowsColumn.implicitHeight
+        flickableDirection: Flickable.HorizontalFlick
+        interactive: contentWidth > width + 1
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+
+        ScrollBar.horizontal: ScrollBar {
+            id: sideways
+
+            objectName: "agendaTableScroll"
+            visible: table.contentWidth > table.width + 1
+            policy: ScrollBar.AlwaysOn
+        }
+
+        ColumnLayout {
+            id: rowsColumn
+
+            width: table.contentWidth
             spacing: 4
 
+            // The columns' headings, over the table alone.
             RowLayout {
+                objectName: "agendaHeadings"
+                visible: setup.wide && (setup.view.agendas || []).length > 0
                 Layout.fillWidth: true
-                spacing: 6
+                Layout.topMargin: 6
+                spacing: setup.gap
 
-                ToolButton {
-                    // A calendar of busy blocks Sioul keeps: nothing of its own to choose; it opens Your availability.
-                    readonly property bool mirror: one.modelData.mirror === true
-
-                    objectName: "agendaFold"
-                    text: mirror ? "→" : one.open ? "▾" : "▸"
-                    Accessible.name: mirror ? setup.sioul.text("agenda-mirror-open") : setup.sioul.textWith(one.open ? "agendas-fold" : "agendas-unfold", "group", one.modelData.name)
-                    onClicked: mirror ? setup.availabilityAsked() : setup.toggle(one.modelData.id)
-                }
-                Rectangle {
-                    Layout.preferredWidth: 10
-                    Layout.preferredHeight: 10
-                    radius: 5
-                    color: one.modelData.colour || setup.theme.accent
-                }
-                Label {
-                    Layout.fillWidth: true
-                    Layout.preferredWidth: 0
-                    objectName: "agendaLineLabel"
-                    text: one.modelData.mirror === true
-                        ? one.modelData.name + " · " + (one.modelData.kept_for ? setup.sioul.textWith("agenda-mirror-kept-for", "name", one.modelData.kept_for) : setup.sioul.text("agenda-mirror-kept"))
-                        : one.modelData.name + " · " + setup.sioul.text("agenda-whose-" + one.modelData.whose) + (one.modelData.person !== "" ? " (" + one.modelData.person + ")" : "") + (one.modelData.kept_hidden === true ? " · " + setup.sioul.text("agendas-kept-hidden") : "")
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: setup.theme.text
-
-                    TapHandler {
-                        onTapped: one.modelData.mirror === true ? setup.availabilityAsked() : setup.toggle(one.modelData.id)
-                    }
-                }
-                // A calendar of busy blocks: removed on its own line, after one question (it stops sharing).
-                Button {
-                    objectName: "agendaMirrorRemove"
-                    visible: one.modelData.mirror === true && setup.removing !== one.modelData.id
-                    text: setup.sioul.text("agenda-remove")
-                    onClicked: setup.askRemoval(one.modelData.id)
-                }
-            }
-            // The question a calendar of busy blocks asks before it goes: who stops seeing your busy times.
-            ColumnLayout {
-                visible: one.modelData.mirror === true && setup.removing === one.modelData.id
-                Layout.fillWidth: true
-                Layout.leftMargin: 34
-                spacing: 4
-
-                Label {
-                    objectName: "agendaMirrorRemoveQuestion"
-                    Layout.fillWidth: true
-                    text: setup.removal.sentence || ""
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: setup.theme.text
-                }
-                RowLayout {
-                    spacing: 8
-
-                    Button {
-                        objectName: "agendaMirrorRemoveConfirm"
-                        visible: setup.removal.act === "mirror" || setup.removal.act === "remove"
-                        text: setup.sioul.text(setup.removal.act === "mirror" ? "agenda-remove-mirror-confirm" : "agenda-remove-confirm")
-                        onClicked: setup.remove(one.modelData.id)
-                    }
-                    Button {
-                        flat: true
-                        text: setup.sioul.text("agenda-keep")
-                        onClicked: setup.removing = ""
-                    }
-                }
-            }
-
-            GridLayout {
-                visible: one.open
-                Layout.fillWidth: true
-                Layout.leftMargin: 34
-                columns: 1
-                rowSpacing: 4
-
-                Label {
-                    text: one.modelData.place
-                    textFormat: Text.PlainText
-                    color: setup.theme.muted
-                }
-                // A calendar subscribed by its address: when this device last read it, or why not;
-                // Refresh now, Change the address, Stop; its name; whether it holds holidays.
-                ColumnLayout {
-                    id: feed
-
-                    readonly property var sub: one.modelData.subscription || null
-                    // Its settings do not read here (F19, F20): its line says so, Stop alone stays.
-                    readonly property bool unread: feed.sub !== null && feed.sub.unread === true
-                    property bool changing: false
-                    property bool stopping: false
-
-                    visible: feed.sub !== null
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        objectName: "subscriptionLine"
-                        Layout.fillWidth: true
-                        text: feed.sub ? feed.sub.line : ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: setup.theme.text
-                    }
-                    Flow {
-                        visible: !feed.changing && !feed.stopping
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Button {
-                            objectName: "subscriptionRefresh"
-                            visible: !feed.unread
-                            text: setup.sioul.text("subscribe-refresh")
-                            onClicked: setup.problem = setup.sioul.refreshSubscription(feed.sub.id)
-                        }
-                        Button {
-                            objectName: "subscriptionChange"
-                            visible: !feed.unread
-                            text: setup.sioul.text("subscribe-change")
-                            onClicked: {
-                                newAddress.text = feed.sub.url
-                                feed.changing = true
-                            }
-                        }
-                        Button {
-                            objectName: "subscriptionStop"
-                            text: setup.sioul.text("subscribe-stop")
-                            onClicked: feed.stopping = true
-                        }
-                    }
-                    TextField {
-                        id: newAddress
-
-                        objectName: "subscriptionAddress"
-                        visible: feed.changing
-                        Layout.fillWidth: true
-                        inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                        Accessible.name: setup.sioul.text("subscribe-address")
-                    }
-                    Flow {
-                        visible: feed.changing
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Button {
-                            objectName: "subscriptionAddressSave"
-                            enabled: newAddress.text.trim() !== ""
-                            text: setup.sioul.text("subscribe-change-save")
-                            onClicked: {
-                                setup.saveSubscription(feed.sub.id, "url", newAddress.text.trim())
-                                if (setup.problem === "")
-                                    feed.changing = false
-                            }
-                        }
-                        Button {
-                            flat: true
-                            text: setup.sioul.text("agenda-keep")
-                            onClicked: feed.changing = false
-                        }
-                    }
-                    Label {
-                        visible: feed.stopping
-                        Layout.fillWidth: true
-                        text: setup.sioul.text("subscribe-stop-question")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: setup.theme.text
-                    }
-                    Flow {
-                        visible: feed.stopping
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Button {
-                            objectName: "subscriptionStopConfirm"
-                            text: setup.sioul.text("subscribe-stop-confirm")
-                            onClicked: {
-                                setup.problem = setup.sioul.stopSubscription(feed.sub.id)
-                                feed.stopping = false
-                                setup.read()
-                            }
-                        }
-                        Button {
-                            flat: true
-                            text: setup.sioul.text("agenda-keep")
-                            onClicked: feed.stopping = false
-                        }
-                    }
-                    TextField {
-                        objectName: "subscriptionName"
-                        visible: !feed.unread
-                        Layout.fillWidth: true
-                        text: feed.sub ? feed.sub.name : ""
-                        placeholderText: setup.theme.plain(one.modelData.name)
-                        Accessible.name: setup.sioul.text("subscribe-name")
-                        onEditingFinished: if (feed.sub && text.trim() !== feed.sub.name)
-                            setup.saveSubscription(feed.sub.id, "name", text.trim())
-                    }
-                    PlainComboBox {
-                        readonly property var kinds: ["", "public", "school"]
-
-                        objectName: "subscriptionKind"
-                        visible: !feed.unread
-                        Layout.fillWidth: true
-                        model: kinds.map(k => setup.sioul.text("subscribe-holidays-" + (k === "" ? "none" : k)))
-                        currentIndex: feed.sub ? Math.max(0, kinds.indexOf(feed.sub.holidays)) : 0
-                        Accessible.name: setup.sioul.text("subscribe-holidays")
-                        onActivated: index => setup.saveSubscription(feed.sub.id, "holidays", kinds[index])
-                    }
-                    // Whether its days count as your days off is Settings ▸ Hours' alone (VacationsCalendars.qml).
-                    // Its events mark you busy and hold your time only when you say they are yours (F41):
-                    // the same words, and the same line under them, as an extension agenda's switch.
-                    WrapCheckBox {
-                        id: engagements
-
-                        objectName: "subscriptionEngagements"
-                        // Not for another person's (a co-worker's): never your time.
-                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === "" && ["partner", "parent", "someone"].indexOf(one.modelData.whose) < 0
-                        Layout.fillWidth: true
-                        text: setup.sioul.text("agenda-busy-time")
-                        checked: feed.sub !== null && feed.sub.engagements === true
-                        onToggled: setup.saveSubscription(feed.sub.id, "engagements", checked ? "true" : "false")
-                    }
-                    Label {
-                        objectName: "subscriptionEngagementsHelp"
-                        visible: engagements.visible
-                        Layout.fillWidth: true
-                        text: setup.sioul.text("agenda-busy-time-help")
-                        wrapMode: Text.Wrap
-                        color: setup.theme.muted
-                    }
-                    WrapCheckBox {
-                        objectName: "subscriptionAfterClass"
-                        visible: !feed.unread && feed.sub !== null && feed.sub.holidays === "school"
-                        Layout.fillWidth: true
-                        text: setup.sioul.text("subscribe-after-class")
-                        checked: feed.sub !== null && feed.sub.after_class === true
-                        onToggled: setup.saveSubscription(feed.sub.id, "after_class", checked ? "true" : "false")
-                    }
-                    // Its colour in the agenda, kept with its settings (`colour`): no server to ask.
-                    Flow {
-                        visible: !feed.unread
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Repeater {
-                            model: setup.colours
-
-                            delegate: Rectangle {
-                                id: subDot
-
-                                required property string modelData
-
-                                objectName: "subscriptionColour"
-                                width: 22
-                                height: 22
-                                radius: 11
-                                color: subDot.modelData
-                                border.width: (one.modelData.colour || "").toLowerCase().startsWith(subDot.modelData) ? 3 : 0
-                                border.color: setup.theme.text
-                                Accessible.role: Accessible.Button
-                                Accessible.name: setup.sioul.text("agenda-colour") + " " + subDot.modelData
-
-                                TapHandler {
-                                    onTapped: setup.saveSubscription(feed.sub.id, "colour", subDot.modelData)
-                                }
-                            }
-                        }
-                    }
-                }
-                // On its server (part 5): yours renamed, recoloured, removed; someone else's stopped showing.
-                // A list of tasks alone is renamed and removed (or stopped showing) in Tasks ⚙ ▸ Task
-                // lists, its one place, by the same calls (TaskListsSetup.qml).
-                TextField {
-                    objectName: "agendaRename"
-                    visible: one.modelData.server && one.modelData.server.own === true && !setup.tasksOnly(one.modelData)
-                    Layout.fillWidth: true
-                    text: one.modelData.name
-                    Accessible.name: setup.sioul.text("agenda-new-name")
-                    onEditingFinished: if (text.trim() !== "" && text.trim() !== one.modelData.name) {
-                        setup.problem = setup.sioul.renameAgenda(one.modelData.id, text.trim())
-                        setup.read()
-                    }
-                }
-                Flow {
-                    visible: one.modelData.server && one.modelData.server.own === true
-                    Layout.fillWidth: true
-                    spacing: 6
-
-                    Repeater {
-                        model: setup.colours
-
-                        delegate: Rectangle {
-                            id: dot
-
-                            required property string modelData
-
-                            objectName: "agendaColour"
-                            width: 22
-                            height: 22
-                            radius: 11
-                            color: dot.modelData
-                            border.width: (one.modelData.colour || "").toLowerCase().startsWith(dot.modelData) ? 3 : 0
-                            border.color: setup.theme.text
-                            Accessible.role: Accessible.Button
-                            Accessible.name: setup.sioul.text("agenda-colour") + " " + dot.modelData
-
-                            TapHandler {
-                                onTapped: {
-                                    setup.problem = setup.sioul.recolourAgenda(one.modelData.id, dot.modelData)
-                                    setup.read()
-                                }
-                            }
-                        }
-                    }
-                }
-                Button {
-                    objectName: "agendaRemove"
-                    visible: one.modelData.server && one.modelData.server.server !== undefined && (one.modelData.server.own === true || one.modelData.server.server !== "local") && !setup.tasksOnly(one.modelData) && setup.removing !== one.modelData.id
-                    text: setup.sioul.text(one.modelData.server && one.modelData.server.own === true ? "agenda-remove" : "agenda-stop-showing")
-                    onClicked: setup.askRemoval(one.modelData.id)
-                }
-                ColumnLayout {
-                    visible: setup.removing === one.modelData.id
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        objectName: "agendaRemoveQuestion"
-                        Layout.fillWidth: true
-                        text: setup.removal.sentence || ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: setup.theme.text
-                    }
-                    Label {
-                        visible: (setup.removal.note || "") !== ""
-                        Layout.fillWidth: true
-                        text: setup.removal.note || ""
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: setup.theme.muted
-                    }
-                    RowLayout {
-                        spacing: 8
-
-                        Button {
-                            objectName: "agendaRemoveConfirm"
-                            visible: setup.removal.act === "remove" || setup.removal.act === "leave" || setup.removal.act === "hide"
-                            text: setup.sioul.text(setup.removal.act === "remove" ? "agenda-remove-confirm" : "agenda-leave-confirm")
-                            onClicked: setup.remove(one.modelData.id)
-                        }
-                        Button {
-                            flat: true
-                            text: setup.sioul.text("agenda-keep")
-                            onClicked: setup.removing = ""
-                        }
-                    }
-                }
-                // Who sees it, as its server says; shared with a person, or by a link.
-                ColumnLayout {
-                    id: share
-
-                    readonly property var now: setup.sharing[one.modelData.id] || null
-                    readonly property bool can: share.now !== null && share.now.sharer !== undefined && share.now.sharer !== "none" && one.modelData.server.own === true
-
-                    visible: one.modelData.server && one.modelData.server.server !== "local"
-                    Layout.fillWidth: true
-                    spacing: 4
-
-                    Label {
-                        text: setup.sioul.text("agenda-sharing")
-                        color: setup.theme.text
-                    }
-                    Label {
-                        objectName: "agendaSharingLine"
-                        Layout.fillWidth: true
-                        text: share.now === null ? setup.sioul.text("agenda-sharing-reading") : (share.now.problem || share.now.line || "")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: share.now !== null && (share.now.problem || "") !== "" ? setup.theme.warm : setup.theme.text
-                    }
-                    Repeater {
-                        model: share.can ? share.now.people : []
-
-                        delegate: RowLayout {
-                            id: sharee
-
-                            required property var modelData
-
-                            Layout.fillWidth: true
-                            spacing: 6
-
-                            Label {
-                                Layout.fillWidth: true
-                                Layout.preferredWidth: 0
-                                text: sharee.modelData.name
-                                textFormat: Text.PlainText
-                                elide: Text.ElideRight
-                                color: setup.theme.text
-                            }
-                            ToolButton {
-                                objectName: "agendaUnshare"
-                                text: "×"
-                                Accessible.name: setup.sioul.textWith("agenda-unshare", "who", sharee.modelData.name)
-                                onClicked: setup.sioul.unshareAgenda(one.modelData.id, sharee.modelData.id)
-                            }
-                        }
-                    }
-                    // The name on a line of its own, then how and Share, wrapping on a phone.
-                    TextField {
-                        id: shareWith
-
-                        objectName: "agendaShareWith"
-                        visible: share.can
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        placeholderText: setup.sioul.text("agenda-share-with")
-                        Accessible.name: placeholderText
-                    }
-                    Flow {
-                        visible: share.can
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        CheckBox {
-                            id: shareGroup
-
-                            objectName: "agendaShareGroup"
-                            visible: share.now !== null && share.now.sharer === "nextcloud"
-                            text: setup.sioul.text("agenda-share-group")
-                        }
-                        PlainComboBox {
-                            id: shareAccess
-
-                            readonly property var choices: share.now && share.now.sharer === "google" ? ["read", "write", "busy"] : ["read", "write"]
-
-                            width: 170
-                            model: choices.map(c => setup.sioul.text("agenda-share-" + c))
-                            Accessible.name: setup.sioul.text("agenda-sharing")
-                        }
-                        Button {
-                            objectName: "agendaShare"
-                            enabled: shareWith.text.trim() !== ""
-                            text: setup.sioul.text("agenda-share")
-                            onClicked: {
-                                setup.sioul.shareAgenda(one.modelData.id, (shareGroup.visible && shareGroup.checked ? "group:" : "") + shareWith.text.trim(), shareAccess.choices[shareAccess.currentIndex])
-                                shareWith.text = ""
-                                shareGroup.checked = false
-                            }
-                        }
-                    }
-                    Flow {
-                        visible: share.can && share.now.links === true
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        CheckBox {
-                            objectName: "agendaLink"
-                            text: setup.sioul.text("agenda-link-on")
-                            checked: share.now !== null && !!share.now.link
-                            onToggled: setup.sioul.agendaLink(one.modelData.id, checked)
-                        }
-                    }
-                    // The link itself, to select or copy.
-                    LinkLine {
-                        objectName: "agendaLinkLine"
-                        visible: share.can && share.now.links === true && !!share.now.link
-                        Layout.fillWidth: true
-                        sioul: setup.sioul
-                        theme: setup.theme
-                        link: share.now !== null ? share.now.link || "" : ""
-                    }
-                    Label {
-                        visible: share.now !== null && ((share.now.said || "") !== "" || (share.now.note || "") !== "")
-                        Layout.fillWidth: true
-                        text: share.now === null ? "" : [share.now.said || "", share.now.note || ""].filter(w => w !== "").join(" ")
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        color: setup.theme.muted
-                    }
-                }
-                // Whose it is, and whose name: the one control, as the forms that make a calendar have it.
-                WhoseFields {
-                    Layout.fillWidth: true
-                    sioul: setup.sioul
-                    theme: setup.theme
-                    persons: setup.view.persons || ({})
-                    whose: one.modelData.whose
-                    personId: one.modelData.person_id || ""
-                    name: one.modelData.person || ""
-                    onWhoseChosen: whose => setup.save(one.modelData.id, "whose", whose)
-                    onPersonChosen: id => setup.setPerson(one.modelData.id, "person", id)
-                    onNameGiven: name => setup.save(one.modelData.id, "name", name)
-                    onNewPersonAsked: setup.newPerson(one.modelData, "person")
-                }
-                Label {
-                    text: setup.sioul.text("agenda-for")
-                    color: setup.theme.text
-                }
-                Flow {
-                    Layout.fillWidth: true
-                    spacing: 12
-
-                    Repeater {
-                        model: setup.areas
-
-                        delegate: CheckBox {
-                            id: area
-
-                            required property string modelData
-
-                            text: setup.sioul.text("area-" + area.modelData)
-                            checked: one.on.indexOf(area.modelData) >= 0
-                            onToggled: {
-                                const now = setup.areas.filter(a => a === area.modelData ? checked : one.on.indexOf(a) >= 0)
-                                setup.save(one.modelData.id, "area", now.join("+"))
-                                area.checked = Qt.binding(() => one.on.indexOf(area.modelData) >= 0)
-                            }
-                        }
-                    }
-                }
-                // A personal agenda: all day, or outside work hours. One for work follows the work hours.
-                Label {
-                    visible: one.on.indexOf("work") < 0
-                    text: setup.sioul.text("agenda-reaches")
-                    color: setup.theme.text
-                }
-                PlainComboBox {
-                    readonly property var choices: ["all-day", "outside-work"]
-
-                    visible: one.on.indexOf("work") < 0
-                    Layout.fillWidth: true
-                    model: choices.map(r => setup.sioul.text("agenda-reaches-" + r))
-                    currentIndex: Math.max(0, choices.indexOf(one.modelData.reaches))
-                    Accessible.name: setup.sioul.text("agenda-reaches")
-                    onActivated: index => setup.save(one.modelData.id, "reaches", choices[index])
-                }
-                Label {
-                    text: setup.sioul.text("agenda-access")
-                    color: setup.theme.text
-                }
-                PlainComboBox {
-                    objectName: "agendaAccess"
-                    readonly property var choices: setup.accessChoices(one.modelData)
-
-                    Layout.fillWidth: true
-                    model: choices.map(a => setup.sioul.text("agenda-access-" + a))
-                    currentIndex: Math.max(0, choices.indexOf(one.modelData.access))
-                    Accessible.name: setup.sioul.text("agenda-access")
-                    onActivated: index => setup.save(one.modelData.id, "access", choices[index])
-                }
-                // A child's: the other parent who may take its events, how they answer, who usually takes each kind.
-                Label {
-                    visible: one.modelData.whose === "child"
-                    text: setup.sioul.text("agenda-parent")
-                    color: setup.theme.text
-                }
-                // The other parent: a person, a child's other parent; their address stays this agenda's (where invitations go).
-                PersonChooser {
-                    objectName: "agendaParent"
-                    visible: one.modelData.whose === "child"
-                    Layout.fillWidth: true
-                    sioul: setup.sioul
-                    theme: setup.theme
-                    persons: (setup.view.persons || {}).parent || []
-                    personId: one.modelData.parent_person || ""
-                    fallback: one.modelData.parent || ""
-                    Accessible.name: setup.sioul.text("agenda-parent-name")
-                    onChosen: id => setup.setPerson(one.modelData.id, "parent_person", id)
-                    onNewAsked: setup.newPerson(one.modelData, "parent_person")
-                }
-                TextField {
-                    objectName: "agendaParentAddress"
-                    visible: one.modelData.whose === "child"
-                    Layout.fillWidth: true
-                    text: one.modelData.parent_address || ""
-                    placeholderText: setup.sioul.text("agenda-parent-address")
-                    inputMethodHints: Qt.ImhEmailCharactersOnly
-                    Accessible.name: placeholderText
-                    onEditingFinished: if (text.trim() !== (one.modelData.parent_address || ""))
-                        setup.save(one.modelData.id, "parent_address", text.trim())
-                }
-                Label {
-                    visible: one.modelData.whose === "child"
-                    text: setup.sioul.text("agenda-parent-answers")
-                    color: setup.theme.text
-                }
-                PlainComboBox {
-                    readonly property var choices: ["mail", "sioul"]
-
-                    visible: one.modelData.whose === "child"
-                    Layout.fillWidth: true
-                    model: choices.map(c => setup.sioul.text("agenda-parent-answers-" + c))
-                    currentIndex: Math.max(0, choices.indexOf(one.modelData.parent_answers))
-                    Accessible.name: setup.sioul.text("agenda-parent-answers")
-                    onActivated: index => setup.save(one.modelData.id, "parent_answers", choices[index])
-                }
-                Label {
-                    visible: one.modelData.whose === "child"
-                    text: setup.sioul.text("agenda-standing")
-                    color: setup.theme.text
-                }
                 Repeater {
-                    model: one.modelData.whose === "child" ? setup.view.children.kinds : []
+                    model: setup.columns
 
-                    delegate: RowLayout {
-                        id: standing
+                    delegate: Label {
+                        id: heading
 
                         required property var modelData
-                        readonly property var choices: ["", "me", "other"]
-                        readonly property string now: (one.modelData.standing || {})[standing.modelData.id] || ""
+                        required property int index
 
-                        Layout.fillWidth: true
-                        spacing: 8
-
-                        Label {
-                            Layout.preferredWidth: 110
-                            text: standing.modelData.label
-                            textFormat: Text.PlainText
-                            elide: Text.ElideRight
-                            color: setup.theme.text
-                        }
-                        PlainComboBox {
-                            objectName: "agendaStanding"
-                            Layout.fillWidth: true
-                            model: standing.choices.map(c => c === "" ? setup.sioul.text("agenda-standing-ask") : c === "me" ? setup.sioul.text("holder-me") : setup.theme.plain(one.modelData.parent || setup.sioul.text("agenda-parent")))
-                            currentIndex: Math.max(0, standing.choices.indexOf(standing.now))
-                            Accessible.name: setup.sioul.text("agenda-standing") + " · " + standing.modelData.label
-                            onActivated: index => {
-                                setup.problem = setup.sioul.setStandingHolder(one.modelData.id, standing.modelData.id, standing.choices[index])
-                                setup.read()
-                            }
-                        }
+                        Layout.preferredWidth: setup.columnWidth(heading.index)
+                        Layout.maximumWidth: setup.columnWidth(heading.index)
+                        text: heading.modelData === "" ? "" : setup.sioul.text(heading.modelData)
+                        textFormat: Text.PlainText
+                        font.weight: Font.DemiBold
+                        color: setup.theme.muted
                     }
                 }
-                // For availability: what its events say shown, off by default (part 4).
-                CheckBox {
-                    objectName: "agendaTitles"
-                    visible: one.modelData.access === "availability"
+            }
+
+            Repeater {
+                model: setup.view.agendas
+
+                delegate: ColumnLayout {
+                    id: one
+
+                    required property var modelData
+                    readonly property var on: String(one.modelData.area).split("+")
+                    readonly property bool mirror: one.modelData.mirror === true
+                    readonly property var busy: one.modelData.busy_time || ({ counts: false, changeable: false, short: "", line: "" })
+                    readonly property var share: setup.sharing[one.modelData.id] || null
+                    // Its colour may be changed here: yours on its server, or a calendar read by its address.
+                    readonly property bool recolourable: !one.mirror && ((!!one.modelData.server && one.modelData.server.own === true) || (!!one.modelData.subscription && one.modelData.subscription.unread !== true))
+
+                    objectName: "agendaSetup"
                     Layout.fillWidth: true
-                    text: setup.sioul.text("agenda-titles")
-                    checked: one.modelData.titles === true
-                    onToggled: setup.save(one.modelData.id, "titles", checked ? "shown" : "")
-                }
-                Label {
-                    visible: one.modelData.server_read_only === true
-                    Layout.fillWidth: true
-                    // A calendar read by its address has no server to say so: its own words.
-                    text: setup.sioul.text(one.modelData.subscription ? "agenda-subscribed-read-only" : "agenda-server-read-only")
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    color: setup.theme.muted
-                }
-                // Hidden for good on this device, whatever the hours, until shown again.
-                Button {
-                    objectName: "agendaKeepHidden"
-                    text: setup.sioul.text(one.modelData.kept_hidden === true ? "agenda-show-again" : "agenda-keep-hidden")
-                    onClicked: {
-                        setup.problem = setup.sioul.keepAgendaHidden(one.modelData.id, one.modelData.kept_hidden !== true)
-                        setup.read()
+                    spacing: 2
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 1
+                        color: setup.theme.line
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: setup.wide ? 2 : 6
+                        columns: setup.wide ? setup.columns.length : 2
+                        columnSpacing: setup.gap
+                        rowSpacing: setup.wide ? 0 : 2
+
+                        // Its colour (changed in place) and name, on two lines at most, its account under it;
+                        // on a phone its Details… beside it.
+                        RowLayout {
+                            Layout.columnSpan: setup.wide ? 1 : 2
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(0) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(0) : -1
+                            Layout.fillWidth: !setup.wide
+                            spacing: 6
+
+                            Rectangle {
+                                id: dot
+
+                                objectName: "agendaRowColour"
+                                Layout.preferredWidth: 16
+                                Layout.preferredHeight: 16
+                                Layout.alignment: Qt.AlignTop
+                                Layout.topMargin: 3
+                                radius: 8
+                                color: one.modelData.colour || setup.theme.accent
+                                border.width: one.recolourable ? 1 : 0
+                                border.color: setup.theme.line
+                                Accessible.role: one.recolourable ? Accessible.Button : Accessible.Graphic
+                                Accessible.name: setup.sioul.text("agenda-colour") + " · " + one.modelData.name
+
+                                TapHandler {
+                                    enabled: one.recolourable
+                                    onTapped: colourMenu.open()
+                                }
+
+                                // Its colour chosen in place, among the agendas' eight.
+                                Popup {
+                                    id: colourMenu
+
+                                    objectName: "agendaColourMenu"
+                                    y: dot.height + 4
+                                    padding: 8
+
+                                    contentItem: Row {
+                                        spacing: 6
+
+                                        Repeater {
+                                            model: setup.colours
+
+                                            delegate: Rectangle {
+                                                id: choice
+
+                                                required property string modelData
+
+                                                objectName: "agendaColour"
+                                                width: 26
+                                                height: 26
+                                                radius: 13
+                                                color: choice.modelData
+                                                border.width: (one.modelData.colour || "").toLowerCase().startsWith(choice.modelData) ? 3 : 0
+                                                border.color: setup.theme.text
+                                                Accessible.role: Accessible.Button
+                                                Accessible.name: setup.sioul.text("agenda-colour") + " " + choice.modelData
+
+                                                TapHandler {
+                                                    onTapped: {
+                                                        colourMenu.close()
+                                                        setup.recolour(one.modelData, choice.modelData)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 0
+                                spacing: 0
+
+                                Label {
+                                    objectName: "agendaLineLabel"
+                                    Layout.fillWidth: true
+                                    text: one.modelData.name + (one.modelData.kept_hidden === true ? " · " + setup.sioul.text("agendas-kept-hidden") : "")
+                                    textFormat: Text.PlainText
+                                    wrapMode: Text.Wrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                    font.weight: Font.DemiBold
+                                    color: setup.theme.text
+
+                                    TapHandler {
+                                        onTapped: setup.openCard(one.modelData.id)
+                                    }
+                                }
+                                Label {
+                                    objectName: "agendaAccount"
+                                    Layout.fillWidth: true
+                                    text: one.modelData.place
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    font.pixelSize: 13
+                                    color: setup.theme.muted
+                                }
+                            }
+                            Button {
+                                objectName: "agendaOpenNarrow"
+                                visible: !setup.wide
+                                text: setup.sioul.text("agenda-details")
+                                Accessible.name: setup.sioul.textWith("agenda-details-of", "name", one.modelData.name)
+                                onClicked: setup.openCard(one.modelData.id)
+                            }
+                        }
+
+                        // Whose it is: the role in place; whose name in its card. A mirror: what it is kept for.
+                        Label {
+                            visible: !setup.wide
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-whose")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        Item {
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(1) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(1) : -1
+                            Layout.fillWidth: !setup.wide
+                            implicitHeight: one.mirror ? keptFor.implicitHeight : whoseChoice.implicitHeight
+
+                            Label {
+                                id: keptFor
+
+                                objectName: "agendaKeptFor"
+                                visible: one.mirror
+                                width: parent.width
+                                text: setup.whoseWords(one.modelData)
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: setup.theme.muted
+                            }
+                            MenuCell {
+                                id: whoseChoice
+
+                                objectName: "agendaRowWhose"
+                                visible: !one.mirror
+                                width: parent.width
+                                theme: setup.theme
+                                choices: ["yours", "child", "parent", "partner", "someone", "shared"]
+                                labels: choices.map(w => setup.sioul.text("agenda-whose-" + w))
+                                current: one.modelData.whose
+                                // Whose name, beside the role: chosen in its card.
+                                shown: setup.whoseWords(one.modelData)
+                                Accessible.name: setup.sioul.text("agenda-whose") + " · " + one.modelData.name
+                                onChosen: value => setup.save(one.modelData.id, "whose", value)
+                            }
+                        }
+
+                        // What it is for: work, your admin, leisure, ticked in a menu.
+                        Label {
+                            visible: !setup.wide && !one.mirror
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-for")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        MenuCell {
+                            objectName: "agendaRowFor"
+                            visible: setup.wide || !one.mirror
+                            opacity: one.mirror ? 0 : 1
+                            enabled: !one.mirror
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(2) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(2) : -1
+                            Layout.fillWidth: !setup.wide
+                            theme: setup.theme
+                            several: true
+                            choices: setup.areas
+                            labels: setup.areas.map(a => setup.sioul.text("area-" + a))
+                            ticked: one.on
+                            shown: setup.areaWords(one.on)
+                            Accessible.name: setup.sioul.text("agenda-for") + " · " + one.modelData.name
+                            onToggledOne: (value, on) => setup.toggleArea(one.modelData, value, on)
+                        }
+
+                        // When it reaches you: a personal one all day or outside work hours; one for work in its hours.
+                        Label {
+                            visible: !setup.wide && !one.mirror
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-reaches")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        Item {
+                            visible: setup.wide || !one.mirror
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(3) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(3) : -1
+                            Layout.fillWidth: !setup.wide
+                            implicitHeight: reachesChoice.implicitHeight
+
+                            MenuCell {
+                                id: reachesChoice
+
+                                objectName: "agendaRowReaches"
+                                visible: !one.mirror && one.on.indexOf("work") < 0
+                                width: parent.width
+                                theme: setup.theme
+                                choices: ["all-day", "outside-work"]
+                                labels: choices.map(r => setup.sioul.text("agenda-reaches-" + r))
+                                current: one.modelData.reaches
+                                shown: setup.reachesWords(one.modelData)
+                                Accessible.name: setup.sioul.text("agenda-reaches") + " · " + one.modelData.name
+                                onChosen: value => setup.save(one.modelData.id, "reaches", value)
+                            }
+                            Label {
+                                visible: !one.mirror && one.on.indexOf("work") >= 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width
+                                leftPadding: 8
+                                text: setup.reachesWords(one.modelData)
+                                textFormat: Text.PlainText
+                                color: setup.theme.text
+                            }
+                        }
+
+                        // What you may do with it: never writing where its server keeps it read only.
+                        Label {
+                            visible: !setup.wide && !one.mirror
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-access")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        MenuCell {
+                            objectName: "agendaRowAccess"
+                            visible: setup.wide || !one.mirror
+                            opacity: one.mirror ? 0 : 1
+                            enabled: !one.mirror
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(4) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(4) : -1
+                            Layout.fillWidth: !setup.wide
+                            theme: setup.theme
+                            choices: setup.accessChoices(one.modelData)
+                            labels: choices.map(a => setup.sioul.text("agenda-access-" + a))
+                            current: one.modelData.access
+                            shown: setup.accessWords(one.modelData)
+                            Accessible.name: setup.sioul.text("agenda-access") + " · " + one.modelData.name
+                            onChosen: value => setup.save(one.modelData.id, "access", value)
+                        }
+
+                        // Counts as busy time: its one switch, and in a few words why it cannot be turned (another
+                        // person's, holidays, a list of tasks, Sioul's copy), that its server has not got it yet,
+                        // or that its server counts what Sioul does not; the sentence on a phone and as its tooltip.
+                        Label {
+                            visible: !setup.wide
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-col-busy")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        ColumnLayout {
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(5) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(5) : -1
+                            Layout.fillWidth: !setup.wide
+                            spacing: 0
+
+                            Switch {
+                                id: busySwitch
+
+                                objectName: "agendaBusy"
+                                visible: one.busy.changeable === true
+                                checked: one.busy.counts === true
+                                Accessible.name: setup.sioul.textWith("agenda-busy-of", "name", one.modelData.name)
+                                Accessible.description: one.busy.line || ""
+                                onToggled: {
+                                    setup.setBusy(one.modelData.id, checked)
+                                    busySwitch.checked = Qt.binding(() => one.busy.counts === true)
+                                }
+                            }
+                            Label {
+                                objectName: "agendaBusyLine"
+                                visible: text !== ""
+                                Layout.fillWidth: true
+                                text: setup.wide ? (one.busy.short || "") : (one.busy.line || "")
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 13
+                                color: setup.theme.muted
+                                Accessible.description: one.busy.line || ""
+
+                                ToolTip.visible: busyHover.hovered && setup.wide
+                                ToolTip.text: setup.theme.plain(one.busy.line || "")
+
+                                HoverHandler {
+                                    id: busyHover
+                                }
+                            }
+                        }
+
+                        // Who sees it, as its server last said, in names; a quiet mark while it is being asked.
+                        Label {
+                            visible: !setup.wide && !one.mirror
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-sharing")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        RowLayout {
+                            visible: setup.wide || !one.mirror
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(6) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(6) : -1
+                            Layout.fillWidth: !setup.wide
+                            spacing: 4
+
+                            Label {
+                                objectName: "agendaRowShared"
+                                visible: !one.mirror
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 0
+                                text: setup.sharedWords(one.modelData, one.share)
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                color: one.share !== null && (one.share.problem || "") !== "" ? setup.theme.warm : setup.theme.text
+
+                                ToolTip.visible: sharedHover.hovered && one.share !== null
+                                ToolTip.text: one.share === null ? "" : setup.theme.plain(one.share.problem || one.share.line || "")
+
+                                HoverHandler {
+                                    id: sharedHover
+                                }
+                            }
+                            // Being asked of its server: a quiet mark, gone when it answers.
+                            Label {
+                                objectName: "agendaRowReading"
+                                visible: setup.reading[one.modelData.id] === true
+                                text: "…"
+                                color: setup.theme.muted
+                                Accessible.name: setup.sioul.text("agenda-sharing-reading")
+                            }
+                        }
+
+                        // When it was synced, in one form for every agenda; warm when its last sync went wrong.
+                        Label {
+                            visible: !setup.wide && !one.mirror
+                            Layout.preferredWidth: setup.labelWidth
+                            text: setup.sioul.text("agenda-col-synced")
+                            wrapMode: Text.Wrap
+                            color: setup.theme.muted
+                        }
+                        Label {
+                            objectName: "agendaRowSynced"
+                            visible: setup.wide || !one.mirror
+                            Layout.preferredWidth: setup.wide ? setup.columnWidth(7) : -1
+                            Layout.maximumWidth: setup.wide ? setup.columnWidth(7) : -1
+                            Layout.fillWidth: !setup.wide
+                            text: one.modelData.synced || ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: one.modelData.synced_warn === true ? setup.theme.warm : setup.theme.muted
+                            Accessible.description: one.modelData.synced_full || ""
+
+                            ToolTip.visible: syncedHover.hovered && (one.modelData.synced_full || "") !== text
+                            ToolTip.text: setup.theme.plain(one.modelData.synced_full || "")
+
+                            HoverHandler {
+                                id: syncedHover
+                            }
+                        }
+
+                        // Its card: what needs more room.
+                        Button {
+                            objectName: "agendaOpen"
+                            visible: setup.wide
+                            Layout.preferredWidth: setup.columnWidth(8)
+                            Layout.maximumWidth: setup.columnWidth(8)
+                            flat: true
+                            text: setup.sioul.text("agenda-details")
+                            Accessible.name: setup.sioul.textWith("agenda-details-of", "name", one.modelData.name)
+                            onClicked: setup.openCard(one.modelData.id)
+                        }
                     }
                 }
             }
@@ -939,6 +999,7 @@ ColumnLayout {
     ColumnLayout {
         visible: setup.view.children.any === true
         Layout.fillWidth: true
+        Layout.maximumWidth: setup.theme.readable
         Layout.topMargin: 8
         spacing: 4
 
@@ -1002,6 +1063,17 @@ ColumnLayout {
             onToggled: {
                 setup.problem = setup.sioul.setFollowUps(checked)
                 setup.read()
+            }
+        }
+    }
+
+    // An agenda's card (AgendaCard.qml), made the first time one is opened.
+    Later {
+        id: agendaCard
+
+        sourceComponent: Component {
+            AgendaCard {
+                setup: setup
             }
         }
     }

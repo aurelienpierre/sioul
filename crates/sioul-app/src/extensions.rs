@@ -193,10 +193,13 @@ impl AgendaDoor for Door {
         let Some(calendar) = door::calendar_at(place) else { return Err(door::Problem::CalendarGone) };
         let cancelled = |title: &str| say("extension-event-cancelled", &[("title", title.to_string())]);
         let words = door::Words { cancelled: &cancelled, from: say("extension-event-from-line", &[("name", sioul_core::extensions::category(extension))]) };
-        // The person's per-agenda choice, or by default the extension's suggestion; into another
-        // person's agenda (a partner's appointments), free by default (`busy_default`), so that
-        // the calendar's server, a phone's own calendar app and an older Sioul never count their
-        // events as the person's busy time.
+        // Each lesson's mark from its agenda's own choice (`[extensions.busy]`, which its calendar's
+        // switch in Your agendas writes for every agenda in it), else the extension's suggestion,
+        // another person's agenda free (`busy_default`): as a Sioul 0.1.0 writes it, so that its
+        // calendar's server, a phone's own calendar app and an older Sioul read the same. Never the
+        // calendar's own value (review of edef0091, F7): a pupil's lessons say nothing of the
+        // person's own events in that calendar, and nothing is written to the settings or the
+        // server here.
         let busy = crate::backend::config_read().map_or(agenda.busy, |c| c.extensions.busy_for(extension, &agenda.id, busy_default(&calendar, &c, agenda.busy)));
         door::take(extension, agenda, &calendar, &words, busy)
     }
@@ -562,10 +565,8 @@ struct Calendars {
     labels: BTreeMap<String, String>,
     /// `[extensions.calendars]`, as the settings read now (none when they do not).
     chosen: Option<BTreeMap<String, String>>,
-    /// `[extensions.busy]`, the per-agenda busy choices (none when the settings do not read).
-    busy: Option<BTreeMap<String, bool>>,
     /// Whose each of those calendars is, by place: its line's words (`whose_line`), and
-    /// whether it is another person's (no busy choice offered then).
+    /// whether it is another person's.
     whose: BTreeMap<String, (String, bool)>,
 }
 
@@ -593,14 +594,15 @@ impl Calendars {
         }
         choices.push(json!({ "choice": format!("new:{}", sioul_core::vdir::LOCAL), "label": say("extension-calendar-new-here", &[]) }));
         let settings = crate::backend::config_read().map(|c| c.extensions);
-        Self { choices, labels, chosen: settings.as_ref().map(|e| e.calendars.clone()), busy: settings.map(|e| e.busy), whose }
+        Self { choices, labels, chosen: settings.map(|e| e.calendars), whose }
     }
 }
 
 /// An agenda an extension brought, for the page: its name, where its lessons
 /// go and how it went, in one line; the calendar chosen ("" none); whose that
-/// calendar is, in words, and whether it is another person's (`theirs`: the
-/// busy choice is not offered).
+/// calendar is, in words, and whether it is another person's (`theirs`).
+/// Whether its lessons count as busy time is the calendar's own switch, in
+/// Agenda ⚙ ▸ Your agendas (`busytime`), not this page's.
 fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Value {
     let place = calendars.chosen.as_ref().and_then(|c| c.get(&sioul_core::config::extension_calendar_key(extension, &agenda.id))).cloned().unwrap_or_default();
     let label = calendars.labels.get(&place).cloned();
@@ -615,11 +617,8 @@ fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Valu
         }
         (false, Some(label), _) => (say("extension-agenda-next", &[("calendar", label.clone())]), false),
     };
-    // Whether its lessons count as the person's own busy time: their choice, or the extension's
-    // suggestion; another person's agenda free unless said (`busy_default`).
     let (whose, theirs) = calendars.whose.get(&place).cloned().unwrap_or_default();
-    let busy = calendars.busy.as_ref().and_then(|b| b.get(&sioul_core::config::extension_calendar_key(extension, &agenda.id)).copied()).unwrap_or(agenda.busy && !theirs);
-    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "busy": busy, "whose": whose, "theirs": theirs })
+    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "whose": whose, "theirs": theirs })
 }
 
 /// The address books a set's contacts may go into, as the page offers them:
