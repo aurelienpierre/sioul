@@ -118,7 +118,7 @@ Item {
         Button {
             objectName: "extensionsUpdateAll"
             visible: (tab.view.updates || 0) >= 2
-            text: tab.view.updateAll || ""
+            text: tab.theme.plain(tab.view.updateAll || "")
             onClicked: {
                 if ((tab.view.asks || []).length > 0)
                     updatingAll.open()
@@ -365,7 +365,7 @@ Item {
                         objectName: "extensionUpdate:" + offer.modelData.id
                         visible: (offer.modelData.update || "") !== ""
                         highlighted: true
-                        text: offer.modelData.updateLabel || ""
+                        text: tab.theme.plain(offer.modelData.updateLabel || "")
                         onClicked: tab.sioul.extensionUpdate(offer.modelData.id)
                     }
                     Button {
