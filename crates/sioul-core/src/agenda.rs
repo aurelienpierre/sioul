@@ -6011,14 +6011,14 @@ mod tests {
     /// band was dropped before 26 November 2026).
     #[test]
     fn another_parent_s_busy_bands_show_whatever_their_calendar_s_mark() {
-        let text = |uid: &str, transp: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nSUMMARY:Dentist\r\n{transp}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        let ics = |uid: &str, transp: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Demo//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:20261104T090000Z\r\nDTEND:20261104T100000Z\r\nSUMMARY:Dentist\r\n{transp}END:VEVENT\r\nEND:VCALENDAR\r\n");
         let marks = crate::agendas::Marks { id: "a/sam".into(), name: "Sam".into(), theirs: true, busy: true, transparent: true, other_person: true, ..crate::agendas::Marks::default() };
         let (from, to) = (at("2026-11-04T00:00"), at("2026-11-05T00:00"));
-        let band = file_occurrences_marked(&write_temp("sam-band.ics", &text("sam-1", "")), &calendar(), &marks, from, to, &paris(), &[]);
+        let band = file_occurrences_marked(&write_temp("sam-band.ics", &ics("sam-1", "")), &calendar(), &marks, from, to, &paris(), &[]);
         assert_eq!(band.len(), 1, "the band is read");
         assert!(band[0].busy && band[0].theirs && !band[0].transparent && !band[0].holds_time(), "their busy time, none of yours: {:?}", band[0]);
         assert_eq!(band[0].summary, "Sam", "the agenda's name, nothing of what the event says");
-        let free = file_occurrences_marked(&write_temp("sam-free.ics", &text("sam-2", "TRANSP:TRANSPARENT\r\n")), &calendar(), &marks, from, to, &paris(), &[]);
+        let free = file_occurrences_marked(&write_temp("sam-free.ics", &ics("sam-2", "TRANSP:TRANSPARENT\r\n")), &calendar(), &marks, from, to, &paris(), &[]);
         assert!(free.is_empty(), "a band its own event marks free is left out");
     }
 }
