@@ -163,8 +163,10 @@ fn choices_with(tr: &sioul_core::i18n::Translator, usual: u32, current: &str) ->
         minutes.push(own);
         minutes.sort_unstable();
     }
+    // "As usual" for an event that leaves you free: none (`reminders::usual_minutes`), its
+    // words beside the usual ones, which the form and the card show while it is free.
     let mut out = vec![
-        serde_json::json!({ "value": "", "label": lead("event-remind-usual", usual) }),
+        serde_json::json!({ "value": "", "label": lead("event-remind-usual", usual), "free": tr.text("event-remind-usual-free", None) }),
         serde_json::json!({ "value": "none", "label": tr.text("event-remind-none", None) }),
     ];
     out.extend(minutes.into_iter().map(|m| serde_json::json!({ "value": m.to_string(), "label": lead("event-remind-before", m) })));
@@ -172,17 +174,23 @@ fn choices_with(tr: &sioul_core::i18n::Translator, usual: u32, current: &str) ->
 }
 
 /// An event's reminder before it, as its details say it (AgendaPage.qml),
-/// the occurrence starting at `start`: {line, remind, writable}: "Reminder:
-/// 13:15" (with its day when another), or "No reminder before it"; its own
-/// choice; whether it can be changed here. "" when the event is not found.
+/// the occurrence starting at `start`: {line, remind, writable, free}:
+/// "Reminder: 13:15" (with its day when another), or "No reminder before
+/// it"; its own choice; whether it can be changed here; whether it leaves
+/// you free, when "As usual" gives none. "" when the event is not found.
 pub(crate) fn of_event(key: &str, start: i64) -> String {
     let Some(path) = crate::pim::ours(key) else { return String::new() };
     let Some(calendar) = crate::pim::collection_of(&path) else { return String::new() };
     let zone = sioul_core::zone::current();
-    let found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
+    let mut found = sioul_core::agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
+    // Your answers: an invitation you accepted in another person's agenda is yours too.
+    if found.iter().any(|o| o.other_person) {
+        sioul_core::agenda::mark_answers(&mut found, &sioul_core::agenda::own_addresses());
+    }
     // A whole day is reminded the working day before only: nothing to say or choose here. A
     // child's event reminds nobody itself: whoever takes it is reminded by their stand-in (part 3).
-    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day && !o.child) else { return String::new() };
+    // Another person's own agenda reminds you of nothing (`reminders`): nothing to say or choose either.
+    let Some(event) = found.iter().find(|o| o.start == start && !o.all_day && !o.child && !o.another_persons()) else { return String::new() };
     let config = load_config();
     let line = match reminders::before_at(event, config.reminders.before_event).and_then(|at| jiff::Timestamp::from_second(at).ok()) {
         Some(at) => {
@@ -193,7 +201,37 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
         }
         None => tr().text("event-reminds-none", None),
     };
-    serde_json::json!({ "line": line, "remind": remind_word(&event.remind), "writable": !calendar.read_only }).to_string()
+    serde_json::json!({ "line": line, "remind": remind_word(&event.remind), "writable": !calendar.read_only, "free": event.transparent }).to_string()
+}
+
+/// Said once on each device, at the first start of a Sioul that has them
+/// (review of 3346ff96, 6): the agendas said to be another person's no
+/// longer remind you (an older Sioul told their events), and, on a device
+/// that told reminders before, an event that leaves you free gets none by
+/// itself. Marked told in the state folder (`told-whose-reminds`), whatever
+/// there was to say.
+pub(crate) fn tell_once_since_whose(qt: &QtThread) {
+    if let Some(line) = once_since_whose(&load_config()) {
+        crate::backend::set_status(qt, line);
+    }
+}
+
+/// What `tell_once_since_whose` says, once on this device: None when it was
+/// said before or there is nothing to say; marked told either way.
+fn once_since_whose(config: &sioul_core::config::Config) -> Option<String> {
+    let mark = sioul_core::config::state_dir().join("told-whose-reminds");
+    if mark.exists() {
+        return None;
+    }
+    let told_before = reminders::told_dir().is_dir();
+    let names: Vec<String> = sioul_core::agendas::all(config).into_iter().filter(|a| a.events && a.whose.another_person()).map(|a| a.name).collect();
+    let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
+    let _ = std::fs::write(&mark, "");
+    match (names.is_empty(), told_before) {
+        (false, _) => Some(say("reminders-update-theirs", &[("agendas", names.join(", "))])),
+        (true, true) => Some(say("reminders-update-free", &[])),
+        (true, false) => None,
+    }
 }
 
 /// An event's own reminder changed from its details, for every time it
@@ -483,6 +521,24 @@ mod tests {
         assert_eq!((task.about.as_str(), task.hint.as_str(), task.until), ("sioul:task/t1", "", None));
     }
 
+    /// Said once on each device after the update (second review, item 6): the
+    /// agendas that no longer remind, by name; never twice.
+    #[test]
+    fn the_update_is_said_once_with_the_agendas_that_no_longer_remind() {
+        sioul_core::config::stand_ins_only();
+        let _turn = crate::children::TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        use sioul_core::vdir::{self, Kind as Collections};
+        let mark = sioul_core::config::state_dir().join("told-whose-reminds");
+        let _ = std::fs::remove_file(&mark);
+        let calendar = vdir::create(Collections::Calendars, vdir::LOCAL, "Kim's lessons, update test", None, &["VEVENT"]).unwrap();
+        let config: sioul_core::config::Config = toml::from_str(&format!("[agenda.calendars.\"{}\"]\nwhose = \"someone\"\n", sioul_core::agendas::place(&calendar))).unwrap();
+        let said = once_since_whose(&config).unwrap_or_default();
+        assert!(said.contains("Kim's lessons, update test"), "{said}");
+        assert_eq!(once_since_whose(&config), None, "once");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_file(&mark);
+    }
+
     #[test]
     fn an_events_reminder_choices() {
         let en = sioul_core::i18n::Translator::new("en");
@@ -491,6 +547,8 @@ mod tests {
         assert_eq!(values, ["", "none", "5", "10", "15", "30", "60", "120"]);
         let labels: Vec<&str> = offered.as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap()).collect();
         assert_eq!(labels, ["As usual (15 minutes)", "Not this one", "5 minutes before", "10 minutes before", "15 minutes before", "30 minutes before", "1 hour before", "2 hours before"]);
+        // As usual, an event that leaves you free gets none: said beside, for the form and the card.
+        assert_eq!(offered[0]["free"], "As usual: none (it leaves you free)");
         // Another time, set elsewhere, kept among them; the usual time none.
         let other = choices_with(&sioul_core::i18n::Translator::new("fr"), 0, "20");
         let values: Vec<&str> = other.as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect();

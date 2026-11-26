@@ -1961,6 +1961,18 @@ SioulWindow {
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-agenda-line.png"),
                 () => agendaPage.openAgendaLine("cloud/personal"),
+                // Whose it is in the form that makes a calendar (24 November 2026): someone else's, a name typed;
+                // then a partner's line, what another person's agenda does said under its control.
+                () => agendaPage.openNewAgenda("someone", "Kim"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-new-someone.png"),
+                () => agendaPage.openNewAgenda("", ""),
+                () => agendaPage.openAgendaLine("cloud/sam"),
+                () => {},
+                () => {},
+                () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-partner-line.png"),
+                () => agendaPage.openAgendaLine("cloud/sam"),
                 () => agendaPage.openSettings(true, "conflicts"),
                 () => {},
                 () => agendaPage.grabSettings(grabber.folder + "/agenda-settings-conflicts.png"),

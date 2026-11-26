@@ -298,8 +298,9 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         next.into_iter().collect()
     };
     agenda::mark_tasks(&mut found, &tasks_known(shared));
-    // Declined by you, as the agenda marks it: takes no leg (review of ab7daa4, later 15).
-    if found.iter().any(|e| e.attendees.iter().any(|a| a.answer == "declined")) {
+    // Declined by you, as the agenda marks it: takes no leg (review of ab7daa4, later 15); your
+    // answers in another person's agenda too (an invitation there you accepted is yours).
+    if found.iter().any(|e| e.other_person || e.attendees.iter().any(|a| a.answer == "declined")) {
         agenda::mark_declined(&mut found, &own());
     }
     let Some(o) = found.into_iter().next().filter(|o| !skipped.contains(&(path.clone(), o.start))) else { return "{}".into() };
@@ -330,7 +331,17 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     let geo = agenda::geo_of(&text).map(|(lat, lon)| agenda::geo_value(lat, lon)).unwrap_or_default();
     // Its calendar free as a whole (its server's `schedule-calendar-transp`): no event of it marks you busy.
     let calendar_free = sioul_core::vdir::calendar_transparent(&calendar.account, &calendar.id);
-    json(&serde_json::json!({
+    // Whose agenda it is, beside what brought it: "Kim's agenda · From Skolengo" (24 November 2026).
+    // An agenda for its availability alone is titled by its own name already: nothing more.
+    // A calendar named after them already ("Léa"): nothing more either.
+    let whose = if (o.child || o.other_person) && !o.busy {
+        let agenda = sioul_core::agendas::agenda_of(&calendar, &load_config());
+        let named = names_person(&o.calendar, &agenda.person);
+        if named { String::new() } else { agenda.whose_words(tr()) }
+    } else {
+        String::new()
+    };
+    let mut card = serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
         "uid": o.uid,
@@ -380,7 +391,21 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
-    }))
+    });
+    // Whose agenda it is, and whether it is another person's (`Occurrence::another_persons`): your
+    // rules for busy time never hold for it. Set apart: the macro above reaches its depth.
+    card["whose"] = serde_json::json!(whose);
+    card["another_persons"] = serde_json::json!(o.another_persons());
+    json(&card)
+}
+
+/// Whether a calendar's name names `person` already, as whole words, case
+/// aside ("Léa", "Léa's school" for Léa; never "Samba" for Sam): its card then
+/// says no more of whose it is.
+fn names_person(calendar: &str, person: &str) -> bool {
+    let words = |text: &str| text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_string).collect::<Vec<_>>();
+    let (calendar, person) = (words(calendar), words(person));
+    !person.is_empty() && calendar.windows(person.len()).any(|w| w == person.as_slice())
 }
 
 /// One time of an event, read from its file when its panel opens: its notes,
@@ -679,6 +704,7 @@ impl FilterNow {
                     Whose::Child => tr().text("agendas-group-children", None),
                     Whose::Parent => tr().text("agendas-group-parent", None),
                     Whose::Partner => tr().text("agendas-group-partners", None),
+                    Whose::Someone => tr().text("agendas-group-someone", None),
                     Whose::Shared => tr().text("agendas-group-shared", None),
                 };
                 groups.push(GroupShown { key: key.clone(), title, agendas: Vec::new() });
@@ -1278,6 +1304,13 @@ fn made(shared: &Shared) -> (String, std::time::Duration) {
 /// (your own time around a meeting with others), and the next step of what
 /// prepares it (`pairs::appointment_view`); its file's links read with it.
 fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], tasks: &[sioul_core::tasks::Task], zone: &TimeZone) {
+    // Another person's agenda (a partner's, another parent's): their name first on its rows,
+    // "Sam's agenda" (24 November 2026), read once for the whole show.
+    let whose: std::collections::HashMap<String, String> = if occurrences.iter().any(|o| o.other_person) {
+        sioul_core::agendas::all(&load_config()).into_iter().filter(|a| a.whose.another_person()).map(|a| (a.id.clone(), a.whose_words(tr()))).collect()
+    } else {
+        Default::default()
+    };
     for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Event) {
         let timeline::Source::Calendar { key, start, .. } = &item.source else { continue };
         let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { continue };
@@ -1285,9 +1318,9 @@ fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], t
         // Its legs read with it (part E): Leave at from the first, their titles on its line.
         let legs = sioul_core::anchors::legs_seen_in(&o.uid, occurrences);
         let view = sioul_core::pairs::appointment_view(o, &links, tasks, &legs, None, tr(), zone);
-        if !view.line.is_empty() {
-            item.line = view.line;
-        }
+        // An agenda for its availability alone titles its blocks by its own name already.
+        let named = if o.other_person && !o.busy { whose.get(&o.agenda).cloned().unwrap_or_default() } else { String::new() };
+        item.line = [named, view.line].into_iter().filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" · ");
     }
 }
 
@@ -1689,6 +1722,13 @@ pub(crate) fn asked(qt: &QtThread, shared: &Arc<Shared>) {
 pub(crate) mod tests {
     use super::*;
     use sioul_core::vdir::{self, Kind};
+
+    /// A calendar already named after its person: whole words alone (review of 3346ff96).
+    #[test]
+    fn a_calendar_names_its_person_by_whole_words() {
+        assert!(names_person("Léa", "Léa") && names_person("LÉA's school", "Léa") && names_person("Kim Lee: lessons", "kim lee"));
+        assert!(!names_person("Samba lessons", "Sam") && !names_person("Lessons", "") && !names_person("Lessons", "Kim"));
+    }
 
     /// Every file under `dir`, with its length and time: what a run wrote, compared.
     fn files(dir: &std::path::Path) -> Vec<(std::path::PathBuf, u64, Option<std::time::SystemTime>)> {

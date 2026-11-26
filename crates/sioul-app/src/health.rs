@@ -1094,7 +1094,8 @@ fn day_view(health: &Health, state: &HealthState, records: &DoseRecords, knowled
     items.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| (a.1.kind == "dose").cmp(&(b.1.kind == "dose"))));
     // Whole days and errands in words.
     let mut lines = Vec::new();
-    for event in around.events.iter().filter(|e| !e.cancelled && e.all_day && e.end > start && e.start < next) {
+    // Never another person's whole day (their day off, their "Unavailable"): not your day.
+    for event in around.events.iter().filter(|e| !e.cancelled && e.all_day && !e.another_persons() && e.end > start && e.start < next) {
         lines.push(say("day-all-day", &[("what", event.summary.clone())]));
     }
     for errand in health.errands().into_iter().filter(|e| e.day == date) {
@@ -4148,9 +4149,8 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
         return Vec::new();
     }
     let _ = today.save(&path);
-    // In a meeting, nothing is said: the time stays kept.
-    let meeting = sioul_core::agenda::occurrences(stamp - 86_400, stamp + 60).iter().any(|e| !e.cancelled && !e.all_day && e.start <= stamp && e.end > stamp);
-    if meeting {
+    // In a meeting, nothing is said: the time stays kept. Another person's appointment is not yours.
+    if crate::reviews::meeting(stamp) {
         return Vec::new();
     }
     let attention = crate::hours::attention();
@@ -8477,5 +8477,12 @@ mod tests {
         days.change(friday, "nap:0", |b| b.off = true);
         let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
         assert!(view.items.iter().filter(|i| i.key == "nap:0").all(|i| i.off && i.waking.is_empty() && !i.rings), "taken out: no alarm");
+        // The day's whole days in words: yours, never another person's (their day off; second review, item 2).
+        let midnight = friday.to_zoned(now.time_zone().clone()).unwrap().timestamp().as_second();
+        let whole = |summary: &str, other: bool| sioul_core::agenda::Occurrence { summary: summary.into(), all_day: true, start: midnight, end: midnight + 86_400, theirs: other, other_person: other, ..Default::default() };
+        let events = [whole("Kim's day off", true), whole("Holiday", false)];
+        let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &events, held: &Vec::new, tonight: true }, friday, &now);
+        let said = view.lines.join("\n");
+        assert!(said.contains("Holiday") && !said.contains("Kim's day off"), "{said}");
     }
 }

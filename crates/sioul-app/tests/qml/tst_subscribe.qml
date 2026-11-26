@@ -70,6 +70,8 @@ Item {
         function setSubscriptionField(id, field, value) { mock.calls = mock.calls.concat([["field", id, field, value]]); return "" }
         function refreshSubscription(id) { mock.calls = mock.calls.concat([["refresh", id]]); return "" }
         function stopSubscription(id) { mock.calls = mock.calls.concat([["stop", id]]); return "" }
+        function setAgendaPerson(place, field, person) { mock.calls = mock.calls.concat([["person", place, field, person]]); return "" }
+        function household() { return "{}" }
     }
 
     readonly property var row: ({ colour: "#4c6b5c", events: true, tasks: false, whose: "yours", person: "", area: "admin+leisure", reaches: "all-day", access: "read", server_read_only: true, for_work: false, said: false, kept_hidden: false, parent: "", parent_address: "", parent_answers: "mail", standing: [], titles: false })
@@ -82,7 +84,8 @@ Item {
         ],
         pairs: [],
         children: { kinds: [], yours: [], follow_ups: true, any: false },
-        accounts: [{ id: "local", name: "this computer", google: false }]
+        accounts: [{ id: "local", name: "this computer", google: false }],
+        persons: { child: [{ id: "p-lea", name: "Léa" }], partner: [], parent: [], someone: [{ id: "p-lea", name: "Léa" }, { id: "p-kim", name: "Kim" }] }
     })
 
     Component {
@@ -162,8 +165,9 @@ Item {
             verify(root.one(form, "subscribeAfterClass").visible && root.one(form, "subscribeAfterClass").checked, "the Ministry's begin after class")
             verify(!root.one(form, "subscribeBusy").visible, "holidays are never your busy time")
             verify(!root.one(form, "subscribeDaysOff").checked, "school holidays are no days off unless said")
-            root.one(form, "subscribeWhose").currentIndex = 1
-            root.one(form, "subscribePerson").text = "Léa"
+            // Whose it is: the control of each agenda's line (WhoseFields.qml), Léa chosen.
+            root.one(form, "agendaWhose").activated(1)
+            root.one(form, "agendaPerson").activated(1)
             mouseClick(root.one(form, "subscribeMake"))
             const sent = mock.calls.find(c => c[0] === "subscribe")[1]
             compare(sent.url, "https://fr.ftp.opendatasoft.com/openscol/fr-en-calendrier-scolaire/Zone-A.ics")
@@ -173,7 +177,8 @@ Item {
             compare(sent.days_off, false)
             compare(sent.engagements, null, "holidays: never said busy")
             compare(sent.whose, "child", "a child's timetable goes to that child")
-            compare(sent.person, "Léa")
+            compare(sent.person, "", "a person chosen goes by key, as the line writes it")
+            compare(JSON.stringify(mock.calls.find(c => c[0] === "person")), JSON.stringify(["person", "subscribed/timetable", "person", "p-lea"]))
             verify(!form.visible, "done: the form folds away")
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
@@ -312,6 +317,18 @@ Item {
             root.one(form, "subscribeAddress").text = "https://calendar.example.org/classes.ics"
             mouseClick(root.one(form, "subscribeMake"))
             compare(mock.calls[mock.calls.length - 1][1].engagements, false)
+            // A co-worker's agenda (someone else's, a name typed): never your busy time, no tick offered.
+            mouseClick(root.one(setup, "agendaSubscribe"))
+            root.one(form, "subscribeAddress").text = "https://calendar.example.org/kim.ics"
+            root.one(form, "agendaWhose").activated(4)
+            verify(!busy.visible, "someone else's: never your time")
+            const typed = root.one(form, "agendaSharedName")
+            verify(typed.visible, "no person chosen: a name typed")
+            typed.text = "Kim"
+            typed.editingFinished()
+            mouseClick(root.one(form, "subscribeMake"))
+            const theirs = mock.calls[mock.calls.length - 1][1]
+            compare(JSON.stringify([theirs.whose, theirs.person, theirs.engagements]), JSON.stringify(["someone", "Kim", false]))
             compare(root.fits(setup).length, 0, "nothing wider than the panel")
         }
 

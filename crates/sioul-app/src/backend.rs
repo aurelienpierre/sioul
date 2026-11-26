@@ -5443,6 +5443,11 @@ impl qobject::Sioul {
         crate::changes::watch(&self.qt_thread(), &self.shared());
         // Each agenda's role given its person, those typed before Sioul did (docs/persons.md).
         std::thread::spawn(crate::persons::tie_roles);
+        // Said once on this device after the update: what no longer reminds you (review of 3346ff96, 6).
+        {
+            let qt = self.qt_thread();
+            std::thread::spawn(move || crate::remind::tell_once_since_whose(&qt));
+        }
         // Nothing ends when a window starts or closes (decision 10): each state has its own end.
         // Sites an older file kept among the accounts move to their own list, a copy kept beside, made once.
         if let Err(e) = config::migrate_sites_at_start(&config_path()) {
@@ -6888,10 +6893,15 @@ impl qobject::Sioul {
     }
 
     fn set_agenda_field(self: Pin<&mut Self>, id: &QString, field: &QString, value: &QString) -> QString {
+        let was = field.to_string() == "whose" && crate::extensions::another_persons(&id.to_string());
         let problem = crate::agenda::set_field(&id.to_string(), &field.to_string(), &value.to_string());
         if problem.is_empty() {
             // What an agenda is changes what reaches you, what may be written and what holds your time: everything again.
             let (qt, shared) = (self.qt_thread(), self.shared());
+            // Whose it is crossing between yours and another person's: an extension's lessons in it rewritten with their mark.
+            if field.to_string() == "whose" {
+                crate::extensions::whose_changed(&qt, &id.to_string(), was);
+            }
             pim::show_pim(&qt, &shared);
             work::show_work(&qt, &shared);
         }

@@ -4110,6 +4110,16 @@ extension-calendar-new-here = A new calendar on this device only
 extension-calendar-for = The calendar for { $name }
 extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
+extension-agenda-whose = { $whose ->
+        [shared] { $calendar } is an agenda shared with you.
+        [child] { $calendar } is a child's agenda.
+        [parent] { $calendar } is another parent's agenda.
+        [someone] { $calendar } is someone else's agenda.
+        [partner] { $calendar } is a partner's agenda.
+       *[yours] { $calendar } is your own agenda.
+    }
+extension-agenda-whose-person = { $calendar } is { $person }'s agenda.
+extension-agenda-theirs = Its events are theirs: they remind you of nothing and never count as your time.
 # Whether an agenda's events are the person's own busy time, one sentence for one idea (23 November 2026): an
 # extension agenda's switch, beside its calendar (OPAQUE or TRANSPARENT, `[extensions.busy]`), and a subscribed
 # calendar's tick, in the form and on its line (`engagements`); the line under each says what it does.
@@ -4720,12 +4730,15 @@ remind-lead = { $minutes ->
        *[other] { $minutes } minutes
     }
 set-reminders-before = Before an event
-set-reminders-before-help = A quiet reminder this long before each event, counted before its time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own (Remind, in its form). Not for whole days, nor for calendars you only read.
+set-reminders-before-help = A quiet reminder this long before each event that takes your time, counted before its time to get ready and get there: an event at 14:00 with 30 minutes to get there is reminded at 13:15. Each event may say its own (Remind, in its form). Not for whole days, events that leave you free (Busy off), nor calendars you only read; an outing still says when to leave.
 set-reminders-before-none = None
 set-reminders-before-exact = On { device-this } they come on time, Sioul open or not.
 set-reminders-before-inexact = On { device-this }, Android does not let Sioul set exact alarms: these reminders may come up to an hour late. Settings ▸ Apps ▸ Sioul ▸ Alarms & reminders.
 event-remind = Remind
 event-remind-usual = As usual ({ $lead })
+event-remind-usual-free = As usual: none (it leaves you free)
+reminders-update-theirs = Since this version, the events of { $agendas } remind you of nothing: they are another person's. An event of yours that leaves you free gets no reminder by itself either, unless you set one in its Remind.
+reminders-update-free = Since this version, an event that leaves you free gets no reminder by itself, unless you set one in its Remind.
 event-remind-none = Not this one
 event-remind-before = { $lead } before
 event-reminds = Reminder: { $when }
@@ -5020,6 +5033,7 @@ agendas-group-yours = Yours
 agendas-group-children = Children
 agendas-group-parent = Another parent
 agendas-group-partners = Partners
+agendas-group-someone = Other people
 agendas-group-shared = Shared with you
 agendas-kept-hidden = kept hidden
 agenda-keep-hidden = Keep hidden on this device
@@ -5349,7 +5363,15 @@ agenda-whose-yours = Yours
 agenda-whose-child = A child's
 agenda-whose-parent = Another parent's
 agenda-whose-partner = A partner's
+agenda-whose-someone = Someone else's
 agenda-whose-shared = Shared with you
+agenda-of-person = { $person }'s agenda
+agenda-of-role = { $whose ->
+        [child] A child's agenda
+        [parent] Another parent's agenda
+        [someone] Someone else's agenda
+       *[partner] A partner's agenda
+    }
 agenda-person = Their name
 agenda-person-child = The child's name
 agenda-for = For

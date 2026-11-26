@@ -40,8 +40,24 @@ Item {
     implicitHeight: column.implicitHeight
     Component.onCompleted: tab.sioul.extensionsPage()
 
+    // The agenda whose new calendar is being made ("<extension>/<agenda>"), and what
+    // Agenda ⚙ knows to make one (`agenda::setup`: its accounts, the persons each role may name).
+    property string making: ""
+    // The account it is made on.
+    property string makingOn: ""
+    property var setup: ({ accounts: [], persons: {} })
+
     // A calendar chosen for an agenda: kept, unless it is "Choose…" or the one already chosen.
+    // A new one is made first with the form of Agenda ⚙'s New agenda… (NewAgendaForm.qml),
+    // which asks whose it is; once made, it is the one chosen.
     function choose(id, agenda, choice) {
+        if (choice.indexOf("new:") === 0) {
+            tab.setup = JSON.parse(tab.sioul.agendasSetup() || "{}")
+            tab.makingOn = choice.slice(4)
+            tab.making = id + "/" + agenda.id
+            return
+        }
+        tab.making = ""
         if (choice !== "" && choice !== "place:" + agenda.place)
             tab.sioul.extensionCalendar(id, agenda.id, choice)
     }
@@ -182,7 +198,20 @@ Item {
                             wrapMode: Text.Wrap
                             color: agenda.modelData.warn ? tab.theme.warm : tab.theme.muted
                         }
+                        // Whose the calendar chosen is, in words: said in Agenda ⚙ ▸ Your agendas
+                        // (or in the form that made it), never chosen here.
+                        Label {
+                            objectName: "extensionAgendaWhose:" + agenda.modelData.id
+                            Layout.fillWidth: true
+                            visible: text !== ""
+                            text: agenda.modelData.whose || ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: tab.theme.muted
+                        }
                         ComboBox {
+                            id: calendarChoice
+
                             objectName: "extensionCalendar:" + agenda.modelData.id
                             Layout.fillWidth: true
                             Layout.maximumWidth: 460
@@ -191,17 +220,48 @@ Item {
                             Accessible.name: tab.sioul.textWith("extension-calendar-for", "name", agenda.modelData.name)
                             onActivated: index => tab.choose(offer.modelData.id, agenda.modelData, agenda.choices[index].choice)
                         }
+                        // A new calendar for it: Agenda ⚙'s form, its account and its name proposed, events only.
+                        Loader {
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 460
+                            active: tab.making === offer.modelData.id + "/" + agenda.modelData.id
+                            visible: active
+
+                            sourceComponent: NewAgendaForm {
+                                id: newCalendar
+
+                                objectName: "extensionNewCalendar:" + agenda.modelData.id
+                                sioul: tab.sioul
+                                theme: tab.theme
+                                accounts: tab.setup.accounts || []
+                                persons: tab.setup.persons || ({})
+                                eventsOnly: true
+                                Component.onCompleted: newCalendar.begin(tab.makingOn, agenda.modelData.name)
+                                onMade: place => {
+                                    tab.making = ""
+                                    tab.sioul.extensionCalendar(offer.modelData.id, agenda.modelData.id, "place:" + place)
+                                }
+                                onKept: {
+                                    tab.making = ""
+                                    calendarChoice.currentIndex = Qt.binding(() => Math.max(0, agenda.choices.findIndex(c => c.choice === "place:" + agenda.modelData.place)))
+                                }
+                            }
+                        }
                         // Whether its lessons count as your own busy time: the extension's
                         // suggestion by default (a pupil's lessons off, your own appointments on);
                         // the same words, and the same line under them, as a subscribed calendar's tick.
+                        // Not offered for another person's agenda: never your time; its events are
+                        // written free unless you said otherwise (`extensions::busy_default`).
                         Switch {
                             objectName: "extensionBusy:" + agenda.modelData.id
+                            visible: agenda.modelData.theirs !== true
                             text: tab.sioul.text("agenda-busy-time")
                             checked: agenda.modelData.busy === true
                             onToggled: tab.sioul.extensionBusy(offer.modelData.id, agenda.modelData.id, checked)
                         }
                         Label {
                             objectName: "extensionBusyHelp:" + agenda.modelData.id
+                            visible: agenda.modelData.theirs !== true
                             Layout.fillWidth: true
                             text: tab.sioul.text("agenda-busy-time-help")
                             wrapMode: Text.Wrap
@@ -313,6 +373,12 @@ Item {
 
         function onExtensionChoices(id, choices) {
             choosing.ask(id, JSON.parse(choices))
+        }
+
+        // A person made from the form ("New person…"): the persons each role may name read again.
+        function onPersonsChanged() {
+            if (tab.making !== "")
+                tab.setup = JSON.parse(tab.sioul.agendasSetup() || "{}")
         }
     }
 

@@ -129,6 +129,12 @@ pub struct Occurrence {
     /// its reminders, through their stand-in (`holders`), never it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub child: bool,
+    /// Its agenda is another person's own: a partner's, another parent's
+    /// (`agendas::Whose::another_person`). It tells you nothing
+    /// (`reminders`) and is never your present moment nor your day, but an
+    /// invitation in it you accepted (`another_persons`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub other_person: bool,
     /// A stand-in: the UID of the child's event it stands for (`holders::stands_for`); "" otherwise.
     #[serde(skip)]
     pub stands_for: String,
@@ -170,6 +176,17 @@ impl Occurrence {
     /// yours: `agendas`). Whole days are left out where times are counted.
     pub fn holds_time(&self) -> bool {
         !self.cancelled && !self.transparent && !self.declined && !self.theirs
+    }
+
+    /// Whether it is another person's alone: of a partner's or another
+    /// parent's own agenda (`other_person`), and not an invitation there you
+    /// accepted, which is yours too. Such an event reminds you of nothing
+    /// (`reminders`) and is never your present moment nor your day (the
+    /// title bar's now, the Porch, the home card, the agents' `now` and
+    /// `porch`); the Agenda and that person's page show it as theirs. A shared
+    /// agenda (a club's, a contacts' birthdays) is never another person's.
+    pub fn another_persons(&self) -> bool {
+        self.other_person && !(self.invited && self.accepted)
     }
 
     /// When its agenda reaches you, by the hours (`agendas::Agenda::reach`).
@@ -725,7 +742,7 @@ fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::
             }
         };
         let rid = if component.is_recurrent_or_override() { changed.get(&event.comp_id).cloned().unwrap_or_else(|| rid_of_start(start, all_day, zone)) } else { String::new() };
-        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
+        found.push(Occurrence { agenda: marks.id.clone(), theirs: marks.theirs, busy, work: marks.work, outside_work: marks.outside_work, child: marks.child, other_person: marks.other_person, stands_for: stands_for.clone(), opaque, rid, ..occurrence });
     }
     found
 }

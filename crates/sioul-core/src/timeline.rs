@@ -1488,8 +1488,9 @@ fn head_at(i: &HeadInputs, t: i64) -> String {
     // night keep no evening on today (they show on the timeline all the same).
     let held_left = i.today.iter().filter(|item| fixed(item) && !matches!(item.kind, Kind::Meal | Kind::Nap | Kind::Night)).any(|item| span(item).is_some_and(|(_, e)| e > t));
     if !held_left && !work_left {
-        // Today holds nothing more: tomorrow's first appointment or pinned task, and the alarm.
-        let first = i.tomorrow.iter().filter(|item| matches!(item.kind, Kind::Event | Kind::Block) && item.tone != Tone::Muted || (item.kind == Kind::Step && item.certainty == Certainty::Held)).filter(|item| matches!(item.time, Time::Span { .. })).min_by_key(|item| item.time.proper(i.zone).0);
+        // Today holds nothing more: tomorrow's first appointment or pinned task, and the alarm. An
+        // event that holds none of your time (another person's, declined, free) is none, as in `fixed`.
+        let first = i.tomorrow.iter().filter(|item| fixed(item) && matches!(item.kind, Kind::Event | Kind::Block | Kind::Step)).filter(|item| matches!(item.time, Time::Span { .. })).min_by_key(|item| item.time.proper(i.zone).0);
         let mut parts = Vec::new();
         if let Some(item) = first
             && let Time::Span { start, at, .. } = item.time
@@ -2004,6 +2005,12 @@ mod tests {
         let evening = frames.iter().find(|f| f.from <= at("2026-10-05T18:00") && at("2026-10-05T18:00") < f.until).unwrap();
         assert_eq!(evening.text, "Tomorrow: 09:30 Dentist, leave at 09:05. Alarm at 07:00.");
         assert!(frames.iter().all(|f| !f.text.contains("Dose") && !f.text.contains("Sort the receipts")), "{frames:?}");
+        // Another person's appointment earlier tomorrow (it holds none of your time): never said as yours.
+        let mut theirs = thing("Lesson", Kind::Event, "2026-10-06T08:00", "2026-10-06T09:00");
+        theirs.holds_time = false;
+        let tomorrow = [theirs, dentist.clone()];
+        let frames = head_line(&HeadInputs { now: at("2026-10-05T18:00"), next_midnight: at("2026-10-06T00:00"), moments: &moments, today: &today, tomorrow: &tomorrow, nights: &[(at("2026-10-06T07:00"), Some(at("2026-10-06T07:00")))], dates: &[], first_hour: None, zone: &zone, tr: &tr });
+        assert_eq!(frames[0].text, "Tomorrow: 09:30 Dentist, leave at 09:05. Alarm at 07:00.", "{frames:?}");
         // Free time: the moment alone.
         let free = vec![(at("2026-10-05T09:00"), at("2026-10-05T16:00"), moment(Hours::Leisure, Reason::FreeTime, "2026-10-05T16:00"))];
         let frames = head_line(&HeadInputs { now: at("2026-10-05T10:40"), next_midnight: at("2026-10-06T00:00"), moments: &free, today: &today, tomorrow: &[], nights: &[], dates: &[], first_hour: None, zone: &zone, tr: &tr });

@@ -364,6 +364,9 @@ fn household_agendas(config: &Path) {
     vdir::store_item(&root.join("quorvelle/recital.ics"), &event("quorvelle-recital", "Mirrowvale piano recital", 15, "")).unwrap();
     vdir::store_item(&root.join("tilda/fair.ics"), &event("tilda-fair", "Tilda school fair", 16, &format!("X-SIOUL-CONCEPT;VALUE=URI:{}\r\n", sioul_core::holders::Kind::School.concept()))).unwrap();
     vdir::store_item(&root.join("tilda/dentist.ics"), &event("tilda-dentist", "Brightmere dentist", 17, &format!("X-SIOUL-CONCEPT;VALUE=URI:{}\r\n", sioul_core::holders::Kind::Dentist.concept()))).unwrap();
+    // Today, early: the opened child's swimming, which the agents' day names as hers (second review, item 2).
+    let today = |h: i8, m: i8| Zoned::now().date().at(h, m, 0, 0).to_zoned(zone.clone()).unwrap().with_time_zone(jiff::tz::TimeZone::UTC).strftime("%Y%m%dT%H%M%SZ").to_string();
+    vdir::store_item(&root.join("tilda/swim.ics"), &format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:tilda-swim\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Tilda swimming\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", today(0, 10), today(0, 40))).unwrap();
     let agenda = vdir::collections(Kind::Calendars).into_iter().find(|c| c.name == "Agenda").unwrap();
     vdir::store_item(&agenda.dir.join("stand-in-dentist.ics"), &event("stand-in-dentist", "Brightmere dentist", 17, "RELATED-TO;RELTYPE=PARENT:tilda-dentist\r\n")).unwrap();
     let text = std::fs::read_to_string(config).unwrap();
@@ -1027,6 +1030,15 @@ fn a_closed_person_is_never_shown() {
     // A closed child's agenda is kept, counted; an opened child's school fair comes, its dentist never, nor your stand-in of it.
     let agenda = call(&mut server, "agenda", json!({ "days": 3 }));
     assert!(text(&agenda).contains("Tilda school fair"), "the opened child's event comes: {}", text(&agenda));
+    // Named as the child's, in the agenda, the day and an event's own answer (second review, item 2).
+    assert!(text(&agenda).contains("Tilda school fair  (Tilda's agenda)"), "{}", text(&agenda));
+    let fair = call(&mut server, "get_event", json!({ "event": "sioul:event/tilda-fair" }));
+    let data = &fair["structuredContent"];
+    assert_eq!((data["whose"].as_str(), data["whose_said"].as_str(), data["another_persons"].as_bool()), (Some("child"), Some("Tilda's agenda"), Some(false)), "{fair}");
+    let day = call(&mut server, "list_tasks", json!({ "view": "today" }));
+    assert!(text(&day).contains("Tilda swimming  (Tilda's agenda)"), "{}", text(&day));
+    let swim = day["structuredContent"]["blocks"].as_array().and_then(|rows| rows.iter().find(|r| r["title"] == "Tilda swimming").cloned()).unwrap_or_else(|| panic!("{day}"));
+    assert_eq!((swim["whose"].as_str(), swim["whose_said"].as_str(), swim["another_persons"].as_bool()), (Some("child"), Some("Tilda's agenda"), Some(false)), "{swim}");
     assert!(agenda["structuredContent"]["kept_from_agents"].as_u64().unwrap_or(0) >= 3, "{agenda}");
     for (tool, arguments) in [("find", json!({ "query": "dentist" })), ("find", json!({ "query": "recital" })), ("reminders", json!({ "days": 3 })), ("list_tasks", json!({ "view": "today" })), ("letters", json!({})), ("agenda", json!({ "days": 3 }))] {
         let answer = call(&mut server, tool, arguments.clone());

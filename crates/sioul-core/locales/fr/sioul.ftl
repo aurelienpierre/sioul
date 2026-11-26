@@ -4143,6 +4143,16 @@ extension-calendar-new-here = Un nouveau calendrier sur cet appareil seulement
 extension-calendar-for = Le calendrier pour { $name }
 extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
+extension-agenda-whose = { $whose ->
+        [shared] { $calendar } est un agenda partagé avec vous.
+        [child] { $calendar } est l’agenda d’un enfant.
+        [parent] { $calendar } est l’agenda de l’autre parent.
+        [someone] { $calendar } est l’agenda de quelqu’un d’autre.
+        [partner] { $calendar } est l’agenda d’un ou d’une partenaire.
+       *[yours] { $calendar } est votre propre agenda.
+    }
+extension-agenda-whose-person = { $calendar } est l’agenda de { $person }.
+extension-agenda-theirs = Ses événements sont les siens : ils ne vous rappellent rien et ne comptent jamais comme votre temps.
 # À côté du calendrier : ces événements comptent-ils comme votre temps occupé (OPAQUE) ou libre (TRANSPARENT).
 agenda-busy-time = Compter comme mon temps occupé
 agenda-busy-time-help = Indisponible pendant eux : « Pendant une indisponibilité » de Ne pas déranger s’applique, la disponibilité que vous partagez les montre et le plan garde leur temps.
@@ -4751,12 +4761,15 @@ remind-lead = { $minutes ->
        *[other] { $minutes } minutes
     }
 set-reminders-before = Avant un événement
-set-reminders-before-help = Un rappel discret, tant de temps avant chaque événement, compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien (Rappel, dans son formulaire). Pas pour les journées entières, ni pour les agendas que vous lisez seulement.
+set-reminders-before-help = Un rappel discret, tant de temps avant chaque événement qui prend votre temps, compté avant le temps de se préparer et d’y aller : un événement à 14:00 avec 30 minutes pour y aller est rappelé à 13:15. Chaque événement peut dire le sien (Rappel, dans son formulaire). Pas pour les journées entières, les événements qui vous laissent libre (Indisponible décoché), ni pour les agendas que vous lisez seulement ; une sortie dit toujours quand partir.
 set-reminders-before-none = Aucun
 set-reminders-before-exact = Sur { device-this }, ils viennent à l’heure, Sioul ouvert ou non.
 set-reminders-before-inexact = Sur { device-this }, Android ne laisse pas Sioul poser d’alarmes exactes : ces rappels peuvent arriver jusqu’à une heure en retard. Paramètres ▸ Applications ▸ Sioul ▸ Alarmes et rappels.
 event-remind = Rappel
 event-remind-usual = Comme d’habitude ({ $lead })
+event-remind-usual-free = Comme d’habitude : aucun (vous restez libre)
+reminders-update-theirs = Depuis cette version, les événements de { $agendas } ne vous rappellent rien : ils sont à une autre personne. Un événement à vous qui vous laisse libre n’a pas non plus de rappel de lui-même, sauf si vous en mettez un dans son Rappel.
+reminders-update-free = Depuis cette version, un événement qui vous laisse libre n’a pas de rappel de lui-même, sauf si vous en mettez un dans son Rappel.
 event-remind-none = Pas pour celui-ci
 event-remind-before = { $lead } avant
 event-reminds = Rappel : { $when }
@@ -5051,6 +5064,7 @@ agendas-group-yours = Les vôtres
 agendas-group-children = Enfants
 agendas-group-parent = L’autre parent
 agendas-group-partners = Partenaires
+agendas-group-someone = D’autres personnes
 agendas-group-shared = Partagés avec vous
 agendas-kept-hidden = gardé caché
 agenda-keep-hidden = Garder caché sur cet appareil
@@ -5383,7 +5397,15 @@ agenda-whose-yours = À vous
 agenda-whose-child = À un enfant
 agenda-whose-parent = À l’autre parent
 agenda-whose-partner = À un ou une partenaire
+agenda-whose-someone = À quelqu’un d’autre
 agenda-whose-shared = Partagé avec vous
+agenda-of-person = Agenda de { $person }
+agenda-of-role = { $whose ->
+        [child] Agenda d’un enfant
+        [parent] Agenda de l’autre parent
+        [someone] Agenda de quelqu’un d’autre
+       *[partner] Agenda d’un ou d’une partenaire
+    }
 agenda-person = Son nom
 agenda-person-child = Le nom de l’enfant
 agenda-for = Pour

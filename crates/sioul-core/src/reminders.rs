@@ -404,14 +404,33 @@ fn modified(path: &str) -> i64 {
 /// ready, getting there): 14:00 with 30 minutes to get there and a quarter
 /// of an hour reminds at 13:15. A task's time block is an event like any
 /// other (docs/tasks.md, "Pinned to a time"). None for a whole day (the
-/// working day before tells it), for "not this one", and, unless they ask,
-/// for calendars you only read (holidays, subscriptions: their own alarms
-/// still come).
+/// working day before tells it), for "not this one", and, unless they ask
+/// (a number in Remind), for calendars you only read (holidays,
+/// subscriptions) and for an event that leaves you free (`usual_minutes`):
+/// their own alarms still come.
 pub fn before_at(event: &Occurrence, minutes: u32) -> Option<i64> {
+    before_with(event, usual_minutes(event, minutes))
+}
+
+/// The usual minutes before `event`, `minutes` as set (Agenda ⚙ ▸ Before an
+/// event): Sioul's usual reminder is for what takes your time (24 November
+/// 2026). None for a calendar you only read, nor for an event that leaves
+/// you free, by its own mark (TRANSP:TRANSPARENT) or by its calendar's (free
+/// as a whole: `Occurrence::transparent`). A number set on the event still
+/// wins; an outing's time to leave still comes (`event_reminders`).
+pub fn usual_minutes(event: &Occurrence, minutes: u32) -> u32 {
+    // A task's time block and a child's stand-in keep theirs in a calendar free as a whole: the
+    // calendar's mark overrides their own there (`agenda::read_occurrences`), and both are yours
+    // (review of 3346ff96, 5).
+    let free = event.transparent && event.task.is_empty() && event.stands_for.is_empty();
+    if event.read_only || free { 0 } else { minutes }
+}
+
+/// `before_at`, the usual time for this event `usual` minutes.
+fn before_with(event: &Occurrence, usual: u32) -> Option<i64> {
     if event.all_day {
         return None;
     }
-    let usual = if event.read_only { 0 } else { minutes };
     let lead = Remind::read(&event.remind).minutes(usual);
     (lead > 0).then(|| event.start - i64::from(event.margins.before + lead) * 60)
 }
@@ -504,29 +523,43 @@ fn event_reminders(config: &Config, tr: &Translator, now: &Zoned, events: &[Occu
     let own: Vec<String> = config.every_account().filter_map(|a| a.address.clone()).collect();
 
     // A child's event reminds its holder through their stand-in (`holders`), never itself: the
-    // other parent's Sioul shows it with its holder's name, and nothing more.
+    // other parent's Sioul shows it with its holder's name, and nothing more. Another person's
+    // own agenda (a partner's, another parent's) reminds you of nothing, neither Sioul's usual
+    // reminder nor an alarm its events carry, but an invitation there you accepted: it is yours
+    // too. A shared agenda is never one: a contacts' birthdays, a club's, keep their alarms.
     for event in events.iter().filter(|e| !e.cancelled && !declined(e, &own) && !e.child) {
+        // A leg whose appointment is here: one reminder for the outing, the
+        // appointment's, counted from the earliest leg (`anchors::mark`); the
+        // leg's own alarms still come.
+        let leg = !event.leg_of.is_empty();
+        let hm = |seconds: i64| at(seconds).map(|z| z.strftime("%H:%M").to_string()).unwrap_or_default();
+        // Another person's: nothing of theirs, but the time to leave of an outing you set up on
+        // their event (a ride there, things to bring: you go; review of 3346ff96, 4).
+        let theirs = event.another_persons();
+        let outing = !leg && (theirs || (event.transparent && !event.read_only)) && leaving(event, events, tasks, tr, &hm).is_some();
+        if theirs && !outing {
+            continue;
+        }
         let Some(start) = at(event.start) else { continue };
         let when = if event.all_day { tr.day(start.date()) } else { tr.date(&start, true) };
         let place = |text: String| if event.location.is_empty() { text } else if text.is_empty() { event.location.clone() } else { format!("{text} · {}", event.location) };
         // Its own alarms: set by you or the one who invited you. The alarm's
         // offset is the event file's: too far to be a time, none.
-        let mut alarms: Vec<(i64, i64)> = event.alarms.iter().filter_map(|offset| event.start.checked_add(*offset).filter(|due| jiff::Timestamp::from_second(*due).is_ok()).map(|due| (*offset, due))).collect();
-        // A leg whose appointment is here: one reminder for the outing, the
-        // appointment's, counted from the earliest leg (`anchors::mark`); the
-        // leg's own alarms still come.
-        let leg = !event.leg_of.is_empty();
+        // Never another person's alarms.
+        let mut alarms: Vec<(i64, i64)> = if theirs { Vec::new() } else { event.alarms.iter().filter_map(|offset| event.start.checked_add(*offset).filter(|due| jiff::Timestamp::from_second(*due).is_ok()).map(|due| (*offset, due))).collect() };
+        // The usual time: none for an event that leaves you free (`usual_minutes`), but an
+        // outing's time to leave (a way there, things to bring): you set it up, you go.
+        let usual = if outing { settings.before_event.max(usual_minutes(event, settings.before_event)) } else { usual_minutes(event, settings.before_event) };
         // Sioul's before it, counted before its margin; one of its alarms
         // within minutes of it makes one reminder, at the earlier.
         if !leg
-            && let Some(due) = before_at(event, settings.before_event)
+            && let Some(due) = before_with(event, usual)
             && modified(&event.key) <= due
             && !alarms.iter().any(|(_, alarm)| (alarm - due).abs() <= SAME_MOMENT && *alarm < due)
         {
             alarms.retain(|(_, alarm)| (alarm - due).abs() > SAME_MOMENT);
             // Said as it is when told: at waking, the time left is less.
             let told = due.max(stamp);
-            let hm = |seconds: i64| at(seconds).map(|z| z.strftime("%H:%M").to_string()).unwrap_or_default();
             let mut args = crate::i18n::args();
             args.set("time", if at(told).is_some_and(|t| t.date() == start.date()) { hm(event.start) } else { tr.date(&start, true) });
             args.set("what", if event.summary.is_empty() { tr.text("agenda-untitled", None) } else { event.summary.clone() });
@@ -1515,6 +1548,87 @@ mod tests {
         assert_eq!(told.iter().map(|r| r.key.as_str()).collect::<std::collections::BTreeSet<_>>().len(), 3, "each its own, told once each");
         assert_eq!(told[1].title, "19:30 · Choir, earlier, in 30 minutes");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Sioul's usual reminder is for what takes your time (24 November 2026):
+    /// none by itself for an event that leaves you free (its own mark, or its
+    /// calendar's); a number set on it still tells; its own alarms come, a
+    /// free whole day's too (a birthday's at 09:00); an outing on it still
+    /// says when to leave.
+    #[test]
+    fn the_usual_reminder_is_for_what_takes_your_time() {
+        let en = Translator::new("en");
+        let config = config();
+        let now = at("2026-10-07T08:00");
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        let free = Occurrence { transparent: true, ..event("call", "2026-10-07T14:00", vec![]) };
+        assert!(befores(&config, &en, &now, std::slice::from_ref(&free)).is_empty(), "free: none as usual");
+        assert_eq!(before_at(&free, 15), None);
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { remind: "10".into(), ..free.clone() }]).iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Before, stamp("2026-10-07T13:50"))], "its own number wins");
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { transparent: false, ..free.clone() }]).len(), 1, "busy: the usual quarter of an hour");
+        // Its alarms come, a free whole day's too.
+        let birthday = Occurrence { all_day: true, ..event("birthday", "2026-10-08T00:00", vec![9 * 3600]) };
+        let free_day = Occurrence { transparent: true, ..birthday };
+        assert_eq!(befores(&config, &en, &now, &[free_day]).iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-08T09:00"))]);
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { alarms: vec![-30 * 60], ..free.clone() }]).iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-07T13:30"))]);
+        // A free appointment with a way there: the time to leave, from the bus.
+        let doctor = Occurrence { summary: "Doctor".into(), location: String::new(), transparent: true, ..event("doctor", "2026-10-07T14:00", vec![]) };
+        let anchor = crate::anchors::Anchor { appointment: "doctor".into(), side: crate::anchors::Side::Before, gap: 50 * 60, timetable: true, was: Some(stamp("2026-10-07T14:00")), unconfirmed: None, cancelled_with: false };
+        let bus = Occurrence { uid: "bus".into(), summary: "Bus 24".into(), start: stamp("2026-10-07T13:10"), end: stamp("2026-10-07T13:35"), anchor: Some(anchor), location: String::new(), ..event("bus", "2026-10-07T13:10", vec![]) };
+        let mut outing = vec![doctor, bus];
+        crate::anchors::mark(&mut outing);
+        let told = befores(&config, &en, &now, &outing);
+        assert_eq!(told.iter().map(|r| (r.key.as_str(), r.at)).collect::<Vec<_>>(), [(format!("before:doctor:{}", stamp("2026-10-07T14:00")).as_str(), stamp("2026-10-07T12:55"))]);
+        assert_eq!(told[0].title, "Leave in 15 minutes for Doctor (14:00)");
+        // "Not this one" still holds on it.
+        outing.iter_mut().filter(|e| e.uid == "doctor").for_each(|e| e.remind = "NONE".into());
+        assert!(befores(&config, &en, &now, &outing).is_empty());
+        // In a calendar free as a whole, a task's time block and a child's stand-in keep the usual
+        // time: the calendar's mark covers their own there, and both are yours (review of 3346ff96, 5).
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { task: "report".into(), ..free.clone() }]).len(), 1, "a task's block");
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { stands_for: "swim".into(), ..free.clone() }]).len(), 1, "a stand-in");
+    }
+
+    /// Another person's own agenda (a partner's, another parent's) reminds
+    /// you of nothing: neither Sioul's usual reminder nor an alarm its events
+    /// carry; an invitation there you accepted is yours too, and tells. A
+    /// shared calendar its server keeps read only (a contacts' birthdays) is
+    /// nobody's own: its alarm still comes. A child's, as before: its holder
+    /// is told through their stand-in.
+    #[test]
+    fn another_person_s_agenda_reminds_you_of_nothing() {
+        let en = Translator::new("en");
+        let mut config = config();
+        config.accounts = toml::from_str::<Config>("[[account]]\nid = \"home\"\nkind = \"imap\"\naddress = \"me@example.net\"\n").unwrap().accounts;
+        let now = at("2026-10-07T08:00");
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        let partner = |o: Occurrence| Occurrence { agenda: "a/sam-work".into(), theirs: true, other_person: true, ..o };
+        // A partner's appointment, with an alarm of its own: nothing at all.
+        let appointment = partner(event("client", "2026-10-07T14:00", vec![-3600]));
+        assert!(befores(&config, &en, &now, std::slice::from_ref(&appointment)).is_empty(), "neither before nor alarm");
+        assert!(befores(&config, &en, &now, &[Occurrence { remind: "30".into(), ..appointment.clone() }]).is_empty(), "nor a number written in it");
+        // An invitation there you accepted: yours too, told as any of yours.
+        let guest = |answer: &str| Occurrence { attendees: vec![crate::agenda::Attendee { name: "Me".into(), address: "me@example.net".into(), answer: answer.into() }], ..appointment.clone() };
+        let mut answered = vec![guest("accepted"), Occurrence { uid: "asked".into(), ..guest("needs-action") }];
+        crate::agenda::mark_answers(&mut answered, &["me@example.net".to_string()]);
+        let told = befores(&config, &en, &now, &answered);
+        assert_eq!(told.iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-07T13:00")), (Kind::Before, stamp("2026-10-07T13:45"))], "the accepted one alone");
+        assert!(told.iter().all(|r| r.key.contains(":client:")));
+        // A shared calendar kept read only by its server (a contacts' birthdays: a whole day, free, 09:00): its alarm comes.
+        let birthday = Occurrence { all_day: true, transparent: true, read_only: true, theirs: true, agenda: "a/contact_birthdays".into(), ..event("birthday", "2026-10-08T00:00", vec![9 * 3600]) };
+        assert_eq!(befores(&config, &en, &now, std::slice::from_ref(&birthday)).iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Alarm, stamp("2026-10-08T09:00"))]);
+        // A child's: none, as before (its holder's stand-in tells them).
+        assert!(befores(&config, &en, &now, &[Occurrence { child: true, theirs: true, ..event("swim", "2026-10-07T17:00", vec![-1800]) }]).is_empty());
+        // The same appointment in an agenda of yours: told.
+        assert_eq!(befores(&config, &en, &now, &[Occurrence { other_person: false, theirs: false, ..appointment.clone() }]).len(), 2);
+        // An outing you set up on their event (a ride there): its time to leave, never their alarm (review of 3346ff96, 4).
+        let anchor = crate::anchors::Anchor { appointment: "client".into(), side: crate::anchors::Side::Before, gap: 40 * 60, timetable: true, was: Some(stamp("2026-10-07T14:00")), unconfirmed: None, cancelled_with: false };
+        let ride = Occurrence { uid: "ride".into(), summary: "Car".into(), start: stamp("2026-10-07T13:20"), end: stamp("2026-10-07T13:50"), anchor: Some(anchor), location: String::new(), ..event("ride", "2026-10-07T13:20", vec![]) };
+        let mut outing = vec![Occurrence { location: String::new(), ..appointment }, ride];
+        crate::anchors::mark(&mut outing);
+        let told = befores(&config, &en, &now, &outing);
+        assert_eq!(told.iter().map(|r| (r.kind, r.at)).collect::<Vec<_>>(), [(Kind::Before, stamp("2026-10-07T13:05"))], "{told:#?}");
+        assert!(told[0].title.starts_with("Leave in 15 minutes"), "{}", told[0].title);
     }
 
     #[test]

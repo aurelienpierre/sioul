@@ -962,7 +962,9 @@ fn agenda_day(tr: &Translator, day: Date, today: Date, zone: &jiff::tz::TimeZone
 /// then "Task · " and its list (21 October 2026; `agenda::mark_tasks`, with
 /// `tasks`, the plan's). The agendas kept hidden on this device (`kept`)
 /// are left out for good; those the hours leave out, frame by frame
-/// (`Frame::events_out`).
+/// (`Frame::events_out`). Another person's agenda (a partner's, another
+/// parent's) is never on it: the card is your day, and theirs show in the
+/// Agenda and on their page (`Occurrence::another_persons`).
 fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Task], dated: &[Dated], kept: &BTreeSet<String>) -> Option<AgendaLines> {
     let dates = date_lines(m, dated, tasks);
     if !input.calendars && dates.is_empty() {
@@ -975,7 +977,7 @@ fn agenda_lines(m: &Moment, input: &AgendaInput, tasks: &[sioul_core::tasks::Tas
     let now = m.now.timestamp().as_second();
     let end = today.checked_add(Span::new().days(HORIZON_DAYS + 1)).ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map_or(i64::MAX, |z| z.timestamp().as_second());
     // An instant event still takes its minute.
-    let mut coming: Vec<&Occurrence> = marked.iter().filter(|e| !e.cancelled && e.end.max(e.start + 60) > now && e.start < end && !kept.contains(&e.agenda)).collect();
+    let mut coming: Vec<&Occurrence> = marked.iter().filter(|e| !e.cancelled && !e.another_persons() && e.end.max(e.start + 60) > now && e.start < end && !kept.contains(&e.agenda)).collect();
     // Nearest first, a day's whole-day events before its times (Java's days only go forward).
     coming.sort_by(|a, b| (a.start, !a.all_day, &a.summary).cmp(&(b.start, !b.all_day, &b.summary)));
     let events = coming
@@ -2390,6 +2392,23 @@ mod tests {
         let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: &tr, details: true, dnd: None };
         let far = events_of(&[("Far away", "2026-11-20T10:00[Europe/Paris]", "2026-11-20T11:00[Europe/Paris]", false, None, false)]);
         assert!(snapshot(&moment, None, None, Some(&far), &[]).agenda.unwrap().events.is_empty());
+        // Another person's agenda (a partner's appointments): never on the card, your day; an
+        // invitation there you accepted is yours too. A child's and a shared one's stay.
+        let mut theirs = events_of(&[
+            ("Lesson", "2026-10-06T14:00[Europe/Paris]", "2026-10-06T15:00[Europe/Paris]", false, None, false),
+            ("Dinner together", "2026-10-06T20:00[Europe/Paris]", "2026-10-06T22:00[Europe/Paris]", false, None, false),
+            ("Swimming", "2026-10-06T17:00[Europe/Paris]", "2026-10-06T18:00[Europe/Paris]", false, None, false),
+            ("Club night", "2026-10-06T19:00[Europe/Paris]", "2026-10-06T20:00[Europe/Paris]", false, None, false),
+        ]);
+        for (n, event) in theirs.events.iter_mut().enumerate() {
+            event.theirs = true;
+            event.other_person = n < 2;
+            event.child = n == 2;
+        }
+        theirs.events[1].invited = true;
+        theirs.events[1].accepted = true;
+        let shown: Vec<String> = snapshot(&moment, None, None, Some(&theirs), &[]).agenda.unwrap().events.into_iter().map(|e| e.title).collect();
+        assert_eq!(shown, ["Swimming", "Club night", "Dinner together"]);
         // No calendar at all: no agenda on the card.
         let none = AgendaInput { events: Vec::new(), calendars: false, read_on: now.date(), aside: Default::default(), notices: None };
         assert!(snapshot(&moment, None, None, Some(&none), &[]).agenda.is_none());

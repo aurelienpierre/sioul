@@ -48,13 +48,16 @@ pub enum Whose {
     Parent,
     /// A partner's.
     Partner,
-    /// Shared with you by anyone else: a colleague, a club, a subscription.
+    /// Someone else's own: a co-worker's, a friend's (24 November 2026): one
+    /// of your people, a name typed, or nobody named.
+    Someone,
+    /// Shared with you by anyone else: a club, a team, a subscription.
     Shared,
 }
 
 impl Whose {
     /// In the order the filter's groups come.
-    pub const ALL: [Whose; 5] = [Whose::Yours, Whose::Child, Whose::Parent, Whose::Partner, Whose::Shared];
+    pub const ALL: [Whose; 6] = [Whose::Yours, Whose::Child, Whose::Parent, Whose::Partner, Whose::Someone, Whose::Shared];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -62,12 +65,25 @@ impl Whose {
             Whose::Child => "child",
             Whose::Parent => "parent",
             Whose::Partner => "partner",
+            Whose::Someone => "someone",
             Whose::Shared => "shared",
         }
     }
 
     pub fn parse(text: &str) -> Option<Whose> {
         Whose::ALL.into_iter().find(|w| w.id() == text.trim().to_ascii_lowercase())
+    }
+
+    /// Another person's own agenda: a partner's, another parent's, someone
+    /// else's (a co-worker's, a friend's). Its events
+    /// are theirs: they tell you nothing (`reminders`, but an invitation in it
+    /// you accepted) and are never your present moment nor your day (`now`,
+    /// the Porch, the home card); the Agenda and that person's page show them.
+    /// Never a shared agenda's: a calendar its server keeps read only is
+    /// shared by default (a contacts' birthdays, a club's), and its alarms
+    /// still come; nor a child's, whose holder is told (`holders`).
+    pub fn another_person(self) -> bool {
+        matches!(self, Whose::Partner | Whose::Parent | Whose::Someone)
     }
 }
 
@@ -139,9 +155,22 @@ pub enum Reach {
 /// configuration from reading.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Said {
-    /// "yours", "child", "parent", "partner", "shared".
+    /// "yours", "child", "parent", "partner", "shared"; someone else's is
+    /// written "shared" here with `role` beside it (`Said::whose_word`). An
+    /// older Sioul reads a word it does not know as unsaid.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub whose: Option<String>,
+    /// The role a newer Sioul reads where `whose` keeps the word an older
+    /// one knows (24 November 2026): `role = "someone"` beside `whose =
+    /// "shared"` is someone else's agenda (a co-worker's, a friend's). A Sioul
+    /// 0.1.0 skips it and reads "shared": theirs, never its busy time nor its
+    /// plan (its reminders still come there), the nearest it knows; with
+    /// "someone" in `whose` it would have read unsaid, so yours. Read only
+    /// while `whose` says "shared": an older Sioul that changes `whose` leaves
+    /// it behind, unread while `whose` says another word, and read again if
+    /// `whose` is set back to "shared" there (second review: rare, said).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     /// Whose name: a child's above all ("Léa").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -185,7 +214,18 @@ pub struct Said {
 
 impl Said {
     /// The fields an agenda's settings may write.
-    pub const FIELDS: [&'static str; 11] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person"];
+    pub const FIELDS: [&'static str; 12] = ["whose", "name", "area", "reaches", "access", "parent", "parent_address", "parent_answers", "titles", "person", "parent_person", "role"];
+
+    /// Whose it is, as said: `whose`, or `role` where `whose` says "shared"
+    /// (someone else's: `Said::role`); None when unsaid or a word this Sioul
+    /// does not know.
+    pub fn whose_word(&self) -> Option<Whose> {
+        let whose = self.whose.as_deref().and_then(Whose::parse)?;
+        match self.role.as_deref().and_then(Whose::parse) {
+            Some(Whose::Someone) if whose == Whose::Shared => Some(Whose::Someone),
+            _ => Some(whose),
+        }
+    }
 }
 
 /// How the other parent of a child's agenda answers (`Said::parent_answers`).
@@ -267,7 +307,7 @@ impl Agenda {
     pub fn of(collection: &Collection, said: &Said, config: &Config, server_read_only: bool, details: &dyn Fn() -> bool) -> Agenda {
         // A calendar subscribed by its address (`subscribed`): yours unless said, read only, never written.
         let subscribed = collection.account == vdir::SUBSCRIBED;
-        let whose = said.whose.as_deref().and_then(Whose::parse).unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
+        let whose = said.whose_word().unwrap_or(if server_read_only && !subscribed { Whose::Shared } else { Whose::Yours });
         let area = said.area.as_deref().and_then(Area::parse).unwrap_or_else(|| if work_account(config, &collection.account) { Area::WORK } else { Area::PERSONAL });
         let reaches = said.reaches.as_deref().and_then(Reaches::parse).unwrap_or_default();
         let access = match said.access.as_deref().and_then(Access::parse) {
@@ -317,6 +357,26 @@ impl Agenda {
         self.whose != Whose::Yours
     }
 
+    /// Whose it is, in words, where its events show as someone's (24
+    /// November 2026: an event's card, the Agenda's rows, the agents'
+    /// `agenda`): "Sam's agenda" for a child's, a partner's, another parent's
+    /// or someone else's that names a person, "A partner's agenda" for one
+    /// that names none; "" for yours and for one shared with you.
+    pub fn whose_words(&self, tr: &crate::i18n::Translator) -> String {
+        let mut args = crate::i18n::args();
+        match self.whose {
+            Whose::Yours | Whose::Shared => String::new(),
+            _ if !self.person.trim().is_empty() => {
+                args.set("person", self.person.trim().to_string());
+                tr.text("agenda-of-person", Some(&args))
+            }
+            whose => {
+                args.set("whose", whose.id().to_string());
+                tr.text("agenda-of-role", Some(&args))
+            }
+        }
+    }
+
     /// Its busy times only.
     pub fn busy(&self) -> bool {
         self.access == Access::Availability
@@ -362,6 +422,14 @@ impl Agenda {
             Whose::Child => Relation::Child,
             Whose::Partner => Relation::Partner,
             Whose::Parent => Relation::OtherParent,
+            // Someone else's: one of your people by key, whatever their relation; else the name typed.
+            Whose::Someone => {
+                if let Some(person) = self.said.person.as_deref().map(str::trim).filter(|id| !id.is_empty()).and_then(|id| persons.get(id)) {
+                    self.person_id = person.id.clone();
+                    self.person = person.name.clone();
+                }
+                return self;
+            }
             Whose::Yours | Whose::Shared => return self,
         };
         if let Some(person) = persons.of_agenda(&self.said, relation) {
@@ -439,6 +507,8 @@ pub struct Marks {
     pub outside_work: bool,
     /// A child's agenda.
     pub child: bool,
+    /// Another person's own agenda: a partner's, another parent's (`Whose::another_person`).
+    pub other_person: bool,
     /// For availability, its events' titles shown by your word (`Agenda::titles`).
     pub titles: bool,
 }
@@ -449,7 +519,7 @@ pub fn marks_of(collection: &Collection) -> Marks {
     let agenda = agenda_of(collection, &config);
     // A calendar subscribed by its address takes none of your time unless you said it is yours (F41).
     let transparent = vdir::calendar_transparent(&collection.account, &collection.id) || (collection.account == vdir::SUBSCRIBED && crate::subscribed::takes_no_time(&config, &collection.id));
-    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, titles: agenda.titles }
+    Marks { id: agenda.id.clone(), name: agenda.name.clone(), theirs: agenda.theirs(), busy: agenda.busy(), work: agenda.for_work(), transparent, outside_work: agenda.reach() == Reach::OutsideWork, child: agenda.whose == Whose::Child, other_person: agenda.whose.another_person(), titles: agenda.titles }
 }
 
 /// Whether you chose to keep an agenda from every writer: read only, or its
@@ -569,9 +639,24 @@ pub fn read_config() -> Arc<Config> {
 /// `Said::FIELDS`; a word that does not read is refused.
 pub fn set_field(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
     let value = value.trim();
+    // Someone else's: "shared" in `whose`, which a Sioul 0.1.0 reads as theirs, and the role
+    // beside it (`Said::role`); any other word takes the role out.
+    if field == "whose" {
+        let whose = if value.is_empty() { None } else { Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner, someone or shared"))?) };
+        let someone = whose == Some(Whose::Someone);
+        set_one(path, id, "whose", if someone { Whose::Shared.id() } else { whose.map_or("", Whose::id) })?;
+        return set_one(path, id, "role", if someone { Whose::Someone.id() } else { "" });
+    }
+    set_one(path, id, field, value)
+}
+
+/// `set_field`, one field as it is written.
+fn set_one(path: &Path, id: &str, field: &str, value: &str) -> Result<(), String> {
     let written: Option<String> = match field {
         _ if value.is_empty() => None,
-        "whose" => Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner or shared"))?.id().to_string()),
+        "whose" => Some(Whose::parse(value).ok_or_else(|| format!("{value}: yours, child, parent, partner, someone or shared"))?.id().to_string()),
+        "role" if value == Whose::Someone.id() => Some(value.to_string()),
+        "role" => return Err(format!("{value}: someone, or nothing")),
         "name" => Some(value.to_string()),
         "area" => Some(Area::parse(value).ok_or_else(|| format!("{value}: work, admin, leisure, joined by +"))?.id()),
         "reaches" => Some(Reaches::parse(value).ok_or_else(|| format!("{value}: all-day or outside-work"))?.id().to_string()),
@@ -1460,12 +1545,27 @@ mod tests {
         assert_eq!((home.whose, home.area, home.reaches, home.access, home.reach()), (Whose::Yours, Area::PERSONAL, Reaches::AllDay, Access::Write, Reach::Always), "a mail address left unsaid makes nothing work here");
         let shared = of("home", true, true, &Said::default());
         assert_eq!((shared.whose, shared.access, shared.theirs()), (Whose::Shared, Access::Read, true), "read only, with details");
+        // Shared is nobody's own: a contacts' birthdays, a club's (their alarms still come, `reminders`).
+        assert_eq!(Whose::ALL.map(Whose::another_person), [false, false, true, true, true, false], "a partner's, another parent's and someone else's alone");
+        // Someone else's (a co-worker's): a name typed, or nobody; an older Sioul reads the word as unsaid.
+        let colleague = of("home", false, true, &Said { whose: Some("someone".into()), name: Some("Kim".into()), ..Said::default() });
+        assert_eq!((colleague.whose, colleague.person.as_str(), colleague.theirs()), (Whose::Someone, "Kim", true));
+        let en = crate::i18n::Translator::new("en");
+        assert_eq!((colleague.whose_words(&en), of("home", false, true, &Said { whose: Some("someone".into()), ..Said::default() }).whose_words(&en)), ("Kim's agenda".to_string(), "Someone else's agenda".to_string()));
+        // A calendar read by its address takes the role too.
+        let subscribed = Agenda::of(&collection(vdir::SUBSCRIBED, "club", &["VEVENT"]), &Said { whose: Some("someone".into()), ..Said::default() }, &config, true, &|| true);
+        assert!(subscribed.whose.another_person() && subscribed.read_only());
         let busy = of("home", true, false, &Said::default());
         assert_eq!((busy.whose, busy.access, busy.busy()), (Whose::Shared, Access::Availability, true), "read only, no details: availability only");
         // What you say wins; read and write is never more than the server allows.
         let said = Said { whose: Some("child".into()), name: Some(" Léa ".into()), area: Some("leisure".into()), reaches: Some("outside-work".into()), access: Some("write".into()), ..Said::default() };
         let child = of("home", true, true, &said);
         assert_eq!((child.whose, child.person.as_str(), child.area, child.access, child.reach()), (Whose::Child, "Léa", Area::LEISURE, Access::Read, Reach::OutsideWork));
+        // Whose, in words, where its events show (the card, the rows, the agents).
+        let (en, fr) = (crate::i18n::Translator::new("en"), crate::i18n::Translator::new("fr"));
+        let partner = of("home", false, true, &Said { whose: Some("partner".into()), ..Said::default() });
+        assert_eq!((child.whose_words(&en), child.whose_words(&fr), partner.whose_words(&en)), ("Léa's agenda".to_string(), "Agenda de Léa".to_string(), "A partner's agenda".to_string()));
+        assert_eq!((shared.whose_words(&en), home.whose_words(&en)), (String::new(), String::new()), "shared and yours: nobody named");
         let chosen = of("home", false, true, &Said { access: Some("availability".into()), ..Said::default() });
         assert!(chosen.busy() && chosen.read_only());
         // Words this Sioul does not know are unsaid.
@@ -1723,6 +1823,7 @@ mod tests {
         let b = &busy[0];
         assert_eq!((b.summary.as_str(), b.location.as_str(), b.notes.as_str(), b.organizer.as_str()), ("Sam's busy times", "", "", ""), "its name, nothing more");
         assert!(b.attendees.is_empty() && b.alarms.is_empty() && b.margins == crate::demands::Margins::default() && b.busy && b.theirs && b.read_only && !b.holds_time());
+        assert!(b.other_person && b.another_persons() && !b.child, "another parent's: it tells you nothing (`reminders`)");
         assert!(crate::agenda::file_occurrences(&free, &now(&calendar), 4_000_000_000, 4_200_000_000, &zone).is_empty(), "its free time left out");
         // Its switch (part 4): what its events say shown, its title alone; off again, its name.
         set_field(&config, &place(&calendar), "titles", "shown").unwrap();
@@ -1829,6 +1930,17 @@ mod tests {
         assert_eq!(read.agenda.overlaps.get("local/home|murena/lea-ecole"), Some(&true));
         assert!(set_field(&path, "murena/lea-ecole", "whose", "cousin").is_err());
         assert!(set_field(&path, "murena/lea-ecole", "colour", "red").is_err());
+        // Someone else's: "shared" written where a Sioul 0.1.0 reads it (theirs there), the role beside it.
+        set_field(&path, "local/kim", "whose", "someone").unwrap();
+        let kim = Config::load(&path).unwrap().agenda.calendars["local/kim"].clone();
+        assert_eq!((kim.whose.as_deref(), kim.role.as_deref(), kim.whose_word()), (Some("shared"), Some("someone"), Some(Whose::Someone)));
+        // An older Sioul that says "partner" leaves the role behind: unread.
+        assert_eq!(Said { whose: Some("partner".into()), ..kim.clone() }.whose_word(), Some(Whose::Partner));
+        // Another word takes the role out; unsaid, both go.
+        set_field(&path, "local/kim", "whose", "partner").unwrap();
+        let kim = Config::load(&path).unwrap().agenda.calendars["local/kim"].clone();
+        assert_eq!((kim.whose.as_deref(), kim.role.as_deref()), (Some("partner"), None));
+        set_field(&path, "local/kim", "whose", "").unwrap();
         for field in ["whose", "name", "access"] {
             set_field(&path, "murena/lea-ecole", field, "").unwrap();
         }

@@ -40,7 +40,14 @@ ColumnLayout {
     property string country: ""
     // The countries offered to choose from: "Another country…" pressed, or the person's own has none here.
     property bool elsewhere: false
-    readonly property var whoseChoices: ["yours", "child", "parent", "partner", "shared"]
+    // The persons each role may name (`agenda::setup`'s `persons`), and whose it is until Subscribe
+    // (WhoseFields.qml, the control of each agenda's line): the role, the person chosen, a name typed.
+    property var persons: ({})
+    property string whose: "yours"
+    property string personId: ""
+    property string personName: ""
+    // Another person's (a partner's, another parent's, a co-worker's): never your busy time.
+    readonly property bool anothers: ["partner", "parent", "someone"].indexOf(form.whose) >= 0
     readonly property var kinds: ["", "public", "school"]
     readonly property var countries: form.offer.countries || []
     readonly property string home: form.offer.home || ""
@@ -72,8 +79,9 @@ ColumnLayout {
         publicChoice.currentIndex = 0
         schoolChoice.currentIndex = 0
         kind.currentIndex = 0
-        whose.currentIndex = 0
-        person.text = ""
+        form.whose = "yours"
+        form.personId = ""
+        form.personName = ""
         daysOff.checked = true
         afterClass.checked = false
         busy.checked = false
@@ -100,6 +108,11 @@ ColumnLayout {
         afterClass.checked = item.holidays === "school" && item.after_class === true
     }
 
+    // Sioul's window, with its own properties (its locale), for the person's form.
+    function sioulWindow(): var {
+        return form.Window.window
+    }
+
     function make() {
         const holidays = form.kinds[kind.currentIndex]
         const areas = [[work, "work"], [admin, "admin"], [leisure, "leisure"]].filter(p => p[0].checked).map(p => p[1]).join("+")
@@ -109,14 +122,17 @@ ColumnLayout {
             holidays: holidays,
             days_off: holidays === "" ? null : daysOff.checked,
             after_class: holidays === "school" ? afterClass.checked : null,
-            engagements: holidays === "" ? busy.checked : null,
+            engagements: holidays === "" ? busy.checked && !form.anothers : null,
             id: form.official,
-            whose: form.whoseChoices[whose.currentIndex],
-            person: person.text.trim(),
+            whose: form.whose,
+            person: form.whose !== "yours" && form.personId === "" ? form.personName : "",
             area: areas
         }
         const answer = JSON.parse(form.sioul.subscribeCalendar(JSON.stringify(asked)) || "{}")
         form.problem = answer.id ? "" : (answer.problem || "")
+        // One of your people chosen: written as the agenda's line writes it.
+        if (answer.id && form.whose !== "yours" && form.personId !== "")
+            form.problem = form.sioul.setAgendaPerson("subscribed/" + answer.id, "person", form.personId) || ""
         if (answer.id)
             form.done(answer.id)
     }
@@ -245,23 +261,29 @@ ColumnLayout {
         placeholderText: form.sioul.text("subscribe-name")
         Accessible.name: placeholderText
     }
-    // Whose it is: a child's timetable goes to that child.
-    PlainComboBox {
-        id: whose
-
+    // Whose it is: a child's timetable goes to that child, a co-worker's agenda to them.
+    WhoseFields {
         objectName: "subscribeWhose"
         Layout.fillWidth: true
-        model: form.whoseChoices.map(w => form.sioul.text("agenda-whose-" + w))
-        Accessible.name: form.sioul.text("agenda-whose")
-    }
-    TextField {
-        id: person
-
-        objectName: "subscribePerson"
-        visible: whose.currentIndex > 0
-        Layout.fillWidth: true
-        placeholderText: form.sioul.text(whose.currentIndex === 1 ? "agenda-person-child" : "agenda-person")
-        Accessible.name: placeholderText
+        sioul: form.sioul
+        theme: form.theme
+        persons: form.persons
+        whose: form.whose
+        personId: form.personId
+        name: form.personName
+        onWhoseChosen: whose => {
+            form.whose = whose
+            form.personId = ""
+        }
+        onPersonChosen: id => form.personId = id
+        onNameGiven: name => form.personName = name
+        onNewPersonAsked: relation => {
+            const household = JSON.parse(form.sioul.household() || "{}")
+            const dialog = personForm.now()
+            dialog.relations = household.relations || []
+            dialog.children = (household.persons || []).filter(p => p.relation === "child").map(p => ({ id: p.id, name: p.name }))
+            dialog.begin("", "", relation, [])
+        }
     }
     Flow {
         Layout.fillWidth: true
@@ -311,7 +333,8 @@ ColumnLayout {
         id: busy
 
         objectName: "subscribeBusy"
-        visible: kind.currentIndex === 0
+        // Not for another person's: never your time.
+        visible: kind.currentIndex === 0 && !form.anothers
         Layout.fillWidth: true
         text: form.sioul.text("agenda-busy-time")
     }
@@ -356,6 +379,23 @@ ColumnLayout {
             flat: true
             text: form.sioul.text("agenda-keep")
             onClicked: form.cancelled()
+        }
+    }
+
+    // A person's form, from "New person…": chosen for the new calendar once saved.
+    Later {
+        id: personForm
+
+        sourceComponent: Component {
+            PersonDialog {
+                sioul: form.sioul
+                theme: form.theme
+                window: form.sioulWindow()
+                onSaved: id => {
+                    if (id !== "")
+                        form.personId = id
+                }
+            }
         }
     }
 }

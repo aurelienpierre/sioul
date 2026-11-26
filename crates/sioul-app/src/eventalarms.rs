@@ -838,6 +838,40 @@ mod tests {
         }
     }
 
+    /// Another person's agenda gives a phone nothing to arm, and nothing to
+    /// show at an alarm Java armed before the role was said: its list leaves
+    /// the event out, and `decide`, asked at its time, answers nothing; an
+    /// event of yours at the same time is listed (review of 3346ff96, 11).
+    #[test]
+    fn a_phone_arms_nothing_of_another_person_s_agenda() {
+        sioul_core::config::stand_ins_only();
+        let _turn = crate::children::TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        use sioul_core::vdir::{self, Kind as Collections};
+        let now = sioul_core::zone::now();
+        let soon = (now.timestamp().as_second() / 60 + 180) * 60;
+        let utc = |at: i64| jiff::Timestamp::from_second(at).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
+        let event = |uid: &str| format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261101T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Lesson\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER:-PT1H\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(soon), utc(soon + 3600));
+        let theirs = vdir::create(Collections::Calendars, vdir::LOCAL, "Kim's lessons, phone test", None, &["VEVENT"]).unwrap();
+        let mine = vdir::create(Collections::Calendars, vdir::LOCAL, "Mine, phone test", None, &["VEVENT"]).unwrap();
+        vdir::store_item(&theirs.dir.join("lesson.ics"), &event("phone-test-theirs")).unwrap();
+        vdir::store_item(&mine.dir.join("lesson.ics"), &event("phone-test-mine")).unwrap();
+        let config = sioul_core::config::default_path();
+        std::fs::create_dir_all(config.parent().unwrap()).unwrap();
+        let had = std::fs::read_to_string(&config).ok();
+        sioul_core::agendas::set_field(&config, &sioul_core::agendas::place(&theirs), "whose", "someone").unwrap();
+        let listed = coming(&now);
+        assert!(listed.contains("phone-test-mine") && !listed.contains("phone-test-theirs"), "{listed}");
+        for key in [format!("before:phone-test-theirs:{soon}"), format!("alarm:phone-test-theirs:{soon}:-3600")] {
+            assert_eq!(decide(&key), "{}", "{key}: nothing shown");
+        }
+        match had {
+            Some(text) => std::fs::write(&config, text).unwrap(),
+            None => std::fs::remove_file(&config).unwrap(),
+        }
+        let _ = std::fs::remove_dir_all(&theirs.dir);
+        let _ = std::fs::remove_dir_all(&mine.dir);
+    }
+
     #[test]
     fn held_reminders_are_asked_about_again_when_the_hold_ends() {
         use sioul_core::reminders::Wait;

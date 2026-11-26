@@ -208,6 +208,9 @@ fn main() {
         "qml/PersonPage.qml",
         "qml/PersonDialog.qml",
         "qml/PersonChooser.qml",
+        // Whose an agenda is: its line in Agenda ⚙ and the forms that make a calendar; the form that makes one.
+        "qml/WhoseFields.qml",
+        "qml/NewAgendaForm.qml",
         "qml/RoutinesDialog.qml",
         "qml/RoutinePlayer.qml",
         "qml/ContractDialog.qml",

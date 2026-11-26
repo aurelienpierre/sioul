@@ -948,10 +948,25 @@ pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
     let mut all_day: Vec<String> = Vec::new();
     let mut planned: Vec<Value> = Vec::new();
     let mut blocks: Vec<(i64, Value, String)> = Vec::new();
-    let row = |kind: &str, item: &timeline::Item, from: i64, to: i64, uid: &str, energy: &str, location: &str| json!({ "kind": kind, "title": item.title, "start": instant(from), "end": instant(to), "uid": uid, "location": location, "energy": energy });
+    // Whose each event's agenda is, named as `agenda` names it (another person's: never the person's own).
+    let whose = whose_named(s, &occurrences);
+    let theirs = |item: &timeline::Item| -> (&'static str, String, bool) {
+        let timeline::Source::Calendar { key, start, .. } = &item.source else { return ("", String::new(), false) };
+        let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { return ("", String::new(), false) };
+        let (id, said) = whose.get(&o.agenda).map(|(w, said)| (w.id(), said.clone())).unwrap_or(("", String::new()));
+        (id, said, o.another_persons())
+    };
+    let row = |kind: &str, item: &timeline::Item, from: i64, to: i64, uid: &str, energy: &str, location: &str| {
+        let (whose_id, whose_said, another) = if kind == "event" { theirs(item) } else { ("", String::new(), false) };
+        json!({ "kind": kind, "title": item.title, "start": instant(from), "end": instant(to), "uid": uid, "location": location, "energy": energy, "whose": whose_id, "whose_said": whose_said, "another_persons": another })
+    };
     for item in agents.items().iter().filter(|i| i.time.proper(&zone).1 > midnight && i.time.proper(&zone).0 < next) {
         match (item.kind, item.time) {
-            (timeline::Kind::Event, timeline::Time::Day { .. }) => all_day.push(item.title.clone()),
+            (timeline::Kind::Event, timeline::Time::Day { .. }) => {
+                let (_, said, another) = theirs(item);
+                let note = whose_note(&said, another);
+                all_day.push(if note.is_empty() { item.title.clone() } else { format!("{} {}", item.title, note.trim()) });
+            }
             (timeline::Kind::Step, timeline::Time::Day { .. }) => planned.push(json!({ "uid": item.owner, "title": item.title })),
             (kind, timeline::Time::Span { start, at, until, end }) => {
                 let (name, uid, energy) = match kind {
@@ -964,6 +979,7 @@ pub(super) fn tasks_today(s: &Session, desk: &Desk) -> Answer {
                     blocks.push((start, row("margin", item, start, at, "", "", ""), String::new()));
                 }
                 let tail = if name == "task" { format!("  [{uid}]") } else if place.is_empty() { String::new() } else { format!(" · {place}") };
+                let tail = if name == "event" { let (_, said, another) = theirs(item); format!("{tail}{}", whose_note(&said, another)) } else { tail };
                 blocks.push((at, row(name, item, at, until, uid, energy, &place), format!("  {}  {}{tail}", timeline::range(at, until, &zone), item.title)));
                 if until < end {
                     blocks.push((until, row("margin", item, until, end, "", "", ""), String::new()));
@@ -1044,6 +1060,28 @@ pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: 
 
 // The agenda and contacts.
 
+/// Whose each agenda of `events` is, where it names someone (24 November 2026): "Sam's
+/// agenda", by place. Another person's events (a partner's, another parent's, someone
+/// else's) are theirs, never the person's own appointments; a person closed to agents has
+/// theirs left out before, counted.
+fn whose_named(s: &Session, events: &[agenda::Occurrence]) -> BTreeMap<String, (sioul_core::agendas::Whose, String)> {
+    use sioul_core::agendas::Whose;
+    if !events.iter().any(|e| e.child || e.other_person) {
+        return BTreeMap::new();
+    }
+    sioul_core::agendas::all(&s.config).into_iter().filter(|a| matches!(a.whose, Whose::Child | Whose::Partner | Whose::Parent | Whose::Someone)).map(|a| (a.id.clone(), (a.whose, a.whose_words(&s.tr)))).collect()
+}
+
+/// What an event's line says of whose it is: "  (Sam's agenda; not the person's own
+/// appointment)" for another person's, "  (Léa's agenda)" for a child's, else nothing.
+fn whose_note(said: &str, another: bool) -> String {
+    match (said.is_empty(), another) {
+        (_, true) => format!("  ({}; not the person's own appointment)", if said.is_empty() { "another person's agenda" } else { said }),
+        (false, false) => format!("  ({said})"),
+        _ => String::new(),
+    }
+}
+
 /// The agenda from `from` for `days` days, as an agent may see it
 /// (`Desk::agent_days`): each day's events, with the same fields and the
 /// same content as before (decision d), a task's time blocks among them;
@@ -1069,6 +1107,7 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     // Each day's events from the one model (`timeline::calendar_days`), their fields as before part 8.
     let listed = timeline::calendar_days(&shown, from, days, today, &zone, &s.tr);
     let words = sioul_core::words::Words::of(&s.config);
+    let whose = whose_named(s, &shown);
     let mut lines = Vec::new();
     let mut out = Vec::new();
     for day in &placed {
@@ -1112,17 +1151,21 @@ pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
             let event = &shown[listed.index];
             let summary = if event.summary.is_empty() { s.tr.text("agenda-untitled", None) } else { event.summary.clone() };
             let uri = links::event_uri(&event.uid);
+            let (whose_id, whose_said) = whose.get(&event.agenda).map(|(w, said)| (w.id(), said.clone())).unwrap_or(("", String::new()));
             if !in_blocks.contains(&(event.key.clone(), event.start)) {
                 let place = if event.location.is_empty() { String::new() } else { format!(" · {}", event.location) };
                 let gone = if event.cancelled { "× " } else { "" };
                 let when = if listed.both.is_empty() { &listed.when } else { &listed.both };
-                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}  <{uri}>")));
+                // Another person's: said so, not the person's own appointment.
+                let theirs = whose_note(&whose_said, event.another_persons());
+                said.push(((if listed.all_day { 0 } else { 2 }, event.start), format!("  {when}  {gone}{summary}{place}{theirs}  <{uri}>")));
             }
             let (_, notes) = mask::message(&words, "", &event.notes);
             events.push(json!({
                 "uri": uri, "uid": event.uid, "when": listed.when, "start": instant(event.start), "end": instant(event.end), "ongoing": listed.ongoing, "clock": event.clock, "summary": summary, "location": event.location,
                 "notes": notes, "calendar": event.calendar, "all_day": listed.all_day, "recurring": event.recurring, "cancelled": event.cancelled,
                 "tentative": event.tentative, "organizer": event.organizer, "attendees": event.attendees,
+                "whose": whose_id, "whose_said": whose_said, "another_persons": event.another_persons(),
             }));
         }
         // The dates asked that day, at the head (part 8): its title, its kind and the time left.
@@ -1581,4 +1624,16 @@ pub fn find(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     lines.extend(access::health_doubt(&consent));
     Ok(Answer { text: rows(&lines), data: json!({ "found": found }) })
+}
+
+#[cfg(test)]
+mod whose_tests {
+    /// What an event's line says of whose it is, to agents (review of 3346ff96, 11).
+    #[test]
+    fn an_event_s_line_says_whose_it_is() {
+        assert_eq!(super::whose_note("Kim's agenda", true), "  (Kim's agenda; not the person's own appointment)");
+        assert_eq!(super::whose_note("", true), "  (another person's agenda; not the person's own appointment)");
+        assert_eq!(super::whose_note("Léa's agenda", false), "  (Léa's agenda)");
+        assert_eq!(super::whose_note("", false), "");
+    }
 }
