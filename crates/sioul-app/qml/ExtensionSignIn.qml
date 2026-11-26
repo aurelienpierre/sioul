@@ -49,12 +49,22 @@ SafeDialog {
     function record(kind, value) {
         form.typed[kind] = value
     }
-    // Sign in: the values handed back once, the form closed.
+    // Sign in: the values handed back once, the form closed. A phone's keyboard
+    // may still hold the word being typed (its suggestion underlined, not yet in
+    // the field's text): it is committed first, and each field's text read as it
+    // is now, in the fields' order, not only as its last change said.
     function sendIn() {
         if (form.answered)
             return
+        Qt.inputMethod.commit()
+        const values = {}
+        for (let i = 0; i < repeater.count; ++i) {
+            const field = repeater.itemAt(i)
+            if (field)
+                values[field.modelData.kind] = field.value()
+        }
         form.answered = true
-        form.sioul.extensionCredentials(form.asked.id, JSON.stringify(form.typed))
+        form.sioul.extensionCredentials(form.asked.id, JSON.stringify(values))
         form.close()
     }
     // Cancel, or a close that is not a deliberate Sign in: nothing handed back.
@@ -90,6 +100,11 @@ SafeDialog {
 
                 required property var modelData
 
+                // The field's text as it is now (`sendIn`); what its last change said, before it loads.
+                function value() {
+                    return input.item ? String(input.item.text) : (form.typed[field.modelData.kind] || "")
+                }
+
                 Layout.fillWidth: true
                 spacing: 2
 
@@ -104,6 +119,8 @@ SafeDialog {
                 // show/hide eye), a plain one otherwise. Its kind names it, and
                 // each change is kept by the form.
                 Loader {
+                    id: input
+
                     objectName: "extensionCred:" + field.modelData.kind
                     Layout.fillWidth: true
                     sourceComponent: field.modelData.masked ? masked : plain

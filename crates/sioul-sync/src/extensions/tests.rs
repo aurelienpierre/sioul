@@ -21,19 +21,38 @@ struct Stand {
     pages: Vec<String>,
     removed_after: Option<usize>,
     looked: usize,
+    /// The keyring and the network refuse, with these words of their own.
+    keyring_fails: Option<String>,
+    network_fails: Option<String>,
+    failure: Option<String>,
 }
 
 impl Services for Stand {
     fn web(&mut self, request: &WebRequest, _: Duration, _: usize) -> Result<WebAnswer, &'static str> {
+        if let Some(words) = &self.network_fails {
+            self.failure = Some(words.clone());
+            return Err("network");
+        }
         self.asked.push(request.clone());
         Ok(WebAnswer { status: 200, headers: vec![("Content-Type".into(), "text/plain".into())], body: format!("you asked {}", request.url) })
     }
     fn secret(&mut self) -> Result<Option<String>, &'static str> {
+        if let Some(words) = &self.keyring_fails {
+            self.failure = Some(words.clone());
+            return Err("keyring");
+        }
         Ok(self.secret.clone())
     }
     fn keep_secret(&mut self, secret: &str) -> Result<(), &'static str> {
+        if let Some(words) = &self.keyring_fails {
+            self.failure = Some(words.clone());
+            return Err("keyring");
+        }
         self.secret = Some(secret.to_string());
         Ok(())
+    }
+    fn last_failure(&mut self) -> Option<String> {
+        self.failure.take()
     }
     fn forget_secret(&mut self) -> Result<(), &'static str> {
         self.secret = None;
@@ -203,8 +222,9 @@ fn a_web_request_reaches_only_the_hosts_named() {
     let reply: serde_json::Value = serde_json::from_str(&outcome.reply.unwrap()).unwrap();
     assert_eq!((reply["status"].as_u64(), reply["headers"][0][0].as_str()), (Some(200), Some("content-type")));
     assert_eq!(stand.asked[0].host, "api.example.org");
-    // W3: Sioul's line holds the host and the status, never the path nor the query.
-    assert!(outcome.log.iter().any(|l| l.contains("sioul: GET api.example.org: 200")) && !outcome.log.iter().any(|l| l.contains("/a")), "{:?}", outcome.log);
+    // W3: Sioul's line holds the method, the host, the path, the status and the time, never the query.
+    assert!(outcome.log.iter().any(|l| l.contains("sioul: GET api.example.org/a answered 200 in ") && l.ends_with(" ms (39 bytes)")), "{:?}", outcome.log);
+    assert!(!outcome.log.iter().any(|l| l.contains("b=c") || l.contains('?')), "{:?}", outcome.log);
     for (url, why) in [
         ("https://evil.example.net/", "host"),
         ("https://sub.api.example.org/", "host"),
@@ -365,6 +385,73 @@ fn the_secret_kept_never_reaches_the_log() {
     assert_eq!(outcome.reply.unwrap(), r#"{"refused":"size"}"#);
     assert_eq!(stand.secret, None);
     assert!(outcome.log.iter().any(|l| l.contains("refused a secret of 2401 bytes")), "{:?}", outcome.log);
+}
+
+/// What happens outside the extension's code is in its log, with the time:
+/// what the keyring did (its entry read with its size, none kept, kept, or
+/// the keyring's own words when it failed: never the value), a request that
+/// failed with the network's words; a problem's detail comes back for the
+/// card with each value the call hid replaced; a line the extension writes
+/// with a query or a token it never hid is scrubbed all the same.
+#[test]
+fn the_log_says_each_step_outside_the_extension() {
+    let given = Grants { hosts: ["api.example.org"].iter().map(|h| h.to_string()).collect(), sign_in: None, credentials: vec![CredField::Email, CredField::Password] };
+    let get = module(&["secret", "answer", "reply"], &[r#"{"get":true}"#], &echo("secret"));
+    // None kept here.
+    let (outcome, _) = run_it(&get, &given, Stand::default(), false);
+    assert_eq!(outcome.reply.unwrap(), r#"{"secret":null}"#);
+    assert!(outcome.log.iter().any(|l| l.ends_with("sioul: keyring: no entry kept for it on this device")), "{:?}", outcome.log);
+    // Kept: its size, never its value.
+    let (outcome, _) = run_it(&get, &given, Stand { secret: Some(r#"{"r":"RT-kept-0001"}"#.into()), ..Stand::default() }, false);
+    assert!(outcome.log.iter().any(|l| l.ends_with("sioul: keyring: its entry read (20 bytes)")) && !outcome.log.join("\n").contains("RT-kept-0001"), "{:?}", outcome.log);
+    // The keyring failed: its own words.
+    let fails = || Stand { keyring_fails: Some("Platform secure storage failure: Java exception was thrown".into()), ..Stand::default() };
+    let (outcome, _) = run_it(&get, &given, fails(), false);
+    assert_eq!(outcome.reply.unwrap(), r#"{"refused":"keyring"}"#);
+    assert!(outcome.log.iter().any(|l| l.ends_with("sioul: keyring: reading its entry failed: keyring (Platform secure storage failure: Java exception was thrown)")), "{:?}", outcome.log);
+    let keep = module(&["secret", "answer", "reply"], &[r#"{"keep":"RT-new-0002"}"#], &echo("secret"));
+    let (outcome, stand) = run_it(&keep, &given, Stand::default(), false);
+    assert_eq!(stand.secret.as_deref(), Some("RT-new-0002"));
+    assert!(outcome.log.iter().any(|l| l.ends_with("sioul: keyring: its entry kept (11 bytes)")), "{:?}", outcome.log);
+    let (outcome, _) = run_it(&keep, &given, fails(), false);
+    assert!(outcome.log.iter().any(|l| l.contains("sioul: keyring: keeping its entry failed: keyring (")), "{:?}", outcome.log);
+    // A request the network refused: its path, its time, the network's words; never its query.
+    let web = module(&["web", "answer", "reply"], &[r#"{"method":"POST","url":"https://api.example.org/v1/token?key=k7f3a9e2b1c"}"#], &echo("web"));
+    let (outcome, _) = run_it(&web, &given, Stand { network_fails: Some("io: Connection refused".into()), ..Stand::default() }, false);
+    let line = outcome.log.iter().find(|l| l.contains("POST api.example.org/v1/token failed after ")).unwrap_or_else(|| panic!("{:?}", outcome.log));
+    assert!(line.ends_with(" ms: network (io: Connection refused)") && !line.contains("k7f3a9e2b1c"), "{line}");
+    // A problem's detail, its hidden value replaced; a line the extension never hid, scrubbed.
+    let asks = [
+        r#"{"values":["RT-hidden-0003"]}"#,
+        r#"{"line":"GET https://api.example.org/p?token=abc123 with RT-hidden-0003, bearer AT-plain-0004"}"#,
+        r#"{"problem":{"kind":"sign-in","detail":"the refresh RT-hidden-0003 answered HTTP 400 with TOKEN_EXPIRED"}}"#,
+    ];
+    let body = "(drop (call $hide (i32.const $at_0) (i32.const $len_0)))
+    (drop (call $log (i32.const $at_1) (i32.const $len_1)))
+    (call $reply (i32.const $at_2) (i32.const $len_2))
+    i32.const 0";
+    let file = module(&["hide", "log", "answer", "reply"], &asks, body);
+    let (outcome, _) = run_it(&file, &given, Stand::default(), false);
+    assert_eq!(outcome.detail.as_deref(), Some("the refresh [hidden] answered HTTP 400 with TOKEN_EXPIRED"));
+    let log = outcome.log.join("\n");
+    assert!(log.contains("GET https://api.example.org/p?[hidden] with [hidden], bearer [hidden]"), "{log}");
+    for secret in ["abc123", "RT-hidden-0003", "AT-plain-0004"] {
+        assert!(!log.contains(secret), "{secret} in {log}");
+    }
+    // A call that went well has no detail; one that stopped says why, a panic of the extension plainly.
+    assert_eq!(run_it(&get, &given, Stand::default(), false).0.detail, None);
+    let trapping = module(&["answer", "reply"], &[], "unreachable");
+    assert_eq!(run_it(&trapping, &given, Stand::default(), false).0.detail.as_deref(), Some("it ended in an error of its own: it panicked (it reached WebAssembly's `unreachable`)"));
+    // Its stack overflowed: said so, in the log too.
+    let deep = wat::parse_str("(module (import \"sioul\" \"reply\" (func $reply (param i32 i32))) (memory (export \"memory\") 1) (func $down call $down) (func (export \"sioul_interface\") (result i32) i32.const 1) (func (export \"sioul_alloc\") (param i32) (result i32) i32.const 64) (func (export \"sioul_call\") (param i32 i32) (result i32) call $down i32.const 0))").unwrap();
+    let (outcome, _) = run_it(&deep, &given, Stand::default(), false);
+    assert_eq!(outcome.reply, Err(Stop::Trapped("its stack overflowed".into())));
+    assert!(outcome.log.iter().any(|l| l.ends_with("sioul: stopped: it ended in an error of its own: its stack overflowed")), "{:?}", outcome.log);
+    // Sioul's own side panicked: the call ends calmly, said with its message.
+    let (outcome, _) = caught("planity", || panic!("a stand-in panic at engine.rs:1"));
+    assert_eq!(outcome.reply, Err(Stop::Panicked("a stand-in panic at engine.rs:1".into())));
+    assert_eq!(outcome.reply.as_ref().unwrap_err().word(), "stopped-panicked");
+    assert!(outcome.log[0].ends_with("sioul: stopped: Sioul's side of the call panicked: a stand-in panic at engine.rs:1"), "{:?}", outcome.log);
 }
 
 /// K1: an extension removed while a call runs (a refresh renewing its

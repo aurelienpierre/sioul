@@ -170,7 +170,7 @@ fn split_rewritable(calendars: &BTreeMap<String, String>, place: &str, installed
         .iter()
         .filter(|(_, p)| p.as_str() == place)
         .filter_map(|(key, _)| key.split_once('/').map(|(e, a)| (e.to_string(), a.to_string())))
-        .partition(|(id, _)| installed.get(id).is_some_and(|i| i.enabled && !i.leaving && (i.signed_in || i.offer.sign_in.is_none())))
+        .partition(|(id, _)| installed.get(id).is_some_and(|i| i.enabled && !i.leaving && (i.signed_in || !i.offer.signs_in())))
 }
 
 /// Whose the calendar at `place` is, in words, for an extension's agenda
@@ -428,13 +428,23 @@ fn problem_line(word: &str, name: &str) -> String {
         "stopped-interface" => "extension-stopped-interface",
         "stopped-unread" => "extension-stopped-unread",
         "stopped-removed" => "extension-stopped-removed",
+        "stopped-panicked" => "extension-stopped-panicked",
         "settings" => "extension-problem-settings",
         "keyring" => "extension-problem-keyring",
         "record" => "extension-problem-record",
         "withdrawn" => "extension-problem-withdrawn",
+        "form-wait" => "extension-problem-form-wait",
         _ => "extension-problem-other",
     };
-    say(id, &[("name", name.to_string())])
+    say(id, &[("name", name.to_string()), ("minutes", (FORM_WAIT.as_secs() / 60).to_string())])
+}
+
+/// The line under a problem's sentence: its own detail (`Installed::detail`), in its words; "" none.
+fn detail_line(installed: &Installed) -> String {
+    if installed.problem.is_none() || installed.detail.trim().is_empty() {
+        return String::new();
+    }
+    say("extension-problem-detail", &[("detail", state::detail_shown(&installed.detail))])
 }
 
 fn when(at: i64) -> String {
@@ -472,21 +482,19 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool, calen
         };
         agendas = installed.agendas.iter().map(|a| agenda_json(&offer.id, a, calendars)).collect();
     }
-    let waiting = installed.and_then(|i| i.waiting.as_ref()).map(|w| {
-        let added: Vec<&str> = w.hosts.iter().filter(|h| !installed.is_some_and(|i| i.offer.hosts.contains(h))).map(String::as_str).collect();
-        // A redirect sign-in newly asked for, or a credential field not accepted before.
-        let had = installed.map(|i| &i.offer);
-        let new_sign_in = w.sign_in.is_some() && had.is_some_and(|o| o.sign_in != w.sign_in);
-        let new_credentials = !w.credentials.iter().all(|c| had.is_some_and(|o| o.credentials.contains(c)));
-        let sign_in = new_sign_in || new_credentials;
-        say("extension-update-asks", &[("version", w.version.clone()), ("sites", if added.is_empty() { "none".to_string() } else { added.join(", ") }), ("signin", if sign_in { "yes" } else { "no" }.to_string())])
-    });
+    let waiting = installed.and_then(waiting_line);
     let needs_sign_in = offer.sign_in.is_some() || !offer.credentials.is_empty();
+    // The update offered here: by its own button when it asks for no more; by "Take the
+    // update" under the sentence of what it asks when it asks for more (`waiting`).
+    let update = installed.and_then(|i| update_of(i, Some(offer)));
     json!({
         "id": offer.id,
         "name": name,
         "about": offer.about.said(fr),
         "version": installed.map_or(offer.version.clone(), |i| i.offer.version.clone()),
+        "versionLine": version_line(offer, installed),
+        "update": update.as_ref().filter(|(_, waits)| !waits).map(|(o, _)| o.version.clone()).unwrap_or_default(),
+        "updateLabel": update.as_ref().filter(|(_, waits)| !waits).map(|(o, _)| say("extension-update", &[("version", o.version.clone())])).unwrap_or_default(),
         "brings": brings_line(offer),
         "sites": say("extension-sites", &[("count", hosts.len().to_string()), ("sites", hosts.join(", "))]),
         "signIn": if !offer.credentials.is_empty() { say("extension-keeps-credentials", &[]) } else if offer.sign_in.is_some() { say("extension-keeps-sign-in", &[]) } else { say("extension-keeps-no-sign-in", &[]) },
@@ -499,12 +507,54 @@ fn offer_json(offer: &Offer, installed: Option<&Installed>, running: bool, calen
         "running": running,
         "line": line,
         "problem": installed.and_then(|i| i.problem.as_deref()).map(|p| problem_line(p, &name)).unwrap_or_default(),
+        "detail": installed.map(detail_line).unwrap_or_default(),
         "waiting": waiting.unwrap_or_default(),
         "agendas": agendas,
         "sets": sets,
         // Remove asks of its lessons only when it brings agendas.
         "bringsAgenda": offer.brings.iter().any(|b| b == "agenda"),
     })
+}
+
+/// What an update waiting for the person's yes asks, in one sentence, under
+/// which **Take the update** shows; none while the extension is disabled here
+/// (or leaving): it takes no update then (M4), so no button would do anything.
+fn waiting_line(installed: &Installed) -> Option<String> {
+    if !installed.enabled || installed.leaving {
+        return None;
+    }
+    let w = installed.waiting.as_ref()?;
+    let added: Vec<&str> = w.hosts.iter().filter(|h| !installed.offer.hosts.contains(h)).map(String::as_str).collect();
+    // A redirect sign-in newly asked for, or a credential field not accepted before.
+    let had = &installed.offer;
+    let new_sign_in = w.sign_in.is_some() && had.sign_in != w.sign_in;
+    let new_credentials = !w.credentials.iter().all(|c| had.credentials.contains(c));
+    let sign_in = new_sign_in || new_credentials;
+    Some(say("extension-update-asks", &[("version", w.version.clone()), ("sites", if added.is_empty() { "none".to_string() } else { added.join(", ") }), ("signin", if sign_in { "yes" } else { "no" }.to_string())]))
+}
+
+/// The versions of an offer, in one sentence: the one that runs on this
+/// device, and the one offered when it differs (an update, taken or waiting
+/// for a yes); for one not installed here, the one offered.
+fn version_line(offer: &Offer, installed: Option<&Installed>) -> String {
+    let Some(installed) = installed else { return say("extension-version-new", &[("version", offer.version.clone())]) };
+    let running = installed.offer.version.clone();
+    let offered = installed.waiting.as_ref().map(|w| w.version.clone()).or_else(|| (offer.version != running && version_order(&offer.version, &running) == std::cmp::Ordering::Greater).then(|| offer.version.clone()));
+    match offered {
+        Some(offered) if offered != running => say("extension-version-offered", &[("version", running), ("offered", offered)]),
+        _ => say("extension-version-runs", &[("version", running)]),
+    }
+}
+
+/// The list in use on this device, in one sentence: its number, when it was
+/// read, and that its signature was checked (only a list whose signature held
+/// is ever taken: `store::read_manifest`, `State::accept`); where from is the
+/// line under it.
+fn list_line(state: &State) -> String {
+    if state.serial == 0 || state.manifest.is_empty() {
+        return say("extensions-list-none", &[]);
+    }
+    say("extensions-list-in-use", &[("serial", state.serial.to_string()), ("when", when(state.checked))])
 }
 
 /// The sentence of a list that did not read, in Sioul's language alone (P3):
@@ -543,9 +593,17 @@ fn page_json() -> String {
         offers.push(offer_json(&installed.offer, Some(installed), running.contains(&installed.offer.id), &calendars, &books));
     }
     let address = listed.map(|l| l.address.clone()).unwrap_or_else(|| load_config().extensions.manifest_address().to_string());
+    // The updates offered here, for "Update all" (two at least), and what those that ask for more ask.
+    let manifest = listed.and_then(|l| l.manifest.as_ref());
+    let updates: Vec<(Offer, bool)> = state.extensions.iter().filter(|i| !i.leaving).filter_map(|i| update_of(i, manifest.and_then(|m| m.offers.iter().find(|o| o.id == i.offer.id)))).collect();
+    let asks: Vec<String> = offers.iter().filter(|o| o["waiting"].as_str().is_some_and(|w| !w.is_empty())).map(|o| format!("{}: {}", o["name"].as_str().unwrap_or(""), o["waiting"].as_str().unwrap_or(""))).collect();
     json!({
         "reading": READING.lock().map(|r| *r).unwrap_or(false),
         "where": say("extensions-where", &[("address", address)]),
+        "list": list_line(&state),
+        "updates": updates.len(),
+        "updateAll": say("extensions-update-all", &[("count", updates.len().to_string())]),
+        "asks": asks,
         "problem": listed.and_then(|l| l.problem.as_deref()).map(|p| say(list_problem(p), &[])).unwrap_or_default(),
         "offers": offers,
         "calendars": calendars.choices,
@@ -692,14 +750,40 @@ fn show(qt: &QtThread) {
 /// Settings ▸ Extensions shown: its view at once, then the manifest read.
 pub(crate) fn page(qt: &QtThread) {
     show(qt);
-    read_list(Some(qt.clone()));
+    read_list(Some(qt.clone()), false);
+}
+
+/// "Read the list again": the manifest read now, whatever the daily rhythm,
+/// and what it found said in one sentence.
+pub(crate) fn read_again(qt: &QtThread) {
+    read_list(Some(qt.clone()), true);
+}
+
+/// What reading the manifest found, in one sentence (`read_again`): its
+/// number, then what changed here (extensions updated, updates waiting for
+/// the person's yes), or why it was not read.
+fn read_line(read: &Result<(u64, Applied), String>) -> String {
+    match read {
+        Err(problem) => say(list_problem(problem), &[]),
+        Ok((serial, applied)) => {
+            let taken = (applied.taken > 0).then(|| say("extensions-list-taken", &[("count", applied.taken.to_string())]));
+            let waiting = (applied.waiting > 0).then(|| say("extensions-list-waiting", &[("count", applied.waiting.to_string())]));
+            let what = match (taken, waiting) {
+                (Some(taken), Some(waiting)) => say("extensions-list-both", &[("taken", taken), ("waiting", waiting)]),
+                (Some(one), None) | (None, Some(one)) => one,
+                (None, None) => say("extensions-list-nothing", &[]),
+            };
+            say("extensions-list-read", &[("serial", serial.to_string()), ("what", what)])
+        }
+    }
 }
 
 // ---------------------------------------------------------------- the manifest
 
 /// The manifest read, off the window's thread; an update taken or set
-/// waiting; the page told when there is one.
-fn read_list(qt: Option<QtThread>) {
+/// waiting; the page told when there is one, and, when `said`, what it found
+/// in one sentence on the status line.
+fn read_list(qt: Option<QtThread>, said: bool) {
     {
         let Ok(mut reading) = READING.lock() else { return };
         if *reading {
@@ -712,8 +796,11 @@ fn read_list(qt: Option<QtThread>) {
     }
     std::thread::spawn(move || {
         let address = load_config().extensions.manifest_address().to_string();
-        let read = store::read_manifest(&address, SystemTime::now()).and_then(|manifest| apply(&manifest, &address).map(|()| manifest));
-        let (manifest, problem) = match read {
+        let read = store::read_manifest(&address, SystemTime::now()).and_then(|manifest| apply(&manifest, &address).map(|applied| (manifest, applied)));
+        if said && let Some(qt) = &qt {
+            crate::backend::set_status(qt, read_line(&read.as_ref().map(|(m, a)| (m.serial, *a)).map_err(String::clone)));
+        }
+        let (manifest, problem) = match read.map(|(manifest, _)| manifest) {
             Ok(manifest) => {
                 // An entry this Sioul cannot use is left out alone: said in the log.
                 for why in &manifest.left_out {
@@ -820,13 +907,21 @@ fn plan(state: &State, manifest: &Manifest) -> Plan {
     plan
 }
 
+/// What a manifest changed here: the extensions updated to a version that
+/// asks for no more, and the updates set waiting for the person's yes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct Applied {
+    taken: usize,
+    waiting: usize,
+}
+
 /// A manifest whose signature held taken in this device's state: its serial
 /// first (never lower than the last accepted here, or the whole manifest is
 /// refused), then `plan`'s changes: withdrawn extensions stopped, what each
 /// is given narrowed at once, a newer version taken when it asks for no
 /// more, else set waiting for the person's yes. Files are downloaded outside
 /// the state's lock.
-fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
+fn apply(manifest: &Manifest, address: &str) -> Result<Applied, String> {
     let path = state::path();
     state::change(&path, |state| {
         state.accept(manifest.serial, &manifest.sha256)?;
@@ -893,7 +988,10 @@ fn apply(manifest: &Manifest, address: &str) -> Result<(), String> {
                 installed.waiting = Some(offer.clone());
             }
         }
-    })
+    })?;
+    // Updated: a new version taken (narrowing alone is no update); waiting: newly set aside for a yes.
+    let updated = taken.iter().filter(|(old, offer)| old.version != offer.version || old.sha256 != offer.sha256).count();
+    Ok(Applied { taken: updated, waiting: plan.waiting.len() })
 }
 
 /// The offer of `id` in the manifest last read.
@@ -936,7 +1034,7 @@ pub(crate) fn enable(qt: &QtThread, id: &str) {
         match outcome {
             Ok(()) => {
                 crate::backend::set_status(&qt, say("extension-enabled", &[("name", name)]));
-                if state::load(&state::path()).get(&id).is_some_and(|i| i.offer.sign_in.is_none()) {
+                if state::load(&state::path()).get(&id).is_some_and(|i| !i.offer.signs_in()) {
                     refresh(Some(&qt), &id);
                 }
             }
@@ -1115,7 +1213,7 @@ pub(crate) fn choose_calendar(qt: &QtThread, shared: &std::sync::Arc<crate::back
             let (removed, refused) = door::take_out_of(&old, &id, &agenda);
             let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: another calendar chosen; {removed} lessons taken out of the one before, {refused} refused", jiff::Timestamp::now())]);
         }
-        if installed.enabled && (installed.signed_in || installed.offer.sign_in.is_none()) {
+        if installed.enabled && (installed.signed_in || !installed.offer.signs_in()) {
             refresh(Some(&qt), &id);
         }
     });
@@ -1148,7 +1246,7 @@ pub(crate) fn choose_busy(qt: &QtThread, id: &str, agenda: &str, counts: bool) {
             let (removed, refused) = door::take_out_of(&calendar, &id, &agenda);
             let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: {removed} lessons taken out to rewrite their busy state, {refused} refused", jiff::Timestamp::now())]);
         }
-        if installed.enabled && (installed.signed_in || installed.offer.sign_in.is_none()) {
+        if installed.enabled && (installed.signed_in || !installed.offer.signs_in()) {
             refresh(Some(&qt), &id);
         }
     });
@@ -1204,7 +1302,7 @@ pub(crate) fn choose_book(qt: &QtThread, shared: &std::sync::Arc<crate::backend:
             let (moved, left) = cards::move_made(&old, &new, &id, &set);
             let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: contacts {set}: another address book chosen; {moved} cards moved into it, {left} left", jiff::Timestamp::now())]);
         }
-        if installed.enabled && (installed.signed_in || installed.offer.sign_in.is_none()) {
+        if installed.enabled && (installed.signed_in || !installed.offer.signs_in()) {
             refresh(Some(&qt), &id);
         }
     });
@@ -1214,32 +1312,137 @@ pub(crate) fn choose_book(qt: &QtThread, shared: &std::sync::Arc<crate::backend:
 pub(crate) fn accept(qt: &QtThread, id: &str) {
     let (qt, id) = (qt.clone(), id.to_string());
     std::thread::spawn(move || {
-        let address = load_config().extensions.manifest_address().to_string();
-        let waiting = state::load(&state::path()).get(&id).and_then(|i| i.waiting.clone());
-        if let Some(offer) = waiting {
-            match store::install(&address, &offer) {
-                Ok(_) => {
-                    let _ = state::change(&state::path(), |s| {
-                        if let Some(i) = s.get_mut(&id) {
-                            store::discard_file(&i.offer);
-                            // A new sign-in asked for: the old one no longer counts.
-                            if i.offer.sign_in != offer.sign_in {
-                                i.signed_in = false;
-                            }
-                            i.offer = offer.clone();
-                            i.waiting = None;
-                        }
-                    });
-                    crate::backend::set_status(&qt, say("extension-updated", &[("name", name_of(&id)), ("version", offer.version.clone())]));
-                }
-                Err(problem) => {
-                    eprintln!("sioul: extensions: {id}: an update: {problem}");
-                    crate::backend::set_status(&qt, say("extension-not-enabled", &[("name", name_of(&id))]));
-                }
-            }
+        if let Some(said) = take_update(&id, true) {
+            crate::backend::set_status(&qt, said.unwrap_or_else(|failed| failed));
         }
         show(&qt);
     });
+}
+
+/// "Update to version …" on a card: the newer version the manifest offers,
+/// which asks for no more than the one in use (one that asks for more waits
+/// for its yes: `accept`), downloaded, checked and taken.
+pub(crate) fn update(qt: &QtThread, id: &str) {
+    let (qt, id) = (qt.clone(), id.to_string());
+    std::thread::spawn(move || {
+        if let Some(said) = take_update(&id, false) {
+            crate::backend::set_status(&qt, said.unwrap_or_else(|failed| failed));
+        }
+        show(&qt);
+    });
+}
+
+/// "Update all": every update offered here taken, each as its own button
+/// would (the window asked first for those that ask for more); one sentence
+/// says how many.
+pub(crate) fn update_all(qt: &QtThread) {
+    let qt = qt.clone();
+    std::thread::spawn(move || {
+        let ids: Vec<(String, bool)> = state::load(&state::path()).extensions.iter().filter(|i| !i.leaving).filter_map(|i| update_here(i).map(|(_, waits)| (i.offer.id.clone(), waits))).collect();
+        let mut updated = 0;
+        let mut failed = None;
+        for (id, waits) in ids {
+            match take_update(&id, waits) {
+                Some(Ok(_)) => updated += 1,
+                Some(Err(said)) => failed = Some(said),
+                None => {}
+            }
+        }
+        // How many were updated; one that could not be, said after.
+        let said = [(updated > 0).then(|| say("extensions-updated-all", &[("count", updated.to_string())])), failed].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        if !said.is_empty() {
+            crate::backend::set_status(&qt, said);
+        }
+        show(&qt);
+    });
+}
+
+/// The update offered to an extension installed here, and whether it waits
+/// for the person's yes (it asks for more: `Installed::waiting`); none when
+/// it runs the newest version the manifest offers, or is disabled here (it
+/// takes its update when enabled again, M4). `listed`: its offer in the
+/// manifest last read.
+fn update_of(installed: &Installed, listed: Option<&Offer>) -> Option<(Offer, bool)> {
+    if !installed.enabled || installed.leaving {
+        return None;
+    }
+    if let Some(waiting) = &installed.waiting {
+        return Some((waiting.clone(), true));
+    }
+    let listed = listed.filter(|l| l.id == installed.offer.id)?;
+    let newer = version_order(&listed.version, &installed.offer.version) == std::cmp::Ordering::Greater && listed.sha256 != installed.offer.sha256;
+    (listed.usable() && newer && !listed.grants().asks_more_than(&installed.offer.grants())).then(|| (listed.clone(), false))
+}
+
+/// `update_of` against the manifest last read (`LISTED`, taken here: never
+/// while it is held).
+fn update_here(installed: &Installed) -> Option<(Offer, bool)> {
+    let listed = offered(&installed.offer.id).map(|(offer, _)| offer);
+    update_of(installed, listed.as_ref())
+}
+
+/// `offer` made the version in use of `id` in `state`, only over the version
+/// whose SHA-256 is `from` (the one the update started from) and not while
+/// Remove runs: the offer it replaced, whose file is to discard. Otherwise
+/// nothing changes, and whether the file downloaded for `offer` is still
+/// needed (the one in use, or the update waiting).
+fn take_over(state: &mut State, id: &str, from: &str, offer: &Offer) -> Result<Offer, bool> {
+    let Some(i) = state.get_mut(id) else { return Err(false) };
+    if i.leaving || i.offer.sha256 != from {
+        return Err(i.offer.sha256 == offer.sha256 || i.waiting.as_ref().is_some_and(|w| w.sha256 == offer.sha256));
+    }
+    // A new sign-in asked for: the old one no longer counts.
+    if i.offer.sign_in != offer.sign_in {
+        i.signed_in = false;
+    }
+    i.waiting = None;
+    Ok(std::mem::replace(&mut i.offer, offer.clone()))
+}
+
+/// The update offered to `id` taken: its file downloaded and checked against
+/// the signed manifest, then made the version in use, the file before
+/// discarded (until then the version before runs, as before); `waiting` for
+/// the one that asked for more, said yes to. The sentence to say, `Err` when
+/// it could not be taken; none when nothing is offered.
+fn take_update(id: &str, waiting: bool) -> Option<Result<String, String>> {
+    let installed = state::load(&state::path()).get(id).cloned()?;
+    let (offer, waits) = update_here(&installed)?;
+    if waits != waiting {
+        return None;
+    }
+    let address = load_config().extensions.manifest_address().to_string();
+    match store::install(&address, &offer) {
+        Ok(_) => {
+            // Taken only over the version the update started from: a list read meanwhile
+            // may have taken a newer one (or Remove begun), which an older update never
+            // replaces (M3); the file just downloaded then goes, unless it is the one in use.
+            let taken = state::change(&state::path(), |s| match take_over(s, id, &installed.offer.sha256, &offer) {
+                Ok(before) => {
+                    if before.sha256 != offer.sha256 {
+                        store::discard_file(&before);
+                    }
+                    true
+                }
+                Err(keep) => {
+                    if !keep {
+                        store::discard_file(&offer);
+                    }
+                    false
+                }
+            });
+            if taken != Ok(true) {
+                note(id, &format!("the update to version {} was not taken: the version in use changed meanwhile", offer.version));
+                return None;
+            }
+            note(id, &format!("updated to version {}", offer.version));
+            Some(Ok(say("extension-updated", &[("name", name_of(id)), ("version", offer.version.clone())])))
+        }
+        Err(problem) => {
+            eprintln!("sioul: extensions: {id}: an update: {problem}");
+            note(id, &format!("the update to version {} could not be taken: its file could not be downloaded, or is not the one the list names", offer.version));
+            Some(Err(say("extension-update-failed", &[("name", name_of(id))])))
+        }
+    }
 }
 
 fn name_of(id: &str) -> String {
@@ -1251,11 +1454,51 @@ fn name_of(id: &str) -> String {
 
 /// The log's lines of one call written, under a line saying which.
 fn keep_log(id: &str, what: &str, outcome: &Outcome) {
-    let mut lines = vec![format!("{} {what}", jiff::Timestamp::now())];
+    let mut lines = vec![format!("{} {what}", stamp())];
     lines.extend(outcome.log.iter().cloned());
     if let Err(problem) = state::append_log(&state::log_path(id), &lines) {
         eprintln!("sioul: extensions: {id}: its log: {problem}");
     }
+}
+
+/// Now, as the log writes it: to the second, in UTC.
+fn stamp() -> String {
+    jiff::Timestamp::from_second(now()).map(|t| t.to_string()).unwrap_or_default()
+}
+
+/// One line of Sioul's own in the log of `id`, with the time: what happened
+/// outside the extension's code (its sign-in form, a run's record).
+fn note(id: &str, line: &str) {
+    if let Err(problem) = state::append_log(&state::log_path(id), &[format!("{} sioul: {line}", stamp())]) {
+        eprintln!("sioul: extensions: {id}: its log: {problem}");
+    }
+}
+
+/// The detail kept with a run's problem (`Installed::detail`): what the
+/// engine said of it (the reply's own detail, its hidden values replaced, or
+/// why the call stopped), unless Sioul's own reading of the reply says more.
+fn detail_of(outcome: &Outcome, own: Option<&str>) -> String {
+    own.map(str::to_string).or_else(|| outcome.detail.clone()).unwrap_or_default()
+}
+
+/// The most lines of the log the card's Details… shows.
+const DETAILS_LINES: usize = 50;
+
+/// The last lines of the log of `id`, the newest first, for Details…
+/// (`ExtensionLog.qml`): {title, lines}. Each line as the log keeps it
+/// (`state::log_tail`, scrubbed whoever wrote it), its time first in this
+/// device's zone ("2026-11-26 10:58:12") when it begins with one.
+pub(crate) fn log_json(id: &str) -> String {
+    let zone = sioul_core::zone::current();
+    let local = |line: String| -> String {
+        let (head, rest) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+        match head.parse::<jiff::Timestamp>() {
+            Ok(at) => format!("{} {rest}", at.to_zoned(zone.clone()).strftime("%Y-%m-%d %H:%M:%S")),
+            Err(_) => line.clone(),
+        }
+    };
+    let lines: Vec<String> = if sioul_core::extensions::valid_id(id) { state::log_tail(&state::log_path(id), DETAILS_LINES).into_iter().map(local).collect() } else { Vec::new() };
+    json!({ "title": say("extension-log-title", &[("name", name_of(id))]), "lines": lines }).to_string()
 }
 
 /// The mark of a call running (`RUNNING`), taken away when it is dropped:
@@ -1331,13 +1574,20 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
     let mut brought: Option<Vec<Brought>> = None;
     let mut brought_sets: Option<Vec<BroughtSet>> = None;
     let mut wrote = false;
+    // Whether the reply brought anything (an agenda, a set of contacts): a sign-in problem
+    // then ends nothing (one half of an extension still works, its card asking for a sign-in).
+    let mut brought_any = false;
     // Its reply read, and only what its list says it brings (agendas, contacts): anything else is nonsense.
     let read = |text: &str| reply::refresh_reply(text).and_then(|answer| reply::check_brought(&answer, &installed.offer.brings).map(|()| answer));
+    // Sioul's own detail of a problem it found reading the reply; else the engine's.
+    let mut own: Option<String> = None;
     let problem: Option<String> = match &outcome.reply {
         Err(stop) => Some(stop.word().to_string()),
         Ok(text) => match read(text) {
             Err(nonsense) => {
-                let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: stopped: it replied nonsense: {}", jiff::Timestamp::now(), nonsense.0)]);
+                let said = format!("it replied nonsense: {}", nonsense.0);
+                note(id, &format!("stopped: {said}"));
+                own = Some(said);
                 Some("stopped-nonsense".into())
             }
             // Removed meanwhile: nothing of it is taken in.
@@ -1345,15 +1595,17 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
             Ok(reply) => match chosen_calendars(id).zip(chosen_books(id)) {
                 // Settings that do not read change nothing: no lesson written, none taken out, no card written.
                 None => {
-                    let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: the settings file does not read: nothing written", jiff::Timestamp::now())]);
+                    note(id, "the settings file does not read: nothing written");
+                    own = Some("the settings file does not read: nothing written".into());
                     Some("settings".into())
                 }
                 Some((calendars, books)) => {
-                    let write = (!reply.agendas.is_empty() || !reply.contacts.is_empty()) && may_write(id, fetched);
+                    brought_any = !reply.agendas.is_empty() || !reply.contacts.is_empty();
+                    let write = brought_any && may_write(id, fetched);
                     let (taken, mut lines) = take_in(&door(), id, &reply, write, &|agenda| calendars.get(agenda).cloned(), fetched);
                     let (sets, set_lines) = take_in_contacts(&door(), id, &reply, write, &|set| books.get(set).cloned(), fetched);
                     lines.extend(set_lines);
-                    let at = jiff::Timestamp::now();
+                    let at = stamp();
                     let _ = state::append_log(&state::log_path(id), &lines.iter().map(|line| format!("{at} sioul: {line}")).collect::<Vec<_>>());
                     wrote = taken.iter().any(|b| b.read == fetched) || sets.iter().any(|s| s.read == fetched);
                     if wrote {
@@ -1366,7 +1618,8 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
             },
         },
     };
-    let signed_out = problem.as_deref() == Some(ProblemKind::SignIn.word());
+    let signed_out = signs_out(problem.as_deref(), brought_any);
+    let detail = detail_of(&outcome, own.as_deref());
     let noted = state::change(&state::path(), |s| {
         if let Some(i) = s.get_mut(id) {
             i.last_run = started;
@@ -1382,7 +1635,7 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
             if signed_out {
                 i.signed_in = false;
             }
-            i.problem = problem.clone();
+            i.note_problem(problem.clone(), &detail);
         }
     });
     // Not noted (a full disk, a folder read only): the run waits three hours
@@ -1391,7 +1644,7 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
         Ok(()) => problem,
         Err(why) => {
             eprintln!("sioul: extensions: {id}: its record: {why}");
-            let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: this run could not be noted on this device; the next one waits three hours", jiff::Timestamp::now())]);
+            note(id, "this run could not be noted on this device; the next one waits three hours");
             Some("record".to_string())
         }
     };
@@ -1408,6 +1661,16 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
         }
         show(qt);
     }
+}
+
+/// Whether a run's problem ends this device's sign-in (`Installed::signed_in`
+/// false: no run until the person signs in again): a sign-in problem with a
+/// reply that brought nothing. One that brought an agenda or contacts (one
+/// half of Planity still answering while its feed's link, or Firestore's
+/// token, was refused) keeps running every three hours, its card asking for
+/// a sign-in meanwhile.
+fn signs_out(problem: Option<&str>, brought_any: bool) -> bool {
+    problem == Some(ProblemKind::SignIn.word()) && !brought_any
 }
 
 /// A run of `id` begun at `at`, kept in this process whatever its record says.
@@ -1435,15 +1698,40 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
             return;
         }
         // A credentials sign-in collects the fields through Sioul's own form
-        // before the call; Cancel runs nothing.
+        // before the call; Cancel runs nothing. What became of the form is in
+        // the log (shown, sent with which fields filled, cancelled, or its wait
+        // ended), never a value; a wait that ended is said on the card too.
         let collected: Vec<(CredField, String)> = if wants_credentials.is_empty() {
             Vec::new()
         } else {
             let name = name_of(&id);
+            let asked: Vec<&str> = wants_credentials.iter().map(|f| f.tag()).collect();
+            note(&id, &format!("the sign-in form shown ({})", asked.join(", ")));
             match show_cred_form(&qt, &id, &name, &wants_credentials) {
-                Some(values) => values,
-                None => {
+                Form::Sent(values) => {
+                    let (values, said) = tidy(values);
+                    note(&id, &said);
+                    values
+                }
+                Form::Cancelled => {
+                    note(&id, "the sign-in form cancelled: nothing sent");
                     crate::backend::set_status(&qt, say("extension-sign-in-closed", &[("name", name)]));
+                    return;
+                }
+                Form::WaitEnded => {
+                    note(&id, &format!("the sign-in form closed by itself after waiting {} minutes: nothing sent", FORM_WAIT.as_secs() / 60));
+                    let _ = state::change(&state::path(), |s| {
+                        if let Some(i) = s.get_mut(&id) {
+                            i.note_problem(Some("form-wait".into()), "");
+                        }
+                    });
+                    crate::backend::set_status(&qt, problem_line("form-wait", &name));
+                    show(&qt);
+                    return;
+                }
+                Form::NotShown => {
+                    note(&id, "the sign-in form could not be shown: another sign-in is open");
+                    crate::backend::set_status(&qt, say("extension-sign-in-busy", &[]));
                     return;
                 }
             }
@@ -1467,10 +1755,16 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
         drop(running);
         let name = name_of(&id);
         let mut signed = false;
+        let mut own: Option<String> = None;
         let problem: Option<String> = match &outcome.reply {
             Err(stop) => Some(stop.word().to_string()),
             Ok(text) => match reply::sign_in_reply(text) {
-                Err(_) => Some("stopped-nonsense".into()),
+                Err(nonsense) => {
+                    let said = format!("it replied nonsense: {}", nonsense.0);
+                    note(&id, &format!("stopped: {said}"));
+                    own = Some(said);
+                    Some("stopped-nonsense".into())
+                }
                 Ok(SignInReply::SignedIn) => {
                     signed = true;
                     None
@@ -1488,13 +1782,14 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
                 Ok(SignInReply::Problem(p)) => Some(p.kind.word().to_string()),
             },
         };
+        let detail = detail_of(&outcome, own.as_deref());
         let _ = state::change(&state::path(), |s| {
             if let Some(i) = s.get_mut(&id) {
                 if signed {
                     i.signed_in = true;
-                    i.problem = None;
+                    i.note_problem(None, "");
                 } else if problem.is_some() {
-                    i.problem = problem.clone();
+                    i.note_problem(problem.clone(), &detail);
                 }
             }
         });
@@ -1523,7 +1818,7 @@ pub(crate) fn tick(qt: &QtThread) {
     // Once a day; after a failed read, again an hour later at the soonest.
     if now - state.checked >= DAILY && now - TRIED.load(std::sync::atomic::Ordering::Relaxed) >= 3600 {
         TRIED.store(now, std::sync::atomic::Ordering::Relaxed);
-        read_list(Some(qt.clone()));
+        read_list(Some(qt.clone()), false);
     }
     let started = started_here(&state, STARTED.lock().map(|s| s.clone()).unwrap_or_default());
     for installed in due(&state, now, &started, &attempted()) {
@@ -1541,7 +1836,7 @@ fn due(state: &State, now: i64, started: &BTreeSet<String>, attempted: &BTreeMap
     state
         .extensions
         .iter()
-        .filter(|i| i.enabled && (i.signed_in || i.offer.sign_in.is_none()) && !running.contains(&i.offer.id))
+        .filter(|i| i.enabled && (i.signed_in || !i.offer.signs_in()) && !running.contains(&i.offer.id))
         .filter(|i| {
             let last = i.last_run.max(attempted.get(&i.offer.id).copied().unwrap_or(0));
             !started.contains(&i.offer.id) || now - last >= EVERY
@@ -1634,7 +1929,13 @@ fn show_page(qt: &QtThread, id: &str, page: &SignInPage) -> Result<Option<String
     {
         let _ = qt.queue(move |mut sioul| sioul.as_mut().set_sign_in_page(QString::from(&asked)));
     }
-    let returned = answer.recv_timeout(page.wait).unwrap_or(None);
+    let returned = match answer.recv_timeout(page.wait) {
+        Ok(returned) => returned,
+        Err(_) => {
+            note(id, &format!("the sign-in page closed by itself after waiting {} minutes", page.wait.as_secs() / 60));
+            None
+        }
+    };
     clear();
     #[cfg(target_os = "android")]
     crate::steps::java("sign-in-close", "{}");
@@ -1687,18 +1988,55 @@ fn cred_label(field: CredField) -> &'static str {
     }
 }
 
+/// What became of a credentials form.
+#[derive(Debug, PartialEq, Eq)]
+enum Form {
+    /// Sign in: the values of the fields asked, in their order.
+    Sent(Vec<(CredField, String)>),
+    /// Cancel, or the extension removed meanwhile.
+    Cancelled,
+    /// Nobody answered within `FORM_WAIT`: the form closed by itself.
+    WaitEnded,
+    /// Another sign-in's form is open.
+    NotShown,
+}
+
+/// The values a form sent, made ready for the extension: the spaces a
+/// phone's keyboard adds around an address, a name or a pasted link taken
+/// out, never the password's (a space may be part of it); and the log's line
+/// saying which fields came filled, never a value.
+fn tidy(values: Vec<(CredField, String)>) -> (Vec<(CredField, String)>, String) {
+    let mut said = Vec::new();
+    let values = values
+        .into_iter()
+        .map(|(field, value)| {
+            let kept = if field == CredField::Password { value.clone() } else { value.trim().to_string() };
+            let mut words = format!("{} {}", field.tag(), if kept.is_empty() { "empty" } else { "filled" });
+            if kept.len() != value.len() && !kept.is_empty() {
+                words.push_str(" (spaces around it taken out)");
+            } else if field == CredField::Password && !value.is_empty() && value.trim().len() != value.len() {
+                words.push_str(" (a space at one of its ends, kept as typed)");
+            }
+            said.push(words);
+            (field, kept)
+        })
+        .collect();
+    (values, format!("the sign-in form sent: {}", said.join(", ")))
+}
+
 /// Sioul's own credentials form shown (ExtensionSignIn.qml, a plain dialog in
 /// Sioul's process on every device — no web view), its values waited for
-/// here, `FORM_WAIT` at most. Framed entirely by Sioul: the only text from
-/// the extension is its name; every field's label is Sioul's fixed word for
-/// that kind. The values are returned to the caller and kept nowhere else.
-/// None when the person cancelled or the form could not be shown.
-fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> Option<Vec<(CredField, String)>> {
+/// here, `FORM_WAIT` at most: leaving Sioul for another app does not end it
+/// (on a phone, only the system ending Sioul's window does, the form and its
+/// wait with it). Framed entirely by Sioul: the only text from the extension
+/// is its name; every field's label is Sioul's fixed word for that kind. The
+/// values are returned to the caller and kept nowhere else.
+fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> Form {
     let (said, answer) = std::sync::mpsc::channel();
     {
-        let Ok(mut waiting) = CRED_FORM.lock() else { return None };
+        let Ok(mut waiting) = CRED_FORM.lock() else { return Form::NotShown };
         if waiting.is_some() {
-            return None;
+            return Form::NotShown;
         }
         *waiting = Some(CredForm { id: id.to_string(), fields: fields.to_vec(), said });
     }
@@ -1712,10 +2050,14 @@ fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> 
     let shown: Vec<Value> = fields.iter().map(|f| json!({ "kind": f.tag(), "label": say(cred_label(*f), &[]), "masked": f.masked() })).collect();
     let asked = json!({ "id": id, "name": name, "fields": shown, "french": french() }).to_string();
     let _ = qt.queue(move |mut sioul| sioul.as_mut().set_extension_sign_in_form(QString::from(&asked)));
-    let values = answer.recv_timeout(FORM_WAIT).unwrap_or(None);
+    let answered = answer.recv_timeout(FORM_WAIT);
     clear();
     let _ = qt.queue(|mut sioul| sioul.as_mut().set_extension_sign_in_form(QString::default()));
-    values
+    match answered {
+        Ok(Some(values)) => Form::Sent(values),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Form::WaitEnded,
+        Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Form::Cancelled,
+    }
 }
 
 /// The credentials form of `id` closed, when it is the one shown (Remove):
@@ -2055,6 +2397,200 @@ mod tests {
         newer.offers[0].version = "2".into();
         assert!(plan(&disabled, &newer).taken.is_empty());
         assert_eq!(plan(&installed("1"), &newer).taken.len(), 1);
+    }
+
+    /// A credentials extension (Planity's shape: a form, no redirect) not
+    /// signed in on this device is never refreshed: before, it ran every three
+    /// hours and at Enable, and each run wrote "sign in again" over the sign-in's
+    /// own problem, whatever that was.
+    #[test]
+    fn a_credentials_extension_runs_only_once_signed_in() {
+        let mut offer = manifest_of(&[("bookings", "1", &["api.example.org"], None)]).offers.remove(0);
+        offer.credentials = vec![CredField::Email, CredField::Password, CredField::WebAddress];
+        assert!(offer.signs_in());
+        let mut state = State { extensions: vec![Installed::new(offer)], ..State::default() };
+        let (none, never) = (BTreeSet::new(), BTreeMap::new());
+        assert!(due(&state, 2000, &none, &never).is_empty(), "not signed in: nothing to refresh");
+        let calendars: BTreeMap<String, String> = [("bookings/salon".to_string(), "cloud/salon".to_string())].into();
+        assert!(split_rewritable(&calendars, "cloud/salon", &state).0.is_empty(), "not signed in: not rewritten from here");
+        state.extensions[0].signed_in = true;
+        assert_eq!(due(&state, 2000, &none, &never), vec!["bookings".to_string()]);
+        assert_eq!(split_rewritable(&calendars, "cloud/salon", &state).0.len(), 1);
+    }
+
+    /// A sign-in problem ends this device's sign-in only when the reply
+    /// brought nothing: a dead sign-in stops the runs; one half that still
+    /// works (Planity's feed refused while Firestore answered) keeps coming.
+    #[test]
+    fn a_sign_in_problem_signs_out_only_when_nothing_came() {
+        assert!(signs_out(Some("sign-in"), false), "nothing came: signed out, no run until a sign-in");
+        assert!(!signs_out(Some("sign-in"), true), "one half came: still signed in, the card asking for a sign-in");
+        assert!(!signs_out(Some("unreachable"), false) && !signs_out(None, false) && !signs_out(Some("stopped-time"), false));
+    }
+
+    /// An update waiting for a yes is said, with Take the update, only while
+    /// the extension is enabled here: disabled or leaving, it takes none (M4).
+    #[test]
+    fn a_waiting_update_is_said_only_while_enabled() {
+        let mut offer = manifest_of(&[("bookings", "1", &["api.example.org"], None)]).offers.remove(0);
+        offer.version = "0.2.0".into();
+        let mut wider = manifest_of(&[("bookings", "2", &["api.example.org", "new.example.org"], None)]).offers.remove(0);
+        wider.version = "0.3.0".into();
+        let mut installed = Installed::new(offer);
+        assert_eq!(waiting_line(&installed), None, "nothing waiting");
+        installed.waiting = Some(wider);
+        let said = waiting_line(&installed).expect("said while enabled");
+        assert_eq!(said, say("extension-update-asks", &[("version", "0.3.0".into()), ("sites", "new.example.org".into()), ("signin", "no".into())]));
+        installed.enabled = false;
+        assert_eq!(waiting_line(&installed), None, "disabled: no line, no button");
+        installed.enabled = true;
+        installed.leaving = true;
+        assert_eq!(waiting_line(&installed), None);
+    }
+
+    /// The form's values made ready for the extension: the spaces a phone's
+    /// keyboard adds around an email or a pasted link taken out, never the
+    /// password's; the log's line says which fields came filled, never a value.
+    #[test]
+    fn a_form_s_values_are_trimmed_but_the_password_and_said_without_a_value() {
+        let (values, said) = tidy(vec![
+            (CredField::Email, " alex@example.org ".to_string()),
+            (CredField::Password, "hunter2 secret ".to_string()),
+            (CredField::WebAddress, "\thttps://calendar.example.org/feed?key=k7f3a9e2b1c\n".to_string()),
+            (CredField::OneTimeCode, "   ".to_string()),
+        ]);
+        assert_eq!(
+            values,
+            vec![
+                (CredField::Email, "alex@example.org".to_string()),
+                (CredField::Password, "hunter2 secret ".to_string()),
+                (CredField::WebAddress, "https://calendar.example.org/feed?key=k7f3a9e2b1c".to_string()),
+                (CredField::OneTimeCode, String::new()),
+            ]
+        );
+        assert_eq!(said, "the sign-in form sent: email filled (spaces around it taken out), password filled (a space at one of its ends, kept as typed), web-address filled (spaces around it taken out), one-time-code empty");
+        for secret in ["alex", "hunter2", "k7f3a9e2b1c", "calendar.example.org"] {
+            assert!(!said.contains(secret), "{secret} in {said}");
+        }
+        let (_, plain) = tidy(vec![(CredField::Email, "alex@example.org".to_string()), (CredField::Password, String::new())]);
+        assert_eq!(plain, "the sign-in form sent: email filled, password empty");
+    }
+
+    /// A problem's detail is shown under its sentence, in the extension's own
+    /// words (scrubbed), only while there is a problem; the form's wait that
+    /// ended, and Sioul's own panic, each have a full sentence in both languages.
+    #[test]
+    fn a_problem_s_detail_shows_under_its_sentence() {
+        let offer = manifest_of(&[("bookings", "1", &["api.example.org"], None)]).offers.remove(0);
+        let mut installed = Installed::new(offer);
+        assert_eq!(detail_line(&installed), "");
+        installed.note_problem(Some("sign-in".into()), "the feed https://calendar.example.org/feed?key=k7f3a9e2b1c answered HTTP 401");
+        let line = detail_line(&installed);
+        assert_eq!(line, say("extension-problem-detail", &[("detail", "the feed https://calendar.example.org/feed?[hidden] answered HTTP 401".to_string())]));
+        assert!(!line.contains("k7f3a9e2b1c"), "{line}");
+        installed.note_problem(None, "");
+        assert_eq!(detail_line(&installed), "");
+        assert!(problem_line("form-wait", "Bookings").contains(&(FORM_WAIT.as_secs() / 60).to_string()));
+        assert_ne!(problem_line("stopped-panicked", "Bookings"), problem_line("other", "Bookings"));
+        for lang in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(lang);
+            for key in ["extension-stopped-panicked", "extension-problem-form-wait", "extension-problem-detail", "extension-details", "extension-log-title", "extension-log-about", "extension-log-empty"] {
+                assert!(words.own(key).is_some_and(|l| !l.is_empty()), "{key} in {lang}");
+            }
+        }
+    }
+
+    /// Details…: the last lines of the log, the newest first, each one's time
+    /// in this device's zone, scrubbed even when written before the scrubbing;
+    /// an id that is not one reads nothing.
+    #[test]
+    fn details_show_the_log_s_last_lines_newest_first() {
+        let id = "t-details-log";
+        let path = state::log_path(id);
+        let _ = std::fs::remove_file(&path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "2026-11-26T09:00:00Z refresh\n2026-11-26T09:00:01Z sioul: GET api.example.org/feed?key=k7f3a9e2b1c answered 200 in 12 ms (4 bytes)\nno time here\n").unwrap();
+        let view: Value = serde_json::from_str(&log_json(id)).unwrap();
+        let lines: Vec<&str> = view["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap()).collect();
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "no time here", "the newest first");
+        let zone = sioul_core::zone::current();
+        let local = |at: &str| at.parse::<jiff::Timestamp>().unwrap().to_zoned(zone.clone()).strftime("%Y-%m-%d %H:%M:%S").to_string();
+        assert_eq!(lines[1], format!("{} sioul: GET api.example.org/feed?[hidden] answered 200 in 12 ms (4 bytes)", local("2026-11-26T09:00:01Z")));
+        assert_eq!(lines[2], format!("{} refresh", local("2026-11-26T09:00:00Z")));
+        assert_eq!(view["title"], say("extension-log-title", &[("name", id.to_string())]));
+        let _ = std::fs::remove_file(&path);
+        let nothing: Value = serde_json::from_str(&log_json("../elsewhere")).unwrap();
+        assert!(nothing["lines"].as_array().unwrap().is_empty());
+    }
+
+    /// Part C: the version that runs here and the one offered, said in one
+    /// sentence; an update that asks for no more has its own button, one that
+    /// asks for more waits for its yes; none for an extension disabled here,
+    /// nor for an older or the same file; the list in use and what reading
+    /// it again found, each in one sentence in both languages.
+    #[test]
+    fn versions_updates_and_the_list_are_said() {
+        let listed = |version: &str, sha: &str, hosts: &[&str]| {
+            let mut offer = manifest_of(&[("bookings", sha, hosts, None)]).offers.remove(0);
+            offer.version = version.into();
+            offer
+        };
+        let running = listed("0.2.0", "1", &["api.example.org"]);
+        let mut installed = Installed::new(running.clone());
+        // Not installed: the version offered.
+        assert_eq!(version_line(&running, None), say("extension-version-new", &[("version", "0.2.0".into())]));
+        // The same version: it runs here, nothing to update.
+        assert_eq!(version_line(&running, Some(&installed)), say("extension-version-runs", &[("version", "0.2.0".into())]));
+        assert_eq!(update_of(&installed, Some(&running)), None);
+        // A newer file asking for no more: offered, by its own button.
+        let newer = listed("0.2.1", "2", &["api.example.org"]);
+        assert_eq!(version_line(&newer, Some(&installed)), say("extension-version-offered", &[("version", "0.2.0".into()), ("offered", "0.2.1".into())]));
+        assert_eq!(update_of(&installed, Some(&newer)), Some((newer.clone(), false)));
+        // Older, or disabled here (M4): none.
+        assert_eq!(update_of(&installed, Some(&listed("0.1.9", "3", &["api.example.org"]))), None);
+        installed.enabled = false;
+        assert_eq!(update_of(&installed, Some(&newer)), None);
+        installed.enabled = true;
+        // Asking for more: it waits for its yes (set by the manifest's read), said on the card.
+        let wider = listed("0.3.0", "4", &["api.example.org", "new.example.org"]);
+        assert_eq!(update_of(&installed, Some(&wider)), None, "asks for more: only once set waiting");
+        installed.waiting = Some(wider.clone());
+        assert_eq!(update_of(&installed, Some(&wider)), Some((wider.clone(), true)));
+        // Disabled here: not even the update waiting (M4: nothing fetched for it, Update all included).
+        installed.enabled = false;
+        assert_eq!(update_of(&installed, Some(&wider)), None);
+        installed.enabled = true;
+        // A late update never replaces a newer version taken meanwhile (M3), nor one being removed.
+        let mut state = State { extensions: vec![Installed { waiting: None, ..installed.clone() }], ..State::default() };
+        let from = running.sha256.clone();
+        state.extensions[0].offer = listed("0.3.1", "5", &["api.example.org"]);
+        assert_eq!(take_over(&mut state, "bookings", &from, &newer), Err(false), "a newer version came meanwhile: the older file goes");
+        assert_eq!(state.extensions[0].offer.version, "0.3.1");
+        state.extensions[0].offer = running.clone();
+        state.extensions[0].leaving = true;
+        assert_eq!(take_over(&mut state, "bookings", &from, &newer), Err(false));
+        state.extensions[0].leaving = false;
+        assert_eq!(take_over(&mut state, "bookings", &from, &newer), Ok(running.clone()), "over the version it started from: taken");
+        assert_eq!(state.extensions[0].offer, newer);
+        assert_eq!(version_line(&wider, Some(&installed)), say("extension-version-offered", &[("version", "0.2.0".into()), ("offered", "0.3.0".into())]));
+        // The list in use, and what reading it again found.
+        assert_eq!(list_line(&State::default()), say("extensions-list-none", &[]));
+        let mut state = State::default();
+        state.accept(2, "abc").unwrap();
+        state.checked = 1_795_000_000;
+        assert_eq!(list_line(&state), say("extensions-list-in-use", &[("serial", "2".into()), ("when", when(1_795_000_000))]));
+        let nothing = read_line(&Ok((2, Applied::default())));
+        assert_eq!(nothing, say("extensions-list-read", &[("serial", "2".into()), ("what", say("extensions-list-nothing", &[]))]));
+        let both = read_line(&Ok((3, Applied { taken: 1, waiting: 2 })));
+        assert!(both.contains(&say("extensions-list-taken", &[("count", "1".into())])) && both.contains(&say("extensions-list-waiting", &[("count", "2".into())])), "{both}");
+        assert_eq!(read_line(&Err("the manifest's signature: signed by another key".into())), say("extensions-list-signature", &[]));
+        for lang in ["en", "fr"] {
+            let words = sioul_core::i18n::Translator::new(lang);
+            for key in ["extension-version-runs", "extension-version-offered", "extension-version-new", "extension-update", "extension-update-failed", "extensions-list-in-use", "extensions-list-none", "extensions-read-list", "extensions-list-read", "extensions-list-nothing", "extensions-list-taken", "extensions-list-waiting", "extensions-list-both", "extensions-update-all", "extensions-update-all-title", "extensions-update-all-asks", "extensions-update-all-now", "extensions-updated-all"] {
+                assert!(words.own(key).is_some_and(|l| !l.is_empty()), "{key} in {lang}");
+            }
+        }
     }
 
     /// K2: a phone's window and its background service never run one

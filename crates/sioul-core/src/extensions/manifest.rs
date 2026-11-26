@@ -109,6 +109,13 @@ impl Offer {
         Grants { hosts: self.hosts.iter().map(|h| h.to_ascii_lowercase()).collect(), sign_in: self.sign_in.clone(), credentials: self.credentials.clone() }
     }
 
+    /// Whether it keeps a sign-in: a redirect's (`sign_in`) or a credentials
+    /// form's (`credentials`). Such an extension runs only once signed in on
+    /// this device: before, a refresh could only say "no sign-in kept".
+    pub fn signs_in(&self) -> bool {
+        self.sign_in.is_some() || !self.credentials.is_empty()
+    }
+
     /// Whether this Sioul can run it: an interface it speaks, data it takes.
     pub fn usable(&self) -> bool {
         self.interface == super::INTERFACE && !self.brings.is_empty() && self.brings.iter().all(|b| super::BRINGS.contains(&b.as_str()))
@@ -407,6 +414,9 @@ mod tests {
         let offer = &manifest.offers[0];
         assert_eq!(offer.credentials, vec![CredField::Email, CredField::Password]);
         assert!(offer.sign_in.is_none());
+        // It keeps a sign-in as a redirect's does: it runs only once signed in.
+        assert!(offer.signs_in() && parse(SAMPLE).unwrap().offers[0].signs_in());
+        assert!(!parse(&SAMPLE.replace(r#"sign_in = "example-app://sign-in-callback""#, "")).unwrap().offers[0].signs_in());
         assert_eq!(offer.grants().credentials, vec![CredField::Email, CredField::Password]);
         assert_eq!(CredField::OneTimeCode.tag(), "one-time-code");
         assert!(CredField::Password.masked() && !CredField::Email.masked());

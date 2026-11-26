@@ -125,6 +125,14 @@ pub struct Installed {
     /// "unreachable", "refused", "changed", "stopped-time", …); none when the last run went well.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub problem: Option<String>,
+    /// That problem's own detail, shown under its sentence: the extension's
+    /// words (its problem's `detail`, each value the call hid replaced), or
+    /// Sioul's when the call stopped; in English as written, `scrub`bed and
+    /// cut to `DETAIL_WIDTH` characters. Empty when none. A Sioul 0.1.0
+    /// reading this record passes over the key and drops it at its next write
+    /// (the record is this device's alone, never shared).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub detail: String,
     /// Removed here: no call of it runs, a call under way ends at its next
     /// ask, and its sign-in is still to forget while the keyring refuses.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -133,8 +141,30 @@ pub struct Installed {
 
 impl Installed {
     pub fn new(offer: Offer) -> Self {
-        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), contacts: Vec::new(), problem: None, leaving: false }
+        Self { offer, enabled: true, waiting: None, signed_in: false, last_run: 0, last_brought: 0, agendas: Vec::new(), contacts: Vec::new(), problem: None, detail: String::new(), leaving: false }
     }
+
+    /// Its last problem noted, with its detail as the card shows it
+    /// (`detail_shown`); none clears both.
+    pub fn note_problem(&mut self, problem: Option<String>, detail: &str) {
+        self.detail = if problem.is_some() { detail_shown(detail) } else { String::new() };
+        self.problem = problem;
+    }
+}
+
+/// The most characters a problem's detail keeps (`Installed::detail`).
+pub const DETAIL_WIDTH: usize = 200;
+
+/// A problem's detail as the record keeps it and the card shows it: on one
+/// line, `scrub`bed, cut to `DETAIL_WIDTH` characters.
+pub fn detail_shown(detail: &str) -> String {
+    let plain: String = detail.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
+    let plain = scrub(plain.trim());
+    let mut cut: String = plain.chars().take(DETAIL_WIDTH).collect();
+    if cut.len() < plain.len() {
+        cut.push('…');
+    }
+    cut
 }
 
 impl State {
@@ -218,14 +248,76 @@ pub const LOG_BYTES: usize = 128 << 10;
 /// The most characters a line of the log holds (the engine cuts its own the same).
 pub const LOG_WIDTH: usize = 300;
 
-/// A line as the log keeps it: no control character, `LOG_WIDTH` characters at most.
+/// A line as the log keeps it: no control character, `scrub`bed, `LOG_WIDTH` characters at most.
 fn log_line(line: &str) -> String {
     let plain: String = line.chars().filter(|c| !c.is_control()).collect();
+    let plain = scrub(&plain);
     let mut cut: String = plain.chars().take(LOG_WIDTH).collect();
     if cut.len() < plain.len() {
         cut.push('…');
     }
     cut
+}
+
+/// What Sioul takes out of every line of an extension's log and of a
+/// problem's detail, whoever wrote it (the extension, its service's answer it
+/// repeats, Sioul), each replaced by `[hidden]`: an address's query and
+/// fragment (`?…`, `#…=`) and its user; a header's value that signs in
+/// (`Authorization`, `Cookie`, `Set-Cookie`, an API key's); a `Bearer` or
+/// `Basic` token; a JSON Web Token; the value of a pair named as a password,
+/// a token, a secret, a key, a code, a session, a cookie or a signature, in
+/// each form a line may write it (`password=…`, `password = '…'`,
+/// `"refresh_token": "…"`, the same JSON escaped inside a string, a header
+/// as a `["name", "value"]` pair); and any run of 32 letters, digits,
+/// `-` or `_` holding both a letter and a digit (a token, a key, a long id).
+/// The engine hides first the values a call named (`hide`, the secret, the
+/// credentials): this is the net under it, for what an extension never
+/// named. Idempotent: a text scrubbed reads the same scrubbed again.
+pub fn scrub(text: &str) -> String {
+    use regex::{Captures, Regex};
+    use std::sync::LazyLock;
+    // A query or a fragment of names and values, after an address or a path alone.
+    static QUERY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"([?#])[A-Za-z0-9_.%\[\]-]+=[^\s"'<>]*"#).expect("a pattern"));
+    // An address's user (and password) before its host.
+    static USER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?i)\b([a-z][a-z0-9+.-]*://)[^\s/?#@"'<>]+@"#).expect("a pattern"));
+    // A header that signs in, as a line, a JSON pair (escaped too) or a `["name", "value"]`
+    // pair as Sioul hands headers over: its whole value.
+    static HEADER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-goog-api-key|x-auth-token|x-csrf-token)(\\?"\s*,\s*|\\?"?\s*[:=]\s*)(\[hidden\]|\\"(?:[^"\\]|\\[^"])*\\"|"(?:[^"\\]|\\.)*"|'[^']*'|[^\r\n"]+)"#).expect("a pattern")
+    });
+    static BEARER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{6,}").expect("a pattern"));
+    static JWT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?:\.[A-Za-z0-9_-]*)?").expect("a pattern"));
+    // `name=value`, as in a form, a query or a cookie, and `name = 'value'` as in a
+    // configuration or a program: the value bare, or quoted whole.
+    static ASSIGNED: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)(^|[^A-Za-z0-9_])(password|passwd|pwd|pass|secret|client_secret|token|access_token|refresh_token|id_token|idtoken|refreshtoken|accesstoken|api_key|apikey|key|code|code_verifier|session|sessionid|sid|sig|signature|auth|credentials?|otp|pin|cookie|assertion|state|nonce)(\s*=\s*)('[^']*'|\\"(?:[^"\\]|\\[^"])*\\"|"(?:[^"\\]|\\.)*"|[^\s&"',;}]*)"#).expect("a pattern")
+    });
+    // `"name": "value"` or `name: value`, as in JSON or a header; never a word that also names a thing (`key`, `code`, `state`).
+    static SAID: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)(^|[^A-Za-z0-9_])(\\?"?)(password|passwd|pwd|secret|client_secret|token|access_token|refresh_token|id_token|idtoken|refreshtoken|accesstoken|api_key|apikey|cookie|session|otp|credentials?|code_verifier|assertion)(\\?"?\s*:\s*)(\\"(?:[^"\\]|\\[^"])*\\"|"(?:[^"\\]|\\.)*"|'[^']*'|[^\s,;}]+)"#).expect("a pattern")
+    });
+    static OPAQUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9_-]{32,}").expect("a pattern"));
+    const HIDDEN: &str = "[hidden]";
+    let text = QUERY.replace_all(text, |c: &Captures| format!("{}{HIDDEN}", &c[1]));
+    let text = USER.replace_all(&text, |c: &Captures| format!("{}{HIDDEN}@", &c[1]));
+    let text = HEADER.replace_all(&text, |c: &Captures| format!("{}{}{HIDDEN}", &c[1], &c[2]));
+    let text = BEARER.replace_all(&text, |c: &Captures| format!("{} {HIDDEN}", &c[1]));
+    let text = JWT.replace_all(&text, HIDDEN);
+    let text = ASSIGNED.replace_all(&text, |c: &Captures| format!("{}{}{}{HIDDEN}", &c[1], &c[2], &c[3]));
+    let text = SAID.replace_all(&text, |c: &Captures| format!("{}{}{}{}{HIDDEN}", &c[1], &c[2], &c[3], &c[4]));
+    let text = OPAQUE.replace_all(&text, |c: &Captures| {
+        let run = &c[0];
+        if run.bytes().any(|b| b.is_ascii_digit()) && run.bytes().any(|b| b.is_ascii_alphabetic()) { HIDDEN.to_string() } else { run.to_string() }
+    });
+    text.into_owned()
+}
+
+/// The last `most` lines of an extension's log at `path`, newest first,
+/// each read as the log keeps it (`log_line`: a log an older Sioul wrote is
+/// `scrub`bed here too); none when it cannot be read.
+pub fn log_tail(path: &Path, most: usize) -> Vec<String> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    text.lines().rev().filter(|l| !l.trim().is_empty()).take(most).map(log_line).collect()
 }
 
 /// Lines added to an extension's log at `path`, its oldest lines dropped
@@ -297,6 +389,101 @@ mod tests {
         }
         assert!(std::fs::metadata(&log).unwrap().len() as usize <= LOG_BYTES);
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// What never stands in a log or a detail is taken out whoever wrote it,
+    /// with invented secrets of every kind; what diagnoses a problem stays
+    /// (a host, a path, a status, a service's error code); scrubbed twice reads the same.
+    #[test]
+    fn a_log_line_never_holds_a_secret_whoever_wrote_it() {
+        let secrets = [
+            ("GET https://calendar.example.org/feed?calendarId=cal-4821&businessId=biz-7730&key=k7f3a9e2b1c done", &["cal-4821", "biz-7730", "k7f3a9e2b1c"][..], "GET https://calendar.example.org/feed?[hidden] done"),
+            ("asked /getCalendarIcalEvents?calendarId=-Cinvented&key=KEYinvented0000", &["KEYinvented0000", "-Cinvented"], "asked /getCalendarIcalEvents?[hidden]"),
+            ("returned to example-app://cb#access_token=AT-fragment-5678&state=s", &["AT-fragment-5678"], "returned to example-app://cb#[hidden]"),
+            ("https://alex:hunter2@example.org/x", &["alex", "hunter2"], "https://[hidden]@example.org/x"),
+            ("Authorization: Bearer AT-invented-123456", &["AT-invented-123456"], "Authorization: [hidden]"),
+            (r#"headers {"authorization":"Bearer abcdef123456","accept":"text/plain"}"#, &["abcdef123456"], r#"headers {"authorization":[hidden],"accept":"text/plain"}"#),
+            ("Cookie: sid=abc123; theme=dark", &["abc123", "dark"], "Cookie: [hidden]"),
+            ("Set-Cookie: SESSION=xyz789; Path=/", &["xyz789"], "Set-Cookie: [hidden]"),
+            ("sent bearer RT-plain-0042 to it", &["RT-plain-0042"], "sent bearer [hidden] to it"),
+            (r#"{"email":"alex@example.org","password":"hunter2-secret","returnSecureToken":true}"#, &["hunter2-secret"], r#"{"email":"alex@example.org","password":[hidden],"returnSecureToken":true}"#),
+            ("grant_type=refresh_token&refresh_token=RT-invented-9999", &["RT-invented-9999"], "grant_type=refresh_token&refresh_token=[hidden]"),
+            ("password: hunter2 and token: tk-1234", &["hunter2", "tk-1234"], "password: [hidden] and token: [hidden]"),
+            ("id eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJpbnZlbnRlZCJ9.c2lnbmF0dXJl end", &["eyJhbGci", "c2lnbmF0dXJl"], "id [hidden] end"),
+            ("kept AMf-vBxInvented0Refresh0Token0Value000000000000 here", &["AMf-vBx"], "kept [hidden] here"),
+            ("x-goog-api-key: AIzaInvented00000000000000000000000000", &["AIzaInvented"], "x-goog-api-key: [hidden]"),
+            ("form code=OC-1234&code_verifier=v3r1f13r", &["OC-1234", "v3r1f13r"], "form code=[hidden]&code_verifier=[hidden]"),
+            // Spaces around `=`, and a quoted value, as a configuration or a program writes them.
+            ("password = hunter2 and token = tk-1234", &["hunter2", "tk-1234"], "password = [hidden] and token = [hidden]"),
+            ("password='hunter2'", &["hunter2"], "password=[hidden]"),
+            (r#"password="hunter 2" then"#, &["hunter"], "password=[hidden] then"),
+            // JSON escaped inside a string (a body's Debug, JSON within JSON).
+            (r#"body "{\"password\":\"hunter2\",\"email\":\"a@example.org\"}""#, &["hunter2"], r#"body "{\"password\":[hidden],\"email\":\"a@example.org\"}""#),
+            (r#"{\"authorization\":\"Bearer abcdef123456\"}"#, &["abcdef123456", "Bearer"], r#"{\"authorization\":[hidden]}"#),
+            // The headers as Sioul hands them over, `["name", "value"]`.
+            (r#"[["set-cookie","__Host-x=abc123"],["x-goog-api-key","AIzaShort1"],["accept","text/plain"]]"#, &["abc123", "AIzaShort1"], r#"[["set-cookie",[hidden]],["x-goog-api-key",[hidden]],["accept","text/plain"]]"#),
+            (r#"[["Cookie", "sid=xyz789"]]"#, &["xyz789"], r#"[["Cookie", [hidden]]]"#),
+        ];
+        for (line, gone, said) in secrets {
+            let scrubbed = scrub(line);
+            for secret in gone {
+                assert!(!scrubbed.contains(secret), "{secret} in {scrubbed}");
+            }
+            assert_eq!(scrubbed, said, "{line}");
+            assert_eq!(scrub(&scrubbed), scrubbed, "scrubbed twice: {line}");
+        }
+        for kept in [
+            "sign-in: the password sign-in (identitytoolkit) answered HTTP 400 with INVALID_LOGIN_CREDENTIALS",
+            "POST identitytoolkit.googleapis.com/v1/accounts:signInWithPassword answered 400 in 412 ms (231 bytes)",
+            "POST securetoken.googleapis.com/v1/token answered 400 in 312 ms (120 bytes)",
+            "POST firestore.googleapis.com/v1/projects/planity-production/databases/(default)/documents/businesses/[hidden]:runQuery answered 200 in 830 ms (5120 bytes)",
+            "the token's renewal (securetoken) answered HTTP 400 with TOKEN_EXPIRED",
+            "TOO_MANY_ATTEMPTS_TRY_LATER, then USER_DISABLED",
+            "the web address has no key; the email field was empty",
+            "keyring: no entry kept for it on this device",
+            "keyring: reading its entry failed (Platform secure storage failure: Java exception was thrown)",
+            "refresh: 12 appointment(s) from Firestore, 3 event(s) from the feed",
+            "agenda pupil-1: 140 lessons written",
+            "2026-11-26T09:58:12Z sioul: the sign-in form shown (email, password, web address)",
+        ] {
+            assert_eq!(scrub(kept), kept);
+        }
+        // The log and the detail are both scrubbed, whoever wrote the line.
+        assert_eq!(log_line("2026-11-26T09:58:12Z refresh with refresh_token=RT-invented-9999"), "2026-11-26T09:58:12Z refresh with refresh_token=[hidden]");
+        assert_eq!(detail_shown("the feed https://calendar.example.org/feed?key=k7f3a9e2b1c\nanswered 401"), "the feed https://calendar.example.org/feed?[hidden] answered 401");
+        assert!(detail_shown(&"word ".repeat(100)).chars().count() <= DETAIL_WIDTH + 1);
+    }
+
+    /// The card's lines of the log: the newest first, as many as asked,
+    /// scrubbed even when an older Sioul wrote them unscrubbed.
+    #[test]
+    fn the_log_s_last_lines_come_newest_first_and_scrubbed() {
+        let path = std::env::temp_dir().join(format!("sioul-extensions-tail-{}.log", std::process::id()));
+        std::fs::write(&path, "one\ntwo with key=k7f3a9e2b1c\n\nthree\n").unwrap();
+        assert_eq!(log_tail(&path, 2), vec!["three".to_string(), "two with key=[hidden]".to_string()]);
+        assert_eq!(log_tail(&path, 50).len(), 3);
+        let _ = std::fs::remove_file(&path);
+        assert!(log_tail(&path, 50).is_empty(), "no log: no line");
+    }
+
+    /// A problem's detail is kept with it and goes with it; a record written
+    /// by Sioul 0.1.0 (no detail) reads, and one with a detail reads where
+    /// 0.1.0's `Installed` would pass over the key.
+    #[test]
+    fn a_problem_keeps_its_detail_and_an_older_record_reads() {
+        let offer = crate::extensions::manifest::parse(crate::extensions::manifest::SAMPLE).unwrap().offers.remove(0);
+        let mut installed = Installed::new(offer);
+        installed.note_problem(Some("sign-in".into()), "the password sign-in answered HTTP 400 with INVALID_LOGIN_CREDENTIALS");
+        assert_eq!(installed.detail, "the password sign-in answered HTTP 400 with INVALID_LOGIN_CREDENTIALS");
+        let text = toml::to_string(&State { extensions: vec![installed.clone()], ..State::default() }).unwrap();
+        assert!(text.contains("detail = "), "{text}");
+        let back: State = toml::from_str(&text).unwrap();
+        assert_eq!(back.extensions[0], installed);
+        installed.note_problem(None, "anything");
+        assert_eq!((installed.problem.as_deref(), installed.detail.as_str()), (None, ""));
+        let older = text.lines().filter(|l| !l.starts_with("detail = ")).collect::<Vec<_>>().join("\n");
+        let read: State = toml::from_str(&older).unwrap();
+        assert_eq!((read.extensions[0].problem.as_deref(), read.extensions[0].detail.as_str()), (Some("sign-in"), ""));
     }
 
     /// M2: an offer kept in the record is checked as a manifest's are when the record is read.

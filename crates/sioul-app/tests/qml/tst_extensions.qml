@@ -89,6 +89,27 @@ Item {
         function extensionBook(id, contactSet, choice) {
             mock.asked = mock.asked.concat(["book " + id + " " + contactSet + " " + choice])
         }
+        // An extension's log, the newest first (`extensions::log_json`); what was copied.
+        property var logLines: []
+        property string copied: ""
+        function extensionLog(id) {
+            mock.asked = mock.asked.concat(["log " + id])
+            return JSON.stringify({ title: "The log of " + id, lines: mock.logLines })
+        }
+        function copyText(text) {
+            mock.copied = text
+            return true
+        }
+        // The versions and the list (Part C): an update taken, all at once, the list read again.
+        function extensionUpdate(id) {
+            mock.asked = mock.asked.concat(["update " + id])
+        }
+        function extensionsUpdateAll() {
+            mock.asked = mock.asked.concat(["update all"])
+        }
+        function extensionsReadList() {
+            mock.asked = mock.asked.concat(["read list"])
+        }
     }
 
     function offer(changes) {
@@ -103,8 +124,10 @@ Item {
         return base
     }
 
-    function view(offers) {
+    function view(offers, more) {
+        const extra = more || {}
         return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers,
+            list: extra.list || "", updates: extra.updates || 0, updateAll: "Update all (" + (extra.updates || 0) + ")", asks: extra.asks || [],
             calendars: [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }],
             books: [{ choice: "new:cloud", label: "A new address book on cloud.example.org" }, { choice: "place:cloud/clients", label: "Clients · example.org" }, { choice: "new:local", label: "A new address book on this device" }] })
     }
@@ -369,6 +392,100 @@ Item {
             link.text = "https://calendar.example.org/feed?key=k"
             find(dialog.footer, "extensionSignInDo").clicked()
             compare(mock.asked, ['creds feed {"email":"alex@example.org","password":"hunter2","web-address":"https://calendar.example.org/feed?key=k"}'])
+            tryCompare(dialog, "opened", false)
+        }
+
+        function test_a_problem_s_detail_shows_under_it_and_details_show_the_log() {
+            const tab = make([offer({ installed: true, enabled: true, problem: "Bookings needs you to sign in again.", detail: "In its own words: the password sign-in answered HTTP 400 with INVALID_LOGIN_CREDENTIALS" }), offer({ id: "plain", installed: true, enabled: true })])
+            const detail = find(tab, "extensionDetail:timetable")
+            verify(detail.visible && detail.text.indexOf("INVALID_LOGIN_CREDENTIALS") >= 0, detail.text)
+            verify(!find(tab, "extensionDetail:plain").visible, "no problem: no detail")
+            verify(find(tab, "extensionDetails:timetable").visible, "Details… on an installed extension")
+            // Details…: its log, the newest first, selectable, read only, copied whole.
+            mock.logLines = ["2026-11-26 10:04:00 sign-in: refused", "2026-11-26 10:02:00 sioul: the sign-in form shown (email, password, web-address)"]
+            find(tab, "extensionDetails:timetable").clicked()
+            const card = tab.logDialog
+            tryCompare(card, "opened", true)
+            compare(mock.asked[mock.asked.length - 1], "log timetable")
+            compare(card.title, "The log of timetable")
+            const lines = find(card.contentItem, "extensionLogLines")
+            verify(lines.visible && lines.readOnly && lines.selectByMouse)
+            compare(lines.text, mock.logLines.join("\n"))
+            verify(!find(card.contentItem, "extensionLogEmpty").visible)
+            find(card.footer, "extensionLogCopy").clicked()
+            compare(mock.copied, mock.logLines.join("\n"))
+            compare(find(card.footer, "extensionLogCopy").text, "ui-copied")
+            find(card.footer, "extensionLogClose").clicked()
+            tryCompare(card, "opened", false)
+            // An empty log says so, and nothing to copy.
+            mock.logLines = []
+            find(tab, "extensionDetails:plain").clicked()
+            tryCompare(card, "opened", true)
+            verify(find(card.contentItem, "extensionLogEmpty").visible)
+            verify(!find(card.footer, "extensionLogCopy").enabled)
+            card.close()
+            tryCompare(card, "opened", false)
+        }
+
+        function test_versions_an_update_and_the_list_read_again() {
+            mock.extensions = view([
+                offer({ installed: true, enabled: true, versionLine: "Version 0.2.0 runs here; 0.2.1 is offered.", update: "0.2.1", updateLabel: "Update to version 0.2.1" }),
+                offer({ id: "asks", installed: true, enabled: true, versionLine: "Version 1.0 runs here; 1.1 is offered.", waiting: "Version 1.1 asks for more than the one in use: these sites: new.example.org." }),
+                offer({ id: "fresh", versionLine: "Version 0.1.0 is offered." })
+            ], { list: "The list in use is number 2, read today at 10:15; its signature was checked.", updates: 2, asks: ["Asks: Version 1.1 asks for more than the one in use: these sites: new.example.org."] })
+            mock.extensionSignInForm = ""
+            mock.asked = []
+            const tab = createTemporaryObject(tabComponent, root)
+            waitForRendering(tab)
+            compare(find(tab, "extensionVersion:timetable").text, "Version 0.2.0 runs here; 0.2.1 is offered.")
+            compare(find(tab, "extensionVersion:fresh").text, "Version 0.1.0 is offered.", "one not installed: the version offered")
+            // An update that asks for no more: its own button; one that asks for more: Take the update, under what it asks.
+            const update = find(tab, "extensionUpdate:timetable")
+            verify(update.visible && update.text === "Update to version 0.2.1")
+            verify(!find(tab, "extensionUpdate:asks").visible && find(tab, "extensionAccept:asks").visible)
+            update.clicked()
+            compare(mock.asked[mock.asked.length - 1], "update timetable")
+            // The list in use, said at the foot, and read again on demand.
+            compare(find(tab, "extensionsList").text, "The list in use is number 2, read today at 10:15; its signature was checked.")
+            find(tab, "extensionsReadList").clicked()
+            compare(mock.asked[mock.asked.length - 1], "read list")
+            // Update all: one question first, since one of them asks for more; nothing until yes.
+            const all = find(tab, "extensionsUpdateAll")
+            verify(all.visible && all.text === "Update all (2)")
+            all.clicked()
+            const dialog = tab.updateAllDialog
+            tryCompare(dialog, "opened", true)
+            verify(texts(dialog.contentItem, []).indexOf("Asks: Version 1.1 asks for more than the one in use: these sites: new.example.org.") >= 0)
+            compare(mock.asked[mock.asked.length - 1], "read list", "nothing taken before the yes")
+            dialog.accept()
+            compare(mock.asked[mock.asked.length - 1], "update all")
+            tryCompare(dialog, "opened", false)
+            // Several that ask for no more: at once. One alone: no Update all.
+            mock.extensions = view([offer({ update: "0.2.1", installed: true }), offer({ id: "b", update: "2", installed: true })], { updates: 2 })
+            waitForRendering(tab)
+            find(tab, "extensionsUpdateAll").clicked()
+            compare(mock.asked[mock.asked.length - 1], "update all")
+            verify(!dialog.opened)
+            mock.extensions = view([offer({ update: "0.2.1", installed: true })], { updates: 1 })
+            waitForRendering(tab)
+            verify(!find(tab, "extensionsUpdateAll").visible)
+        }
+
+        function test_sign_in_reads_each_field_as_it_is_now() {
+            const tab = make([offer({ installed: true, enabled: true })])
+            mock.extensionSignInForm = JSON.stringify({ id: "planity", name: "Planity", french: false, fields: [
+                { kind: "email", label: "Email", masked: false },
+                { kind: "password", label: "Password", masked: true },
+                { kind: "web-address", label: "Web address", masked: false }] })
+            const dialog = tab.signInFormDialog
+            tryCompare(dialog, "opened", true)
+            find(dialog.contentItem, "extensionCred:email").item.text = "alex@example.org"
+            find(dialog.contentItem, "extensionCred:password").item.text = "hunter2"
+            find(dialog.contentItem, "extensionCred:web-address").item.text = "https://calendar.example.org/feed?key=k"
+            // What a field's last change said may lag behind (a phone's keyboard composing): the fields are read at Sign in.
+            dialog.typed = {}
+            find(dialog.footer, "extensionSignInDo").clicked()
+            compare(mock.asked, ['creds planity {"email":"alex@example.org","password":"hunter2","web-address":"https://calendar.example.org/feed?key=k"}'])
             tryCompare(dialog, "opened", false)
         }
 

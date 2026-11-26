@@ -60,12 +60,27 @@ pub struct Real {
     watched: bool,
     looked: Option<std::time::Instant>,
     gone: bool,
+    /// What the last refusal came from (`Services::last_failure`), taken once said.
+    failure: Option<String>,
+}
+
+/// An error's own words, for the log: on one line, whole. The engine's line
+/// that holds them replaces the call's hidden values, scrubs and only then
+/// cuts (`engine::finish`): a value cut here first could show in part.
+fn failure_words(text: &str) -> String {
+    text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().trim().to_string()
 }
 
 impl Real {
     /// For the extension `id` (from its manifest); `shower` shows a sign-in page, when one may be shown.
     pub fn new(id: &str, shower: Option<SignInShower>) -> Self {
-        Self { id: id.to_string(), shower, watched: false, looked: None, gone: false }
+        Self { id: id.to_string(), shower, watched: false, looked: None, gone: false, failure: None }
+    }
+
+    /// A refusal noted with what it came from, and its word given back.
+    fn failed(&mut self, word: &'static str, from: impl std::fmt::Display) -> &'static str {
+        self.failure = Some(failure_words(&from.to_string()));
+        word
     }
 
     /// Its call ends once this device's record no longer holds the extension,
@@ -106,26 +121,37 @@ impl Services for Real {
             }
             asked.call()
         };
-        let mut answer = answer.map_err(|e| said(&e))?;
+        let mut answer = match answer {
+            Ok(answer) => answer,
+            Err(e) => return Err(self.failed(said(&e), &e)),
+        };
         let status = answer.status().as_u16();
         let headers = answer.headers().iter().map(|(name, value)| (name.as_str().to_string(), String::from_utf8_lossy(value.as_bytes()).into_owned())).collect();
         // Counted once unpacked: a small compressed answer cannot fill the memory.
         let mut body = Vec::new();
         let most = most as u64;
-        answer.body_mut().with_config().limit(most + 1).reader().take(most + 1).read_to_end(&mut body).map_err(|e| if e.to_string().contains("limit") { "size" } else { "network" })?;
+        if let Err(e) = answer.body_mut().with_config().limit(most + 1).reader().take(most + 1).read_to_end(&mut body) {
+            let word = if e.to_string().contains("limit") { "size" } else { "network" };
+            return Err(self.failed(word, format!("reading its answer: {e}")));
+        }
         if body.len() as u64 > most {
-            return Err("size");
+            return Err(self.failed("size", format!("an answer of more than {most} bytes")));
         }
         Ok(WebAnswer { status, headers, body: String::from_utf8_lossy(&body).into_owned() })
     }
 
     // Kept as bytes (UTF-8 as it is): 2,400 bytes fit every system's keyring,
-    // where a text takes two bytes a character on Windows (K3).
+    // where a text takes two bytes a character on Windows (K3). A failure is
+    // noted with the keyring's own words (its kind: "Platform secure storage
+    // failure: …"), never the value.
     fn secret(&mut self) -> Result<Option<String>, &'static str> {
         match crate::secret::named_bytes(&sioul_core::extensions::secret_name(&self.id)) {
-            Ok(Some(bytes)) => String::from_utf8(bytes).map(Some).map_err(|_| "keyring"),
+            Ok(Some(bytes)) => {
+                let length = bytes.len();
+                String::from_utf8(bytes).map(Some).map_err(|_| self.failed("keyring", format!("its entry is not UTF-8 ({length} bytes)")))
+            }
             Ok(None) => Ok(None),
-            Err(_) => Err("keyring"),
+            Err(e) => Err(self.failed("keyring", e)),
         }
     }
 
@@ -133,13 +159,17 @@ impl Services for Real {
         // Never written back once Remove began, whatever the last look said.
         self.looked = None;
         if self.removed() {
-            return Err("not-now");
+            return Err(self.failed("not-now", "removed meanwhile"));
         }
-        crate::secret::save_named_bytes(&sioul_core::extensions::secret_name(&self.id), secret.as_bytes()).map_err(|_| "keyring")
+        crate::secret::save_named_bytes(&sioul_core::extensions::secret_name(&self.id), secret.as_bytes()).map_err(|e| self.failed("keyring", e))
     }
 
     fn forget_secret(&mut self) -> Result<(), &'static str> {
-        forget_secret(&self.id).map_err(|_| "keyring")
+        forget_secret(&self.id).map_err(|e| self.failed("keyring", e))
+    }
+
+    fn last_failure(&mut self) -> Option<String> {
+        self.failure.take()
     }
 
     fn sign_in(&mut self, open: &str, watch: &str, host: &str, wait: Duration) -> Result<Option<String>, &'static str> {
@@ -203,14 +233,35 @@ pub fn call_text(call: Call<'_>, french: bool) -> String {
 
 /// Runs one call of the extension `offer` (as accepted): its file checked
 /// against its hash, then run with what its manifest grants. A sign-in page
-/// may be shown only on a `sign-in` call. Never on the window's thread.
+/// may be shown only on a `sign-in` call. Never on the window's thread. A
+/// panic of Sioul's own side of the call (never the extension's, which traps)
+/// ends the call calmly (`Stop::Panicked`), said in its log with where it
+/// happened; its services, gone with it, come back fresh, without a page to show.
 pub fn run(offer: &Offer, call: Call<'_>, french: bool, services: Real) -> (Outcome, Real) {
     let file = match checked_file(offer) {
         Ok(file) => file,
-        Err(why) => return (Outcome { reply: Err(engine::Stop::NotRead(why)), log: Vec::new(), held: 0, answered: None }, services),
+        Err(why) => {
+            // Its last words alone (the system's error, or that it changed): never the folder's path.
+            let stop = engine::Stop::NotRead(why.rsplit(": ").next().unwrap_or("").to_string());
+            let line = format!("{} sioul: stopped: {}", jiff::Timestamp::now(), stop.detail());
+            return (Outcome { detail: Some(stop.detail()), reply: Err(stop), log: vec![line], held: 0, answered: None }, services);
+        }
     };
     let may_sign_in = matches!(call, Call::SignIn { .. });
-    engine::call(&file, &offer.grants(), &call_text(call, french), services, &Limits::default(), may_sign_in)
+    let (id, text) = (services.id.clone(), call_text(call, french));
+    let grants = offer.grants();
+    caught(&id, || engine::call(&file, &grants, &text, services, &Limits::default(), may_sign_in))
+}
+
+/// A call run, a panic of Sioul's side of it caught (`run`): said as a stop
+/// with its message, one line of the log saying so.
+fn caught(id: &str, call: impl FnOnce() -> (Outcome, Real)) -> (Outcome, Real) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).unwrap_or_else(|panic| {
+        let why = panic.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| panic.downcast_ref::<String>().cloned()).unwrap_or_else(|| "no message".into());
+        let stop = engine::Stop::Panicked(sioul_core::extensions::state::detail_shown(&why));
+        let line = format!("{} sioul: stopped: {}", jiff::Timestamp::now(), stop.detail());
+        (Outcome { detail: Some(stop.detail()), reply: Err(stop), log: vec![line], held: 0, answered: None }, Real::new(id, None))
+    })
 }
 
 // ---------------------------------------------------------------- the store

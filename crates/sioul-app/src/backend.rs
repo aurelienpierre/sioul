@@ -3118,6 +3118,22 @@ pub mod qobject {
         #[qinvokable]
         fn extension_credentials(self: Pin<&mut Sioul>, id: &QString, values: &QString);
 
+        /// An extension's Details… (ExtensionLog.qml): the last lines of its log on this device, the newest first, as JSON {title, lines}.
+        #[qinvokable]
+        fn extension_log(self: &Sioul, id: &QString) -> QString;
+
+        /// Read the list again: the extensions' manifest read now, whatever the daily rhythm; what it found said on the status line.
+        #[qinvokable]
+        fn extensions_read_list(self: Pin<&mut Sioul>);
+
+        /// Update to version …: the newer version the manifest offers an extension, which asks for no more than the one in use.
+        #[qinvokable]
+        fn extension_update(self: Pin<&mut Sioul>, id: &QString);
+
+        /// Update all: every update offered here taken (the window asked first for those that ask for more).
+        #[qinvokable]
+        fn extensions_update_all(self: Pin<&mut Sioul>);
+
         /// Notes time by hand (JSON: day, at, minutes, project, task, note, unbilled); returns what went wrong.
         #[qinvokable]
         fn note_time(self: Pin<&mut Sioul>, edit: &QString) -> QString;
@@ -9176,6 +9192,22 @@ impl qobject::Sioul {
         crate::extensions::credentials_entered(&id.to_string(), &values.to_string());
     }
 
+    fn extension_log(&self, id: &QString) -> QString {
+        QString::from(&crate::extensions::log_json(&id.to_string()))
+    }
+
+    fn extensions_read_list(self: Pin<&mut Self>) {
+        crate::extensions::read_again(&self.qt_thread());
+    }
+
+    fn extension_update(self: Pin<&mut Self>, id: &QString) {
+        crate::extensions::update(&self.qt_thread(), &id.to_string());
+    }
+
+    fn extensions_update_all(self: Pin<&mut Self>) {
+        crate::extensions::update_all(&self.qt_thread());
+    }
+
     fn show_time_page(self: Pin<&mut Self>, period: &QString, anchor: &QString, project: &QString) {
         let shared = self.shared();
         if let Ok(mut asked) = shared.time_asked.lock() {
@@ -9727,8 +9759,10 @@ impl qobject::Sioul {
         // phone's calls with their row (pictures alone; docs/attention.md), "notes-find" Notes found by
         // their text, a note's outline, the dated lists and one type (pictures alone; docs/tasks.md),
         // "search-tabs" Tasks ▸ List and Search, the Agenda's Search and a calendar unticked there
-        // (pictures alone; docs/tasks.md, "Search"), on a demo profile only.
-        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "rules", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household", "notes-find", "search-tabs"].contains(&steps.as_str()) && offline()) {
+        // (pictures alone; docs/tasks.md, "Search"), "extension-log" an extension's card with its last
+        // problem's detail and its Details… (make-demo.py --extension; pictures alone; docs/extensions.md),
+        // on a demo profile only.
+        if cfg!(feature = "insecure-test-tls") || steps == "demo" || steps == "phone" || steps == "drag" || (["porch-notices", "taskform", "review", "site-open", "site-quit", "site-during", "site-share", "site-devices", "site-colour", "rail", "pauses", "blocks", "unsubscribe", "leave-spam", "attention", "line", "share-panel", "join", "share-send", "spam", "mail-search", "mail-filters", "rules", "security-key", "health-gpg", "calls", "words", "movetask", "compose", "texts", "ai", "health", "tiles", "attachments", "projects-file", "memory", "bitwarden-wait", "tray", "notes-shared", "microsoft", "reach", "steps", "checklist", "composed", "pair", "agenda", "cards", "taskviews", "mail-open", "safe-area", "mailbox", "mailbox-measure", "budgets-page", "money-tabs", "chain", "letters-page", "persons", "crud", "availability", "topics", "timeline", "eventcard", "invite", "contact-address", "contact-card", "hours", "ties", "rest", "rest-shared", "invoices", "shell", "views", "address-books", "phones", "calendars", "storage", "downloads", "household", "notes-find", "search-tabs", "extension-log"].contains(&steps.as_str()) && offline()) {
             return QString::from(&steps);
         }
         QString::from("pages")

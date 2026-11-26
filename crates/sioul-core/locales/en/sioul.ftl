@@ -4090,6 +4090,44 @@ extension-stopped-asks-more = { $name } stopped: it asks for more than its list 
 extension-stopped-interface = { $name } stopped: it speaks another version of Sioul's interface.
 extension-stopped-unread = { $name } stopped: its file could not be read, or changed since it was checked.
 extension-stopped-removed = { $name } stopped: it was removed meanwhile.
+extension-stopped-panicked = { $name } stopped: Sioul met an error of its own while running it; its log on this device says where.
+extension-problem-form-wait = The sign-in form for { $name } closed by itself after { $minutes } minutes without an answer, and nothing was sent. When you have everything it asks, a web address to paste for instance, press Sign in… again: the form stays open while you copy something in another app, as long as your device keeps Sioul open.
+# The detail of an extension's last problem, under its sentence: its own words, in English as it writes them.
+extension-problem-detail = In its own words: { $detail }
+# Details… on an extension's card: the last lines of its log on this device, the newest first, to read and to copy.
+extension-details = Details…
+extension-log-title = The log of { $name } on this device
+extension-log-about = Its last lines, the newest first. Sioul takes passwords, tokens, cookies and the part of a web address after its question mark out of every line: you can copy it for whoever helps you, after a look at what it holds.
+extension-log-empty = Nothing is written in its log on this device yet.
+# Each extension's versions (26 November 2026): the one that runs on this device, the one the list offers when it differs.
+extension-version-runs = Version { $version } runs here.
+extension-version-offered = Version { $version } runs here; { $offered } is offered.
+extension-version-new = Version { $version } is offered.
+extension-update = Update to version { $version }
+extension-update-failed = { $name } could not be updated: its new file could not be downloaded, or is not the one its list names. The version in use stays.
+# The list of extensions in use on this device, read again on demand, and every update taken at once.
+extensions-list-in-use = The list in use is number { $serial }, read { $when }; its signature was checked against its publisher's key before anything in it was taken.
+extensions-list-none = No list of extensions has been taken on this device yet.
+extensions-read-list = Read the list again
+extensions-list-read = The list was read again (number { $serial }): { $what }.
+extensions-list-nothing = nothing changes for the extensions on this device
+extensions-list-taken = { $count ->
+        [one] one extension was updated
+       *[other] { $count } extensions were updated
+    }
+extensions-list-waiting = { $count ->
+        [one] one update waits for your yes on its card
+       *[other] { $count } updates wait for your yes on their cards
+    }
+extensions-list-both = { $taken }, and { $waiting }
+extensions-update-all = Update all ({ $count })
+extensions-update-all-title = Update every extension?
+extensions-update-all-asks = Some of these updates ask for more than the versions in use:
+extensions-update-all-now = Update all
+extensions-updated-all = { $count ->
+        [one] One extension was updated.
+       *[other] { $count } extensions were updated.
+    }
 extension-leave-lessons = Leave its lessons in your calendars
 extension-problem-settings = { $name } wrote nothing: Sioul cannot read your settings file.
 extension-event-cancelled = Cancelled: { $title }

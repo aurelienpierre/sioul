@@ -34,6 +34,10 @@ log that says it: Mail's ⚙ offers to leave their lists (docs/client.md, "Unsub
 --calls (or SIOUL_DEMO_CALLS=1) adds the calls a phone of yours screened, as
 the sharing brings its log to a computer: the Porch lists those it declined,
 and the doctor's sheet her calls of the month (docs/porch.md, "Calls declined").
+--extension (or SIOUL_DEMO_EXTENSION=1) adds an extension enabled on this
+device whose sign-in was refused, with its record and the last lines of its
+log: Settings ▸ Extensions shows its problem's detail and its Details…
+(docs/extensions.md).
 --phone-messages (or SIOUL_DEMO_PHONE_MESSAGES=1) adds the messages a phone's
 notifications brought, as the sharing brings its log to a computer, with the
 part "Messages from your phone" on here: the Porch's "From your phone" says
@@ -1186,6 +1190,63 @@ def moving_note(p: Profile):
     on its way there. Made up: no message holds this id. Noted now, by the
     computer's clock, as the note is believed three days."""
     p.write(p.state / "sync" / "moved.toml", f'[[moved]]\naccount = "{account_id("work")}"\naddress = "mid:on-its-way@example.org"\nfolder = "Archive"\nat = {int(datetime.now().timestamp())}\n')
+
+
+def write_extension(p: Profile):
+    """An extension enabled on this device whose last sign-in was refused
+    (docs/extensions.md): its record (crates/sioul-core/src/extensions/state.rs,
+    the problem and its own detail) and the last lines of its log, as Sioul
+    writes them, for its card's detail and its Details…. Invented: the service,
+    its hosts on .example, the times; nothing is fetched, it never runs (not
+    signed in)."""
+    c = p.clock
+    stamp = lambda moment: moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p.write(p.state / "extensions.toml", f"""[[extension]]
+enabled = true
+signed_in = false
+last_run = {unix(c.ago(hours=2))}
+last_brought = {unix(c.ago(hours=26))}
+agendas = []
+problem = "sign-in"
+detail = "sign-in: the password sign-in (accounts.bookings.example) answered HTTP 400 with INVALID_LOGIN_CREDENTIALS: the email or the password was refused"
+
+[extension.offer]
+id = "bookings"
+version = "0.2.1"
+interface = 1
+brings = ["agenda", "contacts"]
+hosts = ["accounts.bookings.example", "tokens.bookings.example", "api.bookings.example", "feed.bookings.example"]
+credentials = ["email", "password", "web-address"]
+file = "bookings-0.2.1.wasm"
+sha256 = "{"0" * 64}"
+
+[extension.offer.name]
+en = "Salon bookings (unofficial)"
+fr = "Réservations du salon (non officiel)"
+
+[extension.offer.about]
+en = "A salon's appointments, as one read-only agenda of busy time, into a calendar you choose."
+fr = "Les rendez-vous d’un salon, en un agenda en lecture seule de temps occupé, dans un calendrier que vous choisissez."
+""", c.ago(minutes=1))
+    lines = [
+        (c.ago(hours=26), "refresh"),
+        (c.ago(hours=26), "sioul: keyring: its entry read (612 bytes)"),
+        (c.ago(hours=26), "sioul: POST tokens.bookings.example/v1/token answered 200 in 318 ms (1840 bytes)"),
+        (c.ago(hours=26), "sioul: POST api.bookings.example/v1/businesses/[hidden]:runQuery answered 200 in 905 ms (48211 bytes)"),
+        (c.ago(hours=26), "refresh: 64 appointment(s) from the agenda's documents"),
+        (c.ago(hours=26), "sioul: GET feed.bookings.example/calendar answered 200 in 512 ms (30177 bytes)"),
+        (c.ago(hours=26), "refresh: 95 event(s) from the feed, 0 that do not read"),
+        (c.ago(hours=2), "refresh"),
+        (c.ago(hours=2), "sioul: keyring: its entry read (612 bytes)"),
+        (c.ago(hours=2), "sioul: POST tokens.bookings.example/v1/token answered 400 in 296 ms (122 bytes)"),
+        (c.ago(hours=2), "refresh: the token's renewal (tokens.bookings.example) answered HTTP 400 with TOKEN_EXPIRED: the sign-in kept here has ended"),
+        (c.ago(minutes=6), "sioul: the sign-in form shown (email, password, web-address)"),
+        (c.ago(minutes=4), "sioul: the sign-in form sent: email filled (spaces around it taken out), password filled, web-address filled"),
+        (c.ago(minutes=4), "sign-in"),
+        (c.ago(minutes=4), "sioul: POST accounts.bookings.example/v1/accounts:signInWithPassword answered 400 in 412 ms (231 bytes)"),
+        (c.ago(minutes=4), "sign-in: the password sign-in (accounts.bookings.example) answered HTTP 400 with INVALID_LOGIN_CREDENTIALS: the email or the password was refused"),
+    ]
+    p.write(p.state / "extensions" / "bookings.log", "".join(f"{stamp(at)} {line}\n" for at, line in lines), c.ago(minutes=4))
 
 
 def write_calls(p: Profile):
@@ -3487,6 +3548,8 @@ def main():
                         help="two of your people more for What reaches you's pictures: one held out by a restriction, one whose card is not here (SIOUL_DEMO_HOUSEHOLD=1 too)")
     parser.add_argument("--shortfall", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_SHORTFALL")),
                         help="the bank account keeping more than it holds: its next payment falls short (SIOUL_DEMO_SHORTFALL=1 too)")
+    parser.add_argument("--extension", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_EXTENSION")),
+                        help="an extension enabled here whose sign-in was refused, with its record and its log: its card's detail and Details… (SIOUL_DEMO_EXTENSION=1 too)")
     parser.add_argument("--first-day", action="store_true", default=bool(os.environ.get("SIOUL_DEMO_FIRST_DAY")),
                         help="the Porch's cards of the first days not answered yet: Join your other devices, the topics Sioul started (SIOUL_DEMO_FIRST_DAY=1 too)")
     args = parser.parse_args()
@@ -3523,6 +3586,8 @@ def main():
     write_contacts(profile)
     if args.calls:
         write_calls(profile)
+    if args.extension:
+        write_extension(profile)
     if args.phone_messages:
         write_phone_messages(profile)
     if args.texts:

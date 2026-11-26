@@ -25,8 +25,11 @@
 //! Each ask is counted, then checked here (its form, its host, its size, the
 //! time left) before what it reaches does it (`Services`: the network, the
 //! keyring, the person); the log is kept here, every hidden value replaced
-//! once the call has ended. Never run on the window's thread: a call may last
-//! minutes.
+//! once the call has ended, then what no call may log taken out whoever wrote
+//! it (`sioul_core::extensions::state::scrub`). Sioul's own lines say each web
+//! request (its method, host, path without its query, status and time), what
+//! the keyring did and why a call stopped. Never run on the window's thread: a
+//! call may last minutes.
 //!
 //! **What Sioul holds for a call is bounded in bytes**, outside the module's
 //! own memory: a line is cut when it is kept (`LINE_KEPT`), Sioul's own
@@ -152,6 +155,9 @@ pub enum Stop {
     Nonsense(String),
     /// It was removed meanwhile: the call ended before it could keep anything.
     Removed,
+    /// Sioul's own side of the call panicked (never the extension's: its
+    /// panic is a trap, `Trapped`); the call is given up, nothing taken in.
+    Panicked(String),
 }
 
 impl Stop {
@@ -166,10 +172,11 @@ impl Stop {
             Self::Trapped(_) => "stopped-error",
             Self::Nonsense(_) => "stopped-nonsense",
             Self::Removed => "stopped-removed",
+            Self::Panicked(_) => "stopped-panicked",
         }
     }
 
-    /// What happened, for the log.
+    /// What happened, for the log and the card's detail.
     pub fn detail(&self) -> String {
         match self {
             Self::NotRead(why) => format!("the file does not read: {why}"),
@@ -180,8 +187,39 @@ impl Stop {
             Self::Trapped(why) => format!("it ended in an error of its own: {why}"),
             Self::Nonsense(why) => format!("it replied nonsense: {why}"),
             Self::Removed => "it was removed meanwhile".into(),
+            Self::Panicked(why) => format!("Sioul's side of the call panicked: {why}"),
         }
     }
+}
+
+/// A trap's code in words: a panic of the extension (Rust's panics end in
+/// `unreachable` on WebAssembly) and a stack overflowed said plainly.
+fn trap_words(code: wasmi::TrapCode) -> String {
+    match code {
+        wasmi::TrapCode::UnreachableCodeReached => "it panicked (it reached WebAssembly's `unreachable`)".into(),
+        wasmi::TrapCode::StackOverflow => "its stack overflowed".into(),
+        code => code.to_string(),
+    }
+}
+
+/// The path of an `https` address, without its query nor its fragment:
+/// what Sioul's line of a web request says of it. Never cut here: the line is
+/// cut once the call's hidden values are replaced in it (`finish`), so that a
+/// value across the cut cannot show in part.
+fn path_of(url: &str) -> String {
+    let rest = url.strip_prefix("https://").unwrap_or(url);
+    let rest = rest.split(['?', '#']).next().unwrap_or("");
+    rest.find('/').map_or("/", |at| &rest[at..]).to_string()
+}
+
+/// A problem's detail in a reply (`{"problem": {"detail": …}}`), each value
+/// the call hid replaced: the card shows it, after the call, where the
+/// call's hiding no longer runs.
+fn problem_detail(reply: &str, hidden: &mut [String]) -> Option<String> {
+    let value: Value = serde_json::from_str(reply).ok()?;
+    let detail: String = value.get("problem")?.get("detail")?.as_str()?.chars().filter(|c| !c.is_control()).take(LINE_KEPT).collect();
+    hidden.sort_by_key(|h| std::cmp::Reverse(h.len()));
+    Some(hidden.iter().fold(detail, |text, value| if text.contains(value.as_str()) { text.replace(value.as_str(), "[hidden]") } else { text }))
 }
 
 /// A web request, checked, for `Services::web`.
@@ -221,6 +259,13 @@ pub trait Services {
     fn removed(&mut self) -> bool {
         false
     }
+    /// What the last refusal of `web`, `secret`, `keep_secret` or
+    /// `forget_secret` came from, in a few words for the log (the network's
+    /// or the keyring's own error, its kind): never a value, never an
+    /// address's query. None when it says nothing more than its word.
+    fn last_failure(&mut self) -> Option<String> {
+        None
+    }
 }
 
 /// What a call came to: its reply, or why it stopped; and its log's lines,
@@ -234,6 +279,11 @@ pub struct Outcome {
     /// When the call's last web answer came (seconds since 1970): the age of
     /// the data it brought; none when it asked the web nothing.
     pub answered: Option<i64>,
+    /// The detail of what went wrong, for the card under its sentence: the
+    /// reply's problem's own `detail`, each value the call hid replaced, or
+    /// why the call stopped (`Stop::detail`); none when nothing went wrong,
+    /// or when a value could not be hidden. Still to be `scrub`bed.
+    pub detail: Option<String>,
 }
 
 /// The kinds of ask, each its own import.
@@ -559,16 +609,23 @@ fn web_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     let request = WebRequest { method: method.to_string(), url: url.to_string(), host: host.clone(), headers, body };
     let wait = left.min(visit.limits.request_time);
     let most = visit.limits.answer_body;
-    // A host and a status, never a path (W3): a path may name a pupil or an account.
-    match visit.services.web(&request, wait, most) {
+    // W3: the method, the host, the path without its query, the status and the time; never a
+    // query, a header's value nor a body. A value the call hid (a business's or a pupil's id
+    // the extension named with `hide`) reads `[hidden]` in the path too, as in every line.
+    let path = path_of(url);
+    let asked = Instant::now();
+    let answered = visit.services.web(&request, wait, most);
+    let ms = asked.elapsed().as_millis();
+    match answered {
         Ok(answer) => {
             visit.answered = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs() as i64);
-            visit.said(format!("{method} {host}: {} ({} bytes)", answer.status, answer.body.len()));
+            visit.said(format!("{method} {host}{path} answered {} in {ms} ms ({} bytes)", answer.status, answer.body.len()));
             let headers: Vec<[String; 2]> = answer.headers.iter().map(|(n, v)| [n.to_ascii_lowercase(), v.clone()]).collect();
             json!({ "status": answer.status, "headers": headers, "body": answer.body })
         }
         Err(why) => {
-            visit.said(format!("{method} {host}: {why}"));
+            let from = visit.services.last_failure().map(|f| format!(" ({f})")).unwrap_or_default();
+            visit.said(format!("{method} {host}{path} failed after {ms} ms: {why}{from}"));
             refused(why)
         }
     }
@@ -582,14 +639,25 @@ fn secret_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
     if visit.grants.sign_in.is_none() && visit.grants.credentials.is_empty() {
         return refused("not-now");
     }
+    // What the keyring did, in the log: its entry read (its size), none kept, kept, forgotten,
+    // or the error's kind when it failed; never the value.
+    let failed = |visit: &mut Visit<S>, what: &str, why: &'static str| {
+        let from = visit.services.last_failure().map(|f| format!(" ({f})")).unwrap_or_default();
+        visit.said(format!("keyring: {what} failed: {why}{from}"));
+        refused(why)
+    };
     if ask["get"] == true {
         return match visit.services.secret() {
             Ok(Some(secret)) => {
                 visit.hide_json(&secret);
+                visit.said(format!("keyring: its entry read ({} bytes)", secret.len()));
                 json!({ "secret": secret })
             }
-            Ok(None) => json!({ "secret": null }),
-            Err(why) => refused(why),
+            Ok(None) => {
+                visit.said("keyring: no entry kept for it on this device".into());
+                json!({ "secret": null })
+            }
+            Err(why) => failed(visit, "reading its entry", why),
         };
     }
     if let Some(secret) = ask["keep"].as_str() {
@@ -600,14 +668,20 @@ fn secret_answer<S: Services>(visit: &mut Visit<S>, ask: &Value) -> Value {
         }
         visit.hide_json(secret);
         return match visit.services.keep_secret(secret) {
-            Ok(()) => json!({ "kept": true }),
-            Err(why) => refused(why),
+            Ok(()) => {
+                visit.said(format!("keyring: its entry kept ({} bytes)", secret.len()));
+                json!({ "kept": true })
+            }
+            Err(why) => failed(visit, "keeping its entry", why),
         };
     }
     if ask["forget"] == true {
         return match visit.services.forget_secret() {
-            Ok(()) => json!({ "forgotten": true }),
-            Err(why) => refused(why),
+            Ok(()) => {
+                visit.said("keyring: its entry forgotten".into());
+                json!({ "forgotten": true })
+            }
+            Err(why) => failed(visit, "forgetting its entry", why),
         };
     }
     refused("form")
@@ -770,7 +844,7 @@ fn stop_of<S>(store: &mut Store<Visit<S>>, error: &wasmi::Error) -> Stop {
     match error.as_trap_code() {
         Some(wasmi::TrapCode::OutOfFuel) => Stop::TooLong,
         Some(wasmi::TrapCode::GrowthOperationLimited) => Stop::Memory,
-        Some(code) => Stop::Trapped(code.to_string()),
+        Some(code) => Stop::Trapped(trap_words(code)),
         None => Stop::Trapped(error.to_string()),
     }
 }
@@ -825,6 +899,9 @@ fn finish(log: Vec<Line>, hidden: &mut [String], width: usize, full: bool) -> Ve
                     text = text.replace(value.as_str(), "[hidden]");
                 }
             }
+            // What the call never named, taken out before the line is cut (a token cut
+            // short would no longer look like one).
+            text = sioul_core::extensions::state::scrub(&text);
             if line.cut {
                 let (kept, _) = cut_at(&text, text.len().saturating_sub(HIDE_PIECE + 3));
                 text = kept;
@@ -896,8 +973,15 @@ pub fn call<S: Services + 'static>(file: &[u8], grants: &Grants, call: &str, ser
         visit.said(format!("stopped: {}", stop.detail()));
     }
     visit.weigh();
+    // The problem's detail, its hidden values replaced while the call's are still known;
+    // none when a value could not be hidden.
+    let detail = match &reply {
+        Err(stop) => Some(stop.detail()),
+        Ok(_) if visit.hiding_full => None,
+        Ok(text) => problem_detail(text, &mut visit.hidden),
+    };
     let log = finish(std::mem::take(&mut visit.log), &mut visit.hidden, limits.log_width, visit.hiding_full);
-    (Outcome { reply, log, held: visit.held, answered: visit.answered }, visit.services)
+    (Outcome { reply, log, held: visit.held, answered: visit.answered, detail }, visit.services)
 }
 
 fn called<S: Services + 'static>(engine: &Engine, store: &mut Store<Visit<S>>, file: &[u8], call: &str, limits: &Limits) -> Result<String, Stop> {

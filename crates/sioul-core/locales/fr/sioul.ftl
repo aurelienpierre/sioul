@@ -4123,6 +4123,44 @@ extension-stopped-asks-more = { $name } s’est arrêtée : elle demande plus 
 extension-stopped-interface = { $name } s’est arrêtée : elle parle une autre version de l’interface de Sioul.
 extension-stopped-unread = { $name } s’est arrêtée : son fichier ne se lit pas, ou a changé depuis sa vérification.
 extension-stopped-removed = { $name } s’est arrêtée : elle a été retirée entre-temps.
+extension-stopped-panicked = { $name } s’est arrêtée : Sioul a rencontré une erreur qui lui est propre en la faisant tourner ; son journal sur cet appareil dit où.
+extension-problem-form-wait = Le formulaire de connexion de { $name } s’est fermé de lui-même après { $minutes } minutes sans réponse, et rien n’a été envoyé. Quand vous avez tout ce qu’il demande, une adresse web à coller par exemple, appuyez de nouveau sur Se connecter… : le formulaire reste ouvert pendant que vous copiez quelque chose dans une autre application, tant que votre appareil garde Sioul ouvert.
+# Le détail du dernier problème d’une extension, sous sa phrase : ses propres mots, en anglais comme elle les écrit.
+extension-problem-detail = Dans ses propres mots, en anglais : { $detail }
+# Détails… sur la fiche d’une extension : les dernières lignes de son journal sur cet appareil, les plus récentes d’abord, à lire et à copier.
+extension-details = Détails…
+extension-log-title = Le journal de { $name } sur cet appareil
+extension-log-about = Ses dernières lignes, les plus récentes d’abord. Sioul retire de chaque ligne les mots de passe, les jetons, les cookies et ce qui suit le point d’interrogation d’une adresse web : vous pouvez le copier pour qui vous aide, après un coup d’œil à ce qu’il contient.
+extension-log-empty = Rien n’est encore écrit dans son journal sur cet appareil.
+# Les versions de chaque extension (26 novembre 2026) : celle qui tourne sur cet appareil, celle que propose la liste quand elle diffère.
+extension-version-runs = La version { $version } tourne ici.
+extension-version-offered = La version { $version } tourne ici ; la { $offered } est proposée.
+extension-version-new = La version { $version } est proposée.
+extension-update = Mettre à jour vers la version { $version }
+extension-update-failed = { $name } n’a pas pu être mise à jour : son nouveau fichier n’a pas pu être téléchargé, ou n’est pas celui que nomme sa liste. La version en service reste.
+# La liste des extensions en service sur cet appareil, relue à la demande, et toutes les mises à jour prises d’un coup.
+extensions-list-in-use = La liste en service est la numéro { $serial }, lue { $when } ; sa signature a été vérifiée avec la clé de son éditeur avant que rien n’en soit pris.
+extensions-list-none = Aucune liste d’extensions n’a encore été prise sur cet appareil.
+extensions-read-list = Relire la liste
+extensions-list-read = La liste a été relue (numéro { $serial }) : { $what }.
+extensions-list-nothing = rien ne change pour les extensions de cet appareil
+extensions-list-taken = { $count ->
+        [one] une extension a été mise à jour
+       *[other] { $count } extensions ont été mises à jour
+    }
+extensions-list-waiting = { $count ->
+        [one] une mise à jour attend votre accord sur sa fiche
+       *[other] { $count } mises à jour attendent votre accord sur leurs fiches
+    }
+extensions-list-both = { $taken }, et { $waiting }
+extensions-update-all = Tout mettre à jour ({ $count })
+extensions-update-all-title = Mettre à jour toutes les extensions ?
+extensions-update-all-asks = Certaines de ces mises à jour demandent plus que les versions en service :
+extensions-update-all-now = Tout mettre à jour
+extensions-updated-all = { $count ->
+        [one] Une extension a été mise à jour.
+       *[other] { $count } extensions ont été mises à jour.
+    }
 extension-leave-lessons = Laisser ses cours dans vos calendriers
 extension-problem-settings = { $name } n’a rien écrit : Sioul ne peut pas lire votre fichier de réglages.
 extension-event-cancelled = Annulé : { $title }

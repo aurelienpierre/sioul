@@ -4,13 +4,19 @@
 // Settings ▸ Extensions (docs/extensions.md): what the signed list offers,
 // each with what it brings, the sites it talks to and whether it keeps a
 // sign-in, said before anything is enabled; then Enable, Sign in…, its state
-// and its last problem in one sentence, each agenda it brought (a pupil's
+// and its last problem in one sentence with that problem's own detail under
+// it, Details… (the last lines of its log), the version that runs here and
+// the one offered (Update to version …, or Take the update when it asks for
+// more), each agenda it brought (a pupil's
 // timetable) with the calendar of yours its lessons go into, chosen here
 // (`extensionCalendar`), each set of contacts it brought (a business's
 // clients) with the address book of yours they go into (`extensionBook`),
 // Disable, Remove (which asks whether to take its lessons out of your
 // calendars, and says its contacts stay), and the yes an update asks when it
 // wants more.
+// At its foot, the list in use (its number, when it was read, its signature
+// checked), where it is read from, and Read the list again; Update all when
+// several updates wait, one question first when some ask for more.
 // Opening it reads the list (`extensionsPage`); the view comes back as
 // `sioul.extensions` (extensions.rs). A sign-in that needs a choice first (a
 // platform) asks it here (`extensionChoices`).
@@ -36,6 +42,8 @@ Item {
     readonly property alias removeDialog: removing
     readonly property alias chooseDialog: choosing
     readonly property alias signInFormDialog: signingIn
+    readonly property alias logDialog: logCard
+    readonly property alias updateAllDialog: updatingAll
 
     implicitHeight: column.implicitHeight
     Component.onCompleted: tab.sioul.extensionsPage()
@@ -106,6 +114,18 @@ Item {
             wrapMode: Text.Wrap
             color: tab.theme.text
         }
+        // Several updates offered: all taken at once, those that ask for more after one question.
+        Button {
+            objectName: "extensionsUpdateAll"
+            visible: (tab.view.updates || 0) >= 2
+            text: tab.view.updateAll || ""
+            onClicked: {
+                if ((tab.view.asks || []).length > 0)
+                    updatingAll.open()
+                else
+                    tab.sioul.extensionsUpdateAll()
+            }
+        }
 
         Repeater {
             model: tab.view.offers
@@ -151,6 +171,16 @@ Item {
                     wrapMode: Text.Wrap
                     color: tab.theme.text
                 }
+                // The version that runs here, and the one offered when it differs.
+                Label {
+                    objectName: "extensionVersion:" + offer.modelData.id
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: offer.modelData.versionLine || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.muted
+                }
                 Repeater {
                     model: [offer.modelData.unusable, offer.modelData.problem, offer.modelData.waiting]
 
@@ -164,6 +194,17 @@ Item {
                         wrapMode: Text.Wrap
                         color: tab.theme.warm
                     }
+                }
+                // Its last problem's own detail, under its sentence: the extension's words, in
+                // English as it writes them, short; the rest of its log behind Details….
+                Label {
+                    objectName: "extensionDetail:" + offer.modelData.id
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: offer.modelData.detail || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.muted
                 }
                 // Each agenda it brought: its name as the extension gave it (plain text, never
                 // Sioul's voice), where its lessons go and how it went, and the calendar chosen.
@@ -319,6 +360,14 @@ Item {
                         text: tab.sioul.text("extension-accept")
                         onClicked: tab.sioul.extensionAccept(offer.modelData.id)
                     }
+                    // A newer version that asks for no more than the one in use.
+                    Button {
+                        objectName: "extensionUpdate:" + offer.modelData.id
+                        visible: (offer.modelData.update || "") !== ""
+                        highlighted: true
+                        text: offer.modelData.updateLabel || ""
+                        onClicked: tab.sioul.extensionUpdate(offer.modelData.id)
+                    }
                     Button {
                         objectName: "extensionDisable:" + offer.modelData.id
                         visible: offer.modelData.enabled
@@ -331,19 +380,44 @@ Item {
                         text: tab.sioul.text("extension-remove")
                         onClicked: removing.ask(offer.modelData)
                     }
+                    // The last lines of its log on this device, to read and to copy: on every device.
+                    Button {
+                        objectName: "extensionDetails:" + offer.modelData.id
+                        visible: offer.modelData.installed
+                        text: tab.sioul.text("extension-details")
+                        onClicked: logCard.show(offer.modelData.id)
+                    }
                 }
             }
         }
 
+        // The list in use: its number, when it was read, its signature checked; where it is read
+        // from; and a reading now, whatever the daily rhythm.
         Label {
+            objectName: "extensionsList"
             Layout.fillWidth: true
             Layout.topMargin: 14
+            visible: text !== ""
+            text: tab.view.list || ""
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: tab.theme.muted
+        }
+        Label {
+            Layout.fillWidth: true
             visible: text !== ""
             text: tab.view.where || ""
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pixelSize: 12
             color: tab.theme.muted
+        }
+        Button {
+            objectName: "extensionsReadList"
+            enabled: !tab.view.reading
+            text: tab.sioul.text("extensions-read-list")
+            onClicked: tab.sioul.extensionsReadList()
         }
 
     }
@@ -504,6 +578,65 @@ Item {
     // up, or the extension removed.
     ExtensionSignIn {
         id: signingIn
+
+        sioul: tab.sioul
+        theme: tab.theme
+    }
+    // Update all, when some of the updates ask for more than the versions in use: what each
+    // asks, said again, and one yes for all.
+    SafeDialog {
+        id: updatingAll
+
+        objectName: "extensionsUpdatingAll"
+        title: tab.sioul.text("extensions-update-all-title")
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(460, updatingAll.roomWidth - 2 * tab.theme.gap)
+
+        contentItem: ColumnLayout {
+            spacing: 8
+
+            Label {
+                Layout.fillWidth: true
+                text: tab.sioul.text("extensions-update-all-asks")
+                textFormat: Text.PlainText
+                wrapMode: Text.Wrap
+                color: tab.theme.text
+            }
+            Repeater {
+                model: tab.view.asks || []
+
+                delegate: Label {
+                    required property string modelData
+
+                    Layout.fillWidth: true
+                    text: modelData
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: tab.theme.warm
+                }
+            }
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                objectName: "extensionsUpdateAllNow"
+                text: tab.sioul.text("extensions-update-all-now")
+                DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+            }
+            Button {
+                text: tab.sioul.text("ui-cancel")
+                highlighted: true
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+            }
+        }
+
+        onAccepted: tab.sioul.extensionsUpdateAll()
+    }
+    // An extension's Details…: the last lines of its log on this device (ExtensionLog.qml).
+    ExtensionLog {
+        id: logCard
 
         sioul: tab.sioul
         theme: tab.theme
