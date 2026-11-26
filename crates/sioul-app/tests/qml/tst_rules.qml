@@ -7,8 +7,8 @@
 // yours switched off and removed (what it asks of Sioul); what it did lately
 // folded, made when first opened, each act with Undo and Not for this one;
 // a rule kept elsewhere saying where, its link opening it there, without a
-// switch or Edit. The presets' tab: a line each, a switch only where a
-// setting turns it on or off, Details only where there is more. The editor
+// switch or Edit. The presets' tab: a written line each, no switch, "Off
+// where it is set." and a link where a setting changes it. The editor
 // (RuleEditor.qml) built from declarations alone: a type and a field added
 // here, never written into the editor, show up with their value's control;
 // what is not available yet is greyed with "later" and never chosen; a

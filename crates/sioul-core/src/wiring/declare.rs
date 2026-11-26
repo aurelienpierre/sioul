@@ -778,7 +778,7 @@ const PRESETS: &[PresetDecl] = &[
     PresetDecl { with: &[("project", "from:project")], ..preset("conversation-follows-project", "A.2", ("message", "arrives"), ("message", "tie-to-project"), 3) },
     PresetDecl { conditions: &[("sender-domain", "is", &["github.com"])], setting: Some("github.enabled"), ..preset("github-mail", "A.4", ("message", "arrives"), ("message", "tie-to-task"), 3) },
     PresetDecl { conditions: &[("spam", "is", &["spam"])], setting: Some("spam.actions"), ..preset("spam-filter-moves", "A.8", ("message", "arrives"), ("message", "junk"), 4) },
-    PresetDecl { conditions: &[("folder", "is", &["junk"]), ("circle", "is", &["known"])], with: &[("folder", "inbox")], ..preset("proven-mail-brought-back", "A.9", ("message", "arrives"), ("message", "move-to-folder"), 4) },
+    PresetDecl { conditions: &[("folder", "is", &["junk"]), ("circle", "is", &["known"])], with: &[("folder", "inbox")], setting: Some("spam.proven"), ..preset("proven-mail-brought-back", "A.9", ("message", "arrives"), ("message", "move-to-folder"), 4) },
     PresetDecl { with: &[("topic", "from:topic")], ..preset("topics-given", "A.11", ("message", "arrives"), ("message", "give-topic"), 4) },
     PresetDecl { conditions: &[("kind", "is", CODES)], with: &[("level", "now")], ..preset("codes-told", "A.12", ("message", "arrives"), ("none", "tell"), 1) },
     PresetDecl { with: &[("level", "now")], setting: Some("reminders.mail"), params: &[("newsletters", "reminders.mail_newsletters")], ..preset("new-mail-told", "A.14", ("message", "arrives"), ("none", "tell"), 3) },
