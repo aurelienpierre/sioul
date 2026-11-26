@@ -44,7 +44,7 @@ pub struct Names {
     pub projects: BTreeMap<String, String>,
     /// Topics' names, by id.
     pub topics: BTreeMap<String, String>,
-    /// Models' names, by the id a rule gives them ("<project>/<model>" for a project's).
+    /// Models' names, by the id a rule gives them (`"<project>/<model>"` for a project's).
     pub models: BTreeMap<String, String>,
     /// Mail accounts' addresses, by id.
     pub accounts: BTreeMap<String, String>,

@@ -58,7 +58,7 @@ pub enum Value {
     Account,
     /// A task list or a calendar, "account/id".
     List,
-    /// A model of task (`store::Model`), by its id; a project's, "<project>/<model>".
+    /// A model of task (`store::Model`), by its id; a project's, `"<project>/<model>"`.
     Model,
     /// A whole number.
     Number,
@@ -730,7 +730,7 @@ pub struct Preset {
     pub id: &'static str,
     /// Which of Sioul's automatic acts it is, by a short reference ("A.12": mail, B tasks, C the clock, D events, E calls, F money, G papers and letters, I sites).
     pub entry: &'static str,
-    /// Its rule, id "preset:<id>", on as Sioul ships it.
+    /// Its rule, id `"preset:<id>"`, on as Sioul ships it.
     pub rule: super::store::Rule,
     /// The setting that turns it on or off today, by its key; none when nothing does.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -753,7 +753,7 @@ struct PresetDecl {
     when: (&'static str, &'static str),
     conditions: &'static [(&'static str, &'static str, &'static [&'static str])],
     then: (&'static str, &'static str),
-    /// Each parameter: a fixed value, or "from:<field>".
+    /// Each parameter: a fixed value, or `"from:<field>"`.
     with: &'static [(&'static str, &'static str)],
     setting: Option<&'static str>,
     params: &'static [(&'static str, &'static str)],
@@ -935,7 +935,7 @@ pub struct Choices {
     pub accounts: Vec<Pick>,
     /// Task lists, those that can be written first.
     pub lists: Vec<ListChoice>,
-    /// The general models, then each project's ("<project>/<model>").
+    /// The general models, then each project's (`"<project>/<model>"`).
     pub models: Vec<super::store::ModelRef>,
     pub levels: Vec<ChoiceOut>,
     pub circles: Vec<ChoiceOut>,

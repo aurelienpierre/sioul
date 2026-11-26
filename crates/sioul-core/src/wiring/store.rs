@@ -37,7 +37,7 @@
 //!   that triggered it).
 //! - **A model** (`Model`): a template of task any rule names, general; a
 //!   project's own models (`[[project.model]]`) are read as models too
-//!   (`models`), by "<project>/<model>", edited in their project.
+//!   (`models`), by `"<project>/<model>"`, edited in their project.
 //! - **What this Sioul does not know** (a newer one wrote it: a type, an
 //!   event, a field, a test, a value of a closed list, an action, a
 //!   parameter, a key): the rule is kept as written, byte for byte, and
@@ -265,7 +265,7 @@ impl Model {
 }
 
 /// A model as a rule names it: a general one by its id, a project's by
-/// "<project>/<model>" (edited in its project).
+/// `"<project>/<model>"` (edited in its project).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ModelRef {
     pub id: String,
@@ -277,7 +277,7 @@ pub struct ModelRef {
     pub editable: bool,
 }
 
-/// The general models, then each project's, by "<project>/<model>".
+/// The general models, then each project's, by `"<project>/<model>"`.
 pub fn models(rules: &Rules, projects: Option<&crate::projects::ProjectStore>) -> Vec<ModelRef> {
     let mut out: Vec<ModelRef> = rules.models.iter().map(|m| ModelRef { id: m.id.clone(), model: m.clone(), project: None, editable: m.unknown.is_empty() }).collect();
     for project in projects.map(|s| s.projects.as_slice()).unwrap_or_default() {
