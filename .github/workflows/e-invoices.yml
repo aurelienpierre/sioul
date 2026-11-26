@@ -7,8 +7,8 @@
 # credit note, a deposit invoice and the final one, three pages of lines)
 # into valid/, one made wrong on purpose (its totals a cent off) into
 # invalid/ with the rule it breaks beside it, and the French franchise
-# without a VAT number, which carries no XML yet (design §12, question 1),
-# into without-xml/. Mustang (mustangproject.org, Apache-2.0) reads each
+# whose SIRET is still being given, which has no SIREN to write and so no
+# XML, into without-xml/. Mustang (mustangproject.org, Apache-2.0) reads each
 # with veraPDF, the EN 16931 schematron and the French rules of XP Z12-012
 # inside: tools/einvoice/validate.sh then expects every file of valid/ to
 # pass with no word from the French rules, the one of invalid/ to fail for

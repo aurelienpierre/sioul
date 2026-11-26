@@ -22,7 +22,7 @@ If Sioul stopped tomorrow, your mail, your agenda, your contacts, your notes and
 | Contacts | on your contacts server (CardDAV), and on your device as one file per card (vCard, `.vcf`) | any address book: your phone's, Thunderbird's, Nextcloud's; on a computer, khard |
 | Notes | a folder of Markdown files that you choose, outside Sioul's own folders | Obsidian, Nextcloud Notes, any text editor |
 | Papers and paper letters | the files as you gave them (PDF, images), in folders of your own (`Documents/Papers` and `Documents/Letters` unless you chose others); a letter's text read from its scan, as plain text | any file manager, PDF reader or image viewer |
-| Invoices you issue | a PDF/A-3 file, which carries its Factur-X electronic invoice (the European standard EN 16931) when the invoice has what that standard asks (under France's VAT franchise without a VAT number, not yet), checked by an outside validator each time Sioul's way of making invoices changes | any PDF reader; accounting programs and e-invoicing platforms that read Factur-X |
+| Invoices you issue | a PDF/A-3 file, which carries its Factur-X electronic invoice (the European standard EN 16931) when the invoice has what that standard asks (under France's VAT franchise without a VAT number, your SIREN stands where it asks for a tax number), checked by an outside validator each time Sioul's way of making invoices changes | any PDF reader; accounting programs and e-invoicing platforms that read Factur-X |
 | Your texts | on your phone, in Android's own store | your phone's messages app, and the backup apps that copy it |
 | Your bank's lines | your bank's own export (OFX, CAMT.053 or CSV), which Sioul reads | your bank, a spreadsheet |
 

@@ -499,10 +499,10 @@ fn checks_say_what_is_missing() {
     draft.lines = vec![Line::of_time("Advice", 60, 9000, "E", 0)];
     refresh(&mut draft, &s, day("2026-11-16"));
     let now = checks(&draft, &s, day("2026-11-16"), &[]);
-    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false, false], "{now:?}");
+    assert_eq!(now.iter().map(|c| c.required).collect::<Vec<_>>(), [false], "{now:?}");
     assert!(now[0].text.contains("SIREN") && now[0].text.contains("September 2027"), "{now:?}");
-    // Under the franchise without a VAT number, its PDF carries no Factur-X data yet: said only.
-    assert!(now[1].text.contains("Factur-X"), "{now:?}");
+    // Under the franchise without a VAT number, its PDF carries its Factur-X data (the SIREN as its tax registration): nothing to say.
+    assert!(now.iter().all(|c| !c.text.contains("Factur-X")), "{now:?}");
     let later = checks(&draft, &s, day("2027-09-01"), &[]);
     assert!(later.iter().any(|c| c.required && c.text.contains("SIREN")), "{later:?}");
     s.ids = vec![IdSetting { kind: "siren".into(), value: "732 829 321".into(), printed: true }];
@@ -515,6 +515,8 @@ fn checks_say_what_is_missing() {
         refresh(&mut draft, &s, day("2026-11-16"));
         assert!(checks(&draft, &s, day("2026-11-16"), &[]).iter().all(|c| !c.required), "{:?}", checks(&draft, &s, day("2026-11-16"), &[]));
         assert!(html(&draft, &en()).contains("SIRET en cours d’attribution"));
+        // No SIREN to write yet: its PDF carries no Factur-X data, said only.
+        assert!(checks(&draft, &s, day("2026-11-16"), &[]).iter().any(|c| !c.required && c.text.contains("Factur-X") && c.text.contains("identifiers")), "{:?}", checks(&draft, &s, day("2026-11-16"), &[]));
     }
     let s = french("franchise");
     // A consumer: no penalties, no €40, no escompte.

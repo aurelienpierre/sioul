@@ -162,7 +162,7 @@ Ce qu’impriment vos factures et comment comptent vos livres, comme votre pays 
 - **TVA sur les débits (une option prise auprès des impôts)**.
 - **Des taux à vous (ACRE, un taux que l’Urssaf vous a donné)** : les cotisations sociales, le versement libératoire ou la contribution à la formation professionnelle ; l’activité (pour la contribution à la formation professionnelle, votre métier : `commerce`, `craft` ou `liberal`) ; le taux en pourcentage ; à partir d’un jour, jusqu’à un jour. L’ACRE en est un : Sioul ne peut pas savoir qu’elle vous a été accordée, alors écrivez son taux, jusqu’à la fin du troisième trimestre qui suit votre début.
 
-**Votre plateforme de facturation électronique** : le nom de la plateforme agréée (une PA) que vous utilisez. À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une telle plateforme, et vos ventes aux particuliers y sont déclarées à la place (e-reporting) ; tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures. En franchise de TVA sans numéro de TVA, ce PDF ne porte pas encore de données Factur-X ([Écrire le courriel](time.md#write-the-mail)).
+**Votre plateforme de facturation électronique** : le nom de la plateforme agréée (une PA) que vous utilisez. À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une telle plateforme, et vos ventes aux particuliers y sont déclarées à la place (e-reporting) ; tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures.
 
 Sous ce bloc, deux de plus :
 

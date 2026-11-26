@@ -2974,7 +2974,6 @@ invoice-check-own-country = Votre pays, « { $country } » : Sioul ne le c
 invoice-check-client-country-unknown = Le pays du client, « { $country } » : Sioul ne le connaît pas. Écrivez son nom ou ses deux lettres, comme BE, DE ou US, dans la fiche du client.
 invoice-check-delivery-country = Le pays de l’adresse de livraison, « { $country } » : Sioul ne le connaît pas. Écrivez son nom ou ses deux lettres, comme BE, DE ou US.
 invoice-xml-older = Une facture d’avant novembre 2026 ne porte pas de données électroniques.
-invoice-xml-franchise-no-vat = Le PDF de cette facture ne portera pas encore de données Factur-X : en franchise sans numéro de TVA, la règle française qui dit quel numéro donner à la place (BR-FR-CO-16) reste à lire. Le PDF est une facture complète ; les factures électroniques sont demandées aux petites entreprises à partir du 1er septembre 2027.
 invoice-xml-seller-vat = Le PDF de cette facture ne portera pas de données Factur-X : sa TVA demande votre numéro de TVA, ou votre numéro fiscal. Le PDF est une facture complète.
 invoice-xml-client-vat = Le PDF de cette facture ne portera pas de données Factur-X : une autoliquidation, ou une livraison vers un autre pays de l’UE, demande le numéro de TVA du client. Le PDF est une facture complète.
 invoice-xml-seller-id = Le PDF de cette facture ne portera pas de données Factur-X : il y faut un de vos identifiants, un numéro d’immatriculation ou fiscal. Le PDF est une facture complète.
@@ -10013,7 +10012,7 @@ invoices-settings-rate-percent = Taux, en pourcentage
 invoices-settings-rate-add = Un taux à vous
 invoices-settings-platform = Votre plateforme de facturation électronique
 invoices-settings-platform-hint = Son nom, tel que vous le connaissez
-invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une plateforme agréée (une PA), et vos ventes aux particuliers y sont déclarées à la place (e-reporting). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures. Sous la franchise en base de TVA sans numéro de TVA, ce PDF ne porte pas encore de données Factur-X.
+invoices-settings-platform-help = À partir du 1er septembre 2027, vos factures aux entreprises françaises passent par une plateforme agréée (une PA), et vos ventes aux particuliers y sont déclarées à la place (e-reporting). Tant que Sioul n’envoie pas par la vôtre, déposez-y le PDF de ces factures.
 
 ## Paramètres ▸ Appareils et `sioul devices` : tous les appareils dans un tableau (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, « Devices »)
 settings-tab-devices = Appareils

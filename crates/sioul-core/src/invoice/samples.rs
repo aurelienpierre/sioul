@@ -12,8 +12,8 @@
 //! them: `valid/` holds the Factur-X files a validator must accept,
 //! `invalid/` one made wrong on purpose (its totals do not add up), the rule
 //! it breaks beside it (`broken-totals.rule`: BR-CO-15),
-//! `without-xml/` the French franchise without a VAT number, a PDF/A-3 that
-//! carries no XML yet (design §12, question 1).
+//! `without-xml/` the French franchise whose SIRET is still being given, a
+//! PDF/A-3 that carries no XML (no SIREN to write as BT-30 and BT-32).
 //!
 //!     SIOUL_INVOICE_FIXTURES=/some/folder cargo test --release -p sioul-core --lib -- --ignored --exact invoice::samples::write_fixtures
 
@@ -298,14 +298,26 @@ pub(crate) fn valid() -> Vec<Sample> {
     long_line.description = "Retouche, recadrage et préparation pour l’impression des photographies de la série « Lumière d’automne », ".repeat(25).trim_end_matches([' ', ',']).to_string();
     long_line.details = (1..=80).map(|n| format!("lumiere-automne-{n:03}.tif")).collect::<Vec<_>>().join("\n");
     add("fr-long-line", s.clone(), issued(&s, french_client(), "fr", "EUR", vec![long_line], "2026-023", "2026-11-16"));
+    out.push(franchise_without_vat());
     out
 }
 
-/// The French franchise without a VAT number: no XML until BR-FR-CO-16 is read.
-pub(crate) fn without_xml() -> Sample {
+/// The French franchise without a VAT number, as most micro-entrepreneurs
+/// are: its SIREN again as its tax registration (BT-32, scheme FC), the
+/// French rule BR-FR-CO-16.
+pub(crate) fn franchise_without_vat() -> Sample {
     let s = french("franchise", false);
     let invoice = issued(&s, french_client(), "fr", "EUR", time(&[("Maquettes du site", 150)], 6000), "2026-030", "2026-11-16");
     Sample { name: "fr-franchise-no-vat", settings: s, invoice }
+}
+
+/// The French franchise whose SIRET is still being given (« en cours
+/// d’attribution », printed as such): no SIREN to write, so no XML
+/// (`cii::Without::SellerId`), a PDF/A-3 alone.
+pub(crate) fn without_xml() -> Sample {
+    let s = InvoiceSettings { ids: vec![id("siret", "en cours d’attribution")], ..french("franchise", false) };
+    let invoice = issued(&s, french_client(), "fr", "EUR", time(&[("Maquettes du site", 150)], 6000), "2026-032", "2026-11-16");
+    Sample { name: "fr-franchise-siret-pending", settings: s, invoice }
 }
 
 /// One made wrong on purpose: its total with VAT a cent off (BR-CO-15).

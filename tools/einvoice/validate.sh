@@ -9,8 +9,8 @@
 #     (XP Z12-012's schematron, which Mustang runs beside EN 16931's);
 #   - every PDF of invalid/ must fail for its own rule, the one its .rule
 #     file beside it names (BR-CO-15), not for any other reason;
-#   - every PDF of without-xml/, which carries no XML yet, must pass as a
-#     PDF/A-3b.
+#   - every PDF of without-xml/, which carries no XML (what the standard
+#     asks is missing), must pass as a PDF/A-3b.
 # Mustang's exit status is not enough (it may end at 0 while its PDF/A part
 # failed): each part of its report is read, and every warning and error is
 # listed. The reports are kept in reports/.

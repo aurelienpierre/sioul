@@ -58,7 +58,7 @@ Outside your working hours, the Projects and Time pages show the projects for wh
 
 ## Not there yet {#not-there-yet}
 
-- **Sending electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Each invoice Sioul issues is a PDF/A-3 kept as it was issued, carrying its Factur-X once you have a VAT number (under the VAT franchise without one, the PDF has no Factur-X yet), which most platforms take as a file: name your platform in [Settings ▸ Invoices](settings.md#invoices), and upload each PDF there. Sending through your platform from Sioul comes later ([Time and invoices](time.md#not-there-yet)).
+- **Sending electronic invoices.** From 1 September 2027, a French micro-enterprise, under the VAT franchise too, must issue its invoices to French businesses electronically, through an approved platform (« plateforme agréée »), with the client's SIREN. Each invoice Sioul issues is a PDF/A-3 kept as it was issued, carrying its Factur-X, under the VAT franchise without a VAT number too (your SIREN stands where the standard asks for a tax number), which most platforms take as a file: name your platform in [Settings ▸ Invoices](settings.md#invoices), and upload each PDF there. Sending through your platform from Sioul comes later ([Time and invoices](time.md#not-there-yet)).
 - Quotes.
 
 ## Why it works this way {#why-it-works-this-way}

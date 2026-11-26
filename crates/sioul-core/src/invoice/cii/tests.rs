@@ -22,6 +22,18 @@ fn schemes(xml: &str, name: &str) -> Vec<(String, String)> {
     doc.descendants().filter(|n| n.is_element() && n.tag_name().name() == name).map(|n| (n.attribute("schemeID").unwrap_or("").to_string(), n.text().unwrap_or("").trim().to_string())).collect()
 }
 
+/// The seller's tax registrations (BT-31 `VA`, BT-32 `FC`): scheme and value.
+fn seller_registrations(xml: &str) -> Vec<(String, String)> {
+    let doc = roxmltree::Document::parse(xml).expect("well-formed XML");
+    let seller = doc.descendants().find(|n| n.tag_name().name() == "SellerTradeParty").expect("a seller");
+    seller
+        .children()
+        .filter(|n| n.tag_name().name() == "SpecifiedTaxRegistration")
+        .flat_map(|r| r.children().filter(|n| n.tag_name().name() == "ID"))
+        .map(|n| (n.attribute("schemeID").unwrap_or("").to_string(), n.text().unwrap_or("").trim().to_string()))
+        .collect()
+}
+
 fn sample(name: &str) -> samples::Sample {
     samples::valid().into_iter().find(|s| s.name == name).unwrap_or_else(|| panic!("no sample {name}"))
 }
@@ -44,7 +56,8 @@ fn every_sample_reads_back() {
 }
 
 /// The French franchise: exempt (E), its code and its mention, the SIREN as
-/// the legal registration, the VAT number given; without one, no XML yet.
+/// the legal registration, the VAT number given, and no other tax
+/// registration beside it.
 #[test]
 fn the_french_franchise_is_exempt_with_its_mention() {
     let s = sample("fr-franchise");
@@ -53,14 +66,63 @@ fn the_french_franchise_is_exempt_with_its_mention() {
     assert_eq!(all(&text, "ExemptionReasonCode"), ["VATEX-FR-FRANCHISE"]);
     assert_eq!(all(&text, "ExemptionReason"), ["TVA non applicable, article 293 B du CGI"]);
     assert!(schemes(&text, "ID").contains(&("0002".into(), "732829320".into())), "the SIREN of the SIRET");
-    assert!(schemes(&text, "ID").iter().any(|(scheme, value)| scheme == "VA" && value.starts_with("FR")));
+    let vat = crate::invoice::ids::compact(&crate::invoice::ids::vat_fr_of(samples::SIREN).unwrap());
+    assert_eq!(seller_registrations(&text), [("VA".to_string(), vat)], "the VAT number alone: {text}");
     assert_eq!(all(&text, "ID")[0], "S1", "France's business process: services");
     // Time: minutes at an hourly price for 60 of them.
     assert!(text.contains("<ram:BasisQuantity unitCode=\"MIN\">60</ram:BasisQuantity>") && text.contains("<ram:BilledQuantity unitCode=\"MIN\">150</ram:BilledQuantity>"), "{text}");
     assert!(text.contains("<udt:DateTimeString format=\"102\">20261102</udt:DateTimeString>"), "{text}");
-    let without_vat = samples::without_xml();
-    assert_eq!(without(&without_vat.invoice), Some(Without::FranchiseWithoutVat));
-    assert_eq!(xml(&without_vat.invoice), Err(Without::FranchiseWithoutVat));
+}
+
+/// The French franchise without a VAT number (BR-FR-CO-16): its XML, the
+/// breakdown in E with VATEX-FR-FRANCHISE and its mention, the SIREN as the
+/// legal registration (BT-30, scheme 0002) and again as the seller's tax
+/// registration (BT-32, scheme FC), no VAT number on either side; its
+/// credit note the same. The SIREN never stands for the VAT number a
+/// reverse charge asks; a SIRET still being given leaves no SIREN to write,
+/// and so no XML.
+#[test]
+fn the_french_franchise_without_vat_number_gives_its_siren_again() {
+    let s = samples::franchise_without_vat();
+    assert_eq!(without(&s.invoice), None);
+    let text = xml(&s.invoice).unwrap();
+    assert!(all(&text, "CategoryCode").iter().all(|c| c == "E"), "{text}");
+    assert_eq!(all(&text, "ExemptionReasonCode"), ["VATEX-FR-FRANCHISE"]);
+    assert_eq!(all(&text, "ExemptionReason"), ["TVA non applicable, article 293 B du CGI"]);
+    assert_eq!(all(&text, "RateApplicablePercent").iter().collect::<std::collections::BTreeSet<_>>().into_iter().collect::<Vec<_>>(), ["0"]);
+    assert_eq!(all(&text, "TaxTotalAmount"), ["0.00"]);
+    assert_eq!(seller_registrations(&text), [("FC".to_string(), "732829320".to_string())], "the SIREN as BT-32: {text}");
+    assert!(schemes(&text, "ID").contains(&("0002".into(), "732829320".into())), "the SIREN as BT-30 still");
+    assert!(schemes(&text, "ID").iter().all(|(scheme, _)| scheme != "VA"), "no VAT number: {text}");
+    // The FC registration is the seller's, after its address (the schema's order).
+    let seller = text.find("<ram:SellerTradeParty>").unwrap();
+    let buyer = text.find("<ram:BuyerTradeParty>").unwrap();
+    let fc = text.find("<ram:ID schemeID=\"FC\">732829320</ram:ID>").unwrap();
+    assert!(seller < fc && fc < buyer && text[seller..fc].contains("<ram:PostalTradeAddress>"), "{text}");
+    assert_eq!(crate::einvoice::from_xml(&text).map(|e| e.number), Some("2026-030".into()));
+
+    // Its credit note keeps the franchise's exemption, and so its SIREN as BT-32.
+    let mut credit = crate::invoice::life::credit(&s.invoice, None, &[], &s.settings, "2026-11-20".parse().unwrap());
+    credit.date = "2026-11-20".into();
+    crate::invoice::life::refresh(&mut credit, &s.settings, "2026-11-20".parse().unwrap());
+    credit.number = "2026-033".into();
+    let credit = xml(&credit).unwrap();
+    assert_eq!(all(&credit, "TypeCode")[0], "381");
+    assert_eq!(seller_registrations(&credit), [("FC".to_string(), "732829320".to_string())], "{credit}");
+
+    // A reverse charge beside it still asks the VAT number: the SIREN does not stand for it.
+    let mut reverse = s.invoice.clone();
+    reverse.totals.breakdown.push(crate::invoice::TaxBreak { category: "AE".into(), reason_code: "VATEX-EU-AE".into(), ..Default::default() });
+    assert_eq!(without(&reverse), Some(Without::SellerVat));
+
+    // Another country's franchise: nothing standing in (Belgium's VAT number; Germany's Steuernummer alone).
+    assert!(seller_registrations(&xml(&sample("be-franchise").invoice).unwrap()).iter().all(|(scheme, _)| scheme == "VA"));
+    assert_eq!(seller_registrations(&xml(&sample("de-franchise").invoice).unwrap()), [("FC".to_string(), "12/345/67890".to_string())]);
+
+    // A SIRET still being given: no SIREN to write, no XML, said as a missing identifier.
+    let pending = samples::without_xml();
+    assert_eq!(without(&pending.invoice), Some(Without::SellerId));
+    assert_eq!(xml(&pending.invoice), Err(Without::SellerId));
 }
 
 /// The reverse charge: AE, both VAT numbers; not subject to VAT: O, no VAT

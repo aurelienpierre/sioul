@@ -142,14 +142,17 @@ fn the_file_is_a_pdf_a_3_with_its_xml() {
     assert_eq!(render(&s.invoice, &Options::default()).unwrap().pdf, *pdf);
 }
 
-/// The French franchise without a VAT number: a PDF/A-3 still, without its
-/// XML (design §12, question 1), and the reason said.
+/// The French franchise without a VAT number carries its XML (its SIREN as
+/// its tax registration); one whose SIRET is still being given has no SIREN
+/// to write: a PDF/A-3 still, without its XML, and the reason said.
 #[test]
-fn a_franchise_without_vat_number_carries_no_xml_yet() {
+fn a_franchise_without_siren_carries_no_xml() {
+    let with = render(&samples::franchise_without_vat().invoice, &Options::default()).unwrap();
+    assert!(with.xml.is_some() && with.without.is_none() && String::from_utf8_lossy(&with.pdf).contains("/AFRelationship/Alternative"));
     let s = samples::without_xml();
     let rendered = render(&s.invoice, &Options::default()).unwrap();
     let text = String::from_utf8_lossy(&rendered.pdf);
-    assert!(rendered.xml.is_none() && rendered.without == Some(cii::Without::FranchiseWithoutVat));
+    assert!(rendered.xml.is_none() && rendered.without == Some(cii::Without::SellerId));
     assert!(text.contains("<pdfaid:part>3</pdfaid:part>") && !text.contains("/EmbeddedFile") && !text.contains("fx:") && !text.contains("/AF["), "a PDF/A without attachment");
     objects_where_the_table_says(&rendered.pdf);
 }

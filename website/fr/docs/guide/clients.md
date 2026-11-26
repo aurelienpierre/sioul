@@ -58,7 +58,7 @@ En dehors de vos heures de travail, les pages Projets et Temps montrent les proj
 
 ## Pas encore là {#not-there-yet}
 
-- **L’envoi des factures électroniques.** À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, avec le SIREN du client. Chaque facture que Sioul émet est un PDF/A-3 gardé tel qu’émis, qui porte sa Factur-X dès que vous avez un numéro de TVA (en franchise de TVA sans numéro, le PDF n’a pas encore de Factur-X), et que la plupart des plateformes acceptent en fichier : nommez votre plateforme dans [Paramètres ▸ Factures](settings.md#invoices), et déposez-y chaque PDF. L’envoi par votre plateforme depuis Sioul viendra plus tard ([Le temps et les factures](time.md#not-there-yet)).
+- **L’envoi des factures électroniques.** À partir du 1er septembre 2027, une micro-entreprise française, en franchise de TVA aussi, doit émettre ses factures aux entreprises françaises sous forme électronique, par une plateforme agréée, avec le SIREN du client. Chaque facture que Sioul émet est un PDF/A-3 gardé tel qu’émis, qui porte sa Factur-X, en franchise de TVA sans numéro de TVA aussi (votre SIREN est donné là où la norme demande un numéro fiscal), et que la plupart des plateformes acceptent en fichier : nommez votre plateforme dans [Paramètres ▸ Factures](settings.md#invoices), et déposez-y chaque PDF. L’envoi par votre plateforme depuis Sioul viendra plus tard ([Le temps et les factures](time.md#not-there-yet)).
 - Les devis.
 
 ## Pourquoi cela fonctionne ainsi {#why-it-works-this-way}

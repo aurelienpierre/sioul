@@ -17,13 +17,17 @@
 //! (Factur-X 1.07.2 §7, the EN 16931 rules on docs.peppol.eu, the VATEX
 //! list), in docs/research/invoicing.md.
 //!
-//! Some invoices carry no XML yet (`without`): EN 16931 asks the seller's
-//! VAT or tax number for an exempt invoice (BR-E-02), and a French
-//! micro-entrepreneur under the franchise usually has neither; what to
-//! write then is the French rule BR-FR-CO-16 (AFNOR XP Z12-012), which a
-//! person has to read. Until then that invoice is a PDF/A-3 without its XML:
-//! a complete invoice on paper, as French law asks of small businesses until
-//! 1 September 2027.
+//! EN 16931 asks the seller's VAT or tax number for an exempt invoice
+//! (BR-E-02), and a French micro-entrepreneur under the franchise usually
+//! has neither: the French rule BR-FR-CO-16 then has the SIREN given again
+//! as the seller's tax registration (BT-32, `SpecifiedTaxRegistration` with
+//! scheme `FC`, which BR-E-02's CII binding accepts beside `VA`), the
+//! breakdown in `E` with `VATEX-FR-FRANCHISE` and the mention as its words
+//! (`french_franchise`).
+//!
+//! Some invoices carry no XML (`without`): what the standard asks is
+//! missing, and the PDF/A-3 alone is a complete invoice on paper, as French
+//! law asks of small businesses until 1 September 2027.
 
 use super::record::{Address, Invoice, Kind, Line, Nature, TaxBreak};
 use crate::i18n::Translator;
@@ -50,17 +54,14 @@ const UDT: &str = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100";
 pub enum Without {
     /// A record from before November 2026: printed as it always was.
     Older,
-    /// A French seller under the franchise without a VAT number: which of
-    /// its numbers EN 16931's exempt category asks for is the French rule
-    /// BR-FR-CO-16, not read yet (design §12, question 1).
-    FranchiseWithoutVat,
     /// The seller's VAT number (or its tax number) its VAT category asks for
     /// (BR-S-02, BR-Z-02, BR-E-02, BR-AE-02, BR-IC-02, BR-G-02).
     SellerVat,
     /// The client's VAT number, for a reverse charge or a delivery to
     /// another member state (BR-AE-02, BR-IC-02).
     ClientVat,
-    /// One identifier of the seller at least (BR-CO-26).
+    /// One identifier of the seller at least (BR-CO-26); under the French
+    /// franchise without a VAT number, the SIREN (`french_franchise`).
     SellerId,
     /// The seller's country (BR-09).
     SellerCountry,
@@ -83,7 +84,6 @@ impl Without {
         tr.text(
             match self {
                 Without::Older => "invoice-xml-older",
-                Without::FranchiseWithoutVat => "invoice-xml-franchise-no-vat",
                 Without::SellerVat => "invoice-xml-seller-vat",
                 Without::ClientVat => "invoice-xml-client-vat",
                 Without::SellerId => "invoice-xml-seller-id",
@@ -107,8 +107,13 @@ struct Ids {
     legal: Option<String>,
     /// BT-31 / BT-48.
     vat: Option<String>,
-    /// BT-32: a tax number that is no VAT number (Steuernummer, UTR, a tax number elsewhere).
+    /// BT-32: a tax number that is no VAT number (Steuernummer, UTR, a tax
+    /// number elsewhere); under the French franchise without a VAT number,
+    /// the SIREN again (`french_franchise`).
     tax: Option<String>,
+    /// Whether `tax` is that SIREN: it answers the franchise's exemption
+    /// alone, never a category that asks a VAT number (`without`).
+    siren_as_tax: bool,
     /// BT-33: what the trade register says (« RCS Lyon »).
     trade_register: Option<String>,
 }
@@ -116,6 +121,19 @@ struct Ids {
 /// Whether the invoice is not subject to VAT: then neither side's VAT number is written (BR-O-02).
 fn outside(invoice: &Invoice) -> bool {
     invoice.totals.breakdown.iter().any(|b| b.category == "O")
+}
+
+/// The French franchise's exemption code (BT-121), from the VATEX list.
+const FRENCH_FRANCHISE: &str = "VATEX-FR-FRANCHISE";
+
+/// Whether a French seller's invoice bears the franchise's exemption: a
+/// breakdown in `E` with `VATEX-FR-FRANCHISE` (BT-118, BT-121), its mention
+/// as its words (BT-120). Its seller without a VAT number then gives the
+/// SIREN again as the seller's tax registration (BT-32): the French rule
+/// BR-FR-CO-16, in our words. A credit note keeps the exemption of the
+/// lines it credits (`Line::own_tax`), so it follows the same rule.
+fn french_franchise(invoice: &Invoice) -> bool {
+    invoice.issuer.preset == "fr" && invoice.totals.breakdown.iter().any(|b| b.category == "E" && b.reason_code.trim() == FRENCH_FRANCHISE)
 }
 
 /// The seller's identifiers, as the XML carries them.
@@ -131,6 +149,12 @@ fn seller_ids(invoice: &Invoice) -> Ids {
     ids.trade_register = value("rcs").map(|city| format!("RCS {city}"));
     if outside(invoice) {
         ids.vat = None;
+    }
+    // The French franchise without a VAT number (BR-FR-CO-16): the SIREN
+    // again as BT-32, the number EN 16931's exempt category asks (BR-E-02).
+    if ids.vat.is_none() && ids.tax.is_none() && french_franchise(invoice) {
+        ids.tax = ids.legal.clone();
+        ids.siren_as_tax = ids.tax.is_some();
     }
     // BR-CO-26: one identifier at least; a tax number, a UID or another as the seller's own.
     if ids.legal.is_none() && ids.vat.is_none() {
@@ -185,9 +209,13 @@ pub fn without(invoice: &Invoice) -> Option<Without> {
         return Some(Without::OutsideMixed);
     }
     if has("E") && seller.vat.is_none() && seller.tax.is_none() {
-        return Some(if invoice.issuer.preset == "fr" && invoice.issuer.scheme == "franchise" { Without::FranchiseWithoutVat } else { Without::SellerVat });
+        // The French franchise without its SIREN either (a SIRET still being
+        // given): what it lacks is that registration, not a VAT number.
+        return Some(if french_franchise(invoice) { Without::SellerId } else { Without::SellerVat });
     }
-    let vat_or_tax = seller.vat.is_some() || seller.tax.is_some();
+    // The SIREN standing for a VAT number answers the franchise alone: a
+    // reverse charge under the franchise still asks the VAT number.
+    let vat_or_tax = seller.vat.is_some() || (seller.tax.is_some() && !seller.siren_as_tax);
     if (["S", "Z", "AE"].iter().any(|c| has(c)) && !vat_or_tax) || (["K", "G"].iter().any(|c| has(c)) && seller.vat.is_none()) {
         return Some(Without::SellerVat);
     }

@@ -2941,7 +2941,6 @@ invoice-check-own-country = Your country, “{ $country }”: Sioul does not kno
 invoice-check-client-country-unknown = The client's country, “{ $country }”: Sioul does not know it. Write its name or its two letters, as BE, DE or US, in the client's profile.
 invoice-check-delivery-country = The delivery address's country, “{ $country }”: Sioul does not know it. Write its name or its two letters, as BE, DE or US.
 invoice-xml-older = An invoice from before November 2026 carries no electronic data.
-invoice-xml-franchise-no-vat = This invoice's PDF will carry no Factur-X data yet: under the franchise without a VAT number, the French rule that says which number to give instead (BR-FR-CO-16) is still to be read. The PDF is a complete invoice; electronic invoices are asked of small businesses from 1 September 2027.
 invoice-xml-seller-vat = This invoice's PDF will carry no Factur-X data: its VAT asks for your VAT number, or your tax number. The PDF is a complete invoice.
 invoice-xml-client-vat = This invoice's PDF will carry no Factur-X data: a reverse charge, or a delivery to another EU country, asks for the client's VAT number. The PDF is a complete invoice.
 invoice-xml-seller-id = This invoice's PDF will carry no Factur-X data: it asks for one of your identifiers, a registration or a tax number. The PDF is a complete invoice.
@@ -9624,7 +9623,7 @@ invoices-settings-rate-percent = Rate, in percent
 invoices-settings-rate-add = A rate of your own
 invoices-settings-platform = Your e-invoicing platform
 invoices-settings-platform-hint = Its name, as you know it
-invoices-settings-platform-help = From 1 September 2027 your invoices to French businesses go through an approved platform (a PA), and your sales to private clients are reported there instead (e-reporting). Until Sioul sends through yours, upload those invoices' PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet.
+invoices-settings-platform-help = From 1 September 2027 your invoices to French businesses go through an approved platform (a PA), and your sales to private clients are reported there instead (e-reporting). Until Sioul sends through yours, upload those invoices' PDFs there.
 
 ## Settings ▸ Devices and `sioul devices`: every device in one table (crates/sioul-sync/src/device_table.rs, DevicesTab.qml, docs/database.md, "Devices")
 settings-tab-devices = Devices

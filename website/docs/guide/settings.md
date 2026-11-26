@@ -162,7 +162,7 @@ What your invoices print and how your books count, as your country asks. Your co
 - **VAT on debits (an option taken with the tax office)**.
 - **Rates of your own (ACRE, a rate URSSAF gave you)**: social contributions, the versement libératoire or the training contribution; the activity (for the training contribution, your trade: `commerce`, `craft` or `liberal`); the rate in percent; from a day, until a day. ACRE is one: Sioul cannot know it was granted to you, so write its rate, until the end of the third quarter after your start.
 
-**Your e-invoicing platform**: the name of the approved platform (a PA) you use. From 1 September 2027, your invoices to French businesses go through such a platform, and your sales to private clients are reported there instead (e-reporting); until Sioul sends through yours, upload those invoices' PDFs there. Under the VAT franchise without a VAT number, the PDF carries no Factur-X data yet ([Write the mail](time.md#write-the-mail)).
+**Your e-invoicing platform**: the name of the approved platform (a PA) you use. From 1 September 2027, your invoices to French businesses go through such a platform, and your sales to private clients are reported there instead (e-reporting); until Sioul sends through yours, upload those invoices' PDFs there.
 
 Under the block, two more:
 
