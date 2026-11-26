@@ -367,7 +367,9 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
 }
 
 /// Who a project's client is, for an invoice: the profile of the contact it
-/// names (`sioul:contact/<uid>`) or of the name it gives; without one, the
+/// names (`sioul:contact/<uid>`, or a card's `urn:uuid:<uid>` as a task's
+/// `CONTACT` holds it since 26 November 2026: `contacts::card_named`) or of
+/// the name it gives; without one, the
 /// contact's card (its organisation and name, its first postal address, its
 /// country when the address's last line names one), or the name as written.
 /// Without a profile, the client is billed as a business, whatever its card
@@ -379,14 +381,17 @@ pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
 pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) -> (Client, Option<&'a Profile>) {
     let reference = reference.trim();
     let uid = reference.strip_prefix("sioul:contact/").map(crate::notes::decode);
-    let contact = match &uid {
-        Some(uid) => contacts.iter().find(|c| c.uid == *uid),
-        None => contacts.iter().find(|c| !reference.is_empty() && (c.name.eq_ignore_ascii_case(reference) || c.org.eq_ignore_ascii_case(reference))),
+    let by_address = crate::contacts::card_key(reference).is_some();
+    let contact = match by_address {
+        true => crate::contacts::card_named(contacts, reference),
+        false => contacts.iter().find(|c| !reference.is_empty() && (c.name.eq_ignore_ascii_case(reference) || c.org.eq_ignore_ascii_case(reference))),
     };
     let profile = uid
         .as_deref()
         .and_then(|uid| clients.of_contact(uid))
         .or_else(|| contact.and_then(|c| clients.of_contact(&c.uid)))
+        // A card not here, named either way: the profile of that card's address.
+        .or_else(|| by_address.then(|| clients.list.iter().find(|p| crate::contacts::same_card(&p.contact, reference))).flatten())
         .or_else(|| clients.list.iter().find(|p| !reference.is_empty() && (p.name.eq_ignore_ascii_case(reference) || p.id == reference)));
     if let Some(profile) = profile {
         let mut client = profile.client();
@@ -535,6 +540,9 @@ mod tests {
         let anna = Contact { uid: "anna-1".into(), name: "Anna Exemple".into(), org: "Studio Lumen".into(), emails: vec![Labeled { label: String::new(), value: "anna@example.org".into() }], ..Contact::default() };
         let (client, found) = resolve("sioul:contact/anna-1", &clients, std::slice::from_ref(&anna));
         assert_eq!((client.name.as_str(), client.email.as_str(), found.map(|p| p.language.as_str())), ("Studio Lumen SARL", "anna@example.org", Some("fr")));
+        // The card named as a task's contact is written since 26 November 2026: the same client.
+        assert_eq!(resolve("urn:uuid:anna-1", &clients, std::slice::from_ref(&anna)), (client.clone(), found));
+        assert_eq!(resolve("urn:uuid:anna-1", &clients, &[]).1.map(|p| p.id.as_str()), Some(id.as_str()), "its profile, the card not here");
         assert_eq!(resolve("Studio Lumen", &clients, std::slice::from_ref(&anna)).1.map(|p| p.id.as_str()), Some(id.as_str()), "by the card's organisation");
         assert_eq!(resolve("robin example", &clients, &[]).0.kind, "consumer");
         // No profile: a card with an organisation is a business, its country from its address's last line.

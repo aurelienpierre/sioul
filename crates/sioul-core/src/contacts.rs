@@ -1252,6 +1252,79 @@ pub fn uid_named<'a>(contacts: &'a [Contact], uri: &str) -> Option<&'a str> {
     contacts.iter().find(|c| !c.uid.trim().is_empty() && uid_key(&c.uid) == key).map(|c| c.uid.as_str())
 }
 
+/// Sioul's own address of a card (`links::contact_uri`): how agents, the
+/// window and the ties name a card, and how a task's `CONTACT;ALTREP` named
+/// it until 26 November 2026.
+const OWN_ADDRESS: &str = "sioul:contact/";
+
+/// The UID inside Sioul's own address of a card, decoded; none for another address.
+fn own_uid(uri: &str) -> Option<String> {
+    let id = uri.trim().strip_prefix(OWN_ADDRESS)?;
+    Some(crate::notes::decode(id.split('#').next().unwrap_or(id)).trim().to_string()).filter(|uid| !uid.is_empty())
+}
+
+/// The address a task's `CONTACT;ALTREP` holds for `uri` (decided 26
+/// November 2026, for other calendar programs): a card named by Sioul's own
+/// address (`sioul:contact/<UID>`, as the window, the agents and the
+/// call-back rules give it) as `urn:uuid:<UID>`, with the encoding an
+/// extension's door writes (`uid_uri`): the standard form, an RFC 9562 URN,
+/// which other programs keep and send back (a UID that is no UUID, as
+/// Sioul's own, as an opaque address); any other address as it is.
+pub fn altrep_of(uri: &str) -> String {
+    own_uid(uri).map_or_else(|| uri.trim().to_string(), |uid| uid_uri(&uid))
+}
+
+/// The key of the card an address names, whichever form it has: a URN
+/// (`urn:uuid:<UID>`, what Sioul writes in a task's or an event's `CONTACT`
+/// since 26 November 2026, `uid_uri`, or any `urn:` another program wrote),
+/// or Sioul's own `sioul:contact/<UID>` (what tasks written before hold, and
+/// how agents name a card). None for any other address. Every reader of a
+/// task's contact asks here or below, so that both forms name one card.
+pub fn card_key(uri: &str) -> Option<String> {
+    let key = match own_uid(uri) {
+        Some(uid) => uid_key(&uid),
+        None => uri_key(uri)?,
+    };
+    (!key.is_empty()).then_some(key)
+}
+
+/// Whether `uri` names the card whose UID is `uid`, in either form (`card_key`).
+pub fn names_card(uri: &str, uid: &str) -> bool {
+    let key = uid_key(uid);
+    !key.is_empty() && card_key(uri).is_some_and(|named| named == key)
+}
+
+/// Whether two addresses are one card's, each in either form (`card_key`).
+pub fn same_card(a: &str, b: &str) -> bool {
+    card_key(a).is_some_and(|key| card_key(b).is_some_and(|other| other == key))
+}
+
+/// The card an address names among `contacts`, in either form (`card_key`):
+/// for Sioul's own address, the card of exactly that UID first.
+pub fn card_named<'a>(contacts: &'a [Contact], uri: &str) -> Option<&'a Contact> {
+    let key = card_key(uri)?;
+    own_uid(uri)
+        .and_then(|uid| contacts.iter().find(|c| c.uid.trim() == uid))
+        .or_else(|| contacts.iter().find(|c| !c.uid.trim().is_empty() && uid_key(&c.uid) == key))
+}
+
+/// Sioul's own address (`links::contact_uri`) of the card an address names,
+/// in either form: by the card's own UID when a card here has it; else by
+/// the UID the address gives, `sioul:contact/<UID>` as it is and
+/// `urn:uuid:<UID>` without its prefix (a card not on this device, or gone).
+/// None for an address that names no card.
+pub fn card_address(contacts: &[Contact], uri: &str) -> Option<String> {
+    if let Some(card) = card_named(contacts, uri) {
+        return Some(crate::links::contact_uri(card.uid.trim()));
+    }
+    if let Some(uid) = own_uid(uri) {
+        return Some(crate::links::contact_uri(&uid));
+    }
+    let uri = uri.trim();
+    let rest = percent_decoded(uri.get("urn:uuid:".len()..).filter(|_| starts_ci(uri, "urn:uuid:"))?);
+    (!rest.trim().is_empty()).then(|| crate::links::contact_uri(rest.trim()))
+}
+
 /// Addresses to complete what is typed in a To field: "Jane <jane@example.org>".
 pub fn completions(contacts: &[Contact], typed: &str, limit: usize) -> Vec<String> {
     let typed = folded(typed.trim());
@@ -1582,6 +1655,42 @@ mod tests {
         for unknown in ["urn:uuid:9b2d0c4e-0000-4000-8000-000000000000", "urn:uuid:", "sioul:contact/sioul-1234", "https://example.org/sioul-1234", ""] {
             assert_eq!(by.find(unknown), None, "{unknown}");
             assert_eq!(uid_named(&contacts, unknown), None, "{unknown}");
+        }
+    }
+
+    /// A task's contact as it is written since 26 November 2026
+    /// (`altrep_of`: `urn:uuid:`, the door's encoding) and read in both
+    /// forms (`card_key`, `names_card`, `same_card`, `card_named`,
+    /// `card_address`): Sioul's own `sioul:contact/<UID>` of older tasks
+    /// names the same card as its `urn:uuid:` form.
+    #[test]
+    fn a_card_is_named_either_way() {
+        assert_eq!(altrep_of("sioul:contact/f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
+        assert_eq!(altrep_of(&crate::links::contact_uri("a b\"c,d;e%f\u{e9}")), uid_uri("a b\"c,d;e%f\u{e9}"), "the door's encoding, the UID decoded first");
+        assert_eq!(altrep_of(&crate::links::contact_uri("urn:uuid:0E2A9C4B-1111-4222-8333-444455556666")), "urn:uuid:0E2A9C4B-1111-4222-8333-444455556666", "a URN already, as it is");
+        for other in ["urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", "mailto:office@example.org", "sioul:contact/", ""] {
+            assert_eq!(altrep_of(other), other, "{other}");
+        }
+        let card = |uid: &str| Contact { uid: uid.into(), ..Contact::default() };
+        let contacts = vec![card("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), card("urn:uuid:0E2A9C4B-1111-4222-8333-444455556666"), card("a b\"c,d;e%f\u{e9}"), card("sioul-1234")];
+        for contact in &contacts {
+            let (own, urn) = (crate::links::contact_uri(&contact.uid), altrep_of(&crate::links::contact_uri(&contact.uid)));
+            assert!(names_card(&own, &contact.uid) && names_card(&urn, &contact.uid), "{own} {urn}");
+            assert!(same_card(&own, &urn) && same_card(&urn, &own), "{own} {urn}");
+            assert_eq!(card_named(&contacts, &own).map(|c| c.uid.as_str()), Some(contact.uid.as_str()), "{own}");
+            assert_eq!(card_named(&contacts, &urn).map(|c| c.uid.as_str()), Some(contact.uid.as_str()), "{urn}");
+            assert_eq!(card_address(&contacts, &urn), Some(own.clone()), "{urn}");
+            assert_eq!(card_address(&contacts, &own), Some(own), "as it is");
+        }
+        assert!(names_card("URN:UUID:F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6", "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "a UUID's letters, whatever their case");
+        assert!(!same_card("sioul:contact/sioul-1234", "urn:uuid:sioul-9999") && !names_card("sioul:contact/sioul-1234", "sioul-9999"));
+        assert!(!same_card("mailto:a@example.org", "mailto:a@example.org"), "an address of no card names none");
+        // A card not on this device: its address all the same, from the UID the address gives.
+        assert_eq!(card_address(&contacts, "urn:uuid:9b2d0c4e-0000-4000-8000-000000000000"), Some("sioul:contact/9b2d0c4e-0000-4000-8000-000000000000".into()));
+        assert_eq!(card_address(&contacts, "sioul:contact/gone"), Some("sioul:contact/gone".into()));
+        for none in ["urn:uuid:", "urn:isbn:0-486-27557-4", "https://example.org/sioul-1234", "sioul:contact/", ""] {
+            assert_eq!(card_address(&contacts, none), None, "{none}");
+            assert_eq!(card_named(&contacts, none).map(|c| c.uid.as_str()), None, "{none}");
         }
     }
 

@@ -102,9 +102,22 @@ pub struct Link {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ContactRef {
     pub name: String,
-    /// ALTREP: "sioul:contact/<card's UID>", or empty.
+    /// ALTREP, the card's address: as read, `urn:uuid:<card's UID>` (what
+    /// Sioul writes since 26 November 2026, `contact_line`) or
+    /// `sioul:contact/<card's UID>` (what older tasks hold); as given by the
+    /// window, the agents or the call-back rules, `sioul:contact/<UID>`,
+    /// written as `urn:uuid:`. Both name one card (`contacts::card_key`);
+    /// empty for none.
     #[serde(default)]
     pub uri: String,
+}
+
+impl ContactRef {
+    /// Whether two contacts of a task are one: the same name, and the same
+    /// address or the same card whichever form each names it in.
+    pub fn same(&self, other: &ContactRef) -> bool {
+        self.name == other.name && (self.uri.trim() == other.uri.trim() || crate::contacts::same_card(&self.uri, &other.uri))
+    }
 }
 
 /// The kinds of task, by what doing them takes: a call, writing, a form or
@@ -973,7 +986,13 @@ impl TaskEdit {
             parent: self.parent.trim().to_string(),
             waits_for: unique(self.waits_for.iter().map(|u| u.trim().to_string()).filter(|u| !u.is_empty())),
             links: unique(self.links.iter().filter(|l| !l.uri.trim().is_empty()).map(|l| Link { uri: l.uri.trim().to_string(), label: l.label.trim().to_string(), rel: l.rel.trim().to_string() })),
-            contacts: unique(self.contacts.iter().filter(|c| !c.name.trim().is_empty() || !c.uri.trim().is_empty()).map(|c| ContactRef { name: c.name.trim().to_string(), uri: c.uri.trim().to_string() })),
+            // One per card and name, whichever form names it (`ContactRef::same`), the first kept.
+            contacts: self.contacts.iter().filter(|c| !c.name.trim().is_empty() || !c.uri.trim().is_empty()).map(|c| ContactRef { name: c.name.trim().to_string(), uri: c.uri.trim().to_string() }).fold(Vec::new(), |mut out: Vec<ContactRef>, c| {
+                if !out.iter().any(|o| o.same(&c)) {
+                    out.push(c);
+                }
+                out
+            }),
             projects: unique(self.projects.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty())),
             repeat: self.repeat.trim().to_lowercase(),
             supplies: crate::supplies::merged(self.supplies.iter().filter(|u| crate::supplies::is_id(u.id.trim()) && u.quantity > crate::supplies::Qty::ZERO).map(|u| crate::supplies::Use { id: u.id.trim().to_string(), quantity: u.quantity }).collect()),
@@ -1101,10 +1120,54 @@ pub fn link_line_with(link: &Link, more: &str) -> String {
     }
 }
 
-/// `CONTACT;ALTREP="<uri>":<name>`.
+/// `CONTACT;ALTREP="<uri>":<name>`, a card's address as `urn:uuid:<UID>`
+/// (`contacts::altrep_of`, decided 26 November 2026: the standard form, an
+/// RFC 9562 URN, which other calendar programs keep and send back, as an
+/// extension's event names its card), however it is given.
 pub fn contact_line(contact: &ContactRef) -> String {
-    let altrep = if contact.uri.is_empty() { String::new() } else { format!(";ALTREP=\"{}\"", one_line(&contact.uri).replace('"', "%22")) };
+    let uri = crate::contacts::altrep_of(&contact.uri);
+    let altrep = if uri.is_empty() { String::new() } else { format!(";ALTREP=\"{}\"", one_line(&uri).replace('"', "%22")) };
     format!("CONTACT{altrep}:{}", lines::escape(&contact.name))
+}
+
+/// A task's `CONTACT` line that names its card by Sioul's own address
+/// (`sioul:contact/<UID>`, as tasks were written before 26 November 2026),
+/// with that address in the form written since (`contacts::altrep_of`), its
+/// other parameters and its name as they are; None for any other line. A
+/// task takes it only when it is written for another reason (`rewrite`):
+/// never a write of its own, which would send every old task to its server
+/// again.
+fn contact_now(line: &str) -> Option<String> {
+    if lines::name(line) != "CONTACT" {
+        return None;
+    }
+    let uri = lines::param(line, "ALTREP")?;
+    let now = crate::contacts::altrep_of(&uri);
+    if now == uri.trim() {
+        return None;
+    }
+    let value = lines::value(line);
+    let colon = line.len().checked_sub(value.len() + 1)?;
+    let head = line.get(..colon).filter(|_| line.as_bytes()[colon] == b':')?;
+    let mut parts: Vec<String> = Vec::new();
+    let (mut quoted, mut start) = (false, 0);
+    for (i, c) in head.char_indices() {
+        match c {
+            '"' => quoted = !quoted,
+            ';' if !quoted => {
+                parts.push(head[start..i].to_string());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(head[start..].to_string());
+    for part in parts.iter_mut().skip(1) {
+        if part.split('=').next().is_some_and(|name| name.trim().eq_ignore_ascii_case("ALTREP")) {
+            *part = format!("ALTREP=\"{}\"", one_line(&now).replace('"', "%22"));
+        }
+    }
+    Some(format!("{}:{value}", parts.join(";")))
 }
 
 /// The status lines: STATUS, and COMPLETED with PERCENT-COMPLETE when done.
@@ -1303,7 +1366,9 @@ const STAMPS: &[&str] = &["DTSTAMP", "LAST-MODIFIED", "SEQUENCE"];
 
 /// The task's text with the main VTODO's lines that `keep` refuses dropped and
 /// `added` put in, before its alarms; the stamps written again. Nothing
-/// dropped and nothing added: the text as it was.
+/// dropped and nothing added: the text as it was. Written so, its contacts
+/// named by Sioul's own address of a card take the form written since 26
+/// November 2026 in their place (`contact_now`), one line per card and name.
 fn rewrite(text: &str, keep: impl Fn(&str) -> bool, added: Vec<String>, now: &Zoned) -> Result<String, String> {
     let source = lines::unfold(text);
     let range = master_range(&source).ok_or("no task")?;
@@ -1317,14 +1382,24 @@ fn rewrite(text: &str, keep: impl Fn(&str) -> bool, added: Vec<String>, now: &Zo
     // New lines go after the task's last own line, before its alarms.
     let at = own.last().map_or(range.start + 1, |&i| i + 1);
     let mut out = Vec::with_capacity(source.len() + added.len() + 3);
+    let mut contacts: Vec<String> = Vec::new();
     for (i, line) in source.iter().enumerate() {
         if i == at {
             out.extend([format!("DTSTAMP:{}", utc(now)), format!("LAST-MODIFIED:{}", utc(now)), format!("SEQUENCE:{}", sequence.saturating_add(1))]);
             out.extend(added.iter().cloned());
         }
-        if !dropped.contains(&i) && !stamps.contains(&i) {
-            out.push(line.clone());
+        if dropped.contains(&i) || stamps.contains(&i) {
+            continue;
         }
+        if own.contains(&i) && lines::name(line) == "CONTACT" {
+            let line = contact_now(line).unwrap_or_else(|| line.clone());
+            if !contacts.contains(&line) {
+                contacts.push(line.clone());
+                out.push(line);
+            }
+            continue;
+        }
+        out.push(line.clone());
     }
     Ok(lines::fold(&out))
 }
@@ -1363,7 +1438,8 @@ fn apply_with(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned, used: O
     }
     added.extend(edit.waits_for.iter().filter(|u| !old.waits_for.contains(u) && edit.gap_of(u) == 0).map(|uid| relation_line("DEPENDS-ON", uid, 0)));
     added.extend(edit.links.iter().filter(|l| !old.links.contains(l)).map(link_line));
-    added.extend(edit.contacts.iter().filter(|c| !old.contacts.contains(c)).map(contact_line));
+    // One card named either way is one contact (`ContactRef::same`): its line kept, never written twice.
+    added.extend(edit.contacts.iter().filter(|c| !old.contacts.iter().any(|o| o.same(c))).map(contact_line));
     added.extend(edit.projects.iter().filter(|c| !old.projects.contains(c)).map(|c| project_line(c)));
     if let Some(used) = &used {
         added.extend(used.iter().cloned());
@@ -1381,7 +1457,10 @@ fn apply_with(text: &str, edit: &TaskEdit, zone: &TimeZone, now: &Zoned, used: O
                 }
             }
             "LINK" => edit.links.contains(&link_of(line)),
-            "CONTACT" => edit.contacts.contains(&contact(line)),
+            "CONTACT" => {
+                let written = contact(line);
+                edit.contacts.iter().any(|c| c.same(&written))
+            }
             "REFID" => edit.projects.contains(&lines::unescape(lines::value(line).trim())),
             // Only Sioul's own concepts, the kind and the office hours, are written again; others stay.
             "CONCEPT" => {
@@ -1512,8 +1591,13 @@ pub fn completed_at(text: &str, at: &Zoned) -> Result<String, String> {
 /// The main VTODO with `added` lines, those not there yet; the text as it was when all are.
 pub fn add_lines(text: &str, added: &[String], now: &Zoned) -> Result<String, String> {
     // A line there in another form (a LINK written before Sioul's own name) is there.
-    let present: Vec<String> = lines::unfold(text).iter().map(|l| crate::interop::own_form(l)).collect();
-    let new: Vec<String> = added.iter().filter(|l| !present.contains(&crate::interop::own_form(l))).cloned().collect();
+    // A contact there in the form written before 26 November 2026 is there too (`contact_now`).
+    let form = |l: &str| {
+        let own = crate::interop::own_form(l);
+        contact_now(&own).unwrap_or(own)
+    };
+    let present: Vec<String> = lines::unfold(text).iter().map(|l| form(l)).collect();
+    let new: Vec<String> = added.iter().filter(|l| !present.contains(&form(l))).cloned().collect();
     rewrite(text, |_| true, new, now)
 }
 
@@ -1668,6 +1752,13 @@ mod tests {
         "2026-10-03T10:00:00+02:00[Europe/Paris]".parse().unwrap()
     }
 
+    /// `LETTER` with its contact as tasks are written since 26 November 2026,
+    /// for the tests of what a write touches: an old line takes that form
+    /// when the task is written (`a_task_s_contact_is_written_as_a_card_s_urn`).
+    fn letter_now() -> String {
+        LETTER.replace("ALTREP=\"sioul:contact/tax-office\"", "ALTREP=\"urn:uuid:tax-office\"")
+    }
+
     #[test]
     fn reads_every_field() {
         let task = task_of_text(LETTER, &paris()).unwrap();
@@ -1699,8 +1790,11 @@ mod tests {
         let (before, after) = (lines::unfold(LETTER), lines::unfold(&text));
         let gone: Vec<&String> = before.iter().filter(|l| !after.contains(l)).collect();
         let new: Vec<&String> = after.iter().filter(|l| !before.contains(l)).collect();
-        assert_eq!(gone.iter().map(|l| lines::name(l)).collect::<Vec<_>>(), vec!["DTSTAMP", "SUMMARY", "RELATED-TO"], "{gone:?}");
+        // Written for another reason, its contact named the old way takes the form written since 26 November 2026, in its place.
+        assert_eq!(gone.iter().map(|l| lines::name(l)).collect::<Vec<_>>(), vec!["DTSTAMP", "SUMMARY", "RELATED-TO", "CONTACT"], "{gone:?}");
         assert!(new.iter().any(|l| *l == "SUMMARY:Send the registered letter") && new.iter().any(|l| *l == "X-SIOUL-RELATED-TO;RELTYPE=DEPENDS-ON:photocopies"), "{new:?}");
+        assert!(new.iter().any(|l| *l == "CONTACT;ALTREP=\"urn:uuid:tax-office\":Service des impôts\\, centre"), "{new:?}");
+        assert!(text.contains("LINK;LINKREL=related;VALUE=UID:event-7\r\nCONTACT;ALTREP=\"urn:uuid:tax-office\""), "in its place: {text}");
         assert!(text.contains("RELATED-TO;RELTYPE=FINISHTOSTART;GAP=P14D:wait-answer") && text.contains("X-OTHER-APP:keep me") && text.contains("SEQUENCE:1"), "{text}");
         let again = task_of_text(&text, &paris()).unwrap();
         assert_eq!((again.notes.as_str(), again.estimate, again.title.as_str()), ("With the form and the copy.", 90, "Send the registered letter"));
@@ -1785,7 +1879,61 @@ mod tests {
         let written = lines::unfold(&text);
         assert!(written.iter().any(|l| l == "X-SIOUL-LINK;LINKREL=describedby;LABEL=\"Outbox: 2\";VALUE=URI:sioul:note/admin/letters.md"), "{text}");
         assert!(text.contains("DUE:20261030T160000Z") && text.contains("ESTIMATED-DURATION:PT15M"), "{text}");
-        assert_eq!(TaskEdit::of(&task_of_text(&text, &paris()).unwrap()), edit);
+        // The card given by Sioul's own address, written in the standard form other programs keep.
+        assert!(written.iter().any(|l| l == "CONTACT;ALTREP=\"urn:uuid:school\":School\\, office"), "{text}");
+        let read = TaskEdit { contacts: vec![ContactRef { name: "School, office".into(), uri: "urn:uuid:school".into() }], ..edit.clone() };
+        assert_eq!(TaskEdit::of(&task_of_text(&text, &paris()).unwrap()), read);
+    }
+
+    /// A task's contact is written in the standard form of a card's address,
+    /// which other calendar programs keep (decided 26 November 2026): `urn:uuid:<UID>`, with the
+    /// encoding an extension's door writes, however it is given. An old line
+    /// (`sioul:contact/<UID>`) is never written for that alone: an unchanged
+    /// form, an unchanged contact, leave the text as it is; a task written for
+    /// another reason (its form, its status, a line added) takes the new
+    /// form in its place, its other parameters kept, one line per card. The
+    /// form, an agent or a tie naming the card in the other form changes
+    /// nothing of it.
+    #[test]
+    fn a_task_s_contact_is_written_as_a_card_s_urn() {
+        for uid in ["f81d4fae-7dec-11d0-a765-00a0c91e6bf6", "urn:uuid:0E2A9C4B-1111-4222-8333-444455556666", "sioul-1234", "a b\"c,d;e%f\u{e9}"] {
+            let given = ContactRef { name: "Marie Exemple".into(), uri: crate::links::contact_uri(uid) };
+            assert_eq!(contact_line(&given), crate::extensions::door::contact_line(uid, "Marie Exemple"), "{uid}: the door's form");
+        }
+        for (uri, written) in [("urn:uuid:school", "CONTACT;ALTREP=\"urn:uuid:school\":School"), ("mailto:desk@example.org", "CONTACT;ALTREP=\"mailto:desk@example.org\":School"), ("", "CONTACT:School")] {
+            assert_eq!(contact_line(&ContactRef { name: "School".into(), uri: uri.into() }), written);
+        }
+        assert_eq!(contact_now("CONTACT;LANGUAGE=fr;ALTREP=\"sioul:contact/tax-office\";X-OTHER=\"a;b\":Service\\, centre").as_deref(), Some("CONTACT;LANGUAGE=fr;ALTREP=\"urn:uuid:tax-office\";X-OTHER=\"a;b\":Service\\, centre"));
+        for kept in ["CONTACT;ALTREP=\"urn:uuid:tax-office\":Service", "CONTACT:Service", "CONTACT;ALTREP=\"mailto:a@example.org\":A", "SUMMARY:sioul:contact/x"] {
+            assert_eq!(contact_now(kept), None, "{kept}");
+        }
+        let zone = paris();
+        let task = task_of_text(LETTER, &zone).unwrap();
+        let old_line = "CONTACT;ALTREP=\"sioul:contact/tax-office\":Service des impôts\\, centre";
+        let new_line = "CONTACT;ALTREP=\"urn:uuid:tax-office\":Service des impôts\\, centre";
+        // Done: written for another reason.
+        let done = set_status(LETTER, Status::Completed, &zone, &now()).unwrap();
+        assert!(lines::unfold(&done).iter().any(|l| l == new_line) && !done.contains(old_line), "{done}");
+        // A line added: the same.
+        let noted = add_lines(LETTER, &["X-SIOUL-ENERGY:HEAVY".to_string()], &now()).unwrap();
+        assert!(noted.contains(new_line) && !noted.contains(old_line), "{noted}");
+        // The card added again in either form: there already, nothing written.
+        assert_eq!(add_lines(LETTER, &[new_line.to_string()], &now()).unwrap(), LETTER);
+        assert_eq!(add_lines(&done, &[old_line.to_string()], &now()).unwrap(), done);
+        // The form or an agent naming the card by Sioul's own address, the task holding `urn:uuid:`: kept, once.
+        let done_task = task_of_text(&done, &zone).unwrap();
+        assert_eq!(done_task.contacts[0].uri, "urn:uuid:tax-office");
+        let by_own = TaskEdit { contacts: vec![ContactRef { name: "Service des impôts, centre".into(), uri: "sioul:contact/tax-office".into() }], ..TaskEdit::of(&done_task) };
+        assert_eq!(apply(&done, &by_own, &zone, &now()).unwrap(), done, "the same card: nothing to write");
+        let retitled = apply(&done, &TaskEdit { title: "Sent".into(), ..by_own.clone() }, &zone, &now()).unwrap();
+        assert_eq!(retitled.matches("CONTACT").count(), 1, "{retitled}");
+        // Renamed: written again, the new way.
+        let renamed = apply(LETTER, &TaskEdit { contacts: vec![ContactRef { name: "Tax office".into(), uri: "sioul:contact/tax-office".into() }], ..TaskEdit::of(&task) }, &zone, &now()).unwrap();
+        assert!(renamed.contains("CONTACT;ALTREP=\"urn:uuid:tax-office\":Tax office") && renamed.matches("CONTACT").count() == 1, "{renamed}");
+        // Two lines of one card, the old way and the new, become one.
+        let both = LETTER.replace(old_line, &format!("{old_line}\r\n{new_line}"));
+        let once = add_lines(&both, &["X-SIOUL-ENERGY:HEAVY".to_string()], &now()).unwrap();
+        assert_eq!(once.matches("CONTACT").count(), 1, "{once}");
     }
 
     #[test]
@@ -1949,7 +2097,7 @@ mod tests {
     /// others, only that line touched when a step moves.
     #[test]
     fn steps_keep_their_sequence() {
-        let text = LETTER.replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
+        let text = letter_now().replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
         let task = task_of_text(&text, &paris()).unwrap();
         assert_eq!((task.sort_order, task.sequence()), (Some(814_579_300), 814_579_300));
         // Unsaid: the seconds from 2001 to its creation (1 October 2026, 08:00 UTC).
@@ -2038,7 +2186,7 @@ mod tests {
     #[test]
     fn a_tick_touches_only_the_notes() {
         let notes = "Take the green folder.\n\nBring:\n- [ ] Carte Vitale\n- [ ] Mutuelle, card";
-        let text = LETTER.replace("DESCRIPTION:With the form \r\n and the copy.", &format!("DESCRIPTION:{}", lines::escape(notes))).replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
+        let text = letter_now().replace("DESCRIPTION:With the form \r\n and the copy.", &format!("DESCRIPTION:{}", lines::escape(notes))).replace("X-OTHER-APP:keep me", "X-APPLE-SORT-ORDER:814579300\r\nX-OTHER-APP:keep me");
         let task = task_of_text(&text, &paris()).unwrap();
         assert_eq!(task.notes, notes);
         let line = crate::checklist::items(&task.notes)[1].line;

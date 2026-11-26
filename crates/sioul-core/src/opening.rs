@@ -723,9 +723,15 @@ impl Cards {
         )
     }
 
-    /// The office a task's `CONTACT` points at (`sioul:contact/<UID>`), when its card has hours.
+    /// The office a task's `CONTACT` points at, when its card has hours: by
+    /// `urn:uuid:<UID>` as tasks are written since 26 November 2026, or by
+    /// Sioul's own `sioul:contact/<UID>` as older ones and the window give it
+    /// (`contacts::names_card`), the card of exactly that UID first.
     pub fn get(&self, uri: &str) -> Option<&Office> {
-        (crate::links::kind_of(uri) == crate::links::Kind::Contact).then(|| self.0.get(crate::links::id_of(uri).trim())).flatten()
+        (crate::links::kind_of(uri) == crate::links::Kind::Contact)
+            .then(|| self.0.get(crate::links::id_of(uri).trim()))
+            .flatten()
+            .or_else(|| self.0.values().find(|office| crate::contacts::names_card(uri, &office.uid)))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -808,7 +814,7 @@ pub fn ticks(kind: &str, ticked: bool, kind_before: &str, before: &[crate::tasks
     }
     let follows = |uri: &str| cards.get(uri).is_some_and(|office| office.hours.followed(kind == "call").is_some());
     let became = !OFFICE_KINDS.contains(&kind_before);
-    let had = |uri: &str| before.iter().any(|b| crate::links::id_of(&b.uri).trim() == crate::links::id_of(uri).trim());
+    let had = |uri: &str| before.iter().any(|b| crate::links::id_of(&b.uri).trim() == crate::links::id_of(uri).trim() || crate::contacts::same_card(&b.uri, uri));
     after.iter().any(|c| (became || !had(&c.uri)) && follows(&c.uri))
 }
 
@@ -822,7 +828,7 @@ pub fn to_tick<'a>(tasks: &'a [crate::tasks::Task], uid: &str, hours: &CardHours
     if uid.is_empty() {
         return Vec::new();
     }
-    let tied = |t: &crate::tasks::Task| t.contacts.iter().any(|c| crate::links::kind_of(&c.uri) == crate::links::Kind::Contact && crate::links::id_of(&c.uri).trim() == uid);
+    let tied = |t: &crate::tasks::Task| t.contacts.iter().any(|c| (crate::links::kind_of(&c.uri) == crate::links::Kind::Contact && crate::links::id_of(&c.uri).trim() == uid) || crate::contacts::names_card(&c.uri, uid));
     tasks.iter().filter(|t| t.status.is_open() && !t.read_only && !t.office_hours && OFFICE_KINDS.contains(&t.kind.as_str()) && tied(t) && hours.followed(t.kind == "call").is_some()).collect()
 }
 
@@ -1246,6 +1252,12 @@ mod tests {
         let line = vec![ContactRef { name: "Office line".into(), uri: crate::links::contact_uri("line") }];
         assert!(ticks("call", false, "call", &[], &line, &cards));
         assert!(!ticks("out", false, "out", &[], &line, &cards));
+        // The office named as tasks are written since 26 November 2026, `urn:uuid:<UID>`: the same office.
+        let tax_now = vec![ContactRef { name: "Office tax".into(), uri: "urn:uuid:tax".into() }];
+        assert!(ticks("call", false, "call", &[], &tax_now, &cards));
+        assert!(!ticks("call", false, "call", &tax, &tax_now, &cards) && !ticks("call", false, "call", &tax_now, &tax, &cards), "there already, in the other form: an untick holds");
+        let hall_now = Task { kind: "call".into(), office_hours: true, contacts: vec![ContactRef { name: "Office hall".into(), uri: "urn:uuid:hall".into() }], ..Task::default() };
+        assert_eq!(hours_for(&hall_now, &cards, &window::default_office_hours()).whose, follows.whose, "its card's hours, either way");
     }
 
     /// The tasks ticked when a card gets hours by the person's act: its open
@@ -1262,13 +1274,15 @@ mod tests {
             Task { status: crate::tasks::Status::Completed, ..tied("done", "call", "hall") },
             Task { read_only: true, ..tied("shared", "call", "hall") },
             tied("other", "call", "elsewhere"),
+            // Named as tasks are written since 26 November 2026.
+            Task { contacts: vec![ContactRef { name: String::new(), uri: "urn:uuid:hall".into() }], ..tied("call-now", "call", "hall") },
         ];
         let open = CardHours { open: Some(Hours { value: "Mo-Fr 09:00-12:00".into(), ..Hours::default() }), ..CardHours::default() };
         let uids = |hours: &CardHours| to_tick(&tasks, "hall", hours).iter().map(|t| t.uid.clone()).collect::<Vec<_>>();
-        assert_eq!(uids(&open), ["call", "out"]);
-        // Phone hours alone: the call, not the outing.
+        assert_eq!(uids(&open), ["call", "out", "call-now"]);
+        // Phone hours alone: the calls, not the outing.
         let phone = CardHours { phone: Some(Hours { value: "Mo-Fr 09:00-12:00".into(), ..Hours::default() }), ..CardHours::default() };
-        assert_eq!(uids(&phone), ["call"]);
+        assert_eq!(uids(&phone), ["call", "call-now"]);
         assert!(uids(&CardHours::default()).is_empty());
     }
 }

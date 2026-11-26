@@ -1059,7 +1059,8 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         }
         for key in &task.contacts {
             let contact = contact_refs.get(key).cloned().ok_or_else(|| s.say("import-unknown-key", &[("key", key.clone()), ("task", task.key.clone())]))?;
-            if !edit.contacts.contains(&contact) {
+            // The card there already in either form (`ContactRef::same`): `urn:uuid:` as a task holds it since 26 November 2026.
+            if !edit.contacts.iter().any(|c| c.same(&contact)) {
                 edit.contacts.push(contact);
             }
         }
@@ -1492,6 +1493,34 @@ mod tests {
         parent(&s, "steps-books", "steps-doctor", false, true).unwrap();
         assert_eq!(parent_of("steps-books").as_deref(), Some("steps-doctor"));
         assert!(parent(&s, "steps-doctor", "steps-books", false, true).unwrap_err().contains("its own steps"));
+    }
+
+    /// A plan file imported again, nothing in it changed, writes nothing: its
+    /// task's contact, written `urn:uuid:<UID>` since 26 November 2026, is the
+    /// card the file names by Sioul's own address, and a time of a day gone
+    /// by (an older Sioul's `X-SIOUL-AT`) is left as it is (review of
+    /// e72aa225, 3).
+    #[test]
+    fn a_plan_imported_again_unchanged_writes_nothing() {
+        crate::mcp::tests::home();
+        sioul_core::config::stand_ins_only();
+        let s = Session { config: sioul_core::config::Config::default(), config_path: PathBuf::new(), tr: sioul_core::i18n::Translator::new("en") };
+        let list = vdir::create(Kind::Calendars, vdir::LOCAL, "Again plan", None, &["VTODO"]).unwrap();
+        let book = vdir::create(Kind::Contacts, vdir::LOCAL, "Again book", None, &[]).unwrap();
+        let file = sioul_core::config::state_dir().join("again-import.toml");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, format!("list = \"local/{}\"\nbook = \"local/{}\"\nprefix = \"again-\"\n\n[[contact]]\nkey = \"office\"\nname = \"Example office\"\n\n[[task]]\nkey = \"call\"\ntitle = \"Call the office\"\ncontacts = [\"office\"]\n", list.id, book.id)).unwrap();
+        import(&s, &file, true, false).unwrap();
+        let path = list.dir.join("again-call.ics");
+        let first = std::fs::read_to_string(&path).unwrap();
+        assert!(first.contains("CONTACT;ALTREP=\"urn:uuid:again-office\":Example office"), "{first}");
+        // A time given to it for a day gone by, as a Sioul before time blocks wrote it.
+        let dated = tasks::add_lines(&first, &["X-SIOUL-AT:20261001T080000Z".to_string()], &Zoned::now()).unwrap();
+        vdir::write_item(&path, &dated).unwrap();
+        import(&s, &file, true, false).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), dated, "nothing written");
+        let _ = std::fs::remove_dir_all(&list.dir);
+        let _ = std::fs::remove_dir_all(&book.dir);
     }
 
     /// A meeting you organize (decision 7 of the event card, 5 November

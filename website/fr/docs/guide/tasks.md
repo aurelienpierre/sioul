@@ -599,7 +599,7 @@ Chaque tâche est un `VTODO` (RFC 5545 §3.6.2) dans une liste de tâches CalDAV
 | Son type ; « demande un bureau ouvert » | `X-SIOUL-CONCEPT;VALUE=URI` avec une URI tag (le `CONCEPT` de la RFC 9253 §8.1, RFC 4151) |
 | Son projet | `X-SIOUL-REFID` (le `REFID` de la RFC 9253 §8.3) |
 | Ses notes, le courriel d’où elle vient, ses brouillons, un événement | `X-SIOUL-LINK` (le `LINK` de la RFC 9253) avec un `LINKREL` `describedby`, `via` ou `related` ; un courriel en `mid:` (RFC 2392) |
-| Les personnes et les bureaux concernés | `CONTACT;ALTREP="sioul:contact/<UID>"` |
+| Les personnes et les bureaux concernés | `CONTACT;ALTREP="urn:uuid:<l’UID de la fiche>"`, la forme standard de l’adresse d’une fiche (une URN de la RFC 9562), que les autres programmes d’agenda gardent et renvoient ; `sioul:contact/<UID>`, comme les tâches étaient écrites avant le 26 novembre 2026, lu aussi |
 | Coûts, apport, notes ressenties, première estimation, temps avant et après, domaine, horaires du bureau, facturé | `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN`, `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-AREA`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-BILLABLE` |
 | Fixée à une heure | un `VEVENT` dans un agenda, lié dans les deux sens : un `X-SIOUL-LINK` avec une relation en URI tag (`X-SIOUL-REL`) dans chacun, et `X-SIOUL-TASK` dans l’événement |
 

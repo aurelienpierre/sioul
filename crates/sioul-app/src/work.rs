@@ -3099,7 +3099,8 @@ pub(crate) fn draft_for_task(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> 
         .contacts
         .iter()
         .filter_map(|c| {
-            let card = loaded.contacts.iter().find(|x| links::contact_uri(&x.uid) == c.uri)?;
+            // Its card, named either way (`urn:uuid:` since 26 November 2026, Sioul's own address before).
+            let card = contacts::card_named(&loaded.contacts, &c.uri)?;
             card.emails.first().map(|e| if card.name.is_empty() { e.value.clone() } else { format!("{} <{}>", card.name, e.value) })
         })
         .collect();

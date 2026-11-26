@@ -906,7 +906,8 @@ impl TieIndex {
             if !invoice.project.trim().is_empty() {
                 b.tie(&me, &links::project_uri(invoice.project.trim()), How::Project, Need::Nothing);
             }
-            if let Some(card) = invoice.client_ref.strip_prefix("sioul:contact/").map(|_| invoice.client_ref.clone()).or_else(|| one_named(&invoice.client.name)) {
+            // Its client's card by address, in either form (`contacts::card_address`), else by the name it bills.
+            if let Some(card) = crate::contacts::card_address(world.contacts, &invoice.client_ref).or_else(|| one_named(&invoice.client.name)) {
                 b.tie(&me, &card, How::Client, Need::Nothing);
             }
         }
@@ -920,7 +921,9 @@ impl TieIndex {
         }
         for task in &sources.call_tasks {
             let me = links::task_uri(&task.uid);
-            let of = |mark: &crate::callback::Mark| -> Vec<String> { sources.calls.iter().filter(|c| c.mark == *mark && c.cards.contains(&task.person)).map(|c| c.address.clone()).collect() };
+            // Whom it is for, read in either form (`contacts::same_card`): Sioul's own address, or a card's `urn:uuid:`.
+            let theirs = |c: &CallSource| c.cards.iter().any(|card| *card == task.person || crate::contacts::same_card(card, &task.person));
+            let of = |mark: &crate::callback::Mark| -> Vec<String> { sources.calls.iter().filter(|c| c.mark == *mark && theirs(c)).map(|c| c.address.clone()).collect() };
             for call in task.calls.iter().flat_map(of) {
                 b.tie(&me, &call, How::Source, Need::Nothing);
             }

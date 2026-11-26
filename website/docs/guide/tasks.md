@@ -599,7 +599,7 @@ Each task is a `VTODO` (RFC 5545 §3.6.2) in a CalDAV task list, one file each, 
 | Its kind; "needs an open office" | `X-SIOUL-CONCEPT;VALUE=URI` with a tag URI (RFC 9253 §8.1's `CONCEPT`, RFC 4151) |
 | Its project | `X-SIOUL-REFID` (RFC 9253 §8.3's `REFID`) |
 | Its notes, the mail it came from, its drafts, an event | `X-SIOUL-LINK` (RFC 9253's `LINK`) with `LINKREL` `describedby`, `via` or `related`; a message as `mid:` (RFC 2392) |
-| The people and offices involved | `CONTACT;ALTREP="sioul:contact/<UID>"` |
+| The people and offices involved | `CONTACT;ALTREP="urn:uuid:<the card's UID>"`, the standard form of a card's address (an RFC 9562 URN), which other calendar programs keep and send back; `sioul:contact/<UID>`, as tasks were written before 26 November 2026, read too |
 | Costs, gain, felt ratings, first estimate, time before and after, area, office hours, billed | `X-SIOUL-COST`, `X-SIOUL-GAIN`, `X-SIOUL-FELT-COST`, `X-SIOUL-FELT-GAIN`, `X-SIOUL-ESTIMATE-FIRST`, `X-SIOUL-BEFORE`, `X-SIOUL-AFTER`, `X-SIOUL-AREA`, `X-SIOUL-OFFICE-HOURS`, `X-SIOUL-BILLABLE` |
 | Pinned to a time | a `VEVENT` in a calendar, tied both ways: `X-SIOUL-LINK` with a tag-URI relation (`X-SIOUL-REL`) in each, and `X-SIOUL-TASK` in the event |
 

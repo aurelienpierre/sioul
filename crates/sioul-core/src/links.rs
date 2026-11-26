@@ -638,8 +638,10 @@ impl World<'_> {
                     _ => push(me.clone(), self.canonical(&format!("uid:{}", relation.uid)), "link"),
                 }
             }
+            // Its card in either form, `urn:uuid:` as tasks are written since 26 November 2026 or
+            // Sioul's own address as older ones hold it; a card not here as an older task names it.
             for contact in task.contacts.iter().filter(|c| !c.uri.is_empty()) {
-                push(me.clone(), card(&contact.uri).unwrap_or_else(|| self.canonical(&contact.uri)), "contact");
+                push(me.clone(), card(&contact.uri).or_else(|| crate::contacts::card_address(&[], &contact.uri)).unwrap_or_else(|| self.canonical(&contact.uri)), "contact");
             }
             for project in &task.projects {
                 push(me.clone(), project_uri(project), "project");
@@ -1043,13 +1045,17 @@ pub struct Loaded {
 }
 
 /// Whether a line of a task or an event points at `other` (a canonical
-/// address): its LINK, CONTACT or REFID.
+/// address): its LINK, CONTACT or REFID. A CONTACT points at the card its
+/// ALTREP names as the ties name it (`contacts::card_address`): in either
+/// form, the card here or not, so that every tie shown can be undone.
 fn points_at(world: &World, line: &str, other: &str) -> bool {
     let value = crate::lines::value(line).trim();
     match crate::lines::name(line).as_str() {
         "LINK" if crate::lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID")) => world.canonical(&format!("uid:{value}")) == other,
         "LINK" => world.canonical(value) == other,
-        "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other || crate::contacts::uid_named(world.contacts, &uri).is_some_and(|uid| contact_uri(uid) == other)),
+        "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| {
+            world.canonical(&uri) == other || crate::contacts::uid_named(world.contacts, &uri).is_some_and(|uid| contact_uri(uid) == other) || crate::contacts::card_address(world.contacts, &uri).is_some_and(|card| card == other)
+        }),
         "REFID" => project_uri(&crate::lines::unescape(value)) == other,
         _ => false,
     }
@@ -1363,8 +1369,9 @@ mod tests {
         assert!(tied.text.contains("LINK;LINKREL=related;VALUE=URI:mid:abc@example.org"), "{}", tied.text);
         let to_jane = loaded.tie("mid:abc@example.org", "sioul:contact/jane", &now);
         assert_eq!(to_jane, None, "a message and a contact: the local file");
+        // A card tied to a task: named as tasks are written since 26 November 2026, `urn:uuid:`.
         let jane = loaded.tie("sioul:contact/jane", "sioul:task/t", &now).unwrap();
-        assert!(jane.text.contains("CONTACT;ALTREP=\"sioul:contact/jane\":Jane"), "{}", jane.text);
+        assert!(jane.text.contains("CONTACT;ALTREP=\"urn:uuid:jane\":Jane") && !jane.text.contains("sioul:contact"), "{}", jane.text);
         // A call given an office whose card has hours: ticked "Needs an open office" by itself,
         // once (`opening::ticks`); a card without hours ticks nothing.
         let call_file = dir.join("c.ics");

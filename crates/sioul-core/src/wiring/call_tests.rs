@@ -108,7 +108,9 @@ fn a_missed_call_makes_a_task_to_call_back() {
     assert_eq!(task.notes, "Missed call at 09:30.");
     assert_eq!(task.due.get(..10), Some("2026-11-04"));
     assert_eq!(task.kind, "call");
-    assert_eq!(task.contacts, vec![noa()]);
+    // Their card as every task names it since 26 November 2026; Sioul's own address on its own line.
+    assert_eq!(task.contacts, vec![ContactRef { uri: "urn:uuid:noa-1".into(), ..noa() }]);
+    assert!(text.contains("CONTACT;ALTREP=\"urn:uuid:noa-1\":Noa Linden"), "{text}");
     assert!(!text.contains("BEGIN:VALARM"), "tasks never nag");
     assert!(text.contains("X-SIOUL-CALL-BACK:sioul:contact/noa-1") && text.contains(&format!("X-SIOUL-CALLS:{}-in", at("09:30"))));
     assert!(!text.contains("99 00") && !text.contains("199001234"), "no number in the task");

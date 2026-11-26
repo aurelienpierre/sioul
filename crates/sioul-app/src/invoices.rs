@@ -305,7 +305,9 @@ fn draft_view(mut d: Invoice, shared: &Shared) -> Value {
     let profile = clients::resolve(&d.client_ref, &clients, &world.contacts).1.cloned();
     let country = life::client_country(&d.client);
     let country_name = clients::country(&country).map_or_else(|| country.clone(), |c| c.name(tr().language()).to_string());
-    let contact = d.client_ref.strip_prefix("sioul:contact/").map(sioul_core::notes::decode).or_else(|| profile.as_ref().and_then(|p| p.contact.strip_prefix("sioul:contact/").map(sioul_core::notes::decode))).unwrap_or_default();
+    // The client's card, named either way (`contacts::card_address`: Sioul's own address, or `urn:uuid:`).
+    let card_of = |reference: &str| sioul_core::contacts::card_address(&world.contacts, reference).map(|a| sioul_core::links::id_of(&a));
+    let contact = card_of(&d.client_ref).or_else(|| profile.as_ref().and_then(|p| card_of(&p.contact))).unwrap_or_default();
     let cited: Vec<&str> = d.deposits.iter().map(|c| c.number.as_str()).collect();
     // The deposits of this client and currency not deducted yet, for what is left of each after its credit notes (F4).
     let mut deposits: Vec<Value> = life::deposits_open(&d, &records)
@@ -1092,7 +1094,8 @@ pub(crate) fn client_profile(shared: &Shared, reference: &str) -> String {
     let world = loaded(shared);
     let (client, profile) = clients::resolve(reference, &clients, &world.contacts);
     let made = profile.cloned().unwrap_or_else(|| Profile {
-        contact: if reference.starts_with("sioul:contact/") { reference.to_string() } else { String::new() },
+        // Its contact by Sioul's own address, however the reference names the card.
+        contact: sioul_core::contacts::card_address(&world.contacts, reference).unwrap_or_default(),
         kind: client.kind.clone(),
         name: client.name.clone(),
         address: client.address.clone(),
@@ -1239,7 +1242,7 @@ pub(crate) fn set_client_traits(shared: &Arc<Shared>, id: &str, kind: &str, coun
     // without a profile, one made of what the draft knows of its client.
     let mut change = clients::ProfileChange { kind: Some(kind.to_string()), country: Some(country.trim().to_string()), ..clients::ProfileChange::default() };
     if profile.is_none() {
-        change.contact = d.client_ref.starts_with("sioul:contact/").then(|| d.client_ref.clone());
+        change.contact = sioul_core::contacts::card_address(&world.contacts, &d.client_ref);
         change.name = Some(client.name.clone());
         change.lines = Some(client.address.lines.clone());
         change.postcode = Some(client.address.postcode.clone());

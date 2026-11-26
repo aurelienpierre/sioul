@@ -33,7 +33,11 @@
 //! its start (ms) and way>` ("1793000000000-in,1793003600000-in"), and, once
 //! closed by a call, `X-SIOUL-CALLED:<that call>`. Nothing of a phone number
 //! is written in it: the card says who. Its calls' lines are how its card
-//! lists the calls it was made from (`ties`), each by its address.
+//! lists the calls it was made from (`ties`), each by its address. Its
+//! `CONTACT` names the card as every task's does since 26 November 2026,
+//! `urn:uuid:<UID>` (`tasks::contact_line`); its `X-SIOUL-CALL-BACK` keeps
+//! Sioul's own address (`sioul:contact/<UID>`), which older devices match
+//! exactly, and is read in either form (`same_person`).
 
 use crate::calls::{Call, Direction};
 use crate::i18n::Translator;
@@ -164,7 +168,7 @@ impl Book {
     /// task. What it did.
     pub fn call_back(&mut self, call: &Call, tr: &Translator, zone: &TimeZone) -> Option<Did> {
         let contact = call.contact.as_ref().filter(|c| !c.uri.trim().is_empty())?;
-        match self.tasks.iter_mut().find(|k| k.open && k.person == contact.uri) {
+        match self.tasks.iter_mut().find(|k| k.open && same_person(&k.person, &contact.uri)) {
             Some(task) => {
                 if task.calls.contains(&Mark::of(call)) {
                     return None;
@@ -191,7 +195,7 @@ impl Book {
     /// The task it closed, by its UID.
     pub fn close(&mut self, call: &Call, zone: &TimeZone) -> Option<String> {
         let contact = call.contact.as_ref().filter(|c| !c.uri.trim().is_empty())?;
-        let task = self.tasks.iter_mut().find(|k| k.open && k.person == contact.uri)?;
+        let task = self.tasks.iter_mut().find(|k| k.open && same_person(&k.person, &contact.uri))?;
         if task.called || !task.calls.first().is_some_and(|first| first.at < call.at) {
             return None;
         }
@@ -226,6 +230,15 @@ impl Book {
             })
             .collect()
     }
+}
+
+/// Whether a task's `PERSON` line names whom a call was with: the same
+/// address, or the same card in either form (`contacts::same_card`): Sioul
+/// writes Sioul's own address there (`sioul:contact/<UID>`), and reads a
+/// card's `urn:uuid:` as well, as a task's `CONTACT` holds it since 26
+/// November 2026.
+fn same_person(person: &str, contact: &str) -> bool {
+    person.trim() == contact.trim() || crate::contacts::same_card(person, contact)
 }
 
 /// A call's start in `zone`.
@@ -376,6 +389,37 @@ mod tests {
         assert!(hidden.hidden && hidden.number.is_empty() && hidden.person().is_none() && hidden.id.ends_with("-hidden-in"));
         assert_eq!(missed.person().as_deref(), Some("sioul:contact/noa-1"));
         assert_eq!(call("11:00", 3, 0, "04 65 71 00 00").person().as_deref(), Some("+33465710000"), "nobody's card: their number");
+    }
+
+    /// The task a missed call makes names the card as every task does since
+    /// 26 November 2026 (`CONTACT;ALTREP="urn:uuid:<UID>"`) and keeps Sioul's
+    /// own address on its `X-SIOUL-CALL-BACK` line, which every device
+    /// matches. Whom a task is for reads in either form: the next call joins
+    /// it and the call in which you spoke closes it, whichever form its lines
+    /// have; an older task, written again for its call, names its card the
+    /// new way.
+    #[test]
+    fn whom_a_task_is_for_reads_in_either_form() {
+        let tr = Translator::new("en");
+        let zone = TimeZone::get("Europe/Paris").unwrap();
+        let mut book = Book::default();
+        let Some(Did::Made(uid)) = book.call_back(&call("09:30", 3, 0, NOA), &tr, &zone) else { panic!("no task made") };
+        let text = book.text(&uid).unwrap().to_string();
+        assert!(text.contains("CONTACT;ALTREP=\"urn:uuid:noa-1\":Noa Linden\r\n") && !text.contains("ALTREP=\"sioul:"), "{text}");
+        assert!(text.contains("X-SIOUL-CALL-BACK:sioul:contact/noa-1\r\n"), "{text}");
+        assert_eq!(uid, format!("{UID_PREFIX}{}-{}", crate::notices::digest("sioul:contact/noa-1"), at("09:30")), "its UID as before: the same on every device");
+        let older = text.replace("ALTREP=\"urn:uuid:noa-1\"", "ALTREP=\"sioul:contact/noa-1\"");
+        for (person, written) in [("sioul:contact/noa-1", &older), ("urn:uuid:noa-1", &text)] {
+            let written = written.replace("X-SIOUL-CALL-BACK:sioul:contact/noa-1", &format!("X-SIOUL-CALL-BACK:{person}"));
+            let kept = Kept::read(Path::new("noa.ics"), &written, &zone).unwrap();
+            assert_eq!(kept.person, person);
+            let mut book = Book::of(&[kept]);
+            assert_eq!(book.call_back(&call("11:00", 3, 0, NOA), &tr, &zone), Some(Did::Joined(uid.clone())), "{person}");
+            let joined = book.text(&uid).unwrap().to_string();
+            assert!(joined.contains("CONTACT;ALTREP=\"urn:uuid:noa-1\":Noa Linden\r\n") && !joined.contains("ALTREP=\"sioul:"), "{joined}");
+            assert_eq!(joined.matches("CONTACT").count(), 1, "{joined}");
+            assert_eq!(book.close(&call("12:00", 1, 120, NOA), &zone), Some(uid.clone()), "{person}");
+        }
     }
 
     #[test]

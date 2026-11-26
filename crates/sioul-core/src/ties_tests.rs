@@ -414,3 +414,60 @@ fn a_contact_named_by_its_uid_is_untied() {
     assert_eq!(undone.len(), 1);
     assert!(!undone[0].text.contains("CONTACT") && undone[0].text.contains("SUMMARY:Haircut"), "{}", undone[0].text);
 }
+
+/// A task's contact as tasks are written since 26 November 2026
+/// (`CONTACT;ALTREP="urn:uuid:<UID>"`, `tasks::contact_line`) and as older
+/// tasks hold it (`sioul:contact/<UID>`, never rewritten for that alone):
+/// both tie the task to the card, both ends listing each other (the card's
+/// sheet lists the task), both find the card's client for an invoice
+/// (`clients::resolve`), and a card not here is named as an older task
+/// names it. Each is untied by taking its line off; a card tied again in
+/// the other form is not written twice.
+#[test]
+fn a_task_s_contact_ties_in_either_form() {
+    let mut fixture = Fixture::new();
+    let older = fixture.tasks.iter().find(|t| t.uid == "pay-rent").unwrap().contacts[0].clone();
+    assert_eq!(older.uri, "sioul:contact/mina", "the fixture's task, written before");
+    let now_form = ContactRef { name: "Mina Okafor".into(), uri: crate::tasks::contact_line(&older).split('"').nth(1).unwrap().to_string() };
+    assert_eq!(now_form.uri, "urn:uuid:mina");
+    fixture.tasks.push(Task { uid: "thank-mina".into(), title: "Thank Mina".into(), contacts: vec![now_form.clone()], ..Task::default() });
+    fixture.tasks.push(Task { uid: "call-gone".into(), title: "Call someone".into(), contacts: vec![ContactRef { name: "Someone".into(), uri: "urn:uuid:gone-1".into() }], ..Task::default() });
+    let index = TieIndex::build(&fixture.world(), &fixture.sources);
+    let world = fixture.world();
+    both(&index, &world, "sioul:task/pay-rent", "contact", "sioul:contact/mina", "involves");
+    both(&index, &world, "sioul:task/thank-mina", "contact", "sioul:contact/mina", "involves");
+    let sheet = tied(&index, &world, &Open, "sioul:contact/mina");
+    assert!(sheet.iter().filter(|(uri, _)| uri.starts_with("sioul:task/")).count() == 2, "{sheet:?}");
+    assert!(world.edges().iter().any(|e| e.from == "sioul:task/call-gone" && e.to == "sioul:contact/gone-1" && e.how == "contact"), "a card not here: named as an older task names it");
+    for uri in [&older.uri, &now_form.uri] {
+        let (client, _) = crate::clients::resolve(uri, &crate::clients::Clients::default(), &fixture.contacts);
+        assert_eq!(client.name, "Mina Okafor", "{uri}");
+    }
+
+    let dir = std::env::temp_dir().join(format!("sioul-task-contact-forms-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let zone = jiff::tz::TimeZone::UTC;
+    let file = |uid: &str, altrep: &str| {
+        let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Sioul//Sioul//EN\r\nBEGIN:VTODO\r\nUID:{uid}\r\nDTSTAMP:20261101T090000Z\r\nSUMMARY:Pay the rent\r\nCONTACT;ALTREP=\"{altrep}\":Mina Okafor\r\nEND:VTODO\r\nEND:VCALENDAR\r\n");
+        let path = dir.join(format!("{uid}.ics"));
+        std::fs::write(&path, &text).unwrap();
+        Task { key: path.display().to_string(), ..crate::tasks::task_of_text(&text, &zone).unwrap() }
+    };
+    let loaded = Loaded { tasks: vec![file("old", "sioul:contact/mina"), file("new", "urn:uuid:mina"), file("call-gone", "urn:uuid:gone-1")], contacts: fixture.contacts.clone(), ..Loaded::default() };
+    let now = jiff::Zoned::now();
+    // A card not on this device: the tie shown is undone all the same (review of e72aa225, 1).
+    assert!(loaded.world().edges().iter().any(|e| e.from == "sioul:task/call-gone" && e.to == "sioul:contact/gone-1"));
+    let undone = loaded.untie("sioul:task/call-gone", "sioul:contact/gone-1", &now);
+    assert_eq!(undone.len(), 1, "a card not here");
+    assert!(!undone[0].text.contains("CONTACT") && undone[0].text.contains("SUMMARY:Pay the rent"), "{}", undone[0].text);
+    for uid in ["old", "new"] {
+        let undone = loaded.untie(&format!("sioul:task/{uid}"), "sioul:contact/mina", &now);
+        assert_eq!(undone.len(), 1, "{uid}");
+        assert!(!undone[0].text.contains("CONTACT") && undone[0].text.contains("SUMMARY:Pay the rent"), "{}", undone[0].text);
+        // Tied again: there already, whichever form its line has.
+        let again = loaded.tie("sioul:contact/mina", &format!("sioul:task/{uid}"), &now).unwrap();
+        assert_eq!(again.text, std::fs::read_to_string(&again.path).unwrap(), "{uid}: nothing written");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
