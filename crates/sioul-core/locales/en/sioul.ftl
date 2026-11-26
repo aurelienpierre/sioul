@@ -7388,12 +7388,6 @@ reach-circles-tie = Link a card…
 reach-moment-usual = As usual
 reach-moment-dnd = Do not disturb
 reach-moment-reachable = Reachable
-}
-}
-}
-}
-}
-}
 ## The Busy mark (busy.rs): an event's card and form, a task's panel
 busy = Busy
 busy-help = It counts in the availability you share, and while it lasts your rules for busy time apply.

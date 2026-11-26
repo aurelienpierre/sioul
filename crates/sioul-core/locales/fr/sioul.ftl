@@ -7444,12 +7444,6 @@ reach-circles-tie = Lier un contact…
 reach-moment-usual = Comme d’habitude
 reach-moment-dnd = Ne pas déranger
 reach-moment-reachable = Joignable
-}
-}
-}
-}
-}
-}
 ## The Busy mark (busy.rs): an event's card and form, a task's panel
 busy = Indisponible
 busy-help = Compte dans la disponibilité que vous partagez, et tant qu’il dure vos règles pour les moments indisponibles s’appliquent.
