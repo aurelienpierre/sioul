@@ -690,7 +690,8 @@ mod tests {
     /// 4 November added their fields to each occurrence (`agenda` to `opaque`)
     /// and `tentative` to each overlap (lines 13 and 14), and a task before one
     /// time of a repeating event `rid` to each occurrence, all at their
-    /// defaults here; every value recorded is as it was.
+    /// defaults here; 26 November `other_person` (another person's agenda),
+    /// at its default too; every value recorded is as it was.
     #[test]
     fn the_plan_the_warning_and_the_reminders_read_the_events_as_they_are() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/ongoing-unchanged.txt");
