@@ -2001,6 +2001,7 @@ chain-kind-letter = Courrier
 chain-kind-invoice = Facture
 chain-kind-movement = Paiement
 chain-kind-site = Site
+chain-kind-call = Appel
 chain-kind-web = Page web
 chain-kind-file = Fichier
 chain-kind-other = Lien
@@ -2064,6 +2065,45 @@ chain-count-site = { $n } { $n ->
         [one] site
        *[other] sites
     }
+chain-count-call = { $n } { $n ->
+        [one] appel
+       *[other] appels
+    }
+call-title-missed = Appel manqué : { $who }
+call-title-in = Appel reçu : { $who }
+call-title-out = Appel passé : { $who }
+call-title-out-unanswered = Appel passé sans réponse : { $who }
+call-title-declined = Appel envoyé sur la messagerie : { $who }
+calls-sheet-missed = appel manqué
+calls-sheet-in = appel reçu, { $length }
+calls-sheet-out = vous avez appelé, { $length }
+calls-sheet-out-unanswered = vous avez appelé, sans réponse
+calls-sheet-out-short = vous avez appelé, { $length } : sa messagerie, peut-être
+calls-sheet-on = { $what }, sur { $phone }
+calls-sheet-more = Ses autres appels du mois
+calls-open-card = La fiche de l’appel
+call-card-gone-title = Un appel qui n’est plus gardé
+call-card-gone = Chaque téléphone garde ses appels un mois : celui-ci n’est plus là.
+call-card-why = Un appel est ce que son téléphone en dit : rien à changer ici.
+call-card-section-call = L’appel
+call-card-section-ties = Ce qui y est lié
+call-card-no-ties = Rien n’y est lié.
+call-card-who = Avec
+call-card-number = Numéro
+call-card-when = Quand
+call-card-length = Durée
+call-card-way = Sens
+call-card-way-in = La personne vous a appelé
+call-card-way-out = Vous l’avez appelée
+call-card-answered = Pris
+call-card-answered-yes = Oui
+call-card-answered-no = Non
+call-card-answered-elsewhere = Oui, sur un autre appareil de la ligne
+call-card-declined = Non : le filtrage de votre téléphone l’a envoyé sur la messagerie
+call-card-rang = Il a sonné
+call-card-phone = Sur le téléphone
+call-card-screened = Le filtrage
+call-card-hidden = Un numéro masqué
 chain-count-web = { $n } { $n ->
         [one] page web
        *[other] pages web
@@ -5860,10 +5900,6 @@ set-letters-inbox-help = Un dossier où vous, un scanner ou une personne qui vou
 set-calls-group = Appels
 set-porch-calls = Appels refusés par vos téléphones
 set-porch-calls-help = Listés sur le Porche de chacun de vos appareils, chacun à un moment où cette personne peut vous joindre, jamais comptés. Désactivé, chaque téléphone ne liste que les siens, et vos ordinateurs aucun.
-set-porch-call-back = Une tâche pour rappeler
-set-porch-call-back-help = Un appel manqué d’une personne de vos carnets d’adresses fait une tâche, « Rappeler » et son nom, pour ce jour-là, sans rappel. Un autre de ses appels y ajoute son heure ; elle se fait d’elle-même une fois que vous vous êtes parlé.
-set-porch-call-again = Une tâche pour réessayer
-set-porch-call-again-help = Un appel de votre part à une personne de vos carnets d’adresses qui n’a pas abouti, sans réponse ou plus court que la durée ci-dessous, fait une tâche, « Réessayer d’appeler » et son nom, pour ce jour-là, sans rappel. Elle se fait d’elle-même une fois que vous vous êtes parlé.
 set-porch-voicemail-seconds = Un appel tombé sur sa messagerie
 set-porch-voicemail-seconds-help = Un appel de votre part plus court que cela est sans doute tombé sur sa messagerie, pas sur la personne. Un appel de votre part aussi long ou plus, ou tout appel de sa part auquel vous avez répondu, est un appel où vous vous êtes parlé : il clôt sa tâche.
 set-voicemail-seconds = { $seconds } secondes
@@ -10855,6 +10891,7 @@ rules-event-supply-comes-in = arrive
 rules-event-call-rings = sonne
 rules-event-call-is-missed = est manqué
 rules-event-call-is-answered = est pris
+rules-event-call-ends = se termine
 rules-event-paper-renewal-nears = est bientôt à renouveler
 rules-event-letter-scan-arrives = est numérisée
 rules-event-contract-notice-nears = approche de son dernier jour de préavis
@@ -10889,6 +10926,16 @@ rules-field-message-kind = ce que Sioul y reconnaît
 rules-field-message-amount = le montant qu’il annonce
 rules-field-message-spam = ce qu’en dit votre filtre d’indésirables
 rules-field-message-folder = le dossier où il est arrivé
+rules-field-call-card = sa fiche
+rules-field-call-number = son numéro
+rules-field-call-circle = la personne
+rules-field-call-way = son sens
+rules-field-call-answered = s’il a été pris
+rules-field-call-length = sa durée, en secondes
+rules-field-call-date = son jour
+rules-field-call-weekday = son jour de la semaine
+rules-field-call-hour = l’heure où il a commencé
+rules-field-call-phone = le téléphone, par son nom
 rules-field-task-title = son titre
 rules-field-task-list = sa liste
 rules-field-task-project = son projet
@@ -10916,6 +10963,10 @@ rules-choice-circle-safe = sûr
 rules-choice-circle-neutral = neutre
 rules-choice-circle-restricted = restreint
 rules-choice-circle-stranger = un inconnu
+rules-choice-way-in = le sien
+rules-choice-way-out = le vôtre
+rules-choice-answered-yes = pris
+rules-choice-answered-no = pas pris
 rules-choice-attachment-type-pdf = un PDF
 rules-choice-attachment-type-image = une image
 rules-choice-attachment-type-document = un document
@@ -10967,6 +11018,7 @@ rules-action-task-move-to-list = la déplacer dans une liste
 rules-action-task-add-step = ajouter une étape
 rules-action-task-set-aside = la mettre de côté
 rules-action-task-estimate = lui donner une première estimation
+rules-action-task-call-back = créer une tâche pour la rappeler
 rules-action-event-make = créer un rendez-vous
 rules-action-event-move = le déplacer
 rules-action-event-pause = suspendre sa série
@@ -11009,6 +11061,8 @@ rules-once-paper = Chaque fichier gardé une fois, d’après la règle, le cour
 rules-once-server = Marqué sur le serveur avant d’être fait, comme le font les filtres.
 rules-once-made = Créé une fois, sous un nom tiré de la règle et de ce qui l’a déclenchée, le même sur chaque appareil.
 rules-once-record = Écrit une fois dans le registre que lit chaque appareil.
+rules-once-call = Écrit une fois, par le téléphone qui a eu l’appel, quand il le lit pour la première fois dans son historique.
+rules-once-screening = Décidé une fois, par le filtrage du téléphone, avant qu’il ne sonne.
 rules-once-tell = Dit une fois, par l’appareil qui garde vos notifications.
 rules-refused-no-project = Le projet qu’elle nomme n’existe plus.
 rules-refused-no-topic = Le thème qu’elle nomme n’existe plus.
@@ -11025,6 +11079,7 @@ rules-refused-health = Une règle ne touche jamais à la santé.
 rules-refused-no-model = Le modèle qu’elle nomme n’existe plus.
 rules-refused-no-list = Il n’y a pas de liste de tâches où écrire.
 rules-refused-read-only = Cette liste ne peut qu’être lue.
+rules-refused-no-card = Personne de vos carnets d’adresses n’a ce numéro : une tâche pour rappeler a besoin de sa fiche.
 rules-refused-meeting = Une réunion avec d’autres invités n’est jamais modifiée.
 rules-refused-own = Une règle n’agit jamais sur ce qu’elle a fait elle-même.
 rules-refused-chain = Trois règles à la suite ont déjà agi : la chaîne s’arrête ici.
@@ -11037,6 +11092,8 @@ rules-problem-value = Une condition n’a pas encore de valeur.
 rules-problem-forbidden = Une règle n’envoie, ne supprime, ne déplace d’argent, ni ne change un réglage ou la santé.
 rules-problem-no-action = Dites ce qui est fait.
 rules-problem-param = Il manque quelque chose dont l’action a besoin.
+rules-problem-screening = Refuser un appel est décidé par le filtrage des appels de chaque téléphone, avant qu’il ne sonne : réglez-le dans Réglages, Appareils, sur la fiche du téléphone, sous Appels.
+rules-problem-pair = Cela ne peut pas se faire quand cela arrive : choisissez ce qui va avec.
 rules-newer-format = Vos règles ont été écrites par un Sioul plus récent : elles sont montrées ici et se changent sur les appareils qui l’ont.
 rules-tell-title = Un courriel pour l’une de vos règles
 rules-tell-body = { $from } : { $subject }
@@ -11054,7 +11111,7 @@ settings-about-rules = Quand quelque chose arrive, ce que fait Sioul : vos rè
 rules-tab-own = Vos règles
 rules-tab-presets = Préréglages
 rules-about = Chaque règle dit ce que fait Sioul quand quelque chose arrive. Une règle agit sur ce qui vient après son enregistrement ; chaque chose qu’elle fait est dite une fois, avec Annuler.
-rules-presets-about = Les règles qui viennent avec Sioul : ce qu’il fait de lui-même, comme toujours, dit de la même façon. Une ligne que vous pouvez changer mène là où elle se règle ; en copier une pour en faire la vôtre viendra dans une version suivante.
+rules-presets-about = Les règles fournies avec Sioul : ce qu’il fait de lui-même, dit de la même façon. Celles que Sioul fait tourner comme des règles ont leur interrupteur ici, et se copient pour en faire les vôtres ; les autres mènent là où elles se règlent.
 rules-none = Pas encore de règle. Ajoutez-en une ici, ou depuis un courriel : « Faire une règle de ceci… » dans son menu.
 rules-add = Ajouter une règle…
 rules-switch = Cette règle active
@@ -11131,6 +11188,11 @@ rules-preview-some = { $n ->
        *[other] { $n } courriels ces 30 derniers jours :
     }
 rules-preview-more = et { $n } de plus
+rules-preview-none-calls = Aucun appel ces 30 derniers jours : elle agit sur les appels qui viennent, sur le téléphone qui les reçoit.
+rules-preview-some-calls = { $n ->
+        [one] Un appel ces 30 derniers jours :
+       *[other] { $n } appels ces 30 derniers jours :
+    }
 rules-preview-line = { $day }, { $who } : { $does }
 rules-act-put-back = Annulé : remis comme avant. La règle laisse celui-ci tranquille désormais.
 rules-act-kept = Cela a changé depuis, donc cela reste tel quel. La règle laisse celui-ci tranquille désormais.
@@ -11204,6 +11266,14 @@ rules-preset-details = Ce que vous pouvez changer
 rules-preset-later = Sioul le fait de lui-même, comme toujours : ses détails deviendront les vôtres dans une version suivante.
 rules-preset-copy = Copier pour en faire la mienne
 rules-preset-open = Détails
+rules-preset-switch = Activé ou désactivé : ce préréglage
+rules-preset-way-in = Ses appels que vous avez manqués : « Rappeler » et son nom
+rules-preset-way-out = Vos appels qui ne l’ont pas jointe : « Réessayer d’appeler »
+rules-preset-threshold = Lesquels de vos appels sont tombés sur sa messagerie se règle dans les réglages du Porche, sous Appels
+rules-preset-one-way = Au moins un type d’appel reste coché : pour arrêter les deux, désactivez le préréglage.
+rules-preset-replaced = Votre règle est enregistrée et tourne à la place du préréglage, désormais désactivé : { $sentence }
+rules-preset-choice-on = Désormais aussi pour ceux-ci : { $choice }
+rules-preset-choice-off = Plus pour ceux-ci : { $choice }
 
 # Une règle en mots (crates/sioul-core/src/wiring/words.rs) : des phrases entières
 # par événement, condition et action, leurs valeurs insérées, jointes par le code.
@@ -11215,6 +11285,7 @@ rule-join-and = {" "}et{" "}
 rule-join-or = {" "}ou{" "}
 rule-a-message = un courriel
 rule-a-message-first = Un courriel
+rule-a-call-first = Un appel
 rule-heading-any = Quand { $type } { $event }
 rule-heading-message-arrives = Quand un courriel arrive
 rule-heading-message-is-sent = Quand un courriel est envoyé
@@ -11453,6 +11524,24 @@ rule-do-task-mark-done = { $same ->
         [no] marquer sa tâche comme faite
        *[yes] la marquer comme faite
     }
+rule-do-task-call-back = créer une tâche pour la rappeler, une par personne
+rule-if-call-card = { $test ->
+        [missing] d’une personne absente de vos carnets d’adresses
+        [is] avec { $value }
+       *[exists] avec une personne de vos carnets d’adresses
+    }
+rule-if-call-way = { $test ->
+        [is-not] pas { $value }
+       *[is] { $value }
+    }
+rule-if-call-answered = { $test ->
+        [is-not] pas { $value }
+       *[is] { $value }
+    }
+rule-if-call-circle = { $test ->
+        [is-not] pas avec { $value }
+       *[is] avec { $value }
+    }
 rule-do-task-set-date = { $same ->
         [no] demander sa tâche pour le { $date }
        *[yes] la demander pour le { $date }
@@ -11494,6 +11583,7 @@ rule-heading-supply-comes-in = Quand un stock est réapprovisionné
 rule-heading-call-rings = Quand un appel sonne
 rule-heading-call-is-missed = Quand un appel est manqué
 rule-heading-call-is-answered = Quand un appel est pris
+rule-heading-call-ends = Quand un appel se termine
 rule-heading-paper-renewal-nears = Quand un papier est bientôt à renouveler
 rule-heading-letter-scan-arrives = Quand le scan d’une lettre arrive
 rule-heading-contract-notice-nears = Quand le préavis d’un contrat approche
@@ -11597,6 +11687,8 @@ rule-act-paper = { $wrote ->
        *[yes] { $Subject } : { $paper } est maintenant dans Papiers.
     }
 rule-act-other = { $Subject } : fait.
+rule-act-joined = { $Subject } : son heure ajoutée à la tâche pour la rappeler.
+rule-act-done = { $Subject } : la tâche pour la rappeler faite.
 rules-refused-code-told = Un courriel qui porte un code est dit par sa propre notification : aucune règle ne le redit.
 rules-refused-elsewhere = Un autre appareil garde vos notifications : il dit ce courriel, ou celui-ci le fera quand il les gardera.
 rules-refused-too-large = Ses pièces jointes sont trop grandes pour qu’une règle les garde comme papiers : gardez-les vous-même si vous les voulez.
@@ -11643,9 +11735,9 @@ rule-preset-plan-fills-days = Chaque jour, le plan place vos tâches dans les he
 rule-preset-do-not-disturb-by-reasons = Quand commence un moment pour une raison que vous avez laissée activée dans Ce qui vous joint (pendant votre sommeil, pendant les pauses, pendant une indisponibilité), « Ne pas déranger » s’active sur tous vos appareils, et s’éteint ensuite.
 rule-preset-work-hours-over = Quand vos heures de travail sont finies, vous êtes prévenu une fois.
 rule-preset-books-thresholds = Quand vos factures approchent d’un seuil de vos comptes, vous êtes prévenu une fois.
-rule-preset-calls-screened = Quand un appel arrive sur un téléphone, il sonne ou va sur la messagerie comme le disent les appels de ce téléphone.
-rule-preset-missed-call-task = Quand un appel d’une personne de vos carnets d’adresses est manqué, une tâche pour la rappeler est créée, et quand un de vos appels ne la joint pas, une tâche pour réessayer : chacune tant que son interrupteur est activé dans les réglages du Porche, sous Appels.
-rule-preset-call-closes-task = Quand un appel aboutit, la tâche pour rappeler cette personne est faite.
+rule-preset-calls-screened = Quand un appel arrive sur un téléphone, il sonne ou va sur la messagerie comme le disent les appels de ce téléphone : le filtrage de chaque téléphone décide, avant qu’il ne sonne.
+rule-preset-missed-call-task = Quand un appel d’une personne de vos carnets d’adresses est manqué, une tâche pour la rappeler est créée ; quand un de vos appels ne la joint pas, une tâche pour réessayer. Une tâche par personne : un autre de ces appels y ajoute son heure.
+rule-preset-call-closes-task = Quand vous vous êtes parlé au téléphone, la tâche pour rappeler la personne est faite.
 rule-preset-bank-line-joined = Quand une ligne de l’export de votre banque arrive, elle est jointe au paiement qu’elle est, et une facture qu’elle règle est marquée payée.
 rule-preset-budget-presets-counted = Quand vient le jour d’un paiement régulier, il est compté dans son budget.
 rule-preset-contract-notice-told = Quand le jour de préavis d’un contrat approche, un rappel vient.

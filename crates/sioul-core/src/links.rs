@@ -27,6 +27,9 @@
 //!   `sioul:case/<id>`, still reads as the same project, and always will;
 //! - a budget line: `sioul:budget/<budget>/<position in the file>`;
 //! - a money movement: `sioul:movement/<its id, or a source's key>` (`movements`);
+//! - a call of a phone: `sioul:call/<phone>:<start in ms>-<in|out>` (`calls::address`:
+//!   the phone that had it, by its name in the sharing, when it began and which
+//!   way, as its history gives it once: the same on every device, and never a number);
 //! - anything else: its URL.
 
 use crate::agenda::EventRef;
@@ -62,6 +65,8 @@ pub enum Kind {
     Movement,
     /// A site kept in Sioul's Sites: a bank, a tax office, a chat.
     Site,
+    /// A call of one of your phones (`calls::Object`): who, when, how long, which way.
+    Call,
     Web,
     File,
     Other,
@@ -89,6 +94,7 @@ pub fn kind_of(uri: &str) -> Kind {
             "invoice" => Kind::Invoice,
             "site" => Kind::Site,
             "movement" => Kind::Movement,
+            "call" => Kind::Call,
             // A message without a Message-ID: `sioul:mail/<account>/<digest>`.
             "mail" => Kind::Mail,
             _ => Kind::Other,
@@ -240,6 +246,28 @@ pub fn movement_uri(id: &str) -> String {
 /// A site of Sioul's Sites, by its id.
 pub fn site_uri(id: &str) -> String {
     format!("sioul:site/{}", encode(id))
+}
+
+/// A call of a phone (`calls::Object`): the phone by its name in the sharing,
+/// when the call began (ms), which way. No number is ever part of it: a tie
+/// written into a task travels to its server.
+pub fn call_uri(phone: &str, at_ms: i64, out: bool) -> String {
+    format!("sioul:call/{}:{at_ms}-{}", encode(phone), if out { "out" } else { "in" })
+}
+
+/// A call's address read back: its phone, when it began (ms), whether it was yours.
+pub fn call_parts(uri: &str) -> Option<(String, i64, bool)> {
+    let id = uri.trim().strip_prefix("sioul:call/")?;
+    let id = notes::decode(id);
+    let (phone, rest) = id.rsplit_once(':')?;
+    let (at, way) = rest.split_once('-')?;
+    let out = match way {
+        "in" => false,
+        "out" => true,
+        _ => return None,
+    };
+    (!phone.is_empty()).then_some(())?;
+    Some((phone.to_string(), at.parse().ok()?, out))
 }
 
 /// A project, by its id. An address written before the name changed,
@@ -947,6 +975,12 @@ impl World<'_> {
                 out.title = id.clone();
                 out.key = id.clone();
                 out.found = true;
+            }
+            // A call, by the tie index that read the phones' calls (`ties::Sources::calls`): its card reads
+            // it; one past the month the phones keep their calls is no longer found.
+            Kind::Call => {
+                out.title = id.clone();
+                out.key = uri.clone();
             }
             // A money movement, by its address (`movements::Movement::address`): its card reads it.
             // Its key its address: the window opens it there (the Budgets page's Movements tab).

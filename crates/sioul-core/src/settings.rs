@@ -341,11 +341,9 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
             // The calls your phones declined, on the Porch of every device (docs/porch.md, "Calls declined").
             b.group = tr.text("set-calls-group", None);
             b.push("porch.calls", "porch-calls", Kind::Bool, SettingValue::Bool(config.porch.calls));
-            // The call-back rules (docs/porch.md, "Calls"; `callback`): a task for a missed call, and
-            // for a call of yours that did not reach them, by the voicemail threshold.
-            b.push("porch.call_back", "porch-call-back", Kind::Bool, SettingValue::Bool(config.porch.call_back));
-            b.push("porch.call_again", "porch-call-again", Kind::Bool, SettingValue::Bool(config.porch.call_again));
-            let seconds = crate::callback::Rules::of(config).threshold;
+            // The voicemail threshold: which calls of yours reached them, for the Porch's list and the
+            // rules about calls (the tasks a call makes are the presets', Settings ▸ Rules ▸ Presets).
+            let seconds = crate::calls::threshold(config);
             let mut offered = crate::calls::VOICEMAIL_SECONDS.to_vec();
             if !offered.contains(&seconds) {
                 offered.push(seconds);
@@ -1699,7 +1697,7 @@ mod tests {
         // The order, then public, what you sent yourself, people, filed, screener, less important, the review queue, set aside, hostile.
         assert_eq!(notes, 1 + 9, "{porch:?}");
         // The letters' folder is on the Letters page, with the letters.
-        assert_eq!(keys("porch"), vec!["porch.calls", "porch.call_back", "porch.call_again", "porch.voicemail_seconds", "known"]);
+        assert_eq!(keys("porch"), vec!["porch.calls", "porch.voicemail_seconds", "known"]);
         assert_eq!(porch.iter().find(|s| s.key == "known").map(|s| s.group.as_str()), Some(tr.text("lane-people", None).as_str()), "under the people's lane");
         assert_eq!(keys("letters"), vec!["letters.folder", "letters.inbox"]);
         assert_eq!(keys("papers"), vec!["papers.folder"]);

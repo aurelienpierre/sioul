@@ -438,7 +438,11 @@ const TASK: TypeDecl = TypeDecl {
             refuses: &["rules-refused-no-model", "rules-refused-no-list", "rules-refused-read-only", "rules-refused-no-project"],
             phase: 1,
         },
-        ActionDecl { id: "mark-done", params: &[], writes: Writes::Task, undo: true, once: "rules-once-record", refuses: &["rules-refused-read-only"], phase: 2 },
+        // Its target found from what triggered the rule: after a call, the task to call back whom it
+        // was with (`call-back`'s); later, the task a message answers (phase 2).
+        ActionDecl { id: "mark-done", params: &[], writes: Writes::Task, undo: true, once: "rules-once-record", refuses: &["rules-refused-read-only"], phase: 1 },
+        // A missed call's task (`callback`): one open task per person, the call's time added to it.
+        ActionDecl { id: "call-back", params: &[], writes: Writes::Task, undo: true, once: "rules-once-call", refuses: &["rules-refused-no-card", "rules-refused-read-only"], phase: 1 },
         ActionDecl { id: "set-date", params: &[param("date", Value::Date, true)], writes: Writes::Task, undo: true, once: "rules-once-record", refuses: &["rules-refused-read-only"], phase: 2 },
         ActionDecl { id: "tag", params: &[param("tag", Value::Text, true)], writes: Writes::Task, undo: true, once: "rules-once-record", refuses: &["rules-refused-read-only"], phase: 2 },
         ActionDecl { id: "move-to-list", params: &[param("list", Value::List, true)], writes: Writes::Task, undo: true, once: "rules-once-record", refuses: &["rules-refused-read-only"], phase: 2 },
@@ -507,13 +511,75 @@ const fn later_action(id: &'static str, writes: Writes) -> ActionDecl {
 }
 
 const SUPPLY: TypeDecl = later_type("supply", &[event("runs-low", 3), event("comes-in", 3)], &[later_action("take-out", Writes::Supply)]);
-const CALL: TypeDecl = later_type("call", &[event("rings", 3), event("is-missed", 3), event("is-answered", 3)], &[later_action("decline", Writes::Call)]);
 const PAPER: TypeDecl = later_type("paper", &[event("renewal-nears", 3)], &[later_action("keep", Writes::Paper)]);
 const LETTER: TypeDecl = later_type("letter", &[event("scan-arrives", 3)], &[later_action("read", Writes::Letter)]);
 const CONTRACT: TypeDecl = later_type("contract", &[event("notice-nears", 3)], &[]);
 const INVOICE: TypeDecl = later_type("invoice", &[event("is-issued", 3), event("is-due", 3)], &[]);
 const SITE: TypeDecl = later_type("site", &[event("offers-file", 3), event("notifies", 3)], &[]);
 const CLOCK: TypeDecl = later_type("clock", &[event("moment-begins", 3), event("day-comes", 3)], &[]);
+
+/// Which way a call went: theirs ("in"), yours ("out").
+pub const WAYS: &[Choice] = &[Choice { id: "in", phase: 1 }, Choice { id: "out", phase: 1 }];
+
+/// Whether a call was answered.
+pub const ANSWERED: &[Choice] = &[Choice { id: "yes", phase: 1 }, Choice { id: "no", phase: 1 }];
+
+/// A call of one of your phones (`calls::Object`, `wiring::call`): read
+/// from the phone's history once the call ended, except `rings`, the moment
+/// the phone's screening decides (Java's, within milliseconds: `decline` is
+/// that screening's, never the engine's).
+const CALL: TypeDecl = TypeDecl {
+    id: "call",
+    feature: None,
+    phase: 1,
+    // `ends` comes once an action follows any call (nothing does yet).
+    events: &[event("rings", 1), event("is-missed", 1), event("is-answered", 1), event("ends", 3)],
+    fields: &[
+        // Their card, when your address books have the number: "someone you know".
+        field("card", &[test("exists", Value::None), test("missing", Value::None), test("is", Value::Contact)], false),
+        field("number", &[test("is", Value::Text), test("is-not", Value::Text)], false),
+        FieldDecl { id: "circle", tests: CHOICE_TESTS, choices: CIRCLES, open: false, proof: false, phase: 1 },
+        FieldDecl { id: "way", tests: CHOICE_TESTS, choices: WAYS, open: false, proof: false, phase: 1 },
+        FieldDecl { id: "answered", tests: CHOICE_TESTS, choices: ANSWERED, open: false, proof: false, phase: 1 },
+        // How long it lasted once answered, in seconds.
+        field("length", &[test("above", Value::Number), test("below", Value::Number)], false),
+        field("date", &[test("after", Value::Date), test("before", Value::Date), test("between", Value::Date)], false),
+        field("weekday", &[test("is", Value::Days), test("is-not", Value::Days)], false),
+        field("hour", &[test("after", Value::Time), test("before", Value::Time), test("between", Value::Time)], false),
+        // The phone, by the name you gave it or its system's.
+        field("phone", &[test("is", Value::Text), test("is-not", Value::Text)], false),
+    ],
+    actions: &[ActionDecl { id: "decline", params: &[], writes: Writes::Call, undo: false, once: "rules-once-screening", refuses: &[], phase: 1 }],
+};
+
+/// What an action can follow: the "when"s whose object it acts on, each
+/// `"<type>"` or `"<type>/<event>"`; any, when none is said. A message's
+/// actions, a task from a model and a notice follow a message; the task to
+/// call them back follows a missed call (its line says "Missed call at …"),
+/// its closing a call in which you spoke; declining a call, the moment it rings.
+pub fn after(then_kind: &str, action: &str) -> &'static [&'static str] {
+    match (then_kind, action) {
+        ("task", "call-back") => &["call/is-missed"],
+        ("task", "mark-done") => &["call/is-answered"],
+        ("call", "decline") => &["call/rings"],
+        ("message", _) | ("task", "make") | ("none", "tell") => &["message"],
+        _ => &[],
+    }
+}
+
+/// Whether the action `then_kind`/`action` can follow `when_kind`/`event` (`after`).
+pub fn follows(when_kind: &str, event: &str, then_kind: &str, action: &str) -> bool {
+    let list = after(then_kind, action);
+    list.is_empty() || list.iter().any(|a| *a == when_kind || a.split_once('/').is_some_and(|(k, e)| k == when_kind && e == event))
+}
+
+/// Whether the engine does the action for a rule: declining a call is the
+/// phone's screening's alone, which decides before the phone rings, from
+/// what each phone's calls say (Settings ▸ Devices ▸ the phone's card ▸
+/// Calls): declared, read in the presets, never one of your rules'.
+pub fn by_engine(then_kind: &str, action: &str) -> bool {
+    !(then_kind == "call" && action == "decline")
+}
 
 /// Sioul itself: the action that belongs to no object.
 const SIOUL: TypeDecl = TypeDecl {
@@ -635,6 +701,10 @@ pub struct ActionOut {
     pub refuses: Vec<String>,
     pub available: bool,
     pub phase: u8,
+    /// The "when"s it can follow (`after`): `"<type>"` or `"<type>/<event>"`; any when empty.
+    pub after: Vec<&'static str>,
+    /// Done in its own place, never by a rule of yours (`by_engine`): the editor never offers it.
+    pub elsewhere: bool,
 }
 
 /// The name of a field of a type, in words ("its sender's domain").
@@ -699,8 +769,10 @@ pub fn catalogue(tr: &Translator) -> Catalogue {
                     undo: a.undo,
                     once: tr.text(a.once, None),
                     refuses: a.refuses.iter().map(|r| tr.text(r, None)).collect(),
-                    available: available(a.phase) && forbidden(a.writes).is_none(),
+                    available: available(a.phase) && forbidden(a.writes).is_none() && by_engine(t.id, a.id),
                     phase: a.phase,
+                    after: after(t.id, a.id).to_vec(),
+                    elsewhere: !by_engine(t.id, a.id),
                 })
                 .collect(),
         })
@@ -737,7 +809,9 @@ pub struct Preset {
     pub setting: Option<&'static str>,
     /// Its parameters that are settings today.
     pub params: Vec<PresetParam>,
-    /// "as-today": its own module runs it, the engine never does.
+    /// "engine": the rules' engine runs it, its switch and its choices in
+    /// Settings ▸ Rules ▸ Presets (`[presets.<id>]`); "as-today": its own
+    /// module runs it, the engine never does.
     pub runs: &'static str,
     /// The phase in which it moves into the engine.
     pub phase: u8,
@@ -807,9 +881,11 @@ const PRESETS: &[PresetDecl] = &[
     preset("do-not-disturb-by-reasons", "C.7", ("clock", "moment-begins"), ("none", "do-not-disturb"), 3),
     PresetDecl { with: &[("level", "now")], ..preset("work-hours-over", "C.11", ("clock", "moment-begins"), ("none", "tell"), 3) },
     PresetDecl { with: &[("level", "now")], ..preset("books-thresholds", "C.12", ("invoice", "is-issued"), ("none", "tell"), 3) },
-    preset("calls-screened", "E.1", ("call", "rings"), ("call", "decline"), 3),
-    preset("missed-call-task", "E.2", ("call", "is-missed"), ("task", "make"), 3),
-    preset("call-closes-task", "E.2", ("call", "is-answered"), ("task", "mark-done"), 3),
+    // Each phone's screening, in Java, before the phone rings: as today.
+    preset("calls-screened", "E.1", ("call", "rings"), ("call", "decline"), 1),
+    // Run by the engine (`wiring::call`): their switches and choices in the Presets tab.
+    PresetDecl { conditions: &[("card", "exists", &[]), ("way", "is", &["in", "out"])], ..preset("missed-call-task", "E.2", ("call", "is-missed"), ("task", "call-back"), 1) },
+    PresetDecl { conditions: &[("card", "exists", &[])], ..preset("call-closes-task", "E.2", ("call", "is-answered"), ("task", "mark-done"), 1) },
     preset("bank-line-joined", "F.3", ("movement", "appears"), ("movement", "join"), 3),
     preset("budget-presets-counted", "F.4", ("movement", "day-comes"), ("movement", "plan"), 3),
     PresetDecl { with: &[("level", "now")], ..preset("contract-notice-told", "F.6", ("contract", "notice-nears"), ("none", "tell"), 3) },
@@ -822,6 +898,10 @@ const PRESETS: &[PresetDecl] = &[
 /// Presets the engine could run but whose own module runs them already:
 /// a rule made from one would tell twice.
 const BESIDE_ITS_OWN: &[&str] = &["codes-told"];
+
+/// Presets the rules' engine runs (`wiring::call`): no module of their own
+/// any more; their switch and choices are theirs (`[presets.<id>]`).
+pub const BY_ENGINE: &[&str] = &["missed-call-task", "call-closes-task"];
 
 /// The rule a preset says.
 fn preset_rule(p: &PresetDecl) -> super::store::Rule {
@@ -846,7 +926,8 @@ pub fn presets() -> Vec<Preset> {
             let rule = preset_rule(p);
             // A preset whose own module still tells what it says (the codes' notice) is never offered beside it.
             let offered = available(p.phase) && rule.problem().is_none() && !BESIDE_ITS_OWN.contains(&p.id);
-            Preset { id: p.id, entry: p.entry, rule, setting: p.setting, params: p.params.iter().map(|&(param, key)| PresetParam { param, key }).collect(), runs: "as-today", phase: p.phase, offered }
+            let runs = if BY_ENGINE.contains(&p.id) { "engine" } else { "as-today" };
+            Preset { id: p.id, entry: p.entry, rule, setting: p.setting, params: p.params.iter().map(|&(param, key)| PresetParam { param, key }).collect(), runs, phase: p.phase, offered }
         })
         .collect()
 }
@@ -978,15 +1059,23 @@ mod tests {
 
     /// Phase 1 offers what the design says: a message arrives; tie it to a
     /// project, give it a topic, keep its attachments in Papers, make a task
-    /// from a model, tell. The rest is
-    /// declared as coming; nothing that sends, deletes, pays, or changes a
-    /// setting or health is ever offered.
+    /// from a model, tell; and, since calls are objects of their own (26
+    /// November 2026), three of a call's events with the call-back task and its
+    /// closing, declining declared as the screening's own. Each action
+    /// follows only what it can act on. The rest is declared as coming;
+    /// nothing that sends, deletes, pays, or changes a setting or health is
+    /// ever offered.
     #[test]
-    fn phase_one_offers_five_actions_on_one_event() {
+    fn phase_one_offers_what_the_engine_runs() {
         let events: Vec<(&str, &str)> = TYPES.iter().flat_map(|t| t.events.iter().filter(|e| available(e.phase)).map(move |e| (t.id, e.id))).collect();
-        assert_eq!(events, [("message", "arrives")]);
-        let actions: Vec<(&str, &str)> = TYPES.iter().flat_map(|t| t.actions.iter().filter(|a| available(a.phase) && forbidden(a.writes).is_none()).map(move |a| (t.id, a.id))).collect();
-        assert_eq!(actions, [("message", "tie-to-project"), ("message", "give-topic"), ("message", "keep-attachments"), ("task", "make"), ("none", "tell")]);
+        assert_eq!(events, [("message", "arrives"), ("call", "rings"), ("call", "is-missed"), ("call", "is-answered")]);
+        let actions: Vec<(&str, &str)> = TYPES.iter().flat_map(|t| t.actions.iter().filter(|a| available(a.phase) && forbidden(a.writes).is_none() && by_engine(t.id, a.id)).map(move |a| (t.id, a.id))).collect();
+        assert_eq!(actions, [("message", "tie-to-project"), ("message", "give-topic"), ("message", "keep-attachments"), ("task", "make"), ("task", "mark-done"), ("task", "call-back"), ("none", "tell")]);
+        assert!(follows("message", "arrives", "task", "make") && !follows("call", "is-missed", "task", "make"));
+        assert!(follows("call", "is-missed", "task", "call-back") && follows("call", "is-answered", "task", "mark-done") && !follows("call", "rings", "task", "call-back"));
+        assert!(!follows("call", "is-answered", "task", "call-back") && !follows("call", "is-missed", "task", "mark-done") && !follows("call", "ends", "task", "call-back"), "an answered call never makes a \"Missed call\" task");
+        assert!(!follows("message", "arrives", "task", "call-back") && !follows("call", "ends", "none", "tell"));
+        assert!(follows("call", "rings", "call", "decline") && !by_engine("call", "decline"));
         for writes in [Writes::Send, Writes::Trash, Writes::Pay, Writes::Setting, Writes::Health] {
             assert!(forbidden(writes).is_some(), "{writes:?}");
         }
@@ -1001,6 +1090,13 @@ mod tests {
             }
         }
         assert_eq!(of("task").and_then(|t| t.action("make")).and_then(|a| a.param("title")).map(|p| p.from), Some(&["subject"][..]));
+        // The call presets: two run by the engine, offered to copy; the screening's never.
+        let presets = presets();
+        let of_id = |id: &str| presets.iter().find(|p| p.id == id).unwrap();
+        for id in ["missed-call-task", "call-closes-task"] {
+            assert!(of_id(id).offered && of_id(id).runs == "engine" && of_id(id).rule.problem().is_none(), "{id}");
+        }
+        assert!(!of_id("calls-screened").offered && of_id("calls-screened").runs == "as-today");
     }
 
     /// From an example, a friend at a webmail, or someone with a card, is

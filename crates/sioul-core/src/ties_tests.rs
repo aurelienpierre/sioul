@@ -127,6 +127,16 @@ impl Fixture {
             agendas: vec![("school-trip".into(), "leo".into())],
             taken: vec![("school-trip".into(), "sam@example.org".into())],
             children: BTreeSet::new(),
+            // Two calls with Noa (a card of their own, so that the chains' other tests keep theirs):
+            // the one that made the task, the one that closed it; one with a hidden number.
+            calls: vec![
+                call_source(MISSED_AT, false, Some("sioul:contact/noa"), "Missed call from Noa Linden"),
+                call_source(MISSED_AT + 3_600_000, false, Some("sioul:contact/noa"), "Call from Noa Linden"),
+                call_source(MISSED_AT + 60_000, false, None, "Missed call from a hidden number"),
+                // A landline two cards share: tied to both.
+                super::CallSource { cards: vec!["sioul:contact/noa".into(), "sioul:contact/home".into()], ..call_source(MISSED_AT + 120_000, false, Some("sioul:contact/noa"), "Call from Noa Linden") },
+            ],
+            call_tasks: vec![super::CallTask { uid: "sioul-call-noa-1".into(), person: "sioul:contact/noa".into(), calls: vec![crate::callback::Mark { at: MISSED_AT, out: false }], called: Some(crate::callback::Mark { at: MISSED_AT + 3_600_000, out: false }) }],
         };
         Fixture { tasks, events, contacts, vault, drafts, mail, projects, budget, local, sources }
     }
@@ -134,6 +144,14 @@ impl Fixture {
     pub(crate) fn world(&self) -> World<'_> {
         World { tasks: &self.tasks, events: &self.events, contacts: &self.contacts, vault: Some(&self.vault), places: None, drafts: &self.drafts, mail: &self.mail, projects: &self.projects, budget: &self.budget, local: &self.local, sites: &[], letters: Default::default(), uids: Default::default(), ties: None }
     }
+}
+
+/// When Mina's missed call began (ms).
+const MISSED_AT: i64 = 1_793_000_000_000;
+
+/// A call of the phone "phone-1", as the index reads it.
+fn call_source(at: i64, out: bool, card: Option<&str>, title: &str) -> super::CallSource {
+    super::CallSource { address: links::call_uri("phone-1", at, out), title: title.into(), detail: String::new(), when: at / 1000, mark: crate::callback::Mark { at, out }, cards: card.map(str::to_string).into_iter().collect() }
 }
 
 fn mail_ref(subject: &str, address: &str, date: i64, refs: &[&str]) -> MailRef {
@@ -213,6 +231,19 @@ fn every_source_reads_from_both_ends() {
     both(&index, &world, "sioul:invoice/2026-002", "client", "sioul:contact/north", "client-of");
     both(&index, &world, "sioul:project/studio", "client", "sioul:contact/north", "client-of");
     both(&index, &world, "sioul:project/studio", "budget", "sioul:budget/work", "project");
+    // Calls: whom each was with; the task the call-back rules made of one, and the call that closed it.
+    let missed = links::call_uri("phone-1", MISSED_AT, false);
+    both(&index, &world, &missed, "contact", "sioul:contact/noa", "involves");
+    both(&index, &world, "sioul:task/sioul-call-noa-1", "source", &missed, "made");
+    both(&index, &world, "sioul:task/sioul-call-noa-1", "link", &links::call_uri("phone-1", MISSED_AT + 3_600_000, false), "link");
+    let call = world.describe(&missed);
+    assert_eq!((call.kind, call.title.as_str(), call.found, call.when), (Kind::Call, "Missed call from Noa Linden", true, Some(MISSED_AT / 1000)));
+    assert!(tied(&index, &world, &Open, &links::call_uri("phone-1", MISSED_AT + 60_000, false)).is_empty(), "a hidden number: no card, no task");
+    let shared = links::call_uri("phone-1", MISSED_AT + 120_000, false);
+    both(&index, &world, &shared, "contact", "sioul:contact/home", "involves");
+    both(&index, &world, &shared, "contact", "sioul:contact/noa", "involves");
+    assert_eq!(links::call_parts(&missed), Some(("phone-1".to_string(), MISSED_AT, false)));
+    assert_eq!(world.canonical(&missed), missed);
     // Time noted folds into its task, never a thing of its own.
     assert_eq!(index.sessions(index.node("sioul:task/pay-rent").unwrap()), 2);
     // A budget line's address is its own canonical form (the "/" before its position kept).

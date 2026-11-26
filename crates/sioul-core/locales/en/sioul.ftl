@@ -1977,6 +1977,7 @@ chain-kind-letter = Letter
 chain-kind-invoice = Invoice
 chain-kind-movement = Payment
 chain-kind-site = Site
+chain-kind-call = Call
 chain-kind-web = Web page
 chain-kind-file = File
 chain-kind-other = Link
@@ -2040,6 +2041,45 @@ chain-count-site = { $n } { $n ->
         [one] site
        *[other] sites
     }
+chain-count-call = { $n } { $n ->
+        [one] call
+       *[other] calls
+    }
+call-title-missed = Missed call from { $who }
+call-title-in = Call from { $who }
+call-title-out = Call to { $who }
+call-title-out-unanswered = Call to { $who }, not answered
+call-title-declined = Call from { $who }, sent to voicemail
+calls-sheet-missed = missed call
+calls-sheet-in = they called, { $length }
+calls-sheet-out = you called, { $length }
+calls-sheet-out-unanswered = you called, not answered
+calls-sheet-out-short = you called, { $length }: their voicemail, perhaps
+calls-sheet-on = { $what }, on { $phone }
+calls-sheet-more = Their other calls of the month
+calls-open-card = The call's card
+call-card-gone-title = A call no longer kept
+call-card-gone = Each phone keeps its calls a month: this one is no longer here.
+call-card-why = A call is what its phone says it was: nothing to change here.
+call-card-section-call = The call
+call-card-section-ties = Tied to it
+call-card-no-ties = Nothing is tied to it.
+call-card-who = With
+call-card-number = Number
+call-card-when = When
+call-card-length = How long
+call-card-way = Which way
+call-card-way-in = They called you
+call-card-way-out = You called them
+call-card-answered = Answered
+call-card-answered-yes = Yes
+call-card-answered-no = No
+call-card-answered-elsewhere = Yes, on another device of the line
+call-card-declined = No: your phone's screening sent it to voicemail
+call-card-rang = It rang
+call-card-phone = On the phone
+call-card-screened = The screening
+call-card-hidden = A hidden number
 chain-count-web = { $n } { $n ->
         [one] web page
        *[other] web pages
@@ -5826,10 +5866,6 @@ set-letters-inbox-help = A folder where you, a scanner or a helper puts the post
 set-calls-group = Calls
 set-porch-calls = Calls your phones declined
 set-porch-calls-help = Listed on the Porch of each of your devices, each at a time its caller may reach you, never counted. Off, each phone lists only its own, and your computers none.
-set-porch-call-back = A task to call back
-set-porch-call-back-help = A missed call from someone in your address books makes a task, “Call back” and their name, for that day, without a reminder. Another call of theirs adds its time to it; it is done by itself once you spoke with them.
-set-porch-call-again = A task to call again
-set-porch-call-again-help = A call of yours to someone in your address books that did not reach them, not answered or shorter than the time below, makes a task, “Call … again”, for that day, without a reminder. It is done by itself once you spoke with them.
 set-porch-voicemail-seconds = A call that reached their voicemail
 set-porch-voicemail-seconds-help = A call of yours shorter than this likely reached their voicemail, not them. A call of yours this long or longer, or any call of theirs you answered, is one in which you spoke: it closes their task.
 set-voicemail-seconds = { $seconds } seconds
@@ -10469,6 +10505,7 @@ rules-event-supply-comes-in = comes in
 rules-event-call-rings = rings
 rules-event-call-is-missed = is missed
 rules-event-call-is-answered = is answered
+rules-event-call-ends = ends
 rules-event-paper-renewal-nears = is due for renewal soon
 rules-event-letter-scan-arrives = is scanned
 rules-event-contract-notice-nears = nears its last day of notice
@@ -10503,6 +10540,16 @@ rules-field-message-kind = what Sioul recognises in it
 rules-field-message-amount = the amount it states
 rules-field-message-spam = what your spam filter says of it
 rules-field-message-folder = the folder it came into
+rules-field-call-card = their card
+rules-field-call-number = their number
+rules-field-call-circle = whom it was with
+rules-field-call-way = which way it went
+rules-field-call-answered = whether it was answered
+rules-field-call-length = how long it lasted, in seconds
+rules-field-call-date = its day
+rules-field-call-weekday = its day of the week
+rules-field-call-hour = the time it began
+rules-field-call-phone = the phone, by its name
 rules-field-task-title = its title
 rules-field-task-list = its list
 rules-field-task-project = its project
@@ -10530,6 +10577,10 @@ rules-choice-circle-safe = safe
 rules-choice-circle-neutral = neutral
 rules-choice-circle-restricted = restricted
 rules-choice-circle-stranger = a stranger
+rules-choice-way-in = theirs
+rules-choice-way-out = yours
+rules-choice-answered-yes = answered
+rules-choice-answered-no = not answered
 rules-choice-attachment-type-pdf = a PDF
 rules-choice-attachment-type-image = a picture
 rules-choice-attachment-type-document = a document
@@ -10581,6 +10632,7 @@ rules-action-task-move-to-list = move it to a list
 rules-action-task-add-step = add a step
 rules-action-task-set-aside = set it aside
 rules-action-task-estimate = give it a first estimate
+rules-action-task-call-back = make a task to call them back
 rules-action-event-make = make an event
 rules-action-event-move = move it
 rules-action-event-pause = pause its series
@@ -10623,6 +10675,8 @@ rules-once-paper = Each file kept once, by the rule, the message and the file's 
 rules-once-server = Marked on the server before it is done, as mail filters do.
 rules-once-made = Made once, with a name worked out from the rule and what triggered it, the same on every device.
 rules-once-record = Written once in the record of acts every device reads.
+rules-once-call = Written once, by the phone that had the call, when it first reads it from its history.
+rules-once-screening = Decided once, by the phone's screening, before the phone rings.
 rules-once-tell = Told once, by the device that keeps your notices.
 rules-refused-no-project = The project it names is no longer there.
 rules-refused-no-topic = The topic it names is no longer there.
@@ -10639,6 +10693,7 @@ rules-refused-health = A rule never touches health.
 rules-refused-no-model = The model it names is no longer there.
 rules-refused-no-list = There is no task list to write in.
 rules-refused-read-only = That list can only be read.
+rules-refused-no-card = Nobody in your address books has this number: a task to call them back needs their card.
 rules-refused-meeting = A meeting with other guests is never changed.
 rules-refused-own = A rule never acts on what it made itself.
 rules-refused-chain = Three rules in a row already acted: the chain stops here.
@@ -10651,6 +10706,8 @@ rules-problem-value = A condition has no value yet.
 rules-problem-forbidden = A rule never sends, deletes, moves money, nor changes a setting or health.
 rules-problem-no-action = Say what is done.
 rules-problem-param = Something the action needs is missing.
+rules-problem-screening = Declining a call is decided by each phone's call screening, before it rings: set it in Settings, Devices, on the phone's card, under Calls.
+rules-problem-pair = This cannot be done when this happens: choose what fits it.
 rules-newer-format = Your rules were written by a newer Sioul: they are shown here, and change on the devices that run it.
 rules-tell-title = A message for one of your rules
 rules-tell-body = { $from }: { $subject }
@@ -10668,7 +10725,7 @@ settings-about-rules = When something happens, what Sioul does: your rules, and 
 rules-tab-own = Your rules
 rules-tab-presets = Presets
 rules-about = Each rule says what Sioul does when something happens. A rule acts on what comes after it is saved; each thing it does is said once, with Undo.
-rules-presets-about = The rules that come with Sioul: what it does by itself, as it always did, said the same way. A line you can change leads to where it is set; copying one to make your own comes in a later version.
+rules-presets-about = The rules that come with Sioul: what it does by itself, said the same way. Those Sioul runs as rules have their switch here, and can be copied to make your own; the others lead to where they are set.
 rules-none = No rule yet. Add one here, or from a message: “Make a rule from this…” in its menu.
 rules-add = Add a rule…
 rules-switch = This rule on
@@ -10745,6 +10802,11 @@ rules-preview-some = { $n ->
        *[other] { $n } messages in the last 30 days:
     }
 rules-preview-more = and { $n } more
+rules-preview-none-calls = No call in the last 30 days: it acts on the calls that come from now on, on the phone that has them.
+rules-preview-some-calls = { $n ->
+        [one] One call in the last 30 days:
+       *[other] { $n } calls in the last 30 days:
+    }
 rules-preview-line = { $day }, { $who }: { $does }
 rules-act-put-back = Undone: put back as it was. The rule leaves that one alone from now on.
 rules-act-kept = It changed since, so it stays as it is. The rule leaves that one alone from now on.
@@ -10818,6 +10880,14 @@ rules-preset-details = What you can change
 rules-preset-later = Sioul does this by itself, as it always has: its details become yours to change in a later version.
 rules-preset-copy = Copy to make my own
 rules-preset-open = Details
+rules-preset-switch = On or off: this preset
+rules-preset-way-in = Their calls you missed: “Call back” and their name
+rules-preset-way-out = Your calls that did not reach them: “Call … again”
+rules-preset-threshold = Which of your calls reached their voicemail is set in the Porch's settings, under Calls
+rules-preset-one-way = At least one kind of call stays ticked: to stop both, turn the preset off.
+rules-preset-replaced = Your rule is saved and runs in place of the preset, now off: { $sentence }
+rules-preset-choice-on = Now also for these: { $choice }
+rules-preset-choice-off = No longer for these: { $choice }
 
 # A rule in words (crates/sioul-core/src/wiring/words.rs): whole phrases per
 # event, condition and action, their values as inserts, joined by the code.
@@ -10829,6 +10899,7 @@ rule-join-and = {" "}and{" "}
 rule-join-or = {" "}or{" "}
 rule-a-message = a message
 rule-a-message-first = A message
+rule-a-call-first = A call
 rule-heading-any = When { $type } { $event }
 rule-heading-message-arrives = When a message arrives
 rule-heading-message-is-sent = When a message is sent
@@ -11067,6 +11138,24 @@ rule-do-task-mark-done = { $same ->
         [no] mark its task done
        *[yes] mark it done
     }
+rule-do-task-call-back = make a task to call them back, one for each person
+rule-if-call-card = { $test ->
+        [missing] from someone not in your address books
+        [is] with { $value }
+       *[exists] with someone in your address books
+    }
+rule-if-call-way = { $test ->
+        [is-not] not { $value }
+       *[is] { $value }
+    }
+rule-if-call-answered = { $test ->
+        [is-not] not { $value }
+       *[is] { $value }
+    }
+rule-if-call-circle = { $test ->
+        [is-not] not with { $value }
+       *[is] with { $value }
+    }
 rule-do-task-set-date = { $same ->
         [no] ask its task for { $date }
        *[yes] ask it for { $date }
@@ -11108,6 +11197,7 @@ rule-heading-supply-comes-in = When a supply comes in
 rule-heading-call-rings = When a call rings
 rule-heading-call-is-missed = When a call is missed
 rule-heading-call-is-answered = When a call is answered
+rule-heading-call-ends = When a call ends
 rule-heading-paper-renewal-nears = When a paper is soon to renew
 rule-heading-letter-scan-arrives = When a letter's scan arrives
 rule-heading-contract-notice-nears = When a contract's notice day nears
@@ -11211,6 +11301,8 @@ rule-act-paper = { $wrote ->
        *[yes] { $Subject }: { $paper } is in Papers now.
     }
 rule-act-other = { $Subject }: done.
+rule-act-joined = { $Subject }: its time added to the task to call them back.
+rule-act-done = { $Subject }: the task to call them back done.
 rules-refused-code-told = A message holding a code is told by its own notice: no rule tells it again.
 rules-refused-elsewhere = Another device keeps your notices: it tells this message, or this one does once it keeps them.
 rules-refused-too-large = Its attachments are too large to keep as papers by a rule: keep them yourself if you want them.
@@ -11257,9 +11349,9 @@ rule-preset-plan-fills-days = Each day, the plan places your tasks in the hours 
 rule-preset-do-not-disturb-by-reasons = When a moment begins for a reason you left on in What reaches you (while you sleep, during the pauses, while busy), do-not-disturb turns on on every device, and off after.
 rule-preset-work-hours-over = When your work hours are over, you are told once.
 rule-preset-books-thresholds = When your invoices come near a threshold of your books, you are told once.
-rule-preset-calls-screened = When a call rings on a phone, it rings or goes to voicemail as that phone's calls say.
-rule-preset-missed-call-task = When a call from someone in your address books is missed, a task to call back is made, and when a call of yours to them does not reach them, a task to call again: each while its switch is on in the Porch's settings, under Calls.
-rule-preset-call-closes-task = When a call goes through, the task to call back that person is done.
+rule-preset-calls-screened = When a call rings on a phone, it rings or goes to voicemail as that phone's calls say: each phone's screening decides, before it rings.
+rule-preset-missed-call-task = When a call from someone in your address books is missed, a task to call them back is made; when a call of yours to them does not reach them, a task to call them again. One task for each person: another such call adds its time to it.
+rule-preset-call-closes-task = When you spoke with someone on the phone, the task to call them back is done.
 rule-preset-bank-line-joined = When a line of your bank's export comes in, it is joined to the payment it is, and an invoice it pays is marked paid.
 rule-preset-budget-presets-counted = When the day of a regular payment comes, it is counted in its budget.
 rule-preset-contract-notice-told = When a contract's notice day comes near, you are reminded.

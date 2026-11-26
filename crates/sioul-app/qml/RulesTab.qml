@@ -18,7 +18,9 @@
 // one. A second tab, a conscious choice away: Presets, the rules that come
 // with Sioul, grouped by what they watch, each its own written sentence,
 // "Off where it is set." when its setting is off, and a link to where that
-// setting lives (a switch is drawn once, there). Every sentence of a rule
+// setting lives (a switch is drawn once, there); a preset the engine runs
+// (the calls' tasks) has its switch here, its one place, and its choices
+// under its sentence (which calls make a task), and "Copy to make my own". Every sentence of a rule
 // comes from the core (`rulesView`, one function: the editor and the status
 // line say the same words). Everything opened on demand is made the first
 // time; a fold stays as it was when the list is read again.
@@ -38,7 +40,7 @@ ColumnLayout {
     required property var theme
 
     // What `rulesView` gives: {groups: [{heading, sets: [{when, rules}], places: [{id, title, kept, open, openText, rules}]}],
-    // presets: [{heading, presets: [{id, sentence, off, open, openText, offered}]}], readOnly, note, count}.
+    // presets: [{heading, presets: [{id, sentence, off, open, openText, offered, engine, choices: [{id, text, on}]}]}], readOnly, note, count}.
     property var view: ({ groups: [], presets: [], readOnly: false, note: "", count: 0 })
     // The tab shown: your rules, or the presets.
     property string part: "own"
@@ -501,17 +503,59 @@ ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
 
-                    Label {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: preset.modelData.sentence
-                        textFormat: Text.PlainText
-                        wrapMode: Text.Wrap
-                        lineHeight: 1.2
-                        color: preset.modelData.off ? tab.theme.muted : tab.theme.text
+                        spacing: tab.theme.labelGap
+
+                        // Its switch, here alone, for one the engine runs.
+                        Switch {
+                            objectName: "presetSwitch"
+                            visible: preset.modelData.engine === true
+                            Layout.alignment: Qt.AlignTop
+                            checked: !preset.modelData.off
+                            Accessible.name: tab.sioul.text("rules-preset-switch")
+                            ToolTip.visible: hovered
+                            ToolTip.text: tab.sioul.text("rules-preset-switch")
+                            ToolTip.delay: 400
+                            onToggled: {
+                                tab.sioul.setPresetOn(preset.modelData.id, checked)
+                                tab.reload()
+                            }
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 0
+                            text: preset.modelData.sentence
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            lineHeight: 1.2
+                            color: preset.modelData.off ? tab.theme.muted : tab.theme.text
+                        }
+                    }
+                    // Its choices: which calls make a task.
+                    Repeater {
+                        model: preset.modelData.choices || []
+
+                        delegate: WrapCheckBox {
+                            id: choice
+
+                            required property var modelData
+
+                            objectName: "presetChoice:" + choice.modelData.id
+                            Layout.fillWidth: true
+                            Layout.leftMargin: tab.narrow ? 0 : 52
+                            enabled: !preset.modelData.off
+                            checked: choice.modelData.on
+                            text: choice.modelData.text
+                            onToggled: {
+                                tab.sioul.setPresetChoice(preset.modelData.id, choice.modelData.id, checked)
+                                tab.reload()
+                            }
+                        }
                     }
                     Label {
                         objectName: "presetOff"
-                        visible: preset.modelData.off
+                        visible: preset.modelData.off && preset.modelData.engine !== true
                         Layout.fillWidth: true
                         text: tab.sioul.text("rules-preset-off")
                         textFormat: Text.PlainText

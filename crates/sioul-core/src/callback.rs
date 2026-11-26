@@ -1,17 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright © 2026 Aurélien Pierre
 
-//! The call-back rules (docs/porch.md, "Calls"), each a switch of Porch ⚙ ▸
-//! Calls, on unless said: a missed call from someone in your address books
-//! makes a task, `Call back <name>`; a call of yours to them that did not
-//! reach them (not answered, or shorter than the voicemail threshold), `Call <name>
-//! again`. Each goes in the usual list, for the call's day, tied to
-//! their card, of the kind "call"; no reminder: tasks never nag.
+//! The tasks a call makes (docs/porch.md, "Calls"; docs/rules.md, "Calls"),
+//! as the rules ask for them (`wiring::call`): the presets "missed-call-task"
+//! and "call-closes-task" (Settings ▸ Rules ▸ Presets, each on unless said),
+//! and your own rules copied from them. A missed call from someone in your
+//! address books makes a task, `Call back <name>`; a call of yours to them
+//! that did not reach them (not answered, or shorter than the voicemail
+//! threshold), `Call <name> again`. Each goes in the usual list, for the
+//! call's day, tied to their card, of the kind "call"; no reminder: tasks
+//! never nag.
 //!
 //! - **One open task per person**: another such call adds its time to the
 //!   task's line ("also at 14:10"), never a count; the line is written again
-//!   only while it is still the one the rules wrote (yours, once you changed
-//!   it, stays).
+//!   only while it is still the one Sioul wrote (yours, once you changed it,
+//!   stays).
 //! - **It closes by itself** once you spoke with them after its first call:
 //!   a call of theirs you answered, however short, or one of yours answered
 //!   and at least as long as the voicemail threshold (`Call::spoke`), done at
@@ -24,14 +27,15 @@
 //!   call's own time, so that what it writes is the same whenever it writes.
 //!   A call that came while its rule was off never makes a task later.
 //!
-//! A task the rules made says so in lines of its own, which other programs
-//! keep: `X-SIOUL-CALL-BACK:<their card's address>`, `X-SIOUL-CALLS:<each
-//! call, its start (ms) and way>` ("1793000000000-in,1793003600000-in"), and,
-//! once closed by a call, `X-SIOUL-CALLED:<that call>`. Nothing of a phone
-//! number is written in it: the card says who.
+//! A task made so says it in lines of its own, which other programs keep,
+//! and which every Sioul since 0.0.12 reads the same way:
+//! `X-SIOUL-CALL-BACK:<their card's address>`, `X-SIOUL-CALLS:<each call,
+//! its start (ms) and way>` ("1793000000000-in,1793003600000-in"), and, once
+//! closed by a call, `X-SIOUL-CALLED:<that call>`. Nothing of a phone number
+//! is written in it: the card says who. Its calls' lines are how its card
+//! lists the calls it was made from (`ties`), each by its address.
 
 use crate::calls::{Call, Direction};
-use crate::config::Config;
 use crate::i18n::Translator;
 use crate::lines;
 use crate::tasks::{self, ContactRef, Status, TaskEdit};
@@ -48,26 +52,11 @@ pub const CALLS: &str = "X-SIOUL-CALLS";
 /// The line of the call that closed a task, kept once it is opened again.
 pub const CALLED: &str = "X-SIOUL-CALLED";
 
-/// The rules as your settings say them (`[porch]`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Rules {
-    /// A missed call makes "Call back …".
-    pub missed: bool,
-    /// A call of yours that did not reach them makes "Call … again".
-    pub unreached: bool,
-    /// The voicemail threshold (seconds).
-    pub threshold: u32,
-}
-
-impl Rules {
-    pub fn of(config: &Config) -> Rules {
-        let threshold = config.porch.voicemail_seconds;
-        Rules { missed: config.porch.call_back, unreached: config.porch.call_again, threshold: if threshold == 0 { crate::calls::VOICEMAIL_DEFAULT } else { threshold } }
-    }
-}
+/// The start of every such task's UID: `sioul-call-<their card's digest>-<its first call (ms)>`.
+pub const UID_PREFIX: &str = "sioul-call-";
 
 /// A call as a task's lines say it: when it began (ms), which way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Mark {
     pub at: i64,
     pub out: bool,
@@ -106,6 +95,8 @@ pub struct Kept {
     pub open: bool,
     /// Closed once by a call (`CALLED`): open again, it is yours to close.
     pub called: bool,
+    /// That call, when its line reads.
+    pub closed_by: Option<Mark>,
     /// Its calls (`CALLS`), oldest first.
     pub calls: Vec<Mark>,
 }
@@ -129,6 +120,7 @@ impl Kept {
             person,
             open: matches!(task.status, Status::NeedsAction | Status::InProcess),
             called: value(CALLED).is_some(),
+            closed_by: value(CALLED).and_then(|v| Mark::read(&v)),
             calls,
         })
     }
@@ -142,65 +134,98 @@ pub enum Write {
     Changed { file: PathBuf, text: String },
 }
 
-/// What this phone's new calls (`calls`, oldest first, each with their
-/// card when your address books have the number) make of the tasks the
-/// rules made (`kept`), each call in turn: a missed call (`Rules::missed`)
-/// or a call of yours that did not reach them (`Rules::unreached`) opens a
-/// task, or adds its time to their open one; a call in which you spoke
-/// closes their open one, made before it. Nothing for a call with nobody of
-/// your address books. A task that cannot be written is left as it is.
-pub fn apply(calls: &[Call], kept: &[Kept], rules: &Rules, tr: &Translator, zone: &TimeZone) -> Vec<Write> {
-    let mut tasks: Vec<Kept> = kept.to_vec();
-    let mut made: BTreeSet<String> = BTreeSet::new();
-    let mut changed: BTreeSet<String> = BTreeSet::new();
-    for call in calls {
-        let Some(contact) = call.contact.as_ref().filter(|c| !c.uri.trim().is_empty()) else { continue };
-        let open = tasks.iter_mut().find(|k| k.open && k.person == contact.uri);
-        let asks = (rules.missed && call.missed()) || (rules.unreached && call.not_reached(rules.threshold));
-        if asks {
-            match open {
-                Some(task) => {
-                    if task.calls.contains(&Mark::of(call)) {
-                        continue;
-                    }
-                    if let Ok(text) = with_call(task, call, tr, zone) {
-                        task.text = text;
-                        task.calls.push(Mark::of(call));
-                        task.calls.sort();
-                        changed.insert(task.uid.clone());
-                    }
+/// What a call did to the tasks made so (`Book::call_back`): a task made, or
+/// the call's time added to their open one; each by the task's UID.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Did {
+    Made(String),
+    Joined(String),
+}
+
+/// The tasks made so (`Kept`), as one call after another changes them: what
+/// the rules ask of each call (`wiring::call::run`), in turn, then what to
+/// write (`writes`). A task that cannot be written is left as it is.
+#[derive(Debug, Clone, Default)]
+pub struct Book {
+    tasks: Vec<Kept>,
+    made: BTreeSet<String>,
+    changed: BTreeSet<String>,
+}
+
+impl Book {
+    /// The tasks made so, as their files hold them now.
+    pub fn of(kept: &[Kept]) -> Book {
+        Book { tasks: kept.to_vec(), ..Book::default() }
+    }
+
+    /// A call that asks for a task (missed, or of yours that did not reach
+    /// them): their open task gets its time, else a task is made. Nothing for
+    /// a call with nobody of your address books, nor one already in their
+    /// task. What it did.
+    pub fn call_back(&mut self, call: &Call, tr: &Translator, zone: &TimeZone) -> Option<Did> {
+        let contact = call.contact.as_ref().filter(|c| !c.uri.trim().is_empty())?;
+        match self.tasks.iter_mut().find(|k| k.open && k.person == contact.uri) {
+            Some(task) => {
+                if task.calls.contains(&Mark::of(call)) {
+                    return None;
                 }
-                None => {
-                    if let Ok(task) = new_task(call, contact, tr, zone) {
-                        made.insert(task.uid.clone());
-                        tasks.push(task);
-                    }
-                }
+                let text = with_call(task, call, tr, zone).ok()?;
+                task.text = text;
+                task.calls.push(Mark::of(call));
+                task.calls.sort();
+                self.changed.insert(task.uid.clone());
+                Some(Did::Joined(task.uid.clone()))
             }
-        } else if call.spoke(rules.threshold)
-            && let Some(task) = open
-            && !task.called
-            && task.calls.first().is_some_and(|first| first.at < call.at)
-            && let Ok(text) = closed(task, call, zone)
-        {
-            task.text = text;
-            task.open = false;
-            task.called = true;
-            changed.insert(task.uid.clone());
+            None => {
+                let task = new_task(call, contact, tr, zone).ok()?;
+                let uid = task.uid.clone();
+                self.made.insert(uid.clone());
+                self.tasks.push(task);
+                Some(Did::Made(uid))
+            }
         }
     }
-    tasks
-        .into_iter()
-        .filter_map(|task| {
-            if made.contains(&task.uid) {
-                Some(Write::New { uid: task.uid, text: task.text })
-            } else if changed.contains(&task.uid) {
-                Some(Write::Changed { file: task.file, text: task.text })
-            } else {
-                None
-            }
-        })
-        .collect()
+
+    /// A call that closes their task: their open one, made before it, done
+    /// at the call's end; never one a call closed once and you opened again.
+    /// The task it closed, by its UID.
+    pub fn close(&mut self, call: &Call, zone: &TimeZone) -> Option<String> {
+        let contact = call.contact.as_ref().filter(|c| !c.uri.trim().is_empty())?;
+        let task = self.tasks.iter_mut().find(|k| k.open && k.person == contact.uri)?;
+        if task.called || !task.calls.first().is_some_and(|first| first.at < call.at) {
+            return None;
+        }
+        let text = closed(task, call, zone).ok()?;
+        task.text = text;
+        task.open = false;
+        task.called = true;
+        task.closed_by = Some(Mark::of(call));
+        self.changed.insert(task.uid.clone());
+        Some(task.uid.clone())
+    }
+
+    /// A task's text as it stands now in the book (what is written), by its UID.
+    pub fn text(&self, uid: &str) -> Option<&str> {
+        self.tasks.iter().find(|k| k.uid == uid).map(|k| k.text.as_str())
+    }
+
+    /// What to write: each task made (its UID and text, for the usual list),
+    /// each task changed (its file and its text).
+    pub fn writes(self) -> Vec<Write> {
+        let (made, changed) = (self.made, self.changed);
+        self.tasks
+            .into_iter()
+            .filter_map(|task| {
+                if made.contains(&task.uid) {
+                    Some(Write::New { uid: task.uid, text: task.text })
+                } else if changed.contains(&task.uid) {
+                    Some(Write::Changed { file: task.file, text: task.text })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 /// A call's start in `zone`.
@@ -214,7 +239,7 @@ fn zoned(at_ms: i64, zone: &TimeZone) -> Zoned {
 fn new_task(call: &Call, contact: &ContactRef, tr: &Translator, zone: &TimeZone) -> Result<Kept, String> {
     let at = zoned(call.at, zone);
     let mark = Mark::of(call);
-    let uid = format!("sioul-call-{}-{}", crate::notices::digest(&contact.uri), call.at);
+    let uid = format!("{UID_PREFIX}{}-{}", crate::notices::digest(&contact.uri), call.at);
     let mut args = crate::i18n::args();
     args.set("name", contact.name.trim().to_string());
     let title = tr.text(if mark.out { "call-task-again" } else { "call-task-back" }, Some(&args));
@@ -222,7 +247,7 @@ fn new_task(call: &Call, contact: &ContactRef, tr: &Translator, zone: &TimeZone)
     let edit = TaskEdit { title, notes: line(&[mark], due, tr, zone), due: due.to_string(), kind: "call".into(), contacts: vec![contact.clone()], ..TaskEdit::default() };
     let text = tasks::new_task(&edit, &uid, zone, &at)?;
     let text = tasks::add_lines(&text, &[format!("{PERSON}:{}", lines::escape(&contact.uri)), format!("{CALLS}:{}", mark.word())], &at)?;
-    Ok(Kept { file: PathBuf::new(), text, uid, person: contact.uri.clone(), open: true, called: false, calls: vec![mark] })
+    Ok(Kept { file: PathBuf::new(), text, uid, person: contact.uri.clone(), open: true, called: false, closed_by: None, calls: vec![mark] })
 }
 
 /// An open task with one more call: its calls' line, and its own line
@@ -299,17 +324,13 @@ mod tests {
     use crate::calls::{HistoryRow, Logged};
     use crate::notices::State;
 
-    fn paris() -> TimeZone {
-        TimeZone::get("Europe/Paris").unwrap()
-    }
-
     /// 4 November 2026 at a time, in Paris (ms).
     fn at(hhmm: &str) -> i64 {
         format!("2026-11-04T{hhmm}:00+01:00[Europe/Paris]").parse::<Zoned>().unwrap().timestamp().as_millisecond()
     }
 
-    fn noa() -> ContactRef {
-        ContactRef { name: "Noa Linden".into(), uri: "sioul:contact/noa-1".into() }
+    fn noa() -> tasks::ContactRef {
+        tasks::ContactRef { name: "Noa Linden".into(), uri: "sioul:contact/noa-1".into() }
     }
 
     /// A call of the phone's history: Android's row (`kind`, its type), with
@@ -322,30 +343,6 @@ mod tests {
     }
 
     const NOA: &str = "01 99 00 12 34";
-
-    fn rules() -> Rules {
-        Rules { missed: true, unreached: true, threshold: 90 }
-    }
-
-    fn tr() -> Translator {
-        Translator::new("en")
-    }
-
-    /// The writes as the tasks they leave: each new one with no file yet.
-    fn kept_after(writes: &[Write], kept: &[Kept]) -> Vec<Kept> {
-        let mut out: Vec<Kept> = kept.to_vec();
-        for write in writes {
-            match write {
-                Write::New { uid, text } => out.push(Kept::read(Path::new(&format!("{uid}.ics")), text, &paris()).unwrap()),
-                Write::Changed { file, text } => {
-                    let task = Kept::read(file, text, &paris()).unwrap();
-                    out.retain(|k| k.uid != task.uid);
-                    out.push(task);
-                }
-            }
-        }
-        out
-    }
 
     /// A call from the phone's history, as Android's types say it: missed
     /// (or declined by hand), not reached (not answered, or shorter than the
@@ -379,111 +376,6 @@ mod tests {
         assert!(hidden.hidden && hidden.number.is_empty() && hidden.person().is_none() && hidden.id.ends_with("-hidden-in"));
         assert_eq!(missed.person().as_deref(), Some("sioul:contact/noa-1"));
         assert_eq!(call("11:00", 3, 0, "04 65 71 00 00").person().as_deref(), Some("+33465710000"), "nobody's card: their number");
-    }
-
-    /// Rule 1: a missed call from someone in your address books makes "Call
-    /// back …", for its day, tied to their card, of the kind "call", with no
-    /// reminder; nothing for a number in nobody's card, nor with the rule off.
-    #[test]
-    fn a_missed_call_makes_a_task_to_call_back() {
-        let writes = apply(&[call("09:30", 3, 0, NOA)], &[], &rules(), &tr(), &paris());
-        let [Write::New { uid, text }] = writes.as_slice() else { panic!("{writes:?}") };
-        assert_eq!(*uid, format!("sioul-call-{}-{}", crate::notices::digest("sioul:contact/noa-1"), at("09:30")));
-        let task = tasks::task_of_text(text, &paris()).unwrap();
-        assert_eq!(task.title, "Call back Noa Linden");
-        assert_eq!(task.notes, "Missed call at 09:30.");
-        assert_eq!(task.due.get(..10), Some("2026-11-04"));
-        assert_eq!(task.kind, "call");
-        assert_eq!(task.contacts, vec![noa()]);
-        assert!(!text.contains("BEGIN:VALARM"), "tasks never nag");
-        assert!(text.contains("X-SIOUL-CALL-BACK:sioul:contact/noa-1") && text.contains(&format!("X-SIOUL-CALLS:{}-in", at("09:30"))));
-        assert!(!text.contains("99 00") && !text.contains("199001234"), "no number in the task");
-        // Stamped with the call: the same bytes whenever it is made.
-        assert_eq!(apply(&[call("09:30", 3, 0, NOA)], &[], &rules(), &tr(), &paris()), writes);
-        assert!(apply(&[call("09:30", 3, 0, "04 65 71 00 00")], &[], &rules(), &tr(), &paris()).is_empty(), "in nobody's card");
-        assert!(apply(&[call("09:30", 3, 0, NOA)], &[], &Rules { missed: false, ..rules() }, &tr(), &paris()).is_empty(), "the rule off");
-    }
-
-    /// Rule 2: a call of yours that did not reach them makes "Call … again":
-    /// not answered, or shorter than the voicemail threshold (90 s, or as
-    /// set); nothing once you spoke, nor with the rule off.
-    #[test]
-    fn a_call_that_did_not_reach_them_makes_a_task_to_call_again() {
-        for (seconds, threshold, makes) in [(0, 90, true), (40, 90, true), (95, 90, false), (95, 120, true), (65, 60, false)] {
-            let writes = apply(&[call("14:10", 2, seconds, NOA)], &[], &Rules { threshold, ..rules() }, &tr(), &paris());
-            assert_eq!(writes.len(), usize::from(makes), "{seconds} s, threshold {threshold}");
-            if let [Write::New { text, .. }] = writes.as_slice() {
-                let task = tasks::task_of_text(text, &paris()).unwrap();
-                assert_eq!((task.title.as_str(), task.notes.as_str()), ("Call Noa Linden again", "Your call at 14:10 did not reach them."));
-            }
-        }
-        assert!(apply(&[call("14:10", 2, 0, NOA)], &[], &Rules { unreached: false, ..rules() }, &tr(), &paris()).is_empty());
-    }
-
-    /// One open task per person: another such call adds its time to the
-    /// task's line, either rule, never a count; a line you wrote yourself
-    /// stays yours; once the task is done, the next call makes a new one.
-    #[test]
-    fn one_open_task_per_person() {
-        let first = apply(&[call("09:30", 3, 0, NOA), call("09:41", 3, 0, NOA)], &[], &rules(), &tr(), &paris());
-        assert_eq!(first.len(), 1, "{first:?}");
-        let kept = kept_after(&first, &[]);
-        assert_eq!(tasks::task_of_text(&kept[0].text, &paris()).unwrap().notes, "Missed call at 09:30, also at 09:41.");
-        // Later, your call that did not reach them: the same task, its way said.
-        let later = apply(&[call("14:10", 2, 0, NOA)], &kept, &rules(), &tr(), &paris());
-        let kept = kept_after(&later, &kept);
-        assert_eq!(kept.len(), 1);
-        let task = tasks::task_of_text(&kept[0].text, &paris()).unwrap();
-        assert_eq!((task.title.as_str(), task.notes.as_str()), ("Call back Noa Linden", "Missed call at 09:30, also at 09:41, you called at 14:10."));
-        assert_eq!(kept[0].calls.len(), 3);
-        // The same call read again: nothing.
-        assert!(apply(&[call("14:10", 2, 0, NOA)], &kept, &rules(), &tr(), &paris()).is_empty());
-        // The next day: its day said.
-        let tomorrow = Call { at: at("09:30") + 86_400_000, id: "next".into(), ..call("09:30", 3, 0, NOA) };
-        let next = kept_after(&apply(&[tomorrow], &kept, &rules(), &tr(), &paris()), &kept);
-        assert_eq!(tasks::task_of_text(&next[0].text, &paris()).unwrap().notes, "Missed call at 09:30, also at 09:41, you called at 14:10, also on Thu 5 Nov at 09:30.");
-        // A line you wrote: kept; the calls' own line still grows.
-        let yours = Kept { text: tasks::replace_lines(&kept[0].text, |l| lines::name(l) == "DESCRIPTION", vec!["DESCRIPTION:Ask about Saturday".into()], &zoned(at("15:00"), &paris())).unwrap(), ..kept[0].clone() };
-        let after = kept_after(&apply(&[call("16:00", 3, 0, NOA)], &[yours], &rules(), &tr(), &paris()), &[]);
-        assert_eq!(tasks::task_of_text(&after[0].text, &paris()).unwrap().notes, "Ask about Saturday");
-        assert_eq!(after[0].calls.len(), 4);
-        // Done by hand: the next missed call makes a new task.
-        let done = Kept { text: tasks::set_status(&kept[0].text, Status::Completed, &paris(), &zoned(at("15:00"), &paris())).unwrap(), open: false, ..kept[0].clone() };
-        let again = apply(&[call("16:00", 3, 0, NOA)], &[done], &rules(), &tr(), &paris());
-        assert!(matches!(again.as_slice(), [Write::New { .. }]), "{again:?}");
-    }
-
-    /// The task closes by itself once you spoke with them after its first
-    /// call (a call of theirs you answered, however short; one of yours at
-    /// least the threshold): done at that call's end, the call named, the
-    /// same bytes whenever; never by a call before it, nor a short one of
-    /// yours, and never again once you opened it again.
-    #[test]
-    fn the_task_closes_by_itself_once_you_spoke() {
-        let kept = kept_after(&apply(&[call("09:30", 3, 0, NOA)], &[], &rules(), &tr(), &paris()), &[]);
-        assert!(apply(&[call("10:00", 2, 40, NOA)], &kept, &rules(), &tr(), &paris()).iter().all(|w| matches!(w, Write::Changed { .. })), "short: the task grows, stays open");
-        assert!(apply(&[Call { at: at("09:00"), ..call("09:00", 1, 300, NOA) }], &kept, &rules(), &tr(), &paris()).is_empty(), "a call before the task's first");
-        for spoken in [call("11:00", 2, 95, NOA), call("11:00", 1, 300, NOA)] {
-            let writes = apply(std::slice::from_ref(&spoken), &kept, &rules(), &tr(), &paris());
-            let [Write::Changed { text, .. }] = writes.as_slice() else { panic!("{writes:?}") };
-            let task = tasks::task_of_text(text, &paris()).unwrap();
-            assert_eq!(task.status, Status::Completed);
-            let end = zoned(spoken.at + spoken.seconds * 1000, &paris());
-            assert_eq!(task.completed, Some(end.timestamp().as_second()));
-            assert!(text.contains(&format!("X-SIOUL-CALLED:{}", Mark::of(&spoken).word())));
-            assert_eq!(apply(std::slice::from_ref(&spoken), &kept, &rules(), &tr(), &paris()), writes, "the same bytes");
-        }
-        // A call of theirs you answered closes it, however short: you picked up.
-        let writes = apply(&[call("10:30", 1, 40, NOA)], &kept, &rules(), &tr(), &paris());
-        let [Write::Changed { text, .. }] = writes.as_slice() else { panic!("{writes:?}") };
-        assert_eq!(tasks::task_of_text(text, &paris()).unwrap().status, Status::Completed, "answered 0:40");
-        // Opened again after a call closed it: yours to close; a new missed call still joins it.
-        let closed = kept_after(&apply(&[call("11:00", 1, 300, NOA)], &kept, &rules(), &tr(), &paris()), &kept);
-        let reopened = Kept { text: tasks::set_status(&closed[0].text, Status::NeedsAction, &paris(), &zoned(at("12:00"), &paris())).unwrap(), open: true, ..closed[0].clone() };
-        assert!(reopened.called);
-        assert!(apply(&[call("13:00", 1, 300, NOA)], &[reopened.clone()], &rules(), &tr(), &paris()).is_empty(), "never closed again by a call");
-        let joined = apply(&[call("13:30", 3, 0, NOA)], &[reopened], &rules(), &tr(), &paris());
-        assert!(matches!(joined.as_slice(), [Write::Changed { .. }]), "{joined:?}");
     }
 
     #[test]

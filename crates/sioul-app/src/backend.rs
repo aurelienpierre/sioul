@@ -2581,6 +2581,22 @@ pub mod qobject {
         #[qinvokable]
         fn rule_from_preset(self: &Sioul, id: &QString) -> QString;
 
+        /// A preset the engine runs turned on or off (Settings ▸ Rules ▸
+        /// Presets, its one place), said in the status line.
+        #[qinvokable]
+        fn set_preset_on(self: Pin<&mut Sioul>, id: &QString, on: bool);
+
+        /// One of a preset's choices ticked or not ("missed-call-task": the
+        /// ways of the calls it answers), said in the status line.
+        #[qinvokable]
+        fn set_preset_choice(self: Pin<&mut Sioul>, id: &QString, choice: &QString, on: bool);
+
+        /// A call's card (calls.rs, `card`): who, when, how long, which way,
+        /// answered or not, on which phone, and its ties; JSON, {gone} once
+        /// its phone no longer keeps it.
+        #[qinvokable]
+        fn call_card(self: &Sioul, address: &QString) -> QString;
+
         /// What "Add a rule…" offers to start from, found off the window's
         /// thread; `rules_starts_found` brings {messages, presets} as JSON.
         #[qinvokable]
@@ -5475,6 +5491,10 @@ impl qobject::Sioul {
         }
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
+        // The call-back switches of Porch ⚙ ▸ Calls of before, carried once into their presets.
+        if let Err(e) = config::migrate_presets(&config_path()) {
+            eprintln!("{e}");
+        }
         // The invitations Sioul sends itself, and its servers' word on those they send (outbox.rs).
         crate::outbox::start(&self.qt_thread(), &self.shared());
         self.as_mut().set_reading(QString::from(&reading_json()));
@@ -10105,6 +10125,18 @@ impl qobject::Sioul {
 
     fn rule_from_preset(&self, id: &QString) -> QString {
         QString::from(&crate::wiring::from_preset(&id.to_string()))
+    }
+
+    fn set_preset_on(self: Pin<&mut Self>, id: &QString, on: bool) {
+        crate::wiring::set_preset_on(&self.qt_thread(), &self.shared(), &id.to_string(), on);
+    }
+
+    fn set_preset_choice(self: Pin<&mut Self>, id: &QString, choice: &QString, on: bool) {
+        crate::wiring::set_preset_choice(&self.qt_thread(), &self.shared(), &id.to_string(), &choice.to_string(), on);
+    }
+
+    fn call_card(&self, address: &QString) -> QString {
+        QString::from(&crate::calls::card(&address.to_string()))
     }
 
     fn rules_starts_ask(self: Pin<&mut Self>) {

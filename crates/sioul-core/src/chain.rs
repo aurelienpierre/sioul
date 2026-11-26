@@ -106,12 +106,12 @@ impl Weights {
 }
 
 /// A kind's family, which gives its shape and its colour: "time" (tasks,
-/// events), "messages" (mail, drafts, letters), "people" (contacts, persons),
+/// events), "messages" (mail, drafts, letters, calls), "people" (contacts, persons),
 /// "money" (movements, budgets, invoices, contracts), "projects", "records" (the rest).
 pub fn family(kind: Kind) -> &'static str {
     match kind {
         Kind::Task | Kind::Event => "time",
-        Kind::Mail | Kind::Draft | Kind::Letter => "messages",
+        Kind::Mail | Kind::Draft | Kind::Letter | Kind::Call => "messages",
         Kind::Contact | Kind::Person => "people",
         Kind::Movement | Kind::Budget | Kind::Invoice | Kind::Contract => "money",
         Kind::Project => "projects",
@@ -137,6 +137,7 @@ pub fn kind_id(kind: Kind) -> &'static str {
         Kind::Invoice => "invoice",
         Kind::Movement => "movement",
         Kind::Site => "site",
+        Kind::Call => "call",
         Kind::Web => "web",
         Kind::File => "file",
         Kind::Other => "other",
@@ -149,7 +150,7 @@ pub fn kind_id(kind: Kind) -> &'static str {
 pub const FIRST_KINDS: [Kind; 5] = [Kind::Letter, Kind::Task, Kind::Note, Kind::Mail, Kind::Movement];
 
 /// Every kind, for the words' check.
-pub const KINDS: [Kind; 18] = [Kind::Task, Kind::Event, Kind::Mail, Kind::Draft, Kind::Note, Kind::Contact, Kind::Person, Kind::Budget, Kind::Project, Kind::Paper, Kind::Contract, Kind::Letter, Kind::Invoice, Kind::Movement, Kind::Site, Kind::Web, Kind::File, Kind::Other];
+pub const KINDS: [Kind; 19] = [Kind::Task, Kind::Event, Kind::Mail, Kind::Draft, Kind::Note, Kind::Contact, Kind::Person, Kind::Budget, Kind::Project, Kind::Paper, Kind::Contract, Kind::Letter, Kind::Invoice, Kind::Movement, Kind::Site, Kind::Call, Kind::Web, Kind::File, Kind::Other];
 
 /// A collection: shown with what it holds, not walked through unless it is
 /// the entry point. A budget whole (`sioul:budget/<budget>`) is one; its line is not.

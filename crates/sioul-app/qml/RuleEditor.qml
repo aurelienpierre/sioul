@@ -107,15 +107,28 @@ SafeDialog {
     function valueKind(field, test) {
         return test && test.value ? test.value : field ? field.value : "none"
     }
-    // Every action of every type, as one list: {type, action, name, available, phase}.
+    // Every action of every type, as one list: {type, action, name, available, phase, after}. One
+    // done in its own place (declining a call: the phone's screening) is never offered.
     readonly property var actions: {
         const out = []
         for (const type of form.catalogue.types || []) {
-            for (const action of type.actions || [])
-                out.push({ type: type.id, action: action.id, name: action.name, available: action.available === true && type.available !== false, phase: action.phase || type.phase || 0 })
+            for (const action of type.actions || []) {
+                if (action.elsewhere !== true)
+                    out.push({ type: type.id, action: action.id, name: action.name, available: action.available === true && type.available !== false, phase: action.phase || type.phase || 0, after: action.after || [] })
+            }
         }
         return out
     }
+    // Whether an action can follow the rule's "when" (`declare::follows`): any when it says none;
+    // else its type ("message"), or its type and event ("call/is-missed").
+    function follows(action) {
+        if (!form.draft || (action.after || []).length === 0)
+            return true
+        const when = form.draft.when
+        return action.after.some(a => a === when.type || a === when.type + "/" + when.event)
+    }
+    // The actions that can follow the rule's "when".
+    readonly property var actionsHere: form.actions.filter(a => form.follows(a))
     function actionOf() {
         if (!form.draft)
             return null
@@ -147,11 +160,20 @@ SafeDialog {
             return
         const event = (type.events || []).find(e => e.available)
         form.draft.when = { type: id, event: event ? event.id : "", match: form.draft.when.match, if: [] }
+        form.dropUnfollowing()
         form.changed()
     }
     function setEvent(id) {
         form.draft.when.event = id
+        form.dropUnfollowing()
         form.changed()
+    }
+    // An action that cannot follow the new "when" is let go: the person chooses again.
+    function dropUnfollowing() {
+        const then = form.draft.then
+        const chosen = form.actions.find(a => a.type === then.type && a.action === then.action)
+        if (chosen && !form.follows(chosen))
+            form.draft.then = { type: "", action: "", with: {} }
     }
     function setMatch(any) {
         form.draft.when.match = any ? "any" : "all"
@@ -490,7 +512,7 @@ SafeDialog {
                     theme: form.theme
                     objectName: "ruleAction"
                     Layout.fillWidth: true
-                    things: form.actions.map(a => ({ id: a.type + "/" + a.action, name: a.name, available: a.available }))
+                    things: form.actionsHere.map(a => ({ id: a.type + "/" + a.action, name: a.name, available: a.available }))
                     chosen: form.draft && form.draft.then.action !== "" ? form.draft.then.type + "/" + form.draft.then.action : ""
                     placeholder: form.sioul.text("rules-choose-action")
                     Accessible.name: form.sioul.text("rules-then-action")

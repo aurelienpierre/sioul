@@ -2062,6 +2062,12 @@ fn the_phone_messages_and_calls() {
     }
     let calls = call(&mut server, "calls", json!({}));
     assert!(text(&calls).contains("declined") && calls["structuredContent"]["calls"].as_array().unwrap().len() == 1, "{calls}");
+    // Each call by its address, which `links` follows.
+    let address = calls["structuredContent"]["calls"][0]["address"].as_str().unwrap_or_default().to_string();
+    assert!(address.starts_with("sioul:call/") && text(&calls).contains(&address) && !address.contains('+'), "{calls}");
+    let tied = call(&mut server, "links", json!({ "uri": address }));
+    assert_eq!(tied["structuredContent"]["found"], true, "{tied}");
+    assert_eq!(tied["structuredContent"]["kind"], "call", "{tied}");
     // The moment now, read-only and cheap: what now is for and what reaches the person.
     let now = call(&mut server, "now", json!({}));
     assert!(now["structuredContent"]["reaches"].as_array().unwrap().len() > 20 && text(&now).starts_with("Now: "), "{now}");

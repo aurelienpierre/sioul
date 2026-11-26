@@ -91,10 +91,11 @@ fn the_presets_say_what_sioul_does_by_itself() {
     for preset in &presets {
         assert!(preset.rule.unknown.is_empty() && declare::of(&preset.rule.when.kind).and_then(|t| t.event(&preset.rule.when.event)).is_some(), "{}", preset.id);
         assert!(declare::of(&preset.rule.then.kind).and_then(|t| t.action(&preset.rule.then.action)).is_some(), "{}", preset.id);
-        assert_eq!(preset.runs, "as-today");
+        assert_eq!(preset.runs, if declare::BY_ENGINE.contains(&preset.id) { "engine" } else { "as-today" }, "{}", preset.id);
     }
+    // The engine runs the calls' two; codes told, which it could run, is never offered beside its own notice.
     let offered: Vec<&str> = presets.iter().filter(|p| p.offered).map(|p| p.id).collect();
-    assert!(offered.is_empty(), "the one the engine could run, codes told, is never offered beside its own notice: {offered:?}");
+    assert_eq!(offered, ["missed-call-task", "call-closes-task"]);
     let codes = presets.iter().find(|p| p.id == "codes-told").unwrap();
     assert!(codes.rule.problem().is_none() && codes.phase == 1, "it could run");
     assert!(declare::from_preset("codes-told").is_none() && declare::from_preset("supplies-used").is_none(), "shown, not offered");

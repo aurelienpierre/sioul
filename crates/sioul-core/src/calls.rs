@@ -1700,6 +1700,8 @@ pub struct Line {
     /// "declined" (the screening sent it to voicemail), "missed" (it rang,
     /// nobody answered), "unreached" (a call of yours that did not reach them).
     pub kind: &'static str,
+    /// The address of its last call (`address`): what its card opens.
+    pub address: String,
 }
 
 /// What the list needs besides the calls.
@@ -1740,7 +1742,7 @@ pub fn lines(calls: &[Held], seen: &Seen, messages: &BTreeMap<String, Message>, 
     groups.into_iter().map(|(device, _, column, date, group)| line(&group, calls, device, column, date, messages, l)).collect()
 }
 
-pub(crate) fn local(at_ms: i64, now: &Zoned) -> Zoned {
+pub fn local(at_ms: i64, now: &Zoned) -> Zoned {
     jiff::Timestamp::from_millisecond(at_ms).map_or_else(|_| now.clone(), |t| t.to_zoned(now.time_zone().clone()))
 }
 
@@ -1897,6 +1899,7 @@ fn line(group: &[&Held], calls: &[Held], device: &str, column: &str, date: jiff:
         when,
         at: last.at,
         kind: "declined",
+        address: address(&last.device, last.at, false),
     }
 }
 
@@ -1910,7 +1913,7 @@ fn args_who(tr: &Translator, hidden: bool, name: Option<&str>, unknown: &str) ->
 }
 
 /// "while you slept", "during work": what the time was, in a few words.
-pub(crate) fn context(tr: &Translator, column: &str) -> String {
+pub fn context(tr: &Translator, column: &str) -> String {
     match column {
         "work" | "admin" | "leisure" | "meals" | "sleep" | "pause" | "free" | "slot" | "dnd" | "reachable" | "busy" => tr.text(&format!("calls-context-{column}"), None),
         _ => tr.text("calls-context-any", None),
@@ -2077,6 +2080,70 @@ pub fn history(calls: &[Held], keys: &BTreeSet<String>, l: &Lister) -> Vec<Strin
     calls.iter().rev().filter(|h| !h.hidden && keys.contains(&h.key) && h.who != "blocked" && now_ms - h.at <= KEPT_DAYS * DAY_MS && h.at <= now_ms + 60_000).map(|h| history_line(h, l)).collect()
 }
 
+/// A call on a person's sheet: its sentence, and the call it opens.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SheetCall {
+    pub text: String,
+    /// Its address (`address`): its card.
+    pub address: String,
+}
+
+/// A person's calls of the last month (`keys`, their numbers as Sioul keys
+/// them), newest first, from every phone (`objects`): each call of a phone's
+/// history (missed, answered, yours, how long) and each a screening declined
+/// or let ring, one sentence each with the call it opens, for their sheet,
+/// never a count. Each says the phone only when several phones share their
+/// calls (`PhoneWords::sheet`). A blocked caller's never come.
+pub fn sheet(objects: &[Object], keys: &BTreeSet<String>, threshold: u32, l: &Lister) -> Vec<SheetCall> {
+    let now_ms = l.now.timestamp().as_millisecond();
+    let tr = l.tr;
+    objects
+        .iter()
+        .rev()
+        .filter(|o| !o.hidden && keys.contains(&o.key) && o.screened.as_ref().is_none_or(|h| h.who != "blocked") && now_ms - o.at <= KEPT_DAYS * DAY_MS && o.at <= now_ms + 60_000)
+        .map(|o| {
+            let text = match &o.screened {
+                // Screened, and no history read holds it: what the screening did, as before.
+                Some(held) if matches!(o.kind.as_str(), "declined" | "rang") => history_line(held, l),
+                _ => {
+                    let at = local(o.at, l.now);
+                    let mut args = crate::i18n::args();
+                    args.set("day", day_words(tr, at.date(), l.now.date()));
+                    args.set("time", at.strftime("%H:%M").to_string());
+                    let head = tr.text("calls-history-when", Some(&args));
+                    let call = o.call(None);
+                    let mut args = crate::i18n::args();
+                    args.set("length", length(u32::try_from(o.seconds).unwrap_or(0)));
+                    let id = if call.missed() {
+                        "calls-sheet-missed"
+                    } else if o.out && !o.answered {
+                        "calls-sheet-out-unanswered"
+                    } else if o.out && call.not_reached(threshold) {
+                        "calls-sheet-out-short"
+                    } else if o.out {
+                        "calls-sheet-out"
+                    } else {
+                        "calls-sheet-in"
+                    };
+                    let mut what = tr.text(id, Some(&args));
+                    let phone = (l.phone)(&o.phone).sheet();
+                    if !phone.is_empty() {
+                        let mut args = crate::i18n::args();
+                        args.set("what", what);
+                        args.set("phone", phone);
+                        what = tr.text("calls-sheet-on", Some(&args));
+                    }
+                    let mut args = crate::i18n::args();
+                    args.set("head", head);
+                    args.set("outcome", format!("{what}."));
+                    capitalized(&tr.text("calls-history-line", Some(&args)))
+                }
+            };
+            SheetCall { text, address: o.address.clone() }
+        })
+        .collect()
+}
+
 /// "Tuesday 6 October at 23:10, while you slept: declined, sent to
 /// voicemail.", "Today at 06:48, while you slept: it rang. A second call
 /// within 15 minutes rings."
@@ -2120,6 +2187,11 @@ fn history_line(h: &Held, l: &Lister) -> String {
         text.push_str(&reason);
     }
     text
+}
+
+/// Why a call rang, in words, when its row alone would not say it (`rang_reason`).
+pub fn rang_words(tr: &Translator, why: &str) -> Option<String> {
+    rang_reason(tr, why)
 }
 
 /// Why a call rang when its row alone would not say it: a second call,
@@ -2184,6 +2256,14 @@ const HISTORY_OVERLAP_MS: i64 = 6 * 3_600_000;
 pub const VOICEMAIL_SECONDS: [u32; 3] = [60, 90, 120];
 /// The voicemail threshold unless said.
 pub const VOICEMAIL_DEFAULT: u32 = 90;
+
+/// The voicemail threshold as your settings say it (`[porch] voicemail_seconds`, Porch ⚙ ▸ Calls), seconds.
+pub fn threshold(config: &crate::config::Config) -> u32 {
+    match config.porch.voicemail_seconds {
+        0 => VOICEMAIL_DEFAULT,
+        seconds => seconds,
+    }
+}
 
 /// A row of the phone's own call history (Android's call log) as Java reads
 /// it (Calls.history): when it began (ms), how long it lasted (s), its type,
@@ -2489,7 +2569,150 @@ fn row_of_calls(kind: &'static str, group: &[&Call], phone: &str, l: &Lister) ->
         when,
         at: last.at,
         kind,
+        address: last.address(),
     }
+}
+
+// ---------------------------------------------------------------- a call as an object of its own
+
+/// How far apart a call screened and the same call in its phone's history
+/// may lie (ms): Java notes the moment it screens, Android's history the
+/// call's start.
+const SAME_CALL_MS: i64 = 120_000;
+
+/// A call's address (`links::call_uri`): the phone that had it, by its name
+/// in the sharing, when it began (ms), which way; the same on every device,
+/// and never a number.
+pub fn address(phone: &str, at_ms: i64, out: bool) -> String {
+    crate::links::call_uri(phone, at_ms, out)
+}
+
+impl Call {
+    /// Its address (`address`), the same on every device.
+    pub fn address(&self) -> String {
+        address(&self.phone, self.at, self.direction == Direction::Outgoing)
+    }
+}
+
+/// A call as an object of its own (docs/porch.md, "A call's card"): a line
+/// of a phone's history, or a call its screening declined or let ring that
+/// no history read here holds. It has an address (`address`), a card in the
+/// window, and ties: to the card of whom it was with, and to the task it
+/// made (`callback`). Read from what the phones share; never written by an
+/// agent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Object {
+    pub address: String,
+    /// The phone it came to or went from, by its name in the sharing.
+    pub phone: String,
+    /// When it began (ms).
+    pub at: i64,
+    /// The number as Sioul keys it; "" for a hidden number.
+    pub key: String,
+    pub hidden: bool,
+    /// You called; else they did.
+    pub out: bool,
+    /// Taken: answered here or on another device of the line; a call of yours that connected.
+    pub answered: bool,
+    /// How long it lasted once answered (s).
+    pub seconds: i64,
+    /// What its phone's history says it was ("incoming", "outgoing",
+    /// "missed", "rejected", "elsewhere"), or for a call no history read
+    /// holds, the screening's word: "declined" (sent to voicemail), "rang".
+    pub kind: String,
+    /// What the screening noted of it, when it screened it: its row, the
+    /// time of day, why it rang or not.
+    #[serde(skip)]
+    pub screened: Option<Held>,
+}
+
+impl Object {
+    fn of_history(l: &Logged) -> Object {
+        Object { address: address(&l.device, l.at, l.out), phone: l.device.clone(), at: l.at, key: l.key.clone(), hidden: l.hidden, out: l.out, answered: l.answered, seconds: l.seconds, kind: l.kind.clone(), screened: None }
+    }
+
+    fn of_held(h: &Held) -> Object {
+        Object { address: address(&h.device, h.at, false), phone: h.device.clone(), at: h.at, key: h.key.clone(), hidden: h.hidden, out: false, answered: false, seconds: 0, kind: if h.rang { "rang" } else { "declined" }.into(), screened: Some(h.clone()) }
+    }
+
+    /// Declined by the screening and sent to voicemail.
+    pub fn declined(&self) -> bool {
+        self.screened.as_ref().is_some_and(|h| !h.rang)
+    }
+
+    /// The call as the Porch's list and the rules read it (`Call`), with their card.
+    pub fn call(&self, contact: Option<crate::tasks::ContactRef>) -> Call {
+        let logged = Logged { at: self.at, key: self.key.clone(), hidden: self.hidden, out: self.out, answered: self.answered, seconds: self.seconds, kind: self.kind.clone(), device: self.phone.clone() };
+        Call::of(&logged, contact, crate::notices::State::default())
+    }
+}
+
+/// Every phone's calls as objects (`Object`), oldest first: each line of
+/// the phones' histories; each call a screening let ring, as the history's
+/// line of the same call when there is one (the same phone and number, an
+/// incoming line not declined by hand, `SAME_CALL_MS` apart at most, the
+/// nearest), else as a call of its own; each call a screening declined, as
+/// a call of its own (Android logs it as blocked, which no history read
+/// holds), or as the line a phone logged it as, declined (`rejected`), the
+/// nearest. A declined call is never the line of the call that followed it
+/// (a second call within 15 minutes rings: two calls, two objects).
+pub fn objects_of(held: &[Held], history: &[Logged]) -> Vec<Object> {
+    let mut out: Vec<Object> = history.iter().map(Object::of_history).collect();
+    let mut screened: Vec<&Held> = held.iter().filter(|h| h.at > 0 && h.who != "blocked").collect();
+    screened.sort_by_key(|h| h.at);
+    for h in screened {
+        let fits = |o: &Object| o.screened.is_none() && !o.out && o.phone == h.device && o.hidden == h.hidden && o.key == h.key && (o.at - h.at).abs() <= SAME_CALL_MS && (o.kind == "rejected") != h.rang;
+        let nearest = out.iter().enumerate().filter(|(_, o)| fits(o)).min_by_key(|(_, o)| (o.at - h.at).abs()).map(|(i, _)| i);
+        match nearest {
+            Some(i) => out[i].screened = Some(h.clone()),
+            None => out.push(Object::of_held(h)),
+        }
+    }
+    out.sort_by(|a, b| (a.at, &a.phone).cmp(&(b.at, &b.phone)));
+    out
+}
+
+/// Every phone's calls under `root` (the calls' folder) as objects, oldest
+/// first: the month's, never a blocked caller's (`blocked`, by their key).
+pub fn objects(root: &Path, blocked: &dyn Fn(&str) -> bool, now_ms: i64) -> Vec<Object> {
+    let held: Vec<Held> = read_logs(root, now_ms).into_iter().filter(|h| h.hidden || !blocked(&h.key)).collect();
+    objects_of(&held, &read_histories(root, blocked, now_ms))
+}
+
+/// A call by its address, however it was written; none once its phone no
+/// longer keeps it (`KEPT_DAYS`).
+pub fn object(root: &Path, uri: &str, blocked: &dyn Fn(&str) -> bool, now_ms: i64) -> Option<Object> {
+    let (phone, at, out) = crate::links::call_parts(uri)?;
+    let wanted = address(&phone, at, out);
+    // A call the screening noted is found by its own address too, when its history's line holds it.
+    objects(root, blocked, now_ms).into_iter().find(|o| o.address == wanted || o.screened.as_ref().is_some_and(|h| address(&h.device, h.at, false) == wanted))
+}
+
+/// A call in a few words, as a tie or a list names it: "Missed call from
+/// Noa Linden", "Call to 01 99 00 12 34, not answered", "Call from a hidden
+/// number, sent to voicemail". `name`: their card's, when your address books
+/// have the number; `threshold`: the voicemail threshold (s).
+pub fn object_title(tr: &Translator, o: &Object, name: Option<&str>, region: Option<&Region>, threshold: u32) -> String {
+    let who = match name.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(name) => name.to_string(),
+        None if o.hidden || o.key.is_empty() => tr.text("calls-who-hidden", None),
+        None => shown_number(&o.key, region),
+    };
+    let call = o.call(None);
+    let id = if o.declined() {
+        "call-title-declined"
+    } else if call.missed() {
+        "call-title-missed"
+    } else if o.out && call.not_reached(threshold) {
+        "call-title-out-unanswered"
+    } else if o.out {
+        "call-title-out"
+    } else {
+        "call-title-in"
+    };
+    let mut args = crate::i18n::args();
+    args.set("who", who);
+    capitalized(&tr.text(id, Some(&args)))
 }
 
 // ---------------------------------------------------------------- what is said of it
@@ -3440,6 +3663,62 @@ mod tests {
         assert_eq!(held[0].id(), "1000-hidden");
         assert_eq!(held[1].id(), "2000-+33199001234");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A call is an object of its own: each line of a phone's history, and a
+    /// call its screening declined, which no history holds; a call screened
+    /// and let ring is its history's line, with what the screening noted.
+    /// Each by its address (the phone, its start, its way; never a number),
+    /// named in words, found by either address.
+    #[test]
+    fn a_call_is_an_object_with_an_address() {
+        let fr = crate::phones::region_named("FR");
+        let at = 1_793_000_000_000;
+        let row = |at: i64, seconds: i64, kind: i32| Logged { device: "phone-1".into(), ..Logged::of(&HistoryRow { at, seconds, kind, number: "01 99 00 12 34".into(), presentation: 1 }, fr).unwrap() };
+        let history = vec![row(at, 0, 3), row(at + 600_000, 95, 2), row(at + 900_000, 30, 2)];
+        let held = vec![
+            // The same missed call, screened and let ring a moment before its history's start.
+            Held { device: "phone-1".into(), at: at - 300, key: "+33199001234".into(), rang: true, who: "neutral".into(), why: "matrix".into(), ..Held::default() },
+            // A call the screening declined: no history holds it.
+            Held { device: "phone-1".into(), at: at + 3_600_000, hidden: true, who: "hidden".into(), column: "sleep".into(), ..Held::default() },
+        ];
+        let objects = objects_of(&held, &history);
+        assert_eq!(objects.len(), 4);
+        // A repeat caller: declined at 10:00, a second call at 10:01 rang and nobody answered. Two
+        // calls: the declined one its own, the one that rang its history's line (the nearest).
+        let ten = at + 7_200_000;
+        let repeat = objects_of(
+            &[
+                Held { device: "phone-1".into(), at: ten, key: "+33199001234".into(), who: "stranger".into(), column: "work".into(), ..Held::default() },
+                Held { device: "phone-1".into(), at: ten + 60_000 - 200, key: "+33199001234".into(), rang: true, who: "stranger".into(), why: "repeat".into(), ..Held::default() },
+            ],
+            &[row(ten + 60_000, 0, 3)],
+        );
+        assert_eq!(repeat.len(), 2, "{repeat:?}");
+        assert!(repeat[0].declined() && repeat[0].at == ten && repeat[0].address == address("phone-1", ten, false));
+        assert!(repeat[1].kind == "missed" && repeat[1].screened.as_ref().is_some_and(|h| h.rang) && !repeat[1].declined());
+        assert_eq!(object_title(&Translator::new("en"), &repeat[1], None, fr, 90), "Missed call from 01 99 00 12 34");
+        assert_eq!(objects[0].address, format!("sioul:call/phone-1:{at}-in"));
+        assert!(objects[0].screened.as_ref().is_some_and(|h| h.rang) && objects[0].kind == "missed" && !objects[0].declined());
+        assert_eq!(objects[1].address, format!("sioul:call/phone-1:{}-out", at + 600_000));
+        assert!(objects[3].declined() && objects[3].kind == "declined" && objects[3].hidden);
+        assert!(objects.iter().all(|o| !o.address.contains('+') && crate::links::kind_of(&o.address) == crate::links::Kind::Call));
+        assert_eq!(crate::links::call_parts(&objects[1].address), Some(("phone-1".to_string(), at + 600_000, true)));
+        let tr = Translator::new("en");
+        let titles: Vec<String> = objects.iter().enumerate().map(|(i, o)| object_title(&tr, o, (i == 0).then_some("Noa Linden"), fr, 90)).collect();
+        assert_eq!(titles, ["Missed call from Noa Linden", "Call to 01 99 00 12 34", "Call to 01 99 00 12 34, not answered", "Call from a hidden number, sent to voicemail"]);
+        let fr_titles = Translator::new("fr");
+        assert!(object_title(&fr_titles, &objects[3], None, fr, 90).starts_with("Appel envoyé sur la messagerie"));
+        // Found by its address in the phones' files, the screened one by its own start too.
+        let root = scratch("objects");
+        carry_into(&own_file(&root, LOG, "phone-1"), &held, fr, at + 3_700_000).unwrap();
+        let rows: Vec<HistoryRow> = [(at, 0, 3), (at + 600_000, 95, 2)].iter().map(|&(at, seconds, kind)| HistoryRow { at, seconds, kind, number: "01 99 00 12 34".into(), presentation: 1 }).collect();
+        carry_history(&own_file(&root, HISTORY_FOLDER, "phone-1"), &rows, fr, &|_| false, at + 3_700_000).unwrap();
+        let found = |uri: &str| object(&root, uri, &|_| false, at + 3_700_000).map(|o| o.address);
+        assert_eq!(found(&objects[1].address), Some(objects[1].address.clone()));
+        assert_eq!(found(&address("phone-1", at - 300, false)), Some(objects[0].address.clone()), "the screening's own start");
+        assert_eq!(found(&address("phone-2", at, false)), None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     fn scratch(name: &str) -> PathBuf {

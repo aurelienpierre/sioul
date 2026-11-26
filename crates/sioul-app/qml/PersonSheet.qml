@@ -32,6 +32,7 @@ SafeDialog {
     function ask(key, addresses) {
         sheet.key = key || ""
         sheet.addresses = addresses || ""
+        sheet.allCalls = false
         sheet.reload()
         sheet.open()
     }
@@ -51,6 +52,38 @@ SafeDialog {
     signal changed
     // texts: their conversation asked for (main.qml opens the Texts page).
     signal textsAsked(string id)
+    // A call of theirs to open on its card (CallCard.qml), by its address.
+    signal callAsked(string address)
+    // Their calls shown first, the others one choice away ("Their other calls of the month").
+    readonly property int callsFirst: 3
+    property bool allCalls: false
+
+    // A call of theirs ({text, address}): its sentence, which opens its card by a click, Enter or Space.
+    component SheetCall: ItemDelegate {
+        id: callLine
+
+        required property var modelData
+
+        objectName: "sheetCall"
+        Layout.fillWidth: true
+        leftPadding: 0
+        rightPadding: 0
+        topPadding: 2
+        bottomPadding: 2
+        text: callLine.modelData.text
+        Accessible.name: callLine.modelData.text
+        contentItem: Label {
+            text: callLine.modelData.text
+            textFormat: Text.PlainText
+            wrapMode: Text.Wrap
+            lineHeight: 1.2
+            color: sheet.theme.text
+        }
+        onClicked: {
+            sheet.callAsked(callLine.modelData.address)
+            sheet.close()
+        }
+    }
 
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -222,8 +255,11 @@ SafeDialog {
                 color: sheet.theme.accent
             }
             // Their calls of the month, from every phone that shares its own,
-            // rang or declined, newest first (calls.rs's `history`); no count,
-            // and no block at all when there was none.
+            // each way, answered, missed, rang or declined, newest first
+            // (calls.rs's `history`); no count, and no block at all when
+            // there was none. The newest few first, the others one choice
+            // away (the interface's rule 2); each opens the call's card, by a click or
+            // the keyboard.
             Label {
                 visible: (sheet.shown.calls || []).length > 0
                 Layout.fillWidth: true
@@ -235,18 +271,21 @@ SafeDialog {
                 color: sheet.theme.accent
             }
             Repeater {
-                model: sheet.shown.calls || []
+                model: (sheet.shown.calls || []).slice(0, sheet.callsFirst)
 
-                delegate: Label {
-                    required property string modelData
+                delegate: SheetCall {}
+            }
+            Button {
+                objectName: "sheetCallsMore"
+                visible: (sheet.shown.calls || []).length > sheet.callsFirst && !sheet.allCalls
+                flat: true
+                text: sheet.sioul.text("calls-sheet-more")
+                onClicked: sheet.allCalls = true
+            }
+            Repeater {
+                model: sheet.allCalls ? (sheet.shown.calls || []).slice(sheet.callsFirst) : []
 
-                    Layout.fillWidth: true
-                    text: modelData
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    lineHeight: 1.2
-                    color: sheet.theme.text
-                }
+                delegate: SheetCall {}
             }
             // texts: their conversation, read and written on the Texts page.
             Button {

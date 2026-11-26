@@ -251,7 +251,8 @@ fn lately(acts: &Acts, rule: &str, names: &words::Names) -> Vec<Lately> {
                     say(id, &[("when", when), ("line", words::act_line(&act, names, tr()))])
                 }
             };
-            Lately { line, undo: state == State::Done && act.wrote, not_this: state == State::Waiting, object: act.object.clone(), act }
+            // A call's time added to its person's task has no Undo of its own (the task is yours to edit).
+            Lately { line, undo: state == State::Done && act.wrote && act.act != "joined", not_this: state == State::Waiting, object: act.object.clone(), act }
         })
         .collect()
 }
@@ -346,6 +347,10 @@ pub(crate) fn view(shared: &Shared) -> String {
             }
         }
     }
+    // The calls it names, by what they were ("Missed call from Noa Linden"), while their phones keep them.
+    if acts.all.iter().any(|a| a.object.starts_with("sioul:call/")) {
+        names.subjects.extend(crate::calls::titles());
+    }
     let mut groups: Vec<Group> = Vec::new();
     for rule in &list.rules {
         let mut line = line_of(rule, &names);
@@ -403,7 +408,8 @@ struct PresetGroup {
 
 /// A rule that comes with Sioul: its written sentence; off, said; where
 /// its setting lives, a link there (its switch is never drawn twice);
-/// "Copy to make my own" when the engine runs what it says.
+/// "Copy to make my own" when the engine runs what it says. One the engine
+/// runs has its switch and its choices here, their one place (`[presets]`).
 #[derive(Serialize)]
 struct PresetLine {
     id: String,
@@ -413,6 +419,29 @@ struct PresetLine {
     #[serde(rename = "openText")]
     open_text: String,
     offered: bool,
+    /// Run by the engine: its switch here.
+    engine: bool,
+    /// Its choices, each ticked or not: "missed-call-task"'s ways.
+    choices: Vec<PresetChoice>,
+}
+
+/// One of a preset's choices.
+#[derive(Serialize)]
+struct PresetChoice {
+    id: String,
+    text: String,
+    on: bool,
+}
+
+/// The choices a preset of the engine takes: "missed-call-task", the calls
+/// it answers (theirs you missed, yours that did not reach them).
+fn preset_choices(config: &Config, id: &str) -> Vec<PresetChoice> {
+    use sioul_core::wiring::call;
+    if id != sioul_core::config::MISSED_CALL_TASK {
+        return Vec::new();
+    }
+    let ways = call::preset_settings(config, id).ways.unwrap_or_else(|| vec!["in".into(), "out".into()]);
+    ["in", "out"].iter().map(|way| PresetChoice { id: (*way).to_string(), text: tr().text(&format!("rules-preset-way-{way}"), None), on: ways.iter().any(|w| w == way) }).collect()
 }
 
 /// The presets grouped by what they watch, messages, tasks and events first.
@@ -424,11 +453,22 @@ fn presets(config: &Config, projects: Option<&ProjectStore>) -> Vec<PresetGroup>
     for preset in all {
         let kind = preset.rule.when.kind.clone();
         let sentence = tr().own(&format!("rule-preset-{}", preset.id)).unwrap_or_else(|| words::sentence(&preset.rule, &words::Names::default(), tr()));
+        let engine = preset.runs == "engine";
         let row = preset.setting.and_then(|key| rows.iter().find(|(_, r)| r.key == key));
-        let off = row.is_some_and(|(_, r)| r.value == sioul_core::config::SettingValue::Bool(false));
-        // Where its setting is changed: Mail's ⚙ for mail's, else where Settings sends a key.
-        let open = row.map(|(view, r)| Open { kind: if *view == "mail" { format!("mail-settings:{}", r.key) } else { format!("settings:{}", r.key) }, uri: String::new(), key: String::new() });
-        let line = PresetLine { id: preset.id.to_string(), sentence, off, open_text: if open.is_some() { tr().text("rules-preset-where", None) } else { String::new() }, open, offered: preset.offered };
+        let off = if engine { !sioul_core::wiring::call::preset_on(config, preset.id) } else { row.is_some_and(|(_, r)| r.value == sioul_core::config::SettingValue::Bool(false)) };
+        // Where its setting is changed: Mail's ⚙ for mail's, else where Settings sends a key. A call's
+        // preset leads to the voicemail threshold, which the Porch's list of calls reads too.
+        let open = if engine && kind == "call" {
+            Some(Open { kind: "settings:porch.voicemail_seconds".into(), uri: String::new(), key: String::new() })
+        } else {
+            row.map(|(view, r)| Open { kind: if *view == "mail" { format!("mail-settings:{}", r.key) } else { format!("settings:{}", r.key) }, uri: String::new(), key: String::new() })
+        };
+        let open_text = match (&open, engine) {
+            (None, _) => String::new(),
+            (Some(_), true) => tr().text("rules-preset-threshold", None),
+            (Some(_), false) => tr().text("rules-preset-where", None),
+        };
+        let line = PresetLine { id: preset.id.to_string(), sentence, off, open_text, open, offered: preset.offered, engine, choices: if engine { preset_choices(config, preset.id) } else { Vec::new() } };
         match groups.iter_mut().find(|g| g.heading == tr().text(&format!("rules-presets-{kind}"), None)) {
             Some(group) => group.presets.push(line),
             None => groups.push(PresetGroup {
@@ -440,6 +480,54 @@ fn presets(config: &Config, projects: Option<&ProjectStore>) -> Vec<PresetGroup>
     }
     groups.sort_by_key(|g| g.order);
     groups
+}
+
+/// A preset the engine runs turned on or off, in its one place
+/// (`config::set_preset`: for "missed-call-task", the switches an older
+/// device reads beside it); said in the status line.
+pub(crate) fn set_preset_on(qt: &QtThread, shared: &Shared, id: &str, on: bool) {
+    let config = load_config();
+    let mut set = sioul_core::wiring::call::preset_settings(&config, id);
+    set.on = Some(on);
+    if set.ways.as_ref().is_some_and(Vec::is_empty) {
+        set.ways = None;
+    }
+    let line = match sioul_core::config::set_preset(&crate::backend::config_path(), id, &set) {
+        Err(e) => e,
+        Ok(()) => {
+            sioul_core::changes::said(sioul_core::changes::Kind::Rules);
+            let sentence = tr().own(&format!("rule-preset-{id}")).unwrap_or_default();
+            say(if on { "rules-switched-on" } else { "rules-switched-off" }, &[("sentence", sentence)])
+        }
+    };
+    crate::backend::tell(qt, shared, line);
+}
+
+/// One of a preset's choices ticked or not ("missed-call-task": a way of
+/// the calls it answers); the last one is never unticked (the switch turns
+/// it off). Said in the status line.
+pub(crate) fn set_preset_choice(qt: &QtThread, shared: &Shared, id: &str, choice: &str, on: bool) {
+    let config = load_config();
+    let mut set = sioul_core::wiring::call::preset_settings(&config, id);
+    let mut ways = set.ways.clone().unwrap_or_else(|| vec!["in".into(), "out".into()]);
+    ways.retain(|w| w != choice);
+    if on {
+        ways.push(choice.to_string());
+    }
+    ways.sort();
+    if ways.is_empty() {
+        crate::backend::tell(qt, shared, tr().text("rules-preset-one-way", None));
+        return;
+    }
+    set.ways = Some(ways);
+    let line = match sioul_core::config::set_preset(&crate::backend::config_path(), id, &set) {
+        Err(e) => e,
+        Ok(()) => {
+            sioul_core::changes::said(sioul_core::changes::Kind::Rules);
+            say(if on { "rules-preset-choice-on" } else { "rules-preset-choice-off" }, &[("choice", tr().text(&format!("rules-preset-way-{choice}"), None))])
+        }
+    };
+    crate::backend::tell(qt, shared, line);
 }
 
 /// The settings of these keys as their pages show them, each with the view that shows it.
@@ -569,6 +657,33 @@ fn previewed(asked: String, rule: &Rule, would: &[engine::Would]) -> Previewed {
     Previewed { asked, count: acting.len(), text, lines, past: !acting.is_empty() && rule.then.action != "tell" }
 }
 
+/// What a rule about calls would have done with the phones' calls of the
+/// last 30 days (`calls::seen_calls`): the calls it acts on, the first few
+/// by their day and whom with. Nothing to do "also for these": a rule about
+/// calls acts on what comes, on the phone that has the call.
+fn previewed_calls(asked: String, rule: &Rule) -> Previewed {
+    let config = load_config();
+    let calls = crate::calls::seen_calls(i64::from(DAYS));
+    let zone = sioul_core::zone::current();
+    let region = sioul_core::reach::region(&config);
+    let acting = sioul_core::wiring::call::preview(rule, &calls, sioul_core::calls::threshold(&config), region, &zone);
+    let does = words::then_part(rule, &words::Names::default(), tr());
+    let mut lines: Vec<String> = acting
+        .iter()
+        .take(NAMED)
+        .map(|seen| {
+            let day = jiff::Timestamp::from_millisecond(seen.call.at).map(|t| tr().day_month(t.to_zoned(zone.clone()).date())).unwrap_or_default();
+            let who = seen.call.contact.as_ref().map(|c| c.name.clone()).filter(|n| !n.trim().is_empty()).unwrap_or_else(|| if seen.call.hidden { tr().text("calls-who-hidden", None) } else { sioul_core::calls::shown_number(&seen.call.number, region) });
+            say("rules-preview-line", &[("day", day), ("who", who), ("does", does.clone())])
+        })
+        .collect();
+    if acting.len() > NAMED {
+        lines.push(tr().text("rules-preview-more", Some(&tr().counted(acting.len() - NAMED))));
+    }
+    let text = if acting.is_empty() { tr().text("rules-preview-none-calls", None) } else { tr().text("rules-preview-some-calls", Some(&tr().counted(acting.len()))) };
+    Previewed { asked, count: acting.len(), text, lines, past: false }
+}
+
 /// What a rule (JSON, as `asked`) would have done in the last 30 days,
 /// found off the window's thread; `rules_previewed` brings it. A newer
 /// preview asked meanwhile makes this one stop where it stands, unsaid.
@@ -578,6 +693,8 @@ pub(crate) fn preview(qt: QtThread, asked: String) {
     spawn("rules-preview", move || {
         let found = match parsed(&asked) {
             Err(e) => Previewed { asked, text: e, ..Previewed::default() },
+            // A rule about calls: the phones' calls of the last 30 days.
+            Ok(rule) if rule.when.kind == "call" => previewed_calls(asked, &rule),
             Ok(rule) => {
                 let config = load_config();
                 let index = sioul_core::mailindex::MailIndex::build_ranked(&sioul_core::mailindex::MailIndex::roots_of(&config));
@@ -614,6 +731,25 @@ pub(crate) fn save(qt: &QtThread, shared: &Arc<Shared>, given: &str, also: bool)
         Ok(id) => id,
         Err(e) => return json(&serde_json::json!({ "id": "", "error": worded(&e) })),
     };
+    // Your own copy of a preset the engine runs, saved on, runs in its place: the preset is turned
+    // off, said with Undo, so that yours alone decides (its conditions would narrow nothing beside it).
+    let preset = rule.preset.clone();
+    if rule.on && declare::BY_ENGINE.contains(&preset.as_str()) && sioul_core::wiring::call::preset_on(&load_config(), &preset) {
+        let mut set = sioul_core::wiring::call::preset_settings(&load_config(), &preset);
+        set.on = Some(false);
+        match sioul_core::config::set_preset(&crate::backend::config_path(), &preset, &set) {
+            Err(e) => crate::backend::tell(qt, shared, e),
+            Ok(()) => {
+                let sentence = tr().own(&format!("rule-preset-{preset}")).unwrap_or_default();
+                crate::mail::offer_back(qt, shared, say("rules-preset-replaced", &[("sentence", sentence)]), move |_, _| {
+                    let mut back = sioul_core::wiring::call::preset_settings(&load_config(), &preset);
+                    back.on = Some(true);
+                    sioul_core::config::set_preset(&crate::backend::config_path(), &preset, &back).err().unwrap_or_default()
+                });
+                return json(&serde_json::json!({ "id": id, "error": "" }));
+            }
+        }
+    }
     let config = load_config();
     let projects = project_store(&config);
     let list = rules().unwrap_or_default();

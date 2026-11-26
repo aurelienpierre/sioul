@@ -581,7 +581,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "links",
         title: "What it is tied to",
-        description: "The chain of ties from a thing, both ways: what it is tied to, what those are tied to, `depth` steps at most, the strongest chains first (as Sioul's window shows them, \"Ties of …\"): tasks, events, mail, drafts, notes, contacts, persons, papers, letters, contracts, invoices, payments, budget lines, projects. A collection (a project, a contact, a person, a budget, a site) is shown with what it holds and not gone through; each thing says how many of its ties are not shown. Give its address: mid:<Message-ID> (sioul:mail/<account>/<digest> for a message without one), sioul:task/<UID>, sioul:event/<UID>, sioul:note/<path>, sioul:contact/<UID>, sioul:project/<id>, sioul:draft/<id>, sioul:movement/<key>.",
+        description: "The chain of ties from a thing, both ways: what it is tied to, what those are tied to, `depth` steps at most, the strongest chains first (as Sioul's window shows them, \"Ties of …\"): tasks, events, mail, drafts, notes, contacts, persons, papers, letters, contracts, invoices, payments, budget lines, projects. A collection (a project, a contact, a person, a budget, a site) is shown with what it holds and not gone through; each thing says how many of its ties are not shown. Give its address: mid:<Message-ID> (sioul:mail/<account>/<digest> for a message without one), sioul:task/<UID>, sioul:event/<UID>, sioul:note/<path>, sioul:contact/<UID>, sioul:project/<id>, sioul:draft/<id>, sioul:movement/<key>, sioul:call/<phone>:<start>-<in|out> (a call, as `calls` gives it).",
         writes: false,
         idempotent: true,
         open_world: false,
@@ -639,7 +639,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "calls",
         title: "Calls",
-        description: "The calls the person's phone screened, newest first: when, who called (their name in the address books, else their number; a hidden number said so), and whether it rang or was declined and sent to voicemail. Read-only: nothing calls anyone.",
+        description: "The calls of the person's phones, newest first, each by its address (sioul:call/…): which way (theirs or the person's), with whom (their name in the address books, else their number; a hidden number said so), when, how long, answered or not, missed, or declined by the screening and sent to voicemail. `links` and `link` follow a call's address: the card of whom it was with, the task it made. Read-only: nothing calls anyone, and no agent writes a call.",
         writes: false,
         idempotent: true,
         open_world: false,

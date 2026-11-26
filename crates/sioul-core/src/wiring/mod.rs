@@ -18,7 +18,10 @@
 //! remembers "not for this one".
 //!
 //! Phase 1 (`declare::PHASE`): a message arrives; tie it to a project, make
-//! a task from a model, give it a topic, tell. The existing mechanisms
+//! a task from a model, give it a topic, tell. A call ends, is missed or is
+//! answered (`call`): the task to call back, and its closing, as the presets
+//! "missed-call-task" and "call-closes-task" and your own rules say, on the
+//! phone that had the call. The existing mechanisms
 //! (projects' routes and the tasks they make, budgets' mail rules, mail
 //! filters, topics' sender rules) keep running as they do; `readers` shows
 //! them as rules of the same shape, and the engine never runs them. The one
@@ -27,6 +30,7 @@
 
 pub mod acts;
 pub mod arrival;
+pub mod call;
 pub mod declare;
 pub mod engine;
 pub mod message;

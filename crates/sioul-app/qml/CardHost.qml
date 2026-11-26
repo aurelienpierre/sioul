@@ -10,7 +10,7 @@
 // appointment's and a meal's unloaded once closed): an appointment's
 // (EventCard), a task's (the window's one TaskPanel: a step, a time block
 // and a task done open their task), a meal's, a nap's or the night's
-// (NeedCard), a date asked's (DatedCard; a task's date opens its task). A dose keeps opening its day in Health, where its medicine is
+// (NeedCard), a date asked's (DatedCard; a task's date opens its task), a call's (CallCard). A dose keeps opening its day in Health, where its medicine is
 // named. It keeps the card you came from, one level deep (`follow`,
 // `back`); Back and Escape close it first, and on a phone a place opened
 // closes it (`leave`).
@@ -68,6 +68,9 @@ Item {
         // A date asked: a task's opens its task; the others their dated card.
         if (ref.kind === "dated")
             return ref.datedKind === "task" ? ((ref.owner || "") !== "" ? "task" : "") : ((ref.datedKind || "") !== "" && (ref.srcKey || ref.key || "") !== "" ? "dated" : "")
+        // A call of a phone, by its address (CallCard.qml).
+        if (ref.kind === "call")
+            return (ref.srcKey || ref.key || "") !== "" ? "call" : ""
         return ""
     }
 
@@ -113,7 +116,7 @@ Item {
         // the task's card, once made, as the Tasks page kept its panel (made
         // again, some 700 items, at every tap on a step: review of 590eb18, later 1).
         if (host.window.compact) {
-            for (const other of ["event", "need", "dated"]) {
+            for (const other of ["event", "need", "dated", "call"]) {
                 if (other !== card && (host.previous === null || host.previous.card !== other))
                     made[other] = false
             }
@@ -444,6 +447,25 @@ Item {
                 host: host
                 kind: host.kind === "dated" ? host.ref.datedKind : ""
                 key: host.kind === "dated" ? host.ref.srcKey : ""
+            }
+        }
+    }
+
+    Loader {
+        id: callLoader
+
+        anchors.fill: parent
+        anchors.margins: host.window.compact ? 0 : host.theme.gap
+        active: host.made.call === true
+        visible: host.kind === "call"
+
+        sourceComponent: Component {
+            CallCard {
+                sioul: host.sioul
+                theme: host.theme
+                window: host.window
+                host: host
+                address: host.kind === "call" ? host.ref.srcKey : ""
             }
         }
     }

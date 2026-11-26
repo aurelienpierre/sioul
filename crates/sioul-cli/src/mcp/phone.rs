@@ -4,8 +4,10 @@
 //! The tools that read what the person's phone shares with their computers,
 //! read-only: the phone's messages (`phonemsgs`: who wrote, in which app and
 //! conversation, when, and the words where the phone sent them) and the
-//! calls it screened (`calls`: who called, when, whether it rang or went to
-//! voicemail). Read from the logs the sharing carries to this computer; none
+//! calls (`calls`: each call of its history and each its screening
+//! declined, by its address, `sioul:call/…`: which way, with whom, when, how
+//! long, answered or not; `links` follows its ties to their card and to the
+//! task it made). Read from the logs the sharing carries to this computer; none
 //! when the parts "Messages from your phone" and "Calls" are off.
 //!
 //! A code or an approval never left the phone: its line says that one came,
@@ -142,6 +144,27 @@ pub fn phone_messages(s: &Session, args: &Args) -> Result<Answer, String> {
     Ok(Answer { text, data: json!({ "messages": out, "total": total, "waiting": waiting, "kept_from_agents": closed }) })
 }
 
+/// What became of a call, in an agent's words.
+fn call_what(o: &calls::Object, threshold: u32) -> String {
+    let call = o.call(None);
+    let length = |seconds: i64| format!("{}:{:02}", seconds / 60, seconds % 60);
+    if o.declined() {
+        "declined by the screening, sent to voicemail".into()
+    } else if o.kind == "rang" {
+        "screened, it rang".into()
+    } else if call.missed() {
+        "missed".into()
+    } else if o.out && !o.answered {
+        "your call, not answered".into()
+    } else if o.out && call.not_reached(threshold) {
+        format!("your call, {} (their voicemail, likely)", length(o.seconds))
+    } else if o.out {
+        format!("your call, {}", length(o.seconds))
+    } else {
+        format!("answered, {}", length(o.seconds))
+    }
+}
+
 pub fn calls(s: &Session, args: &Args) -> Result<Answer, String> {
     let since = args.date("since")?;
     let limit = args.number("limit", 50, 1, 500)? as usize;
@@ -151,26 +174,39 @@ pub fn calls(s: &Session, args: &Args) -> Result<Answer, String> {
     let consent = access::of(s, &loaded);
     let kept = Kept::of(s, &loaded, &consent);
     let region = sioul_core::reach::region(&s.config);
-    let all = calls::read_logs(&calls::folder(), now_ms);
-    let in_scope: Vec<&calls::Held> = all.iter().filter(|h| h.at >= from_ms).collect();
-    let (open, closed): (Vec<&calls::Held>, Vec<&calls::Held>) = in_scope.into_iter().partition(|h| consent.outside && !kept.holds(&h.name, &h.key));
+    let threshold = calls::threshold(&s.config);
+    // Every phone's calls as objects: its history's lines, and what its screening declined or let
+    // ring; never a blocked caller's, as the person's lists say now.
+    let senders = sioul_core::porch::Senders::load(&s.config);
+    let blocked = |key: &str| senders.judge_number(key).who == sioul_core::reach::Who::Blocked;
+    let all = calls::objects(&calls::folder(), &blocked, now_ms);
+    let in_scope: Vec<&calls::Object> = all.iter().filter(|o| o.at >= from_ms).collect();
+    let name_of = |o: &calls::Object| o.screened.as_ref().map(|h| h.name.clone()).unwrap_or_default();
+    let (open, closed): (Vec<&calls::Object>, Vec<&calls::Object>) = in_scope.into_iter().partition(|o| consent.outside && !kept.holds(&name_of(o), &o.key));
     let closed = closed.len();
     let mut lines = Vec::new();
     let mut out = Vec::new();
-    for h in open.iter().rev().take(limit) {
-        let who = if h.hidden {
+    for o in open.iter().rev().take(limit) {
+        let who = if o.hidden {
             "a hidden number".to_string()
         } else {
-            known_name(s, &loaded, &h.key).or_else(|| Some(h.name.clone()).filter(|n| !n.is_empty())).unwrap_or_else(|| calls::shown_number(&h.key, region))
+            known_name(s, &loaded, &o.key).or_else(|| Some(name_of(o)).filter(|n| !n.is_empty())).unwrap_or_else(|| calls::shown_number(&o.key, region))
         };
-        let number = if h.hidden { String::new() } else { calls::shown_number(&h.key, region) };
-        let what = if h.rang { "rang" } else { "declined, sent to voicemail" };
+        let number = if o.hidden { String::new() } else { calls::shown_number(&o.key, region) };
+        let what = call_what(o, threshold);
         let shown = if number.is_empty() || number == who { who.clone() } else { format!("{who} ({number})") };
-        lines.push(format!("{} · {shown} · {what}", said_ms(s, h.at)));
-        out.push(json!({ "at": instant_ms(h.at), "from": who, "number": number, "hidden": h.hidden, "rang": h.rang, "row": h.who, "time": h.column, "verified": h.verified, "phone": h.device }));
+        let way = if o.out { "to" } else { "from" };
+        lines.push(format!("{} · {way} {shown} · {what}  <{}>", said_ms(s, o.at), o.address));
+        let screened = o.screened.as_ref();
+        out.push(json!({
+            "address": o.address, "at": instant_ms(o.at), "way": if o.out { "out" } else { "in" }, "with": who, "number": number, "hidden": o.hidden,
+            "answered": o.answered, "seconds": o.seconds, "what": what, "kind": o.kind,
+            "screened": screened.is_some(), "rang": screened.map(|h| h.rang), "row": screened.map(|h| h.who.clone()), "time": screened.map(|h| h.column.clone()), "verified": screened.map(|h| h.verified.clone()),
+            "phone": o.phone,
+        }));
     }
     if out.is_empty() {
-        lines.push(if all.is_empty() { "No call here: a phone of the person's lists the calls it screens once its part “Calls” is on.".into() } else { "No call then.".into() });
+        lines.push(if all.is_empty() { "No call here: a phone of the person's shares its calls once its part “Calls” is on.".into() } else { "No call then.".into() });
     } else if open.len() > limit {
         lines.push(format!("… {} more", open.len() - limit));
     }

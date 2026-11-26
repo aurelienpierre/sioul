@@ -2144,7 +2144,7 @@ mod tests {
         assert!(put_share(&path, "no-such-id", &share("mirror-link", "")).is_err());
         assert_eq!(remove_availability(&path, &sam.id).unwrap().map(|a| a.id), Some(sam.id.clone()));
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("availabilities") && text.contains("between = 5") && text.contains("format = 2"), "{text}");
+        assert!(!text.contains("availabilities") && text.contains("between = 5") && text.contains(&format!("format = {}", crate::config::FORMAT)), "{text}");
         // Written inline, by hand: read, then written as tables.
         std::fs::write(&path, "[agenda]\navailabilities = [{ id = \"x1\", name = \"Inline\", agendas = [\"cloud/personal\"] }]\n").unwrap();
         assert_eq!(read().agenda.availabilities[0].name, "Inline");

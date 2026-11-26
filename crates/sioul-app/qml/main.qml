@@ -972,6 +972,9 @@ SioulWindow {
         // A person of the household: their page, in Contacts (docs/persons.md).
         else if (item.kind === "person")
             window.openPerson(item.key || decodeURIComponent((item.uri || "").slice("sioul:person/".length)))
+        // A call of a phone: its card (CallCard.qml).
+        else if (item.kind === "call" || (item.uri || "").startsWith("sioul:call/"))
+            window.openCard({ kind: "call", srcKey: item.uri || item.key, title: item.title || "" }, fromCard)
         // A money movement: the Budgets page's Movements tab, opened on it.
         else if ((item.uri || "").startsWith("sioul:movement/")) {
             window.page = 9
@@ -5840,7 +5843,18 @@ SioulWindow {
                 () => {},
                 () => {},
                 () => grabber.savePopup(personSheet.item, "calls-sheet"),
-                () => personSheet.item.close(),
+                // A call's card, the sheet's newest call (whatever the moment lists on the Porch):
+                // the call, then what it is tied to.
+                () => {
+                    const calls = personSheet.item.shown.calls || []
+                    personSheet.item.close()
+                    if (calls.length > 0)
+                        window.openThing({ kind: "call", uri: calls[0].address, title: "" })
+                },
+                () => {},
+                () => {},
+                () => grabber.save("calls-card"),
+                () => cardHost.leave(),
                 () => window.close()
             ]
             // texts: the Texts page (docs/texts.md) at the window's widths (1100,
@@ -7647,6 +7661,11 @@ SioulWindow {
         // texts: a person's conversation on the Texts page.
         function onTextsAsked(id) {
             window.openTexts(id)
+        }
+
+        // A call of theirs, on its card.
+        function onCallAsked(address) {
+            window.openThing({ kind: "call", uri: address, key: address })
         }
 
         function onChanged() {

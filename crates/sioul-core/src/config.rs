@@ -217,17 +217,38 @@ pub struct Config {
     /// The camera, microphone and speaker calls in sites use (docs/sites.md).
     #[serde(default)]
     pub calls: CallSettings,
+    /// The presets the rules' engine runs (Settings ▸ Rules ▸ Presets;
+    /// `wiring::call`), each as you set it, by its id: `[presets.missed-call-task]`.
+    /// Format 3; an older Sioul passes over it.
+    #[serde(default)]
+    pub presets: std::collections::BTreeMap<String, PresetSettings>,
     /// The settings' format (`FORMAT`): 2 once your availability is a list
-    /// (`[[agenda.availabilities]]`, `migrate_availability`); unset, 1. An
-    /// older Sioul passes over it.
+    /// (`[[agenda.availabilities]]`, `migrate_availability`); 3 once the
+    /// call presets' switches are in `[presets]` (`migrate_presets`); unset,
+    /// 1. An older Sioul passes over it.
     #[serde(default)]
     pub format: Option<u32>,
 }
 
 /// The settings' format: 2 from 5 November 2026, when the single share of
 /// your availability (`[agenda.availability]`) became a list of
-/// availabilities, each with its shares and mirrors.
-pub const FORMAT: u32 = 2;
+/// availabilities, each with its shares and mirrors; 3 from 26 November
+/// 2026, when the call-back switches of Porch ⚙ ▸ Calls became the presets'
+/// own (`[presets]`, `migrate_presets`).
+pub const FORMAT: u32 = 3;
+
+/// A preset the rules' engine runs, as you set it in Settings ▸ Rules ▸
+/// Presets (`[presets.<id>]`): on or off, and the choices it takes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
+pub struct PresetSettings {
+    /// On unless said.
+    #[serde(default)]
+    pub on: Option<bool>,
+    /// The ways of the calls it answers ("in": theirs you missed; "out":
+    /// yours that did not reach them), for "missed-call-task"; unsaid, both.
+    #[serde(default)]
+    pub ways: Option<Vec<String>>,
+}
 
 /// The devices of calls in sites, by the names the system gives them; unsaid, the system's own.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize, serde::Serialize)]
@@ -251,12 +272,14 @@ pub struct PorchSettings {
     /// and the computers none. On unless said.
     #[serde(default = "yes")]
     pub calls: bool,
-    /// A missed call from someone in your address books makes a task, "Call
-    /// back …" (docs/porch.md, "Calls"; `callback`). On unless said.
+    /// The preset "missed-call-task" for the calls you missed, as a Sioul
+    /// before format 3 kept it (Porch ⚙ ▸ Calls, "A task to call back"): now
+    /// written only for those (`migrate_presets`, `config::set_preset`),
+    /// and read to carry a change one of them made. On unless said.
     #[serde(default = "yes")]
     pub call_back: bool,
-    /// A call of yours to someone in your address books that did not reach
-    /// them makes a task, "Call … again". On unless said.
+    /// The same for your calls that did not reach them ("A task to call
+    /// again"). On unless said.
     #[serde(default = "yes")]
     pub call_again: bool,
     /// Shorter than this (seconds), a call of yours reached their voicemail,
@@ -2225,6 +2248,113 @@ pub fn migrated_availability(doc: &mut DocumentMut, tr: &crate::i18n::Translator
     }
     mark_format(doc);
     Ok(Some(availability.id))
+}
+
+/// The call-back switches of Porch ⚙ ▸ Calls before format 3
+/// (`[porch] call_back`, `call_again`, on unless said) carried into the
+/// preset "missed-call-task" (`[presets.missed-call-task]`: on when either
+/// was, its ways those that were; both off, off with both ways kept), once:
+/// a preset already there (another device migrated, and the sharing brought
+/// it) is left as it is. The old keys are left as they were (a device before
+/// format 3 still reads them; one unsaid stays unsaid). The settings' format
+/// is marked (`FORMAT`). Returns whether it wrote.
+pub fn migrate_presets(path: &Path) -> Result<bool, String> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if doc.get("presets").and_then(Item::as_table_like).is_some_and(|t| t.contains_key(MISSED_CALL_TASK)) {
+            return Ok(false);
+        }
+        let flag = |key: &str| doc.get("porch").and_then(|p| p.get(key)).and_then(Item::as_bool).unwrap_or(true);
+        let (back, again) = (flag("call_back"), flag("call_again"));
+        write_missed_call_preset(&mut doc, preset_of_switches(back, again, None), false);
+        mark_format(&mut doc);
+        write_document(path, &doc)?;
+        Ok(true)
+    })
+}
+
+/// The preset that turns missed calls into tasks (`wiring::call`).
+pub const MISSED_CALL_TASK: &str = "missed-call-task";
+
+/// The two old switches (`[porch] call_back`, `call_again`) as the preset
+/// says them: on when either is; its ways those that are on; both off, off,
+/// its ways as they were (`kept`), else both.
+pub fn preset_of_switches(back: bool, again: bool, kept: Option<&[String]>) -> PresetSettings {
+    let both = || vec!["in".to_string(), "out".to_string()];
+    if !back && !again {
+        return PresetSettings { on: Some(false), ways: Some(kept.map(<[String]>::to_vec).filter(|w| !w.is_empty()).unwrap_or_else(both)) };
+    }
+    let ways: Vec<String> = [(back, "in"), (again, "out")].into_iter().filter(|(on, _)| *on).map(|(_, w)| w.to_string()).collect();
+    PresetSettings { on: Some(true), ways: Some(ways) }
+}
+
+/// The old switches a preset stands for, as a device before format 3 reads
+/// them: (`call_back`, `call_again`).
+pub fn switches_of_preset(preset: &PresetSettings) -> (bool, bool) {
+    if preset.on == Some(false) {
+        return (false, false);
+    }
+    let ways = preset.ways.clone().unwrap_or_else(|| vec!["in".into(), "out".into()]);
+    (ways.iter().any(|w| w == "in"), ways.iter().any(|w| w == "out"))
+}
+
+/// `[presets.missed-call-task]` written in `doc`, and the old switches it
+/// stands for (`switches_of_preset`), for a device before format 3; only
+/// when they differ from what the file says (`always`: whatever it says),
+/// so that the migration never writes a switch it only read as unsaid (its
+/// "on" would beat, key by key, an older device's word in the same exchange).
+fn write_missed_call_preset(doc: &mut DocumentMut, preset: PresetSettings, always: bool) {
+    let (back, again) = switches_of_preset(&preset);
+    let presets = doc.entry("presets").or_insert(Item::Table(Table::new()));
+    if let Some(table) = presets.as_table_mut() {
+        table.set_implicit(true);
+        let entry = table.entry(MISSED_CALL_TASK).or_insert(Item::Table(Table::new()));
+        if let Some(entry) = entry.as_table_mut() {
+            entry["on"] = value(preset.on.unwrap_or(true));
+            let ways: Array = preset.ways.unwrap_or_else(|| vec!["in".into(), "out".into()]).iter().map(String::as_str).collect();
+            entry["ways"] = value(ways);
+        }
+    }
+    let said = |doc: &DocumentMut, key: &str| doc.get("porch").and_then(|p| p.get(key)).and_then(Item::as_bool);
+    let writes: Vec<(&str, bool)> = [("call_back", back), ("call_again", again)].into_iter().filter(|(key, on)| always || said(doc, key).unwrap_or(true) != *on).collect();
+    if writes.is_empty() {
+        return;
+    }
+    let porch = doc.entry("porch").or_insert(Item::Table(Table::new()));
+    if let Some(porch) = porch.as_table_like_mut() {
+        for (key, on) in writes {
+            porch.insert(key, value(on));
+        }
+    }
+}
+
+/// A preset of the rules' engine set (`[presets.<id>]`): on or off, and for
+/// "missed-call-task" its ways, with the old switches it stands for written
+/// beside it (`write_missed_call_preset`); the settings' format marked.
+pub fn set_preset(path: &Path, id: &str, preset: &PresetSettings) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if id == MISSED_CALL_TASK {
+            write_missed_call_preset(&mut doc, preset.clone(), true);
+        } else {
+            let presets = doc.entry("presets").or_insert(Item::Table(Table::new()));
+            if let Some(table) = presets.as_table_mut() {
+                table.set_implicit(true);
+                let entry = table.entry(id).or_insert(Item::Table(Table::new()));
+                if let Some(entry) = entry.as_table_mut() {
+                    entry["on"] = value(preset.on.unwrap_or(true));
+                    if let Some(ways) = &preset.ways {
+                        entry["ways"] = value(ways.iter().map(String::as_str).collect::<Array>());
+                    }
+                }
+            }
+        }
+        mark_format(&mut doc);
+        write_document(path, &doc)
+    })
 }
 
 /// The settings' format marked (`FORMAT`) where it is unset or lower.

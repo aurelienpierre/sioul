@@ -387,6 +387,94 @@ pub struct Sources {
     pub taken: Vec<(String, String)>,
     /// The children's agendas, by place (`agendas::place`).
     pub children: BTreeSet<String>,
+    /// The phones' calls of the month (`calls::Object`), each named and tied to its card.
+    pub calls: Vec<CallSource>,
+    /// The tasks the call-back rules made (`callback`), each tied to its calls.
+    pub call_tasks: Vec<CallTask>,
+}
+
+/// A call of a phone as the index names and ties it.
+#[derive(Debug, Clone, Default)]
+pub struct CallSource {
+    /// `sioul:call/…` (`calls::address`).
+    pub address: String,
+    /// "Missed call from Noa Linden" (`calls::object_title`).
+    pub title: String,
+    /// The number, as your region writes it; "" hidden.
+    pub detail: String,
+    /// When it began, Unix seconds.
+    pub when: i64,
+    /// When it began (ms) and its way, as a task's calls line names it (`callback::Mark`).
+    pub mark: crate::callback::Mark,
+    /// The cards of whom it was with: every card your address books have
+    /// the number on (a household's landline is on several), first the one
+    /// that names it.
+    pub cards: Vec<String>,
+}
+
+/// A task the call-back rules made, as its own lines say it (`callback::Kept`).
+#[derive(Debug, Clone, Default)]
+pub struct CallTask {
+    pub uid: String,
+    /// Whom it is for: their card's address.
+    pub person: String,
+    /// The calls it was made from.
+    pub calls: Vec<crate::callback::Mark>,
+    /// The call that closed it, once one did.
+    pub called: Option<crate::callback::Mark>,
+}
+
+/// The phones' calls of the month and the tasks the call-back rules made,
+/// as the index reads them: each call named in your language, with the card
+/// its number has in your address books.
+fn call_sources(config: &Config, loaded: &Loaded) -> (Vec<CallSource>, Vec<CallTask>) {
+    let root = crate::calls::folder();
+    if !root.join(crate::calls::LOG).is_dir() {
+        return (Vec::new(), Vec::new());
+    }
+    let region = crate::reach::region(config);
+    let now_ms = crate::zone::now().timestamp().as_millisecond();
+    let threshold = crate::calls::threshold(config);
+    let tr = crate::agenda::translator();
+    // Every card a number is on, each once: a call is tied to all of them, so that a call is kept
+    // from agents with any of its cards that is (as their calls tool keeps it).
+    let mut by_number: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for contact in loaded.contacts.iter().filter(|c| !c.uid.trim().is_empty()) {
+        for phone in &contact.phones {
+            let key = crate::phones::key(&phone.value, region);
+            let cards = by_number.entry(key.clone()).or_default();
+            let uri = links::contact_uri(contact.uid.trim());
+            if !key.is_empty() && !cards.iter().any(|(u, _)| *u == uri) {
+                cards.push((uri, contact.name.clone()));
+            }
+        }
+    }
+    let calls = crate::calls::objects(&root, &|_| false, now_ms)
+        .into_iter()
+        .map(|o| {
+            let cards: &[(String, String)] = if o.hidden { &[] } else { by_number.get(&o.key).map_or(&[][..], Vec::as_slice) };
+            CallSource {
+                title: crate::calls::object_title(&tr, &o, cards.first().map(|(_, name)| name.as_str()), region, threshold),
+                detail: if o.hidden { String::new() } else { crate::calls::shown_number(&o.key, region) },
+                when: o.at.div_euclid(1000),
+                mark: crate::callback::Mark { at: o.at, out: o.out },
+                cards: cards.iter().map(|(uri, _)| uri.clone()).collect(),
+                address: o.address,
+            }
+        })
+        .collect();
+    let zone = crate::zone::current();
+    let tasks = loaded
+        .tasks
+        .iter()
+        .filter(|t| t.uid.starts_with(crate::callback::UID_PREFIX))
+        .filter_map(|t| {
+            let text = std::fs::read_to_string(&t.key).ok()?;
+            let kept = crate::callback::Kept::read(Path::new(&t.key), &text, &zone)?;
+            Some(CallTask { uid: kept.uid, person: kept.person, calls: kept.calls, called: kept.closed_by })
+        })
+        .collect();
+    (calls, tasks)
 }
 
 impl Sources {
@@ -404,6 +492,7 @@ impl Sources {
         let own: Vec<String> = config.every_account().filter_map(|a| a.name.clone()).collect();
         let persons = Persons::as_read(&Persons::default_path(), &config.agenda.calendars, &papers, &own);
         let (agendas, taken, children) = agenda_ties(config, &loaded.events, &persons);
+        let (calls, call_tasks) = call_sources(config, loaded);
         Sources {
             movements: books.as_ref().map(|b| b.movements.clone()).unwrap_or_default(),
             budgets: books.as_ref().map(|b| b.ledger.budgets.iter().map(|budget| (budget.id.clone(), budget.title.clone())).collect()).unwrap_or_default(),
@@ -416,6 +505,8 @@ impl Sources {
             agendas,
             taken,
             children,
+            calls,
+            call_tasks,
         }
     }
 }
@@ -817,6 +908,24 @@ impl TieIndex {
             }
             if let Some(card) = invoice.client_ref.strip_prefix("sioul:contact/").map(|_| invoice.client_ref.clone()).or_else(|| one_named(&invoice.client.name)) {
                 b.tie(&me, &card, How::Client, Need::Nothing);
+            }
+        }
+
+        // Calls: whom each was with; the task the call-back rules made of it, and the call that closed it.
+        for call in &sources.calls {
+            b.name(&call.address, Named { title: call.title.clone(), detail: call.detail.clone(), when: Some(call.when), amount: None });
+            for card in &call.cards {
+                b.tie(&call.address, card, How::Contact, Need::Nothing);
+            }
+        }
+        for task in &sources.call_tasks {
+            let me = links::task_uri(&task.uid);
+            let of = |mark: &crate::callback::Mark| -> Vec<String> { sources.calls.iter().filter(|c| c.mark == *mark && c.cards.contains(&task.person)).map(|c| c.address.clone()).collect() };
+            for call in task.calls.iter().flat_map(of) {
+                b.tie(&me, &call, How::Source, Need::Nothing);
+            }
+            for call in task.called.iter().flat_map(of) {
+                b.tie(&me, &call, How::Link, Need::Nothing);
             }
         }
 

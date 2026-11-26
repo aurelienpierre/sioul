@@ -723,6 +723,14 @@ impl Rule {
         if !declare::available(action.phase) {
             return Some("rules-problem-coming");
         }
+        // Declining a call is each phone's screening's, before it rings: never a rule's.
+        if !declare::by_engine(&self.then.kind, &self.then.action) {
+            return Some("rules-problem-screening");
+        }
+        // A call's task after a message, a task from a model after a call: nothing to act on.
+        if !declare::follows(&self.when.kind, &self.when.event, &self.then.kind, &self.then.action) {
+            return Some("rules-problem-pair");
+        }
         for param in action.params.iter().filter(|p| p.required) {
             let given = self.then.with.get(param.id).is_some_and(|p| p.from().is_some() || p.text().is_some_and(|t| !t.is_empty()));
             if !given {

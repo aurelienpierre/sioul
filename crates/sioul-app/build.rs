@@ -81,6 +81,7 @@ fn main() {
         "qml/NeedMenu.qml",
         "qml/HadAt.qml",
         "qml/DatedCard.qml",
+        "qml/CallCard.qml",
         "qml/LetterDatesForm.qml",
         "qml/TimeDrag.qml",
         "qml/Clock.qml",

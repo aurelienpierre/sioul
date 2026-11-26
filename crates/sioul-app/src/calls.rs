@@ -27,7 +27,7 @@
 //! - **The call history**, once Settings ▸ Devices ▸ this phone's card ▸ Calls let Sioul read
 //!   it: the phone's calls since the last kept copied into its own history,
 //!   carried as the log is (`carry_history`); each new one given once to the
-//!   call-back rules, which write their tasks (`call_back`).
+//!   rules about calls, which write their tasks (`call_back`).
 //! - **The list** of calls declined, and from the histories the calls missed
 //!   and those of yours that did not reach them, on the Porch of every device (`view`):
 //!   this phone's own, and every phone's while `[porch] calls` says so (the
@@ -547,7 +547,7 @@ const HISTORY_EVERY_MS: i64 = 30_000;
 /// On a phone that may read its call history (Settings ▸ Devices ▸ this phone's card ▸
 /// Calls): the calls since the last kept copied into its own history
 /// (`calls::carry_history`), at most every half minute; each new one, once,
-/// to the call-back rules (`call_back`). Two processes reading at once copy
+/// to the rules about calls (`call_back`). Two processes reading at once copy
 /// each call once, and only the one that copied it gives it to the rules.
 fn carry_history(root: &Path, here: &str, now: i64) {
     let due = HISTORY_READ.lock().is_ok_and(|mut last| {
@@ -589,24 +589,34 @@ fn contact_of(senders: &Senders, key: &str, hidden: bool) -> Option<sioul_core::
     (!card.uid.trim().is_empty()).then(|| sioul_core::tasks::ContactRef { name: card.name.clone(), uri: sioul_core::links::contact_uri(card.uid.trim()) })
 }
 
-/// This phone's new calls (`fresh`, oldest first) given to the call-back
-/// rules (`sioul_core::callback`, Porch ⚙ ▸ Calls): the tasks they made
-/// before found in every list you can write by their own lines, a new one
-/// written in the usual list (Tasks ⚙), each change as the rules say it.
-/// Nothing when both rules are off, or no call is with someone of your
-/// address books. The sync takes them to their server at its next round.
+/// This phone's new calls (`fresh`, oldest first) given to the rules about
+/// calls (`sioul_core::wiring::call`: the presets "missed-call-task" and
+/// "call-closes-task" of Settings ▸ Rules ▸ Presets, and your own rules
+/// about calls): the tasks made so before found in every list you can write
+/// by their own lines, a new one written in the usual list (Tasks ⚙), each
+/// change as the rules say it; then each act, once written, in this device's
+/// record of acts (`wiring::acts`: Undo in a rule's history; nothing said in
+/// the status line). Nothing when no rule about calls runs, or no call is
+/// with someone of your address books (no rule acts on one: `callback::Book`).
+/// The sync takes them to their server at its next round.
 fn call_back(fresh: &[rules::Logged], here: &str, config: &Config, senders: &Senders) {
-    use sioul_core::callback::{self, Kept, Write};
-    let said = callback::Rules::of(config);
-    if !said.missed && !said.unreached {
+    use sioul_core::callback::{Kept, Write};
+    use sioul_core::wiring::{acts, call, engine};
+    let own = sioul_core::wiring::store::Rules::load(&sioul_core::wiring::store::path()).unwrap_or_default();
+    let ruled = call::rules_here(config, &own);
+    if ruled.is_empty() {
         return;
     }
-    let calls: Vec<rules::Call> = fresh
+    let phone_name = phones_known(config).into_iter().find(|p| p.id == here).map(|p| p.name).unwrap_or_default();
+    let calls: Vec<call::Seen> = fresh
         .iter()
-        .map(|l| rules::Call::of(&rules::Logged { device: here.to_string(), ..l.clone() }, contact_of(senders, &l.key, l.hidden), sioul_core::notices::State::default()))
-        .filter(|c| c.contact.is_some())
+        .map(|l| {
+            let call = rules::Call::of(&rules::Logged { device: here.to_string(), ..l.clone() }, contact_of(senders, &l.key, l.hidden), sioul_core::notices::State::default());
+            let circle = if l.hidden { "" } else { call::circle_of(senders.judge_number(&l.key).who) };
+            call::Seen { call, circle, phone_name: phone_name.clone() }
+        })
         .collect();
-    if calls.is_empty() {
+    if calls.iter().all(|s| s.call.contact.is_none()) {
         return;
     }
     let zone = sioul_core::zone::current();
@@ -616,14 +626,33 @@ fn call_back(fresh: &[rules::Logged], here: &str, config: &Config, senders: &Sen
         .flat_map(|list| list.items())
         .filter_map(|file| std::fs::read_to_string(&file).ok().and_then(|text| Kept::read(&file, &text, &zone)))
         .collect();
-    for write in callback::apply(&calls, &kept, &said, tr(), &zone) {
-        let written = match write {
-            Write::New { uid, text } => crate::work::target_list("").and_then(|list| sioul_core::vdir::write_item(&list.dir.join(format!("{uid}.ics")), &text)),
-            Write::Changed { file, text } => sioul_core::vdir::write_item(&file, &text),
+    let place = engine::Place::here(here);
+    let record = acts::Acts::read(&place.acts);
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let ran = call::run(&calls, &kept, &ruled, &record, rules::threshold(config), senders.region(), tr(), &zone, now_ms);
+    // Each task written, with the list a new one went to: its acts recorded only once it is.
+    let mut written: std::collections::BTreeMap<String, String> = BTreeMap::new();
+    for write in ran.writes {
+        let (uid, done) = match write {
+            Write::New { uid, text } => {
+                let done = crate::work::target_list("").and_then(|list| sioul_core::vdir::write_item(&list.dir.join(format!("{uid}.ics")), &text).map(|()| format!("{}/{}", list.account, list.id)));
+                (uid, done)
+            }
+            Write::Changed { file, text } => {
+                let uid = file.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+                (uid, sioul_core::vdir::write_item(&file, &text).map(|()| String::new()))
+            }
         };
-        if let Err(e) = written {
-            eprintln!("sioul: calls: a call-back task: {e}");
+        match done {
+            Ok(list) => {
+                written.insert(sioul_core::links::task_uri(&uid), list);
+            }
+            Err(e) => eprintln!("sioul: calls: a call-back task: {e}"),
         }
+    }
+    let recorded: Vec<acts::Act> = ran.acts.into_iter().filter_map(|act| written.get(&act.result).map(|list| acts::Act { list: list.clone(), ..act })).collect();
+    if let Err(e) = acts::append(&place.log(), &recorded) {
+        eprintln!("sioul: calls: the record of acts: {e}");
     }
 }
 
@@ -843,7 +872,7 @@ pub(crate) fn view() -> String {
     let dismissed = sioul_core::notices::State { mark: sioul_core::notices::Mark::Dismissed, ..sioul_core::notices::State::default() };
     let calls: Vec<rules::Call> = history.iter().map(|l| rules::Call::of(l, contact_of(&senders, &l.key, l.hidden), if seen.seen.contains(&l.id()) { dismissed.clone() } else { sioul_core::notices::State::default() })).collect();
     let mut said = rules::lines(&held, &seen, &messages, &lister);
-    said.extend(rules::history_lines(&calls, sioul_core::callback::Rules::of(&config).threshold, &lister));
+    said.extend(rules::history_lines(&calls, rules::threshold(&config), &lister));
     said.sort_by_key(|line| line.at);
     let lines: Vec<serde_json::Value> = said.into_iter().map(|line| row_of(line, &notice_of)).collect();
     json!({ "lines": lines, "phone": cfg!(target_os = "android"), "links": { "tel": tel, "sms": sms } }).to_string()
@@ -911,10 +940,11 @@ pub(crate) fn for_card() -> Option<CardCalls> {
 }
 
 /// A person's calls of the last month (`numbers`: theirs, as written), for
-/// their sheet (`reaches::person`): a sentence each, newest first, from every
-/// phone, rang or declined; none where no phone shares its calls, and never a
-/// blocked caller's (their calls never leave their phone).
-pub(crate) fn history(numbers: &[String]) -> Vec<String> {
+/// their sheet (`reaches::person`): a sentence each with the call it opens
+/// ({text, address}), newest first, from every phone, each way, answered,
+/// missed, rang or declined (`calls::sheet`); none where no phone shares its
+/// calls, and never a blocked caller's (their calls never leave their phone).
+pub(crate) fn history(numbers: &[String]) -> Vec<rules::SheetCall> {
     let root = rules::folder();
     if numbers.is_empty() || !root.join(rules::LOG).is_dir() {
         return Vec::new();
@@ -928,14 +958,127 @@ pub(crate) fn history(numbers: &[String]) -> Vec<String> {
     let here = here_id();
     let now = sioul_core::zone::now();
     let now_ms = now.timestamp().as_millisecond();
-    let calls = rules::read_logs(&root, now_ms);
+    // Never a blocked caller's, as your lists say now (a number blocked after its call was kept).
+    let senders = Senders::load(&config);
+    let blocked = |key: &str| senders.judge_number(key).who == Who::Blocked;
+    let objects = rules::objects(&root, &blocked, now_ms);
     // Which phone each call came to, as the Porch says it (`calls::phone_words`): a sheet
     // lists every phone's calls, whatever `[porch] calls` says of the Porch.
     let phones = phones(&config, calling(&root, &here, true, now_ms), region);
     let words = |device: &str| rules::phone_words(tr(), device, &phones);
     let (none, all) = (|_: &str| None, |_: &Held| true);
     let lister = rules::Lister { now: &now, tr: tr(), region, name_of: &none, shows: &all, phone: &words };
-    rules::history(&calls, &keys, &lister)
+    rules::sheet(&objects, &keys, rules::threshold(&config), &lister)
+}
+
+/// Every call the phones keep, by its address, in a few words ("Missed call
+/// from Noa Linden", `calls::object_title`): what a rule's history names a
+/// call by.
+pub(crate) fn titles() -> BTreeMap<String, String> {
+    let root = rules::folder();
+    if !root.join(rules::LOG).is_dir() {
+        return BTreeMap::new();
+    }
+    let config = load_config();
+    let senders = Senders::load(&config);
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let threshold = rules::threshold(&config);
+    rules::objects(&root, &|_| false, now_ms)
+        .into_iter()
+        .map(|o| {
+            let name = contact_of(&senders, &o.key, o.hidden).map(|c| c.name);
+            (o.address.clone(), rules::object_title(tr(), &o, name.as_deref(), senders.region(), threshold))
+        })
+        .collect()
+}
+
+/// The calls of every phone of the last `days` days, oldest first, as a
+/// rule's conditions read them (`wiring::call::Seen`): what the preview of a
+/// rule about calls looks at. Never a blocked caller's.
+pub(crate) fn seen_calls(days: i64) -> Vec<sioul_core::wiring::call::Seen> {
+    use sioul_core::wiring::call;
+    let root = rules::folder();
+    if !root.join(rules::LOG).is_dir() {
+        return Vec::new();
+    }
+    let config = load_config();
+    let senders = Senders::load(&config);
+    let now_ms = sioul_core::zone::now().timestamp().as_millisecond();
+    let blocked = |key: &str| senders.judge_number(key).who == Who::Blocked;
+    let names: BTreeMap<String, String> = phones_known(&config).into_iter().map(|p| (p.id, p.name)).collect();
+    rules::read_histories(&root, &blocked, now_ms)
+        .into_iter()
+        .filter(|l| now_ms - l.at <= days * 86_400_000)
+        .map(|l| {
+            let circle = if l.hidden { "" } else { call::circle_of(senders.judge_number(&l.key).who) };
+            let phone_name = names.get(&l.device).cloned().unwrap_or_default();
+            call::Seen { call: rules::Call::of(&l, contact_of(&senders, &l.key, l.hidden), sioul_core::notices::State::default()), circle, phone_name }
+        })
+        .collect()
+}
+
+/// A call's card (CallCard.qml), by its address: {there, address, title,
+/// when, fields: [label, value, …]}, the most useful first: with whom, their
+/// number, when, how long, which way, answered or not, on which phone, what
+/// the screening did; {there: false, gone} once its phone no longer keeps it.
+/// Its ties are read by the card itself, as every card's (`related`).
+pub(crate) fn card(address: &str) -> String {
+    let config = load_config();
+    let senders = Senders::load(&config);
+    let root = rules::folder();
+    let now = sioul_core::zone::now();
+    let now_ms = now.timestamp().as_millisecond();
+    let blocked = |key: &str| senders.judge_number(key).who == Who::Blocked;
+    let Some(o) = rules::object(&root, address, &blocked, now_ms) else {
+        return json!({ "there": false, "gone": tr().text("call-card-gone", None) }).to_string();
+    };
+    let region = senders.region();
+    let threshold = rules::threshold(&config);
+    let contact = contact_of(&senders, &o.key, o.hidden);
+    // Their card's name; else the name the phone's contacts gave the screening.
+    let name = contact.as_ref().map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty()).or_else(|| o.screened.as_ref().map(|h| h.name.trim().to_string()).filter(|n| !n.is_empty()));
+    let number = if o.hidden { String::new() } else { rules::shown_number(&o.key, region) };
+    let at = rules::local(o.at, &now);
+    let mut fields: Vec<String> = Vec::new();
+    let mut field = |label: &str, value: String| {
+        if !value.trim().is_empty() {
+            fields.push(tr().text(label, None));
+            fields.push(value);
+        }
+    };
+    field("call-card-who", if o.hidden { tr().text("call-card-hidden", None) } else { name.clone().unwrap_or_else(|| number.clone()) });
+    if name.is_some() {
+        field("call-card-number", number.clone());
+    }
+    field("call-card-when", tr().date(&at, false));
+    if o.answered && o.seconds > 0 {
+        field("call-card-length", rules::length(u32::try_from(o.seconds).unwrap_or(0)));
+    }
+    field("call-card-way", tr().text(if o.out { "call-card-way-out" } else { "call-card-way-in" }, None));
+    let answered = if o.declined() {
+        "call-card-declined"
+    } else if o.kind == "rang" {
+        "call-card-rang"
+    } else if o.kind == "elsewhere" {
+        "call-card-answered-elsewhere"
+    } else if o.answered {
+        "call-card-answered-yes"
+    } else {
+        "call-card-answered-no"
+    };
+    field("call-card-answered", tr().text(answered, None));
+    // The phone by the name you gave it, else its system's, else as the lists say it.
+    let phones = phones(&config, std::iter::once(o.phone.clone()).collect(), region);
+    let named = phones.known.iter().find(|p| p.id == o.phone).map(|p| p.name.trim().to_string()).filter(|n| !n.is_empty());
+    field("call-card-phone", named.unwrap_or_else(|| rules::phone_words(tr(), &o.phone, &phones).row(tr())));
+    // What the screening said of it, when it screened it: the time of day, why it rang.
+    if let Some(held) = o.screened.as_ref().filter(|h| h.rang) {
+        field("call-card-screened", rules::rang_words(tr(), &held.why).unwrap_or_default());
+    } else if let Some(held) = o.screened.as_ref().filter(|h| !h.column.is_empty()) {
+        field("call-card-screened", rules::capitalized(&rules::context(tr(), &held.column)));
+    }
+    let title = rules::object_title(tr(), &o, name.as_deref(), region, threshold);
+    json!({ "there": true, "address": o.address, "title": title, "when": tr().date(&at, true), "fields": fields }).to_string()
 }
 
 /// The voicemails your operators mailed lately (`[words.voicemail]`: their
@@ -1365,6 +1508,13 @@ mod tests {
         // A person's sheet, from the same words.
         let keys: std::collections::BTreeSet<String> = ["+33465710042".to_string()].into();
         assert!(rules::history(&rules::read_logs(&root, now), &keys, &lister)[0].contains("declined on 01 99 00 12 34"));
+        // Each row opens its call's card, by its address; a sheet's line too, each way.
+        assert!(declined[0].address.starts_with("sioul:call/phone-a:") && rows[0].address.starts_with("sioul:call/phone-b:"), "{declined:?} {rows:?}");
+        let objects = rules::objects(&root, &|_| false, now);
+        let theirs: std::collections::BTreeSet<String> = ["+33465716325".to_string()].into();
+        let sheet = rules::sheet(&objects, &theirs, 90, &lister);
+        assert!(sheet.len() == 1 && sheet[0].text.contains("missed call, on your phone (B7).") && sheet[0].address == rows[0].address, "{sheet:?}");
+        assert_eq!(rules::sheet(&objects, &keys, 90, &lister)[0].address, declined[0].address, "a declined call: its own");
         // One phone alone: its number said nowhere.
         let alone = phones_of_one(&config, &root, now, fr);
         let words = |device: &str| rules::phone_words(&tr, device, &alone);

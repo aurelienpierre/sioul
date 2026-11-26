@@ -119,6 +119,12 @@ Item {
         function setRuleOn(id, on) {
             mock.calls.push({ what: "setRuleOn", id: id, on: on })
         }
+        function setPresetOn(id, on) {
+            mock.calls.push({ what: "setPresetOn", id: id, on: on })
+        }
+        function setPresetChoice(id, choice, on) {
+            mock.calls.push({ what: "setPresetChoice", id: id, choice: choice, on: on })
+        }
         function removeRule(id) {
             mock.calls.push({ what: "removeRule", id: id })
         }
@@ -341,6 +347,73 @@ Item {
             verify(!find(codes, "presetCopy").visible)
             verify(find(find(tab, "preset:first-estimate"), "presetCopy").visible, "copied where Sioul runs it")
             compare(past(tab, []).join("; "), "", "nothing past 412 points")
+        }
+
+        // A preset the engine runs (the calls' tasks): its switch here, its one place, and its
+        // choices under it, each said to Sioul; greyed while it is off; copied like any.
+        function test_a_preset_the_engine_runs_has_its_switch_here() {
+            const before = mock.view
+            const view = JSON.parse(JSON.stringify(before))
+            view.presets.push({ heading: "Calls", presets: [
+                { id: "missed-call-task", sentence: "When a call from someone in your address books is missed, a task to call them back is made.", off: false, open: { kind: "settings:porch.voicemail_seconds" }, openText: "Which of your calls reached their voicemail is set in the Porch's settings", offered: true, engine: true,
+                  choices: [{ id: "in", text: "Their calls you missed", on: true }, { id: "out", text: "Your calls that did not reach them", on: false }] },
+                { id: "call-closes-task", sentence: "When you spoke with someone on the phone, the task to call them back is done.", off: true, open: null, openText: "", offered: true, engine: true, choices: [] }] })
+            mock.view = view
+            tab.reload()
+            tab.part = "presets"
+            waitForRendering(tab)
+            const missed = find(tab, "preset:missed-call-task")
+            const closes = find(tab, "preset:call-closes-task")
+            const toggle = find(missed, "presetSwitch")
+            verify(toggle.visible && toggle.checked)
+            verify(find(closes, "presetSwitch").visible && !find(closes, "presetSwitch").checked, "off: its switch says it")
+            verify(!find(closes, "presetOff").visible, "its switch says it: no second line")
+            const theirs = find(missed, "presetChoice:in")
+            const yours = find(missed, "presetChoice:out")
+            verify(theirs.visible && theirs.checked && !yours.checked)
+            mouseClick(yours)
+            compare(JSON.stringify(calls("setPresetChoice")[0]), JSON.stringify({ what: "setPresetChoice", id: "missed-call-task", choice: "out", on: true }))
+            mouseClick(toggle)
+            compare([calls("setPresetOn")[0].id, calls("setPresetOn")[0].on].join("|"), "missed-call-task|false")
+            verify(find(missed, "presetWhere").visible, "the voicemail threshold, where it is set")
+            verify(find(missed, "presetCopy").visible, "copied to make your own")
+            compare(past(tab, []).join("; "), "", "nothing past 412 points")
+            mock.view = before
+            tab.reload()
+            tab.part = "own"
+        }
+
+        // A call's "when" offers only what can follow it: the call's task and its closing, never a
+        // message's action; declining is the phone's screening's, never offered; changing the "when"
+        // lets go an action that cannot follow it.
+        function test_a_call_s_when_offers_what_follows_it() {
+            const before = mock.catalogue
+            const added = JSON.parse(JSON.stringify(before))
+            added.types[0].actions.forEach(a => a.after = ["message"])
+            added.types[2].actions.forEach(a => a.after = ["message"])
+            added.types[2].actions.push({ id: "call-back", name: "make a task to call them back", available: true, phase: 1, params: [], after: ["call/is-missed", "call/is-answered", "call/ends"] })
+            added.types[1].actions[0].after = ["message"]
+            added.types.push({ id: "call", name: "A call", available: true, phase: 1,
+                events: [{ id: "rings", name: "rings", available: true, phase: 1 }, { id: "is-missed", name: "is missed", available: true, phase: 1 }],
+                fields: [{ id: "card", name: "their card", tests: [{ id: "exists", name: "exists", value: "none" }], open: false, proof: false, available: true, phase: 1 }],
+                actions: [{ id: "decline", name: "decline it", available: false, phase: 1, params: [], after: ["call/rings"], elsewhere: true }] })
+            mock.catalogue = added
+            tab.edit(null)
+            const form = editor()
+            tryVerify(() => form.opened)
+            const action = find(form.contentItem, "ruleAction")
+            action.activated(action.model.findIndex(m => m.text === "tie it to a project"))
+            compare(form.draft.then.action, "tie-to-project")
+            form.setType("call")
+            compare(form.draft.when.type, "call")
+            compare(form.draft.then.action, "", "a message's action let go")
+            form.setEvent("is-missed")
+            const offered = action.model.map(m => m.text).join(",")
+            compare(offered, "make a task to call them back", "only the call's task follows a missed call")
+            form.setEvent("rings")
+            compare(action.model.length, 0, "declining is the screening's: nothing offered")
+            form.close()
+            mock.catalogue = before
         }
 
         // The editor follows the declarations: a type and a field added here appear, their value's

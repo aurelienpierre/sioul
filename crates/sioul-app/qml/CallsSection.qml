@@ -13,10 +13,11 @@
 // phone's own apps, or on a computer the system's app for such links, KDE
 // Connect handing them to your phone; else the number is copied: nothing is
 // sent by Sioul); Dismiss, its "forget", takes it away on every device, with
-// ten seconds to undo. The rest is in the row's menu (⋮, a right click, a
-// long press, the Menu key or Shift+F10): call back, listen, add to your
-// contacts (Android's form on a phone, Sioul's on a computer), block, how
-// they reach you, why it went to voicemail.
+// ten seconds to undo. A click opens its last call's card (CallCard.qml: the
+// call, then its ties). The rest is in the row's menu (⋮, a right click, a
+// long press, the Menu key or Shift+F10): the call's card, call back,
+// listen, add to your contacts (Android's form on a phone, Sioul's on a
+// computer), block, how they reach you, why it went to voicemail.
 
 pragma ComponentBehavior: Bound
 
@@ -35,7 +36,7 @@ ColumnLayout {
 
     // calls.rs's `view`: {lines: [{ids (their notices), notice, kind ("declined", "missed",
     // "unreached"), text, number, dial, known, hidden, doubt, message: {text, path, sound},
-    // why, again}], phone, links: {tel, sms}}.
+    // why, again, address (its last call's, `sioul:call/…`)}], phone, links: {tel, sms}}.
     property var shown: ({ lines: [], phone: false, links: { tel: false, sms: false } })
     // The voicemail being played: its line's first notice, and its sound's address.
     property string playing: ""
@@ -83,8 +84,16 @@ ColumnLayout {
     }
 
     // The row's other actions, in its menu: a call back after the text.
+    // A row's call, its last, on its card (CallCard.qml).
+    function openCard(line) {
+        if ((line.address || "") !== "")
+            section.window.openThing({ kind: "call", uri: line.address, title: line.who || "" })
+    }
+
     function moreOf(line) {
         const more = []
+        if ((line.address || "") !== "")
+            more.push({ id: "card", text: section.sioul.text("calls-open-card"), icon: "call-start" })
         if (line.dial !== "" && section.canText && section.canCall)
             more.push({ id: "call", text: section.callWord(line), icon: "call-start" })
         if (line.message && line.message.sound !== null && line.message.sound !== undefined)
@@ -102,7 +111,9 @@ ColumnLayout {
     }
 
     function chosen(id, line, key) {
-        if (id === "text")
+        if (id === "card")
+            section.openCard(line)
+        else if (id === "text")
             Qt.openUrlExternally("sms:" + line.dial)
         else if (id === "call")
             Qt.openUrlExternally("tel:" + line.dial)
@@ -173,6 +184,7 @@ ColumnLayout {
             mainIcon: line.main.icon
             more: section.moreOf(line.modelData)
             onMainPressed: section.chosen(line.main.id, line.modelData, line.key)
+            onOpened: section.openCard(line.modelData)
             onDismissPressed: {
                 if (section.playing === line.key)
                     section.playing = ""

@@ -139,6 +139,11 @@ pub fn allows(consent: &Consent, world: &World, uri: &str) -> bool {
     let uri = world.canonical(uri);
     match links::kind_of(&uri) {
         Kind::Mail => allows_mail(consent, world, &uri),
+        // A call is outside projects, and kept with any card its number is on (the index ties it to
+        // every one: `ties::CallSource::cards`), as the calls tool keeps it. A call the index does not
+        // know (gone from its phone's month) has no card to read: outside projects alone decides, and
+        // the calls tool never gives its address anyway.
+        Kind::Call => consent.outside && consent.allows(&uri) && world.ties.is_none_or(|t| t.index.node(&uri).is_none_or(|node| t.index.ties_of(node).filter(|seen| seen.how == sioul_core::ties::How::Contact).all(|seen| consent.allows(t.index.address(seen.other))))),
         _ => consent.allows(&uri),
     }
 }

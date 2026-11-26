@@ -345,8 +345,9 @@ pub fn when_shared(rule: &Rule, names: &Names, tr: &Translator) -> String {
 /// One act of a rule, as the status line and its history say it:
 /// "“Avis d'impôt” tied to the project Taxes 2025."
 pub fn act_line(act: &Act, names: &Names, tr: &Translator) -> String {
-    // Its message by its subject, quoted; else "A message", the line starting with it.
-    let subject = names.subjects.get(&act.object).filter(|s| !s.trim().is_empty()).map_or_else(|| tr.text("rule-a-message-first", None), |s| quoted(tr, s));
+    // Its message by its subject, quoted; a call by what it was; else "A message" ("A call"), the line starting with it.
+    let first = if act.object.starts_with("sioul:call/") { "rule-a-call-first" } else { "rule-a-message-first" };
+    let subject = names.subjects.get(&act.object).filter(|s| !s.trim().is_empty()).map_or_else(|| tr.text(first, None), |s| quoted(tr, s));
     let project = crate::links::id_of(&act.result);
     let project = names.projects.get(&project).cloned().unwrap_or(project);
     let topic = names.topics.get(&act.result).cloned().unwrap_or_else(|| act.result.clone());

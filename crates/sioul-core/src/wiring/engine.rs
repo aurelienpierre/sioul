@@ -1319,7 +1319,7 @@ fn task_file(uid: &str, list: &str, find_list: &dyn Fn(&str) -> Option<Collectio
 }
 
 /// What one act wrote, put back while it is as the rule left it: a task
-/// (wherever it moved), a tie, a topic's word still the rule's, a paper and
+/// (wherever it moved), a task a call closed (open again), a tie, a topic's word still the rule's, a paper and
 /// its file (neither when the paper was filled in since, nor its file
 /// changed; the file kept when another paper names it).
 /// Whether it was put back, or is gone already.
@@ -1344,6 +1344,27 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
                 }
             }
         }
+        // A task a rule about calls closed (`wiring::call`): open again while it is as the rule left
+        // it. Its `X-SIOUL-CALLED` line stays: no call closes it again (`callback`).
+        "done" if act.wrote => {
+            let uid = links::id_of(&act.result);
+            match task_file(&uid, &act.list, find_list, all_lists) {
+                None => true,
+                Some(path) => {
+                    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                    let as_left = digest(text.as_bytes()) == act.digest;
+                    if as_left {
+                        let zone = crate::zone::current();
+                        let now = jiff::Timestamp::from_millisecond(now_ms).unwrap_or(jiff::Timestamp::UNIX_EPOCH).to_zoned(zone.clone());
+                        let open = crate::tasks::set_status(&text, crate::tasks::Status::NeedsAction, &zone, &now)?;
+                        crate::vdir::write_item(&path, &open)?;
+                    }
+                    as_left
+                }
+            }
+        }
+        // A call's time added to its person's task: no way back of its own (the task is yours to edit).
+        "joined" => false,
         "tie" if act.wrote => {
             LocalLinks::change(&place.ties, |local| {
                 let before = local.links.len();
@@ -1422,8 +1443,11 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
 pub fn undo(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn Fn(&str) -> Option<Collection>, now_ms: i64) -> Result<Undone, String> {
     let put = put_back(act, place, places, find_list, &crate::tasks::lists, now_ms)?;
     let mark = Act { at: now_ms, rule: act.rule.clone(), object: act.object.clone(), result: act.result.clone(), ..Act::default() };
-    let mut lines = vec![Act { undone: true, back: put, ..mark.clone() }];
-    if put {
+    // A task a call closed, opened again here, travels as the task itself (CalDAV): no other
+    // device opens it a second time (two writes of one task, a conflict on its server).
+    let back = put && act.act != "done";
+    let mut lines = vec![Act { undone: true, back, ..mark.clone() }];
+    if back {
         lines.push(Act { taken: true, ..mark });
     }
     acts::append(&place.log(), &lines)?;

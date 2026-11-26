@@ -137,7 +137,18 @@ Item {
         // As `remind::choices` gives them: "As usual" with its words for a free event beside.
         function reminderChoices(current) { return JSON.stringify([{ value: "", label: "event-remind-usual", free: "event-remind-usual-free" }, { value: "none", label: "event-remind-none" }]) }
         function eventPairing(key) { return "null" }
-        function related(uri) { return "[]" }
+        function related(uri) {
+            // A call's ties: the card of whom it was with, the task it made.
+            if (uri.startsWith("sioul:call/"))
+                return JSON.stringify([{ uri: "sioul:contact/noa", kind: "contact", title: "Noa Linden", detail: "", how: "contact", found: true, key: "/books/noa.vcf" }, { uri: "sioul:task/sioul-call-1", kind: "task", title: "Call back Noa Linden", detail: "Tasks", how: "made", found: true, key: "/tasks/call.ics" }])
+            return "[]"
+        }
+        // A call's card (`callCard`): one still kept, one gone.
+        function callCard(address) {
+            if (address === "sioul:call/phone-1:1793000000000-in")
+                return JSON.stringify({ there: true, address: address, title: "Missed call from Noa Linden", when: "Wed 4 Nov 09:30", fields: ["With", "Noa Linden", "Number", "01 99 00 12 34", "When", "Wednesday 4 November 2026 at 09:30", "Which way", "They called you", "Answered", "No", "On the phone", "Pocket"] })
+            return JSON.stringify({ there: false, gone: "Each phone keeps its calls a month: this one is no longer here." })
+        }
         function deleteEvent(key, start, onlyThis) {
             mock.calls.push({ what: "deleteEvent", key: key, start: start, onlyThis: onlyThis })
             return ""
@@ -1549,6 +1560,30 @@ Item {
             verify(!root.find(host.datedCard, "cardEdit").visible)
             compare(root.find(host.datedCard, "cardWhy").text, "dated-invoice-record")
             verify(root.find(host.datedCard, "datedMark").color === Qt.rgba(0, 0, 0, 0) || String(root.find(host.datedCard, "datedMark").color) === "#00000000", "never filled")
+        }
+
+        // A call's card: opened by its address; its head says what it was and when;
+        // its first section the call, each label with its value standing out; its
+        // second its ties (the person's card, the task it made), each opening; no
+        // Edit, its reason in its place; one no longer kept says so.
+        function test_a_call_s_card() {
+            const host = makeHost()
+            compare(host.cardOf({ kind: "call", srcKey: "sioul:call/phone-1:1793000000000-in" }), "call")
+            compare(host.cardOf({ kind: "call" }), "", "no address, no card")
+            verify(host.show({ kind: "call", srcKey: "sioul:call/phone-1:1793000000000-in" }))
+            const card = root.all(host, c => c.objectName === "callCard")[0]
+            tryVerify(() => card !== undefined && card.there)
+            compare(card.title, "Missed call from Noa Linden")
+            verify(!root.find(card, "cardEdit").visible, "a call is what its phone says it was")
+            const fields = root.all(root.find(card, "callFields"), c => c instanceof Label && c.text !== "" && c.text !== "call-card-section-call").map(c => c.text)
+            compare(fields.slice(0, 4).join("|"), "With|Noa Linden|Number|01 99 00 12 34")
+            verify(fields.indexOf("Pocket") > 0)
+            const ties = root.find(card, "callTies")
+            tryVerify(() => ties.visible && root.all(ties, c => c.text === "Call back Noa Linden").length > 0)
+            // Gone: said.
+            host.show({ kind: "call", srcKey: "sioul:call/phone-1:1-in" })
+            tryVerify(() => !card.there && root.find(card, "callGone").visible)
+            compare(root.find(card, "callGone").text, "Each phone keeps its calls a month: this one is no longer here.")
         }
 
         // A meeting's card (part F's agenda half): when to leave and its next
