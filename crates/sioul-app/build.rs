@@ -301,8 +301,13 @@ fn main() {
         "qml/style/StyleCheckBox.qml",
         "qml/style/StyleRadioButton.qml",
         "qml/style/StyleSpinBox.qml",
+        // colour: the effect drawing a site in the screen's colours (docs/colour.md), on computers only, as the Sites page.
+        "qml/ColourEffect.qml",
     ];
-    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SiteDownloads.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml", "qml/SignInWindow.qml", "qml/SignInSite.qml"];
+    // On one line: tools/qml-test.sh reads it, to make the phone's set of files for the
+    // tests that name "qml-test: android" (each file of qml/android/ in place of its
+    // namesake, which must declare the same properties: tst_pdf.qml, tst_androidset.qml).
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SiteDownloads.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml", "qml/SignInWindow.qml", "qml/SignInSite.qml", "qml/ColourEffect.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
     // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
     // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.
@@ -311,8 +316,6 @@ fn main() {
     } else {
         pages.into_iter().chain(["qml-desktop/Tray.qml"]).collect()
     };
-    // colour: the effect drawing a site in the screen's colours (docs/colour.md), on computers only, as the Sites page.
-    let pages: Vec<&str> = if android { pages } else { pages.into_iter().chain(["qml/ColourEffect.qml"]).collect() };
     // Line spacing for editable text, which Qt Quick does not offer; PDFs written; the window's
     // icon; text and images made ready at the start; whether the palette is dark, for the icons;
     // the clipboard, for Copy buttons; the sounds made as they play, through Qt's audio output;

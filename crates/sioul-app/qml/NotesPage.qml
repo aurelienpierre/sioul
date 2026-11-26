@@ -40,6 +40,8 @@ Item {
     readonly property string showing: page.shown.show || "folder"
     readonly property string typed: page.shown.type || "all"
     readonly property bool searching: (page.shown.query || "") !== ""
+    // The folder read and holding no note of any type, its path known: said under the list.
+    readonly property bool folderEmpty: page.notesText !== "" && !page.shown.missing && !page.searching && page.typed === "all" && page.shown.notes.length === 0 && page.shown.recent.length === 0 && (page.shown.groups || []).length === 0 && (folderNeeded.folder.path || "") !== ""
 
     function takeShown() {
         if (page.visible)
@@ -72,8 +74,12 @@ Item {
     // On a phone, the note open takes the page; Back keeps it (saved) and
     // closes it (main.qml).
     readonly property bool canGoBack: page.note !== null
+    // On a phone, the ⚙ in the window's bar (main.qml) while the folder is asked for in the
+    // page's place (FolderNeeded.qml): the page's head, which holds it otherwise, is hidden then.
+    readonly property bool barSettings: page.window.compact === true && folderNeeded.shown
     // The page's ⚙, open at one of its settings ("case_store", the notes folder, from a
-    // link by key: SettingDoor.qml, the sharing's line), or closed; with no folder too.
+    // link by key: SettingDoor.qml, the sharing's line), or closed; with no folder too
+    // (its panel floats over the window, the head hidden or not).
     function openSettings(open, key) {
         notesSettings.show(open)
         if (open && key)
@@ -574,15 +580,19 @@ Item {
     }
 
     // No notes folder on this device, or one that does not read: asked for in
-    // the page's place (FolderNeeded.qml), never an empty list.
+    // the page's place (FolderNeeded.qml), never an empty list; the page's ⚙
+    // beside its title on a computer, in the window's bar on a phone (`barSettings`).
     FolderNeeded {
         id: folderNeeded
 
+        objectName: "folderNeeded"
         anchors.fill: parent
         sioul: page.sioul
         theme: page.theme
         title: page.sioul.text("ui-notes")
+        settingsHere: page.window.compact !== true
         onChosen: page.sioul.searchNotes(page.query)
+        onSettingsWanted: page.openSettings(true, "")
     }
 
     RowLayout {
@@ -682,6 +692,7 @@ Item {
                 settings: SettingsButton {
                     id: notesSettings
 
+                    objectName: "notesSettings"
                     sioul: page.sioul
                     theme: page.theme
                     view: "notes"
@@ -838,7 +849,9 @@ Item {
 
                 // Under what was found: still looking in the texts, nothing found, and
                 // that PDFs and sounds are found by their names; under a list of one
-                // type, that it holds nothing.
+                // type, that it holds nothing; the folder not read yet (its first
+                // reading, long for a large folder on a phone), or read and holding no
+                // note, said with its path: never a bare empty list.
                 footer: ColumnLayout {
                     width: list.width - 10
                     spacing: 4
@@ -851,7 +864,9 @@ Item {
                             { name: "noteLooking", shown: page.searching && page.shown.looking, words: page.sioul.text("note-search-looking") },
                             { name: "noteNoneFound", shown: page.searching && !page.shown.looking && page.shown.notes.length === 0, words: page.sioul.text("note-search-none") },
                             { name: "noteNamesOnly", shown: page.searching && page.shown.namesOnly, words: page.sioul.text("note-search-names-only") },
-                            { name: "noteNoneOfType", shown: !page.searching && page.typed !== "all" && !page.rows.some(r => r.type === "note"), words: page.sioul.text("note-type-none") }
+                            { name: "noteNoneOfType", shown: !page.searching && page.typed !== "all" && !page.rows.some(r => r.type === "note"), words: page.sioul.text("note-type-none") },
+                            { name: "noteReading", shown: page.notesText === "", words: page.sioul.text("note-reading") },
+                            { name: "noteFolderEmpty", shown: page.folderEmpty, words: page.sioul.textWith("note-folder-empty", "path", folderNeeded.folder.path || "") }
                         ]
 
                         delegate: Label {

@@ -9,9 +9,11 @@
 // "All files access" as the sharing's does). Chosen, it becomes this
 // device's notes folder (`case_store`, the Notes page's ⚙:
 // docs/notes-folder.md), and the page fills. Never an empty list in its
-// place. The state is the backend's `notesFolder` (`Config::notes_folder`),
-// read again at each minute, so that a drive plugged in is seen; not known
-// yet, the page shows as it is.
+// place, and the page's ⚙ one press away: beside the title on a computer
+// (`settingsHere`), in the window's bar on a phone. The state is the
+// backend's `notesFolder` (`Config::notes_folder`), read again at each
+// minute, so that a drive plugged in is seen; not known yet, the page shows
+// as it is.
 
 pragma ComponentBehavior: Bound
 
@@ -40,9 +42,15 @@ Item {
     property bool ownChooser: Qt.platform.os === "android"
     // Sioul's own chooser once made, for that test; null before.
     readonly property var ownBrowser: browser.item
+    // The page's ⚙ at the right of the title, on a computer (where the title
+    // shows): the page's head, which holds it otherwise, is hidden while this
+    // shows. A phone has it in the window's bar (NotesPage.qml, `barSettings`).
+    property bool settingsHere: false
 
     // A folder chosen and kept: the page reads itself again.
     signal chosen
+    // The page's ⚙ pressed: its settings open (the notes folder among them).
+    signal settingsWanted
 
     // The folder chosen: this device's notes folder, at once.
     function take(path) {
@@ -83,13 +91,30 @@ Item {
             room: scroll.availableWidth
             spacing: 10
 
-            Label {
+            RowLayout {
                 visible: needed.title !== "" && !needed.theme.compact
                 Layout.fillWidth: true
-                text: needed.title
-                textFormat: Text.PlainText
-                font.pixelSize: 22
-                color: needed.theme.text
+                spacing: 6
+
+                Label {
+                    Layout.fillWidth: true
+                    text: needed.title
+                    textFormat: Text.PlainText
+                    font.pixelSize: 22
+                    color: needed.theme.text
+                }
+                ToolButton {
+                    objectName: "folderNeededSettings"
+                    visible: needed.settingsHere
+                    icon.name: "settings-configure"
+                    icon.color: needed.theme.text
+                    display: AbstractButton.IconOnly
+                    Accessible.name: needed.sioul.text("ui-settings")
+                    ToolTip.visible: hovered
+                    ToolTip.text: needed.sioul.text("ui-settings")
+                    ToolTip.delay: 300
+                    onClicked: needed.settingsWanted()
+                }
             }
             Label {
                 objectName: "folderNeededSaid"

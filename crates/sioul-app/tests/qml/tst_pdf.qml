@@ -5,7 +5,10 @@
 // links (data/links.pdf): a link to the web shows where it goes and opens
 // only with Open; an address goes to the writing window with Open; a file:
 // link is not followed, and the bar says so (decided 3 November 2026).
-// Nothing opens by a tap alone. Run by tools/qml-test.sh.
+// Nothing opens by a tap alone. The phone's own PdfView (qml/android/,
+// Qt PDF having no Android version) declares every property this one does:
+// QML refuses on the phone alone a page that gives it one it lacks (the
+// Notes page, 3 to 26 November 2026). Run by tools/qml-test.sh.
 
 import QtQuick
 import QtTest
@@ -112,6 +115,27 @@ Item {
             mouseClick(find("pdfLinkOpen"))
             compare(mock.written, ["ana@example.org"])
             compare(mock.opened, [], "never the browser")
+        }
+
+        // Every property of this view, the phone's declares too: a page gives either the same.
+        function test_the_phone_s_view_declares_the_same_properties() {
+            const phone = Qt.createComponent(Qt.resolvedUrl("../../qml/android/PdfView.qml")).createObject(root, { source: "" })
+            verify(phone !== null, "the phone's view made")
+            const lacking = []
+            let properties = 0
+            for (const name in view) {
+                // A property has its notify signal; a function has none.
+                if (typeof view[name + "Changed"] !== "function")
+                    continue
+                properties += 1
+                if (!(name in phone))
+                    lacking.push(name)
+            }
+            verify(properties > 20, "the properties read: " + properties)
+            for (const name of ["source", "sioul", "theme", "window", "openExternally", "zoom", "asked", "document", "pages"])
+                verify(name in phone, name)
+            compare(lacking, [], "properties the phone's PdfView.qml lacks")
+            phone.destroy()
         }
 
         function test_a_file_link_is_not_followed() {

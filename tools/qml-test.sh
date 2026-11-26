@@ -31,6 +31,14 @@
 # (AT_SPI_BUS_ADDRESS): a D-Bus session of its own, which starts nothing,
 # in a runtime folder of its own; Weston reads no configuration. Needs weston.
 #
+# A test that names "qml-test: android" runs on the window's QML as the
+# phone's build has it (crates/sioul-app/build.rs): the files for computers
+# only left out (its `desktop_only`), each file of qml/android/ in place of
+# its namesake, in a copy made for the run, the test file beside it so that
+# its `import "../../qml"` finds that copy. A page that gives a property, or
+# names a type, that the phone's files lack is refused there as on the phone,
+# where the computer's files hide it (the Notes page, 3 to 26 November 2026).
+#
 # Qt 6's runner: Fedora names it qmltestrunner-qt6, and its bare qmltestrunner
 # is Qt 5's, which cannot read these files ("Library import requires a
 # version"). QMLTESTRUNNER names another. Its messages on the terminal (Fedora's Qt sends them to the
@@ -134,6 +142,30 @@ CONF
     return $status
 }
 
+# One test file on the phone's set of files (above), offscreen; its runner's status.
+on_phone_set() {
+    local file=$1 run gone status
+    gone=$(sed -n 's/^ *let desktop_only = \[\(.*\)\];$/\1/p' "$repo/crates/sioul-app/build.rs" | grep -o '"qml/[^"]*\.qml"' | tr -d '"' || true)
+    if [[ -z "$gone" ]]; then
+        echo "qml-test.sh: no one-line \`let desktop_only = [...];\` in crates/sioul-app/build.rs: the phone's set of files is not known." >&2
+        return 1
+    fi
+    run=$(mktemp -d /tmp/sioul-qml-android.XXXXXX) || return 1
+    mkdir -p "$run/tests/qml"
+    cp -r "$repo/crates/sioul-app/qml" "$run/qml"
+    rm -rf "$run/qml/android"
+    for path in $gone; do
+        rm -f "${run:?}/$path"
+    done
+    cp "$repo/crates/sioul-app/qml/android/"*.qml "$run/qml/"
+    cp "$file" "$run/tests/qml/"
+    status=0
+    env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 \
+        TZ=Europe/Paris "$runner" -import "$tests/stand-ins" -input "$run/tests/qml/$(basename "$file")" "${@:2}" || status=$?
+    rm -rf "$run"
+    return $status
+}
+
 failed=()
 for name in "${names[@]}"; do
     if [[ ! -f "$tests/$name" ]]; then
@@ -148,6 +180,8 @@ for name in "${names[@]}"; do
     fi
     if grep -q "qml-test: accessibility" "$tests/$name"; then
         with_accessibility "$tests/$name" "$@" || failed+=("$name")
+    elif grep -q "qml-test: android" "$tests/$name"; then
+        on_phone_set "$tests/$name" "$@" || failed+=("$name")
     elif ! env -u DISPLAY -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_FORCE_STDERR_LOGGING=1 \
             TZ=Europe/Paris "$runner" -import "$tests/stand-ins" -input "$tests/$name" "$@"; then
         failed+=("$name")
