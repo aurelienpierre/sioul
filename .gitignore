@@ -34,3 +34,6 @@ Sioul.app/
 *.orig
 *.rej
 *-before-*
+
+# Python resource files made by Qt's resource compiler: never part of the sources.
+*_rc.py

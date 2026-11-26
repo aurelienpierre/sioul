@@ -250,7 +250,7 @@ Ce site web n’a ni mesure d’audience, ni publicité, ni cookies, et ne charg
 
 ## Signaler un problème {#reporting-a-problem}
 
-Un problème de sécurité, ou tout ce qui vous inquiète : [les tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
+Un problème de sécurité : signalez-le en privé par le formulaire de GitHub, [Report a vulnerability](https://github.com/aurelienpierre/sioul/security/advisories/new), jamais dans un ticket public. Tout ce qui vous inquiète d’autre : [les tickets GitHub](https://github.com/aurelienpierre/sioul/issues).
 
 ## Comparé à d’autres applications {#compared-with-other-apps}
 

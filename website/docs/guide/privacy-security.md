@@ -250,7 +250,7 @@ This website has no analytics, no advertising and no cookies, and loads nothing 
 
 ## Reporting a problem {#reporting-a-problem}
 
-A security problem, or anything that worries you: [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
+A security problem: report it privately through GitHub's form, [Report a vulnerability](https://github.com/aurelienpierre/sioul/security/advisories/new), never in a public issue. Anything else that worries you: [GitHub issues](https://github.com/aurelienpierre/sioul/issues).
 
 ## Compared with other apps {#compared-with-other-apps}
 

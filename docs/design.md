@@ -4,10 +4,11 @@ Sioul adapts the demands of the world to the person, rather than the person to a
 
 It is designed first for people for whom admin hurts, and for anyone whose capacity is limited or changes. Its rule: **nothing enters without your consent; letters wait outside; deadlines live in the plan, and show in its agenda as quiet marks on their own day while it is to come, never in your face: one reminder each, no red, no count, nothing carried over; a written channel is always open.** Every choice below comes from that rule, and from the research in [research.md](research.md). The detailed notes behind it, each study with its evidence and the rule it gives, are in [research/README.md](research/README.md).
 
-Three tests for anything added:
+Four tests for anything added:
 - **It takes admin work off the person**, rather than moving it elsewhere. An assistant that lists seventeen things to deal with has moved the work; one that settles sixteen and asks one question has removed it.
 - **Its complexity stays on Sioul's side.** More state, more syncing, more ways to fail are Sioul's to absorb; none of it reaches the screen as a setting to understand or a state to watch.
 - **It is something software may do to a person.** The refusals of [research/life-admin.md](research/life-admin.md) (streaks, overdue counts, nags, mood or capacity guessed from behaviour, actions taken alone) hold for every new feature.
+- **Your admin stays readable without Sioul.** What Sioul keeps is in open, documented formats (iCalendar, vCard, mail as files, Markdown, TOML), and can always be taken out as plain files by a way that does not need Sioul's window: if Sioul stopped tomorrow, nothing of your admin life would be locked in it.
 
 ## Six places
 - **The Porch**: everything new, from every account and portal, waits here until an admin window. It is checked (genuine or forged), sorted into projects and summarised. New senders wait in the screener until you let them in.
