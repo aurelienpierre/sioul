@@ -586,6 +586,9 @@ impl World<'_> {
                 out.push(Edge { from, to, how: how.to_string() });
             }
         };
+        // A card named by its UID, `CONTACT;ALTREP="urn:uuid:…"` (an extension's door's, another program's).
+        let cards = crate::contacts::ByUid::of(self.contacts);
+        let card = |uri: &str| cards.find(uri).map(|at| contact_uri(&self.contacts[at].uid));
         for task in self.tasks {
             let me = task_uri(&task.uid);
             for link in &task.links {
@@ -608,7 +611,7 @@ impl World<'_> {
                 }
             }
             for contact in task.contacts.iter().filter(|c| !c.uri.is_empty()) {
-                push(me.clone(), self.canonical(&contact.uri), "contact");
+                push(me.clone(), card(&contact.uri).unwrap_or_else(|| self.canonical(&contact.uri)), "contact");
             }
             for project in &task.projects {
                 push(me.clone(), project_uri(project), "project");
@@ -639,6 +642,12 @@ impl World<'_> {
             for person in &event.people {
                 if let Some(contact) = crate::contacts::by_address(self.contacts, person) {
                     push(me.clone(), contact_uri(&contact.uid), "contact");
+                }
+            }
+            // Whom it is with (CONTACT): a card it names by its UID, or by Sioul's address; another address, none.
+            for uri in &event.contacts {
+                if let Some(other) = card(uri).or_else(|| Some(self.canonical(uri)).filter(|c| kind_of(c) == Kind::Contact)) {
+                    push(me.clone(), other, "contact");
                 }
             }
         }
@@ -1006,7 +1015,7 @@ fn points_at(world: &World, line: &str, other: &str) -> bool {
     match crate::lines::name(line).as_str() {
         "LINK" if crate::lines::param(line, "VALUE").is_some_and(|v| v.eq_ignore_ascii_case("UID")) => world.canonical(&format!("uid:{value}")) == other,
         "LINK" => world.canonical(value) == other,
-        "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other),
+        "CONTACT" => crate::lines::param(line, "ALTREP").is_some_and(|uri| world.canonical(&uri) == other || crate::contacts::uid_named(world.contacts, &uri).is_some_and(|uid| contact_uri(uid) == other)),
         "REFID" => project_uri(&crate::lines::unescape(value)) == other,
         _ => false,
     }
@@ -1136,7 +1145,7 @@ impl Loaded {
     }
 
     /// What undoes a tie between `a` and `b`, wherever it is written: a
-    /// task's LINK, CONTACT or REFID, an event's LINK, a note's front matter.
+    /// task's LINK, CONTACT or REFID, an event's LINK or CONTACT, a note's front matter.
     /// The local file is the caller's (`LocalLinks::untie`). A step, a wait,
     /// a guest or a link in a note's text stay: they are changed where they are.
     pub fn untie(&self, a: &str, b: &str, now: &jiff::Zoned) -> Vec<Rewrite> {

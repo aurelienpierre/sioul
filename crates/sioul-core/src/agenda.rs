@@ -1338,6 +1338,29 @@ fn organizer_door_open() -> bool {
     ORGANIZER_DOOR.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+thread_local! {
+    /// Whether this thread writes as an extension's door now (`as_extension_door`).
+    static EXTENSION_DOOR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `write` as an extension's door (`extensions::door`, on this thread
+/// alone, until it returns): the person's own word on an agenda, read only or
+/// its availability only, does not refuse its writes (26 November 2026:
+/// whose an agenda is decides what reaches the person, who may write it is
+/// apart, and the person chose that calendar for the extension); its server's
+/// read-only, a subscription, a meeting with others and every other rule of
+/// `guard` still do.
+pub(crate) fn as_extension_door<T>(write: impl FnOnce() -> T) -> T {
+    struct Was(bool);
+    impl Drop for Was {
+        fn drop(&mut self) {
+            EXTENSION_DOOR.with(|door| door.set(self.0));
+        }
+    }
+    let _was = Was(EXTENSION_DOOR.with(|door| door.replace(true)));
+    write()
+}
+
 /// The `test-hooks` feature, its mark kept in every program and library
 /// built with it, for `tools/check-test-marks.sh` to find whatever else that
 /// build holds (review of 1e8551e, F17): never in Sioul's builds.
@@ -1376,10 +1399,12 @@ pub fn guard_organized(path: &Path, new: Option<&str>) -> Result<(), Refusal> {
 /// goes through the organizer's door, `guard_organized`). What holds no event, before and after, is asked nothing more than
 /// its read: no sync state parsed, no address asked (review of 36002ea,
 /// can-wait 13). A calendar you only read is one its server keeps so, or one
-/// whose agenda you keep read only or for its availability (`agendas`).
+/// whose agenda you keep read only or for its availability (`agendas`); for
+/// an extension's door (`as_extension_door`), its server's word alone.
 pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
     // A file of no calendar's folder (a contact): nothing read (the check of ef8c0ca, low 21).
-    let Some(read_only) = vdir::calendar_read_only(path) else { return Ok(()) };
+    let read_only = if EXTENSION_DOOR.with(std::cell::Cell::get) { vdir::calendar_server_read_only(path) } else { vdir::calendar_read_only(path) };
+    let Some(read_only) = read_only else { return Ok(()) };
     // Never an event where tasks only go, nor a task where events only go:
     // its server would refuse it at every sync, and say it to nobody here.
     if let Change::Write(new) = change
@@ -3150,6 +3175,11 @@ pub struct EventRef {
     pub tentative: bool,
     /// Its guests' addresses (ATTENDEE), the organizer aside.
     pub guests: Vec<String>,
+    /// The addresses of the cards it is with (`CONTACT;ALTREP=…`, RFC 5545
+    /// §3.8.4.2): `urn:uuid:<UID>` as an extension's door or another program
+    /// writes it (`contacts::uid_uri`), or Sioul's `sioul:contact/<UID>`. A
+    /// contact without an address names no card.
+    pub contacts: Vec<String>,
 }
 
 /// The ties of one event's text; None when it holds no event. A file of
@@ -3181,6 +3211,7 @@ pub fn event_ref(text: &str, key: &str, zone: &TimeZone) -> Option<EventRef> {
             "LINK" => found.links.push(crate::tasks::link_of(line)),
             "RELATED-TO" => found.related.push(crate::tasks::relation_of(line)),
             "REFID" => found.projects.push(lines::unescape(lines::value(line).trim())),
+            "CONTACT" => found.contacts.extend(lines::param(line, "ALTREP").map(|uri| uri.trim().to_string()).filter(|uri| !uri.is_empty())),
             "ATTENDEE" | "ORGANIZER" => {
                 found.people.push(address(lines::value(line)));
                 if name == "ATTENDEE" {

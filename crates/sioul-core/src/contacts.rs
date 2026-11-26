@@ -1154,6 +1154,104 @@ pub fn by_address<'a>(contacts: &'a [Contact], address: &str) -> Option<&'a Cont
     contacts.iter().find(|c| c.emails.iter().any(|e| e.value.eq_ignore_ascii_case(address.trim())))
 }
 
+/// The characters a URI holds as they are in the address Sioul writes for a
+/// card (`uid_uri`): RFC 3986's unreserved ones, and those a URN's name may
+/// hold that end no parameter of a line (no comma, no semicolon, no quote).
+fn uri_safe(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"-._~!$&'()*+=:@/".contains(&byte)
+}
+
+/// Whether `text` begins with `prefix`, case aside.
+fn starts_ci(text: &str, prefix: &str) -> bool {
+    text.get(..prefix.len()).is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+}
+
+/// The address a calendar program can follow to a card, by its UID, as an
+/// event's `CONTACT;ALTREP` holds it (RFC 5545 §3.8.4.2): `urn:uuid:` and the
+/// UID (RFC 9562's URN), or the UID as it is when it is a URN already (vCard
+/// 4.0 writes `UID:urn:uuid:…`). A character a URI cannot hold is
+/// percent-encoded (RFC 3986 §2.1), so that every reader takes the whole of
+/// it: a phone's ical4j parses the parameter as a URI. A card the door of an
+/// extension made has a UID of its own form, not a UUID
+/// (`extensions::person_mark`): it is written under `urn:uuid:` all the same,
+/// which Sioul reads back, and which other programs keep as an opaque address.
+pub fn uid_uri(uid: &str) -> String {
+    let uid = uid.trim();
+    let mut encoded = String::with_capacity(uid.len());
+    for byte in uid.bytes() {
+        if uri_safe(byte) {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    if starts_ci(uid, "urn:") { encoded } else { format!("urn:uuid:{encoded}") }
+}
+
+/// `%XX` sequences decoded (a malformed one kept as written).
+fn percent_decoded(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] == b'%'
+            && let Some(byte) = text.get(at + 1..at + 3).and_then(|hex| u8::from_str_radix(hex, 16).ok())
+        {
+            out.push(byte);
+            at += 3;
+            continue;
+        }
+        out.push(bytes[at]);
+        at += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A card's UID as an address names it: without `urn:uuid:`, in lower case
+/// (a UUID's letters are the same whatever their case, RFC 9562 §4). Every
+/// UID is lowered, not only a UUID: two cards whose UIDs differ by case alone
+/// are one key, the first found winning (`ByUid::of`).
+fn uid_key(uid: &str) -> String {
+    let uid = uid.trim();
+    let bare = if starts_ci(uid, "urn:uuid:") { &uid["urn:uuid:".len()..] } else { uid };
+    bare.to_lowercase()
+}
+
+/// The UID key an address names (`uid_uri`'s, or any `urn:` address another
+/// program wrote): none for an address that is no URN.
+fn uri_key(uri: &str) -> Option<String> {
+    let uri = uri.trim();
+    starts_ci(uri, "urn:").then(|| uid_key(&percent_decoded(uri)))
+}
+
+/// The cards of `contacts` by the UID an address names (`uid_uri`): what
+/// reads an event's or a task's `CONTACT;ALTREP="urn:uuid:…"` as a tie to a
+/// card, whoever wrote it. Made once for many addresses.
+#[derive(Debug, Default)]
+pub struct ByUid(std::collections::HashMap<String, usize>);
+
+impl ByUid {
+    pub fn of(contacts: &[Contact]) -> ByUid {
+        let mut map = std::collections::HashMap::with_capacity(contacts.len());
+        for (at, contact) in contacts.iter().enumerate().filter(|(_, c)| !c.uid.trim().is_empty()) {
+            map.entry(uid_key(&contact.uid)).or_insert(at);
+        }
+        ByUid(map)
+    }
+
+    /// The card an address names, by its place in the contacts given: none
+    /// when the address is no URN or no card has that UID here.
+    pub fn find(&self, uri: &str) -> Option<usize> {
+        self.0.get(&uri_key(uri)?).copied()
+    }
+}
+
+/// The UID of the card an address names among `contacts` (`ByUid`, for one address).
+pub fn uid_named<'a>(contacts: &'a [Contact], uri: &str) -> Option<&'a str> {
+    let key = uri_key(uri)?;
+    contacts.iter().find(|c| !c.uid.trim().is_empty() && uid_key(&c.uid) == key).map(|c| c.uid.as_str())
+}
+
 /// Addresses to complete what is typed in a To field: "Jane <jane@example.org>".
 pub fn completions(contacts: &[Contact], typed: &str, limit: usize) -> Vec<String> {
     let typed = folded(typed.trim());
@@ -1461,6 +1559,30 @@ mod tests {
         assert!(text.contains("TEL;TYPE=VOICE,PREF:+33 4 00 00 00 00") && text.contains("TEL;TYPE=WORK:+33 6 00 00 00 00"), "{text}");
         assert!(text.contains("TEL;TYPE=HOME:+33 4 00 00 00 11") && text.contains("BDAY;X-APPLE-OMIT-YEAR=1604:1604-05-12"), "{text}");
         assert!(text.contains("ADR;TYPE=HOME:BP 12;Bât. B;") && text.contains("REV:"), "{text}");
+    }
+
+    /// A card named by its UID as an address (`uid_uri`), and found again by
+    /// it (`ByUid`, `uid_named`): a UUID, a URN already, the form of a card
+    /// an extension's door made, Sioul's own, characters a URI cannot hold.
+    #[test]
+    fn a_card_is_named_by_its_uid_as_an_address() {
+        assert_eq!(uid_uri("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6");
+        assert_eq!(uid_uri(" urn:uuid:0E2A9C4B-1111-4222-8333-444455556666 "), "urn:uuid:0E2A9C4B-1111-4222-8333-444455556666", "a URN already, as it is");
+        assert_eq!(uid_uri("bookings.k1.k2@extensions.sioul"), "urn:uuid:bookings.k1.k2@extensions.sioul");
+        assert_eq!(uid_uri("a b\"c,d;e%f\u{e9}"), "urn:uuid:a%20b%22c%2Cd%3Be%25f%C3%A9", "nothing that ends a parameter, nothing a URI cannot hold");
+        let card = |uid: &str| Contact { uid: uid.into(), ..Contact::default() };
+        let contacts = vec![card("f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), card("urn:uuid:0E2A9C4B-1111-4222-8333-444455556666"), card("bookings.k1.k2@extensions.sioul"), card("a b\"c,d;e%f\u{e9}"), card("sioul-1234"), card("")];
+        let by = ByUid::of(&contacts);
+        for (at, contact) in contacts.iter().enumerate().take(5) {
+            assert_eq!(by.find(&uid_uri(&contact.uid)), Some(at), "{}", contact.uid);
+            assert_eq!(uid_named(&contacts, &uid_uri(&contact.uid)), Some(contact.uid.as_str()));
+        }
+        assert_eq!(by.find("URN:UUID:F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6"), Some(0), "a UUID's letters, whatever their case");
+        assert_eq!(by.find("urn:uuid:0e2a9c4b-1111-4222-8333-444455556666"), Some(1), "a card whose UID is the URN");
+        for unknown in ["urn:uuid:9b2d0c4e-0000-4000-8000-000000000000", "urn:uuid:", "sioul:contact/sioul-1234", "https://example.org/sioul-1234", ""] {
+            assert_eq!(by.find(unknown), None, "{unknown}");
+            assert_eq!(uid_named(&contacts, unknown), None, "{unknown}");
+        }
     }
 
     #[test]

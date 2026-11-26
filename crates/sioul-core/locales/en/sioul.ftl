@@ -4056,7 +4056,7 @@ extension-accept = Take the update
 extension-disable = Disable
 extension-remove = Remove…
 extension-remove-title = Remove { $name }?
-extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its lessons can stay in your calendars, or be taken out of them; the calendars themselves always stay.
+extension-remove-says = Its sign-in is forgotten on this device and its file taken out. Its events can stay in your calendars, or be taken out of them; the calendars themselves always stay.
 extension-remove-says-alone = Its sign-in is forgotten on this device and its file taken out.
 extension-remove-now = Remove
 extension-choose-title = Where do you sign in?
@@ -4064,10 +4064,10 @@ extension-choose-filter = Search
 extension-enabled = { $name } is enabled.
 extension-not-enabled = { $name } could not be enabled: its file could not be downloaded, or is not the one its list names.
 extension-not-listed = It is no longer in the list.
-extension-disabled = { $name } no longer runs on this device; its sign-in and its lessons stay.
-extension-removed = { $name } is removed; its lessons are taken out of your calendars.
-extension-removed-kept = { $name } is removed; its lessons stay in your calendars.
-extension-removed-agendas-stay = { $name } is removed; some of its lessons could not be taken out of your calendars and stay.
+extension-disabled = { $name } no longer runs on this device; its sign-in and its events stay.
+extension-removed = { $name } is removed; its events are taken out of your calendars.
+extension-removed-kept = { $name } is removed; its events stay in your calendars.
+extension-removed-agendas-stay = { $name } is removed; some of its events could not be taken out of your calendars and stay.
 extension-removed-keyring = { $name } is removed; its sign-in could not be taken out of the keyring yet: Sioul tries again later.
 extension-updated = { $name } is now at version { $version }.
 extension-signed-in = Signed in. { $name } brings its agenda now.
@@ -4127,28 +4127,38 @@ extensions-updated-all = { $count ->
         [one] One extension was updated.
        *[other] { $count } extensions were updated.
     }
-extension-leave-lessons = Leave its lessons in your calendars
+extension-leave-lessons = Leave its events in your calendars
 extension-problem-settings = { $name } wrote nothing: Sioul cannot read your settings file.
 extension-event-cancelled = Cancelled: { $title }
 extension-event-from-line = From { $name }, through Sioul: a change made here is replaced when { $name } changes this event.
 extension-event-from = From { $name }
-extension-agenda-choose = Choose the calendar its lessons go into: one of yours, which you can share with whom you like. Until then nothing is written.
+extension-agenda-choose = Choose the calendar its events go into: one of yours, which you can share with whom you like. Until then nothing is written.
 extension-agenda-gone = The calendar chosen for it is gone, or can no longer be written: nothing was written. Choose another.
-extension-agenda-too-large = Its lessons were not written: one of them, or all of them together, weigh more than Sioul takes.
-extension-agenda-unreadable = Its lessons were not written: they do not read as a calendar.
-extension-agenda-refused = Some of its lessons could not be written into { $calendar }; the extension's log on this device says how many.
+extension-agenda-too-large = Its events were not written: one of them, or all of them together, weigh more than Sioul takes.
+extension-agenda-unreadable = Its events were not written: they do not read as a calendar.
+extension-agenda-refused = Some of its events could not be written into { $calendar }; the extension's log on this device says how many.
 extension-agenda-read = In { $calendar }: { $lessons ->
-        [one] one lesson
-       *[other] { $lessons } lessons
+        [one] one event
+       *[other] { $lessons } events
     }, read { $when }.
-extension-agenda-next = Its lessons go into { $calendar } at the next refresh.
-extension-agendas-wait = { $name } brought its agendas: choose, on its line in Settings ▸ Extensions, the calendar each one's lessons go into.
+extension-agenda-next = Its events go into { $calendar } at the next refresh.
+extension-agendas-wait = { $name } brought its agendas: choose, on its line in Settings ▸ Extensions, the calendar each one's events go into.
 extension-calendar-choose = Choose a calendar…
 extension-calendar-new = A new calendar on { $account }
 extension-calendar-new-here = A new calendar on this device only
 extension-calendar-for = The calendar for { $name }
-extension-calendar-chosen = The lessons of { $name } go into this calendar from now on.
+extension-calendar-chosen = The events of { $name } go into this calendar from now on.
 extension-calendar-not-kept = The calendar chosen could not be kept in your settings.
+extension-calendar-closed-subscribed = Subscribed to by its address: it cannot be written.
+extension-calendar-closed-busy-times = Sioul's calendar of your busy times for others: an extension never writes there.
+extension-calendar-closed-server-read-only = Its server lets you only read it.
+extension-calendar-closed-not-here = Not on this device.
+extension-calendar-count = { $count ->
+        [one] one event
+       *[other] { $count } events
+    }
+extension-calendar-folder = folder { $place }
+extension-calendar-kept = { $name } writes its events into { $calendar }, although that agenda is set to “{ $access }” for you. Whose it is decides what reaches you; to change what you may do with it, see Agenda ⚙ ▸ Your agendas, its row, “You may”.
 extension-agenda-whose = { $whose ->
         [shared] { $calendar } is an agenda shared with you.
         [child] { $calendar } is a child's agenda.

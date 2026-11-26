@@ -40,7 +40,7 @@
 use crate::backend::{QtThread, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde_json::{Value, json};
-use sioul_core::extensions::manifest::{CredField, Manifest, Offer};
+use sioul_core::extensions::manifest::{CredField, FieldWords, Manifest, Offer};
 use sioul_core::extensions::{cards, door};
 use sioul_core::extensions::reply::{self, AgendaReply, ContactSet, ProblemKind, RefreshReply, SignInReply};
 use sioul_core::extensions::state::{self, Brought, BroughtSet, Installed, State};
@@ -614,10 +614,17 @@ fn page_json() -> String {
 
 /// The calendars an agenda's lessons may go into, as the page offers them:
 /// a new one on each account that keeps calendars (named after the pupil),
-/// a new one on this device, or one of the person's own that they may write
-/// (`door::writable`); and what the shared settings chose for each agenda.
+/// each of the person's calendars that holds events, and a new one on this
+/// device; and what the shared settings chose for each agenda. Each of the
+/// person's says whose it is, as the agendas' table says it (26 November
+/// 2026: the picker offers every agenda and says whether it is the
+/// person's); one the door cannot write (`door::closed`: its server keeps it
+/// read only, a subscription, Sioul's busy blocks, or not on this device) is
+/// listed last, its reason beside it, and cannot be chosen. The person's own
+/// word on what they may do with an agenda (read only, its availability
+/// only) hides none and closes none: the line under the picker says it (`agenda_json`).
 struct Calendars {
-    /// {choice, label}: `new:<account>` or `place:<account/id>`.
+    /// {choice, label, whose, closed, why}: `new:<account>` or `place:<account/id>`.
     choices: Vec<Value>,
     /// The person's calendars that may receive lessons, by place: their label.
     labels: BTreeMap<String, String>,
@@ -626,33 +633,117 @@ struct Calendars {
     /// Whose each of those calendars is, by place: its line's words (`whose_line`), and
     /// whether it is another person's.
     whose: BTreeMap<String, (String, bool)>,
+    /// What the person keeps each of those to, by place, when it is not read and
+    /// write (`door::kept_from_writers`): its words ("Read only").
+    kept: BTreeMap<String, String>,
+}
+
+/// Whose an agenda is, as the agendas' table says it ("Yours", "Partner · Kim").
+fn whose_short(agenda: &sioul_core::agendas::Agenda) -> String {
+    use sioul_core::agendas::Whose;
+    let role = say(
+        match agenda.whose {
+            Whose::Yours => "agenda-whose-short-yours",
+            Whose::Child => "agenda-whose-short-child",
+            Whose::Parent => "agenda-whose-short-parent",
+            Whose::Partner => "agenda-whose-short-partner",
+            Whose::Someone => "agenda-whose-short-someone",
+            Whose::Shared => "agenda-whose-short-shared",
+        },
+        &[],
+    );
+    let person = agenda.person.trim();
+    if person.is_empty() { role } else { say("agenda-whose-short-person", &[("role", role), ("name", person.to_string())]) }
+}
+
+/// Why the door cannot write into a calendar, in the window's words.
+fn closed_words(why: door::Closed) -> String {
+    say(
+        match why {
+            door::Closed::Subscribed => "extension-calendar-closed-subscribed",
+            door::Closed::BusyTimes => "extension-calendar-closed-busy-times",
+            door::Closed::ServerReadOnly => "extension-calendar-closed-server-read-only",
+            door::Closed::NotHere => "extension-calendar-closed-not-here",
+        },
+        &[],
+    )
 }
 
 impl Calendars {
     fn now() -> Self {
         let config = load_config();
         // First a new calendar on each account that keeps calendars (to share from its server), then
-        // the person's own, then a new one on this device alone (for someone with no server).
+        // the person's own, then a new one on this device alone (for someone with no server), then
+        // those the door cannot write, each with its reason.
         let accounts = crate::servers::accounts(&config);
         let id_of = |account: &Value| account["id"].as_str().unwrap_or_default().to_string();
         let mut choices: Vec<Value> = accounts
             .iter()
             .filter(|account| id_of(account) != sioul_core::vdir::LOCAL)
-            .map(|account| json!({ "choice": format!("new:{}", id_of(account)), "label": say("extension-calendar-new", &[("account", account["name"].as_str().unwrap_or_default().to_string())]) }))
+            .map(|account| json!({ "choice": format!("new:{}", id_of(account)), "label": say("extension-calendar-new", &[("account", account["name"].as_str().unwrap_or_default().to_string())]), "whose": "", "closed": false, "why": "" }))
             .collect();
-        let mut labels = BTreeMap::new();
-        let mut whose = BTreeMap::new();
-        for calendar in sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).into_iter().filter(door::writable) {
+        let mut closed: Vec<Value> = Vec::new();
+        let (mut labels, mut whose, mut kept) = (BTreeMap::new(), BTreeMap::new(), BTreeMap::new());
+        let mut folders: BTreeMap<String, std::path::PathBuf> = BTreeMap::new();
+        for calendar in sioul_core::vdir::collections(sioul_core::vdir::Kind::Calendars).into_iter().filter(|c| c.holds("VEVENT")) {
             let place = sioul_core::agendas::place(&calendar);
+            folders.insert(format!("place:{place}"), calendar.dir.clone());
             let label = calendar.label(&config, tr());
-            choices.push(json!({ "choice": format!("place:{place}"), "label": label }));
             let agenda = sioul_core::agendas::agenda_of(&calendar, &config);
+            if let Some(why) = door::closed(&calendar, &config) {
+                closed.push(json!({ "choice": format!("place:{place}"), "label": label, "whose": whose_short(&agenda), "closed": true, "why": closed_words(why) }));
+                continue;
+            }
+            choices.push(json!({ "choice": format!("place:{place}"), "label": label, "whose": whose_short(&agenda), "closed": false, "why": "" }));
             whose.insert(place.clone(), (whose_line(&agenda, &calendar.name), agenda.whose.another_person()));
+            if let Some(access) = door::kept_from_writers(&calendar, &config) {
+                let words = if access == sioul_core::agendas::Access::Availability { "agenda-access-availability" } else { "agenda-access-read" };
+                kept.insert(place.clone(), say(words, &[]));
+            }
             labels.insert(place, label);
         }
-        choices.push(json!({ "choice": format!("new:{}", sioul_core::vdir::LOCAL), "label": say("extension-calendar-new-here", &[]) }));
+        choices.push(json!({ "choice": format!("new:{}", sioul_core::vdir::LOCAL), "label": say("extension-calendar-new-here", &[]), "whose": "", "closed": false, "why": "" }));
         let settings = crate::backend::config_read().map(|c| c.extensions);
-        Self { choices, labels, chosen: settings.map(|e| e.calendars), whose }
+        // A calendar chosen on another device that this one does not hold: shown, never chosen from here.
+        for place in settings.iter().flat_map(|e| e.calendars.values()).collect::<BTreeSet<_>>() {
+            let listed = |choice: &Value| choice["choice"].as_str() == Some(format!("place:{place}").as_str());
+            if !choices.iter().any(listed) && !closed.iter().any(listed) {
+                closed.push(json!({ "choice": format!("place:{place}"), "label": place, "whose": "", "closed": true, "why": closed_words(door::Closed::NotHere) }));
+            }
+        }
+        choices.extend(closed);
+        apart(&mut choices, &folders);
+        Self { choices, labels, chosen: settings.map(|e| e.calendars), whose, kept }
+    }
+}
+
+/// Two choices that would read the same (two calendars of one name on one
+/// account) each say what tells them apart (26 November 2026: two lines
+/// "Bookings · cloud.example.org"): how many events each holds, then, while
+/// two still read the same, its place ("account/folder"). Never two
+/// identical lines. `folders`: each calendar's folder by its choice.
+fn apart(choices: &mut [Value], folders: &BTreeMap<String, std::path::PathBuf>) {
+    // The closed box shows the label alone: two labels alike are two lines alike.
+    let line = |c: &Value| c["label"].as_str().unwrap_or_default().to_string();
+    let twice = |choices: &[Value]| {
+        let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+        for choice in choices {
+            *seen.entry(line(choice)).or_default() += 1;
+        }
+        seen.into_iter().filter(|(_, n)| *n > 1).map(|(l, _)| l).collect::<BTreeSet<String>>()
+    };
+    let same = twice(choices);
+    for choice in choices.iter_mut().filter(|c| same.contains(&line(c))) {
+        let Some(folder) = choice["choice"].as_str().and_then(|c| folders.get(c)) else { continue };
+        let events = std::fs::read_dir(folder).map(|all| all.filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count()).unwrap_or(0);
+        let label = format!("{} · {}", choice["label"].as_str().unwrap_or_default(), say("extension-calendar-count", &[("count", events.to_string())]));
+        choice["label"] = Value::String(label);
+    }
+    let still = twice(choices);
+    for choice in choices.iter_mut().filter(|c| still.contains(&line(c))) {
+        let Some(place) = choice["choice"].as_str().and_then(|c| c.strip_prefix("place:")).map(str::to_string) else { continue };
+        let label = format!("{} · {}", choice["label"].as_str().unwrap_or_default(), say("extension-calendar-folder", &[("place", place)]));
+        choice["label"] = Value::String(label);
     }
 }
 
@@ -676,7 +767,13 @@ fn agenda_json(extension: &str, agenda: &Brought, calendars: &Calendars) -> Valu
         (false, Some(label), _) => (say("extension-agenda-next", &[("calendar", label.clone())]), false),
     };
     let (whose, theirs) = calendars.whose.get(&place).cloned().unwrap_or_default();
-    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "whose": whose, "theirs": theirs })
+    // The person's own word on that agenda (read only, its availability only) does not keep the extension
+    // out: said under the picker, with where it is changed.
+    let kept = match (calendars.kept.get(&place), &label) {
+        (Some(access), Some(label)) => say("extension-calendar-kept", &[("name", name_of(extension)), ("calendar", label.clone()), ("access", access.clone())]),
+        _ => String::new(),
+    };
+    json!({ "id": agenda.id, "name": agenda.name, "line": line, "warn": warn, "place": place, "whose": whose, "theirs": theirs, "kept": kept })
 }
 
 /// The address books a set's contacts may go into, as the page offers them:
@@ -1602,8 +1699,10 @@ fn refresh_since(qt: Option<&QtThread>, id: &str, seen: Option<i64>) {
                 Some((calendars, books)) => {
                     brought_any = !reply.agendas.is_empty() || !reply.contacts.is_empty();
                     let write = brought_any && may_write(id, fetched);
-                    let (taken, mut lines) = take_in(&door(), id, &reply, write, &|agenda| calendars.get(agenda).cloned(), fetched);
+                    // The sets first: an appointment is tied to its client's card as the books stand
+                    // once they are written (a card made now, bound, merged since: `door::lessons`).
                     let (sets, set_lines) = take_in_contacts(&door(), id, &reply, write, &|set| books.get(set).cloned(), fetched);
+                    let (taken, mut lines) = take_in(&door(), id, &reply, write, &|agenda| calendars.get(agenda).cloned(), fetched);
                     lines.extend(set_lines);
                     let at = stamp();
                     let _ = state::append_log(&state::log_path(id), &lines.iter().map(|line| format!("{at} sioul: {line}")).collect::<Vec<_>>());
@@ -1707,7 +1806,7 @@ pub(crate) fn sign_in(qt: &QtThread, id: &str, choice: Option<String>) {
             let name = name_of(&id);
             let asked: Vec<&str> = wants_credentials.iter().map(|f| f.tag()).collect();
             note(&id, &format!("the sign-in form shown ({})", asked.join(", ")));
-            match show_cred_form(&qt, &id, &name, &wants_credentials) {
+            match show_cred_form(&qt, &id, &name, &wants_credentials, &installed.offer.fields) {
                 Form::Sent(values) => {
                     let (values, said) = tidy(values);
                     note(&id, &said);
@@ -1975,6 +2074,21 @@ fn form_shown() -> bool {
     CRED_FORM.lock().map(|f| f.is_some()).unwrap_or(false)
 }
 
+/// The form's fields as the window shows them: each kind's label, the
+/// publisher's when the signed manifest gives one that fits
+/// (`FieldWords::label_in`), else Sioul's own word for the kind; the
+/// publisher's line of help under it, when given; whether it is masked.
+fn form_fields(fields: &[CredField], words: &BTreeMap<String, FieldWords>, french: bool) -> Vec<Value> {
+    fields
+        .iter()
+        .map(|f| {
+            let given = words.get(f.tag());
+            let label = given.and_then(|w| w.label_in(french)).unwrap_or_else(|| say(cred_label(*f), &[]));
+            json!({ "kind": f.tag(), "label": label, "help": given.and_then(|w| w.help_in(french)).unwrap_or_default(), "masked": f.masked() })
+        })
+        .collect()
+}
+
 /// The fixed label Sioul shows for a credential field (its own words, never
 /// the extension's): one fluent sentence a kind.
 fn cred_label(field: CredField) -> &'static str {
@@ -2028,10 +2142,13 @@ fn tidy(values: Vec<(CredField, String)>) -> (Vec<(CredField, String)>, String) 
 /// Sioul's process on every device — no web view), its values waited for
 /// here, `FORM_WAIT` at most: leaving Sioul for another app does not end it
 /// (on a phone, only the system ending Sioul's window does, the form and its
-/// wait with it). Framed entirely by Sioul: the only text from the extension
-/// is its name; every field's label is Sioul's fixed word for that kind. The
-/// values are returned to the caller and kept nowhere else.
-fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> Form {
+/// wait with it). Framed entirely by Sioul: no text comes from the extension
+/// itself; beside Sioul's own words, only the signed manifest's show: the
+/// extension's name, and a field's label and line of help where its
+/// publisher gave them (`Offer::fields`, `FieldWords::label_in`, each bounded
+/// and on one line), else Sioul's fixed word for that kind. The values are
+/// returned to the caller and kept nowhere else.
+fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField], words: &BTreeMap<String, FieldWords>) -> Form {
     let (said, answer) = std::sync::mpsc::channel();
     {
         let Ok(mut waiting) = CRED_FORM.lock() else { return Form::NotShown };
@@ -2047,7 +2164,7 @@ fn show_cred_form(qt: &QtThread, id: &str, name: &str, fields: &[CredField]) -> 
             *waiting = None;
         }
     };
-    let shown: Vec<Value> = fields.iter().map(|f| json!({ "kind": f.tag(), "label": say(cred_label(*f), &[]), "masked": f.masked() })).collect();
+    let shown = form_fields(fields, words, french());
     let asked = json!({ "id": id, "name": name, "fields": shown, "french": french() }).to_string();
     let _ = qt.queue(move |mut sioul| sioul.as_mut().set_extension_sign_in_form(QString::from(&asked)));
     let answered = answer.recv_timeout(FORM_WAIT);
@@ -2692,6 +2809,81 @@ mod tests {
             "only the fields asked, in their order"
         );
         assert!(CRED_FORM.lock().unwrap().is_none(), "once");
+    }
+
+    /// Two calendars of one name never read the same in the picker (26
+    /// November 2026): each says how many events it holds, then, while two
+    /// still read the same, its place; a name alone keeps its words.
+    #[test]
+    fn two_calendars_alike_are_told_apart_in_the_picker() {
+        let root = std::env::temp_dir().join(format!("sioul-apart-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let folder = |name: &str, events: usize| {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            for i in 0..events {
+                std::fs::write(dir.join(format!("{i}.ics")), "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n").unwrap();
+            }
+            dir
+        };
+        let folders: BTreeMap<String, std::path::PathBuf> = [
+            ("place:cloud/rdv", folder("rdv", 3)),
+            ("place:cloud/rdv-2", folder("rdv-2", 1)),
+            ("place:cloud/home", folder("home", 2)),
+            ("place:other/twin", folder("twin", 1)),
+            ("place:other/twin-2", folder("twin-2", 1)),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
+        let choice = |choice: &str, label: &str| json!({ "choice": choice, "label": label, "whose": "", "closed": false, "why": "" });
+        let mut choices = vec![
+            choice("new:cloud", "A new calendar on cloud.example.org"),
+            choice("place:cloud/rdv", "Bookings · cloud.example.org"),
+            choice("place:cloud/rdv-2", "Bookings · cloud.example.org"),
+            choice("place:cloud/home", "Home · cloud.example.org"),
+            choice("place:other/twin", "Twin · example.org"),
+            choice("place:other/twin-2", "Twin · example.org"),
+        ];
+        apart(&mut choices, &folders);
+        let labels: Vec<&str> = choices.iter().map(|c| c["label"].as_str().unwrap()).collect();
+        let count = |n: usize| say("extension-calendar-count", &[("count", n.to_string())]);
+        assert_eq!(labels[1], format!("Bookings · cloud.example.org · {}", count(3)));
+        assert_eq!(labels[2], format!("Bookings · cloud.example.org · {}", count(1)));
+        assert_eq!((labels[0], labels[3]), ("A new calendar on cloud.example.org", "Home · cloud.example.org"), "a name alone keeps its words");
+        assert_eq!(labels[4], format!("Twin · example.org · {} · {}", count(1), say("extension-calendar-folder", &[("place", "other/twin".to_string())])));
+        assert_eq!(labels.iter().collect::<BTreeSet<_>>().len(), labels.len(), "never two lines alike: {labels:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A field the signed manifest words (Planity's link: "iCal private link"
+    /// and where Planity Pro shows it) shows its publisher's label and help,
+    /// in the language asked; every other field, Sioul's own word and no help.
+    #[test]
+    fn a_field_the_manifest_words_shows_its_label_and_help() {
+        use sioul_core::extensions::manifest::Words;
+        let words: BTreeMap<String, FieldWords> = [(
+            "web-address".to_string(),
+            FieldWords {
+                label: Words { en: "iCal private link".into(), fr: "Lien iCal privé".into() },
+                help: Words { en: "In Planity Pro: the Admin tab, then « Paramètres Agenda ».".into(), fr: "Dans Planity Pro : l’onglet Admin, puis « Paramètres Agenda ».".into() },
+            },
+        )]
+        .into();
+        let fields = [CredField::Email, CredField::Password, CredField::WebAddress];
+        for french in [false, true] {
+            let shown = form_fields(&fields, &words, french);
+            let link = &shown[2];
+            assert_eq!(link["label"], if french { "Lien iCal privé" } else { "iCal private link" });
+            assert!(link["help"].as_str().unwrap().contains("« Paramètres Agenda »"), "{link}");
+            assert_eq!(link["masked"], false);
+            assert_eq!(shown[0]["label"], say(cred_label(CredField::Email), &[]), "a field it does not word: Sioul's word");
+            assert_eq!((shown[0]["help"].as_str(), shown[1]["help"].as_str()), (Some(""), Some("")));
+            assert_eq!(shown[1]["masked"], true);
+        }
+        // None given: Sioul's words, as before.
+        let bare = form_fields(&fields, &BTreeMap::new(), false);
+        assert_eq!(bare[2]["label"], say(cred_label(CredField::WebAddress), &[]));
     }
 
     /// An extension's agenda line says whose its calendar is, in words, with

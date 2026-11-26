@@ -128,7 +128,7 @@ Item {
         const extra = more || {}
         return JSON.stringify({ reading: false, where: "From example.org.", problem: "", offers: offers,
             list: extra.list || "", updates: extra.updates || 0, updateAll: "Update all (" + (extra.updates || 0) + ")", asks: extra.asks || [],
-            calendars: [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }],
+            calendars: extra.calendars || [{ choice: "new:cloud", label: "A new calendar on cloud.example.org" }, { choice: "new:local", label: "A new calendar on this device" }, { choice: "place:local/kids", label: "Kids · this computer" }],
             books: [{ choice: "new:cloud", label: "A new address book on cloud.example.org" }, { choice: "place:cloud/clients", label: "Clients · example.org" }, { choice: "new:local", label: "A new address book on this device" }] })
     }
 
@@ -269,6 +269,50 @@ Item {
             verify(find(tab, "extensionAgendaWhose:p-3").visible)
         }
 
+        // Every calendar of yours that holds events is offered, each line saying whose it is; one
+        // the extension cannot write (its server's word) is listed with its reason and chooses
+        // nothing; one you keep for busy times only stays chosen, the line under the box saying
+        // the extension writes there all the same (26 November 2026).
+        function test_every_calendar_is_offered_with_whose_it_is_and_one_it_cannot_write_says_why() {
+            mock.extensions = view([offer({ installed: true, enabled: true, signedIn: true, agendas: [
+                { id: "salon", name: "Salon", line: "In Planity: 40 lessons.", warn: false, place: "cloud/planity",
+                  kept: "A timetable writes its events into Planity, although that agenda is set to “See only when it is busy” for you." }
+            ] })], { calendars: [
+                { choice: "new:cloud", label: "A new calendar on cloud.example.org", whose: "", closed: false, why: "" },
+                { choice: "place:cloud/planity", label: "Planity · cloud.example.org", whose: "Partner · Kim", closed: false, why: "" },
+                { choice: "place:cloud/home", label: "Home · cloud.example.org", whose: "Yours", closed: false, why: "" },
+                { choice: "new:local", label: "A new calendar on this device", whose: "", closed: false, why: "" },
+                { choice: "place:cloud/club", label: "Club <b>news</b>", whose: "Shared", closed: true, why: "Its server lets you only read it." }
+            ] })
+            mock.extensionSignInForm = ""
+            mock.asked = []
+            const tab = createTemporaryObject(tabComponent, root)
+            verify(tab !== null)
+            waitForRendering(tab)
+            const box = find(tab, "extensionCalendar:salon")
+            compare(box.count, 6, "Choose…, then every choice offered")
+            compare(box.currentIndex, 2, "the calendar chosen, though kept for busy times only")
+            const kept = find(tab, "extensionCalendarKept:salon")
+            verify(kept.visible && kept.text.indexOf("See only when it is busy") >= 0, kept.text)
+            // Each line says whose it is; the one it cannot write, why, and it cannot be chosen.
+            box.popup.open()
+            tryCompare(box.popup, "opened", true)
+            const line = index => find(box.popup.contentItem, "extensionCalendarLine:salon:" + index)
+            tryVerify(() => line(5) !== null)
+            compare(find(line(2), "extensionCalendarWhose:2").text, "Partner · Kim")
+            compare(find(line(3), "extensionCalendarWhose:3").text, "Yours")
+            verify(line(2).enabled && line(3).enabled, "the person's calendars may be chosen")
+            verify(!line(5).enabled, "one its server keeps read only cannot be")
+            compare(find(line(5), "extensionCalendarWhy:5").text, "Its server lets you only read it.")
+            verify(texts(line(5), []).map(t => t.replace(/\u2060/g, "")).indexOf("Club <b>news</b>") >= 0, "its name as plain text")
+            box.popup.close()
+            box.activated(5)
+            compare(mock.asked, [], "a calendar it cannot write chooses nothing")
+            compare(box.currentIndex, 2, "the box shows the one chosen again")
+            box.activated(3)
+            compare(mock.asked, ["calendar timetable salon place:cloud/home"])
+        }
+
         function test_each_set_says_where_its_contacts_go_and_a_book_is_chosen() {
             const tab = make([offer({ installed: true, enabled: true, signedIn: true, brings: "It brings contacts.", sets: [
                 { id: "clients", name: "Clients: <b>the salon</b>", line: "Choose the address book.", warn: true, place: "" },
@@ -392,6 +436,34 @@ Item {
             link.text = "https://calendar.example.org/feed?key=k"
             find(dialog.footer, "extensionSignInDo").clicked()
             compare(mock.asked, ['creds feed {"email":"alex@example.org","password":"hunter2","web-address":"https://calendar.example.org/feed?key=k"}'])
+            tryCompare(dialog, "opened", false)
+        }
+
+        // A field the signed manifest words (Planity's "iCal private link") shows its label and,
+        // under it, where the service shows it; on a phone's width the label stays one line and
+        // the help wraps, nothing cut (26 November 2026).
+        function test_a_field_the_manifest_words_shows_its_label_and_help_on_a_phone() {
+            const tab = make([offer({ installed: true, enabled: true })])
+            const help = "In Planity Pro: the Admin tab, then « Paramètres Agenda » in the list on the left, « Gestion des agendas », then the link « Synchroniser avec partenaires » at the top."
+            mock.extensionSignInForm = JSON.stringify({ id: "planity", name: "Planity appointments (unofficial)", french: false, fields: [
+                { kind: "email", label: "Email", help: "", masked: false },
+                { kind: "password", label: "Password", help: "", masked: true },
+                { kind: "web-address", label: "iCal private link", help: help, masked: false }] })
+            const dialog = tab.signInFormDialog
+            tryCompare(dialog, "opened", true)
+            // A phone's width: 360 points for the whole form.
+            dialog.width = 360
+            const label = find(dialog.contentItem, "extensionCredLabel:web-address")
+            tryVerify(() => label.width > 0 && label.width <= 360, 2000, "the label within the form: " + label.width)
+            compare(label.text, "iCal private link")
+            compare(label.lineCount, 1, "one line at a phone's width")
+            verify(label.implicitWidth <= label.width, "nothing of it past the form's edge: " + label.implicitWidth + " in " + label.width)
+            const said = find(dialog.contentItem, "extensionCredHelp:web-address")
+            verify(said.visible)
+            compare(said.text, help)
+            verify(!said.truncated && said.lineCount >= 2, "the help wraps, nothing cut")
+            verify(!find(dialog.contentItem, "extensionCredHelp:email").visible, "no help where none is given")
+            find(dialog.footer, "extensionSignInCancel").clicked()
             tryCompare(dialog, "opened", false)
         }
 

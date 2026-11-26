@@ -1394,10 +1394,26 @@ pub fn calendar_components(path: &Path) -> Option<Vec<String>> {
     calendar_marks(path).map(|(_, components)| components)
 }
 
-fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
+/// Whether the server of the calendar whose folder holds `path` keeps it
+/// read only (a subscription by address included), your own word on its
+/// agenda aside: what an extension's door asks (`agenda::as_extension_door`).
+/// None when `path` is no file of a calendar's folder.
+pub fn calendar_server_read_only(path: &Path) -> Option<bool> {
+    let (account, id) = calendar_of(path)?;
+    Some(account == SUBSCRIBED || marks_of(&state_path(&account, Kind::Calendars, &id)).read_only)
+}
+
+/// The account and the id of the calendar whose folder holds `path`.
+fn calendar_of(path: &Path) -> Option<(String, String)> {
     let rest = path.strip_prefix(Kind::Calendars.root()).ok()?;
     let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect();
     let [account, id, _file] = parts.as_slice() else { return None };
+    Some((account.clone(), id.clone()))
+}
+
+fn calendar_marks(path: &Path) -> Option<(bool, Vec<String>)> {
+    let (account, id) = calendar_of(path)?;
+    let (account, id) = (account.as_str(), id.as_str());
     let marks = marks_of(&state_path(account, Kind::Calendars, id));
     // A calendar subscribed by its address is read only by its account, never
     // by a state file that can go missing (F18). Your word on its agenda

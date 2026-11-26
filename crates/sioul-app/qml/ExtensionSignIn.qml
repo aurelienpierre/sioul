@@ -2,9 +2,12 @@
 // Copyright © 2026 Aurélien Pierre
 
 // A credentials sign-in form, framed entirely by Sioul (docs/extensions.md,
-// "A credentials sign-in"): the only text from the extension is its name;
-// every field's label is Sioul's own fixed word for that kind, chosen in Rust
-// (`cred_label`), never text the extension supplies. The password is masked.
+// "A credentials sign-in"): no text comes from the extension itself; the
+// signed manifest's words alone show beside Sioul's, the extension's name and,
+// where its publisher gave them, a field's label and a line of help under it
+// (Planity's "iCal private link" and where Planity Pro shows it), each as
+// plain text, chosen in Rust (`cred_label`, `Offer::fields`); else every
+// field's label is Sioul's own fixed word for that kind. The password is masked.
 // A plain dialog in Sioul's process on every device, with no web view. One
 // sign-in at a time. Sign in hands the values back once
 // (`extensionCredentials`); Cancel, and closing the form, hand nothing back;
@@ -25,7 +28,7 @@ SafeDialog {
     // The window's colours, sizes and fonts (Theme.qml).
     required property var theme
 
-    // What the backend asked: {id, name, fields:[{kind, label, masked}], french}.
+    // What the backend asked: {id, name, fields:[{kind, label, help, masked}], french}.
     property var asked: null
     // The values typed, by field kind, gathered as each field changes.
     property var typed: ({})
@@ -109,11 +112,23 @@ SafeDialog {
                 spacing: 2
 
                 Label {
+                    objectName: "extensionCredLabel:" + field.modelData.kind
                     Layout.fillWidth: true
                     text: field.modelData.label
                     textFormat: Text.PlainText
                     wrapMode: Text.Wrap
                     color: form.theme.text
+                }
+                // Where the service shows what to type, in its publisher's words (the signed manifest's).
+                Label {
+                    objectName: "extensionCredHelp:" + field.modelData.kind
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: field.modelData.help || ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pixelSize: 13
+                    color: form.theme.muted
                 }
                 // A masked field for a password (PasswordField, with its
                 // show/hide eye), a plain one otherwise. Its kind names it, and

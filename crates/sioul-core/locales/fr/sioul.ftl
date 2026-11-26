@@ -4089,7 +4089,7 @@ extension-accept = Prendre la mise à jour
 extension-disable = Désactiver
 extension-remove = Retirer…
 extension-remove-title = Retirer { $name } ?
-extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses cours peuvent rester dans vos calendriers, ou en être retirés ; les calendriers eux-mêmes restent toujours.
+extension-remove-says = Sa connexion est oubliée sur cet appareil et son fichier retiré. Ses événements peuvent rester dans vos calendriers, ou en être retirés ; les calendriers eux-mêmes restent toujours.
 extension-remove-says-alone = Sa connexion est oubliée sur cet appareil et son fichier retiré.
 extension-remove-now = Retirer
 extension-choose-title = Où vous connectez-vous ?
@@ -4097,10 +4097,10 @@ extension-choose-filter = Chercher
 extension-enabled = { $name } est activée.
 extension-not-enabled = { $name } n’a pas pu être activée : son fichier n’a pas pu être téléchargé, ou n’est pas celui que sa liste nomme.
 extension-not-listed = Elle n’est plus dans la liste.
-extension-disabled = { $name } ne tourne plus sur cet appareil ; sa connexion et ses cours restent.
-extension-removed = { $name } est retirée ; ses cours sont retirés de vos calendriers.
-extension-removed-kept = { $name } est retirée ; ses cours restent dans vos calendriers.
-extension-removed-agendas-stay = { $name } est retirée ; certains de ses cours n’ont pas pu être retirés de vos calendriers et restent.
+extension-disabled = { $name } ne tourne plus sur cet appareil ; sa connexion et ses événements restent.
+extension-removed = { $name } est retirée ; ses événements sont retirés de vos calendriers.
+extension-removed-kept = { $name } est retirée ; ses événements restent dans vos calendriers.
+extension-removed-agendas-stay = { $name } est retirée ; certains de ses événements n’ont pas pu être retirés de vos calendriers et restent.
 extension-removed-keyring = { $name } est retirée ; sa connexion n’a pas encore pu être retirée du trousseau : Sioul réessaiera plus tard.
 extension-updated = { $name } est maintenant en version { $version }.
 extension-signed-in = Connexion faite. { $name } apporte son agenda.
@@ -4160,28 +4160,38 @@ extensions-updated-all = { $count ->
         [one] Une extension a été mise à jour.
        *[other] { $count } extensions ont été mises à jour.
     }
-extension-leave-lessons = Laisser ses cours dans vos calendriers
+extension-leave-lessons = Laisser ses événements dans vos calendriers
 extension-problem-settings = { $name } n’a rien écrit : Sioul ne peut pas lire votre fichier de réglages.
 extension-event-cancelled = Annulé : { $title }
 extension-event-from-line = Vient de { $name }, par Sioul : une modification faite ici est remplacée quand { $name } change cet évènement.
 extension-event-from = Vient de { $name }
-extension-agenda-choose = Choisissez le calendrier où vont ses cours : un des vôtres, que vous pouvez partager avec qui vous voulez. D’ici là, rien n’est écrit.
+extension-agenda-choose = Choisissez le calendrier où vont ses événements : un des vôtres, que vous pouvez partager avec qui vous voulez. D’ici là, rien n’est écrit.
 extension-agenda-gone = Le calendrier choisi pour lui n’existe plus, ou ne peut plus être écrit : rien n’a été écrit. Choisissez-en un autre.
-extension-agenda-too-large = Ses cours n’ont pas été écrits : l’un d’eux, ou tous ensemble, pèsent plus que ce que Sioul accepte.
-extension-agenda-unreadable = Ses cours n’ont pas été écrits : ils ne se lisent pas comme un calendrier.
-extension-agenda-refused = Certains de ses cours n’ont pas pu être écrits dans { $calendar } ; le journal de l’extension sur cet appareil dit combien.
+extension-agenda-too-large = Ses événements n’ont pas été écrits : l’un d’eux, ou tous ensemble, pèsent plus que ce que Sioul accepte.
+extension-agenda-unreadable = Ses événements n’ont pas été écrits : ils ne se lisent pas comme un calendrier.
+extension-agenda-refused = Certains de ses événements n’ont pas pu être écrits dans { $calendar } ; le journal de l’extension sur cet appareil dit combien.
 extension-agenda-read = Dans { $calendar } : { $lessons ->
-        [one] un cours
-       *[other] { $lessons } cours
+        [one] un événement
+       *[other] { $lessons } événements
     }, lus { $when }.
-extension-agenda-next = Ses cours vont dans { $calendar } au prochain passage.
-extension-agendas-wait = { $name } a apporté ses agendas : choisissez, sur sa ligne dans Paramètres ▸ Extensions, le calendrier où vont les cours de chacun.
+extension-agenda-next = Ses événements vont dans { $calendar } au prochain passage.
+extension-agendas-wait = { $name } a apporté ses agendas : choisissez, sur sa ligne dans Paramètres ▸ Extensions, le calendrier où vont les événements de chacun.
 extension-calendar-choose = Choisir un calendrier…
 extension-calendar-new = Un nouveau calendrier sur { $account }
 extension-calendar-new-here = Un nouveau calendrier sur cet appareil seulement
 extension-calendar-for = Le calendrier pour { $name }
-extension-calendar-chosen = Les cours de { $name } vont désormais dans ce calendrier.
+extension-calendar-chosen = Les événements de { $name } vont désormais dans ce calendrier.
 extension-calendar-not-kept = Le calendrier choisi n’a pas pu être gardé dans vos réglages.
+extension-calendar-closed-subscribed = Un abonnement par son adresse : il ne peut pas être écrit.
+extension-calendar-closed-busy-times = Le calendrier de vos temps occupés que Sioul tient pour d’autres : une extension n’y écrit jamais.
+extension-calendar-closed-server-read-only = Son serveur vous le laisse en lecture seule.
+extension-calendar-closed-not-here = Pas sur cet appareil.
+extension-calendar-count = { $count ->
+        [one] un événement
+       *[other] { $count } événements
+    }
+extension-calendar-folder = dossier { $place }
+extension-calendar-kept = { $name } écrit ses événements dans { $calendar }, bien que cet agenda soit réglé pour vous sur « { $access } ». C’est à qui il est qui décide de ce qui vous parvient ; pour changer ce que vous pouvez en faire, voyez Agenda ⚙ ▸ Vos agendas, sa ligne, « Vous pouvez ».
 extension-agenda-whose = { $whose ->
         [shared] { $calendar } est un agenda partagé avec vous.
         [child] { $calendar } est l’agenda d’un enfant.

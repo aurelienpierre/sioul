@@ -61,6 +61,8 @@ Sioul reads the service again when it starts, then every three hours while its w
 
 Sioul knows its events by their identifier, which every program keeps, and notes on each, in a line of its own, the service's version it wrote. Most programs keep that line, as the calendar standard asks; if a program removes it, another of your devices that runs the extension may write the event again from the service, and the change made in that program is replaced.
 
+**What kind of appointment, and with whom.** An extension's events carry, after its name, categories of their own (Planity: the services booked), all on one line, which DAVx⁵ on a phone, Thunderbird and Nextcloud's calendar read. An appointment whose client has a card in your address books names that card in the event itself, the calendar standard's own way (`CONTACT`, the client's name and the card's identifier), never as a guest: no one is invited. Other programs keep that line, though none of those checked shows it yet ([the developers' note](../dev/research/calendar-contacts.md)); Sioul reads it, from whichever program wrote it, as a tie between the event and the card.
+
 An address book an extension fills works the same way, more gently: Sioul only adds to a card what it lacks, never removes a line, never replaces what someone changed, and never deletes a card.
 
 **Nothing goes back to the service.** A change made in the calendar, in Sioul or in another program, stays in the calendar alone, until the service changes that event (above): Sioul does not write to Planity or to Skolengo, and editing both ways is not built. To change a booking or a lesson for good, change it at the service.

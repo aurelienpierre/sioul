@@ -333,3 +333,53 @@ fn every_tie_has_its_words() {
         }
     }
 }
+
+/// An event of another program, or of an extension's door, carrying whom it
+/// is with by the card's UID (`CONTACT;ALTREP="urn:uuid:<UID>"`, RFC 5545
+/// §3.8.4.2), read from its own text (`agenda::event_ref`): tied to the card
+/// of that UID, both ends listing each other, a UUID's letters whatever their
+/// case; a task's likewise. A UID no card has, and a contact without an
+/// address, tie nothing.
+#[test]
+fn a_contact_named_by_its_uid_ties_an_event_to_its_card() {
+    let mut fixture = Fixture::new();
+    let event = |uid: &str, contact: &str| {
+        let text = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Another program//EN\r\nBEGIN:VEVENT\r\nUID:{uid}\r\nDTSTAMP:20261103T090000Z\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Haircut\r\n{contact}END:VEVENT\r\nEND:VCALENDAR\r\n");
+        crate::agenda::event_ref(&text, &format!("/stand-in/cal/{uid}.ics"), &jiff::tz::TimeZone::UTC).unwrap()
+    };
+    fixture.contacts.push(Contact { uid: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6".into(), name: "Marie Exemple".into(), ..Contact::default() });
+    fixture.contacts.push(Contact { uid: "bookings.k1.k2@extensions.sioul".into(), name: "Jean Exemple".into(), ..Contact::default() });
+    fixture.events.extend([
+        event("haircut", "CONTACT;ALTREP=\"URN:UUID:F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6\":Marie Exemple\r\n"),
+        event("colour", &format!("{}\r\n", crate::extensions::door::contact_line("bookings.k1.k2@extensions.sioul", "Jean Exemple"))),
+        event("stranger", "CONTACT;ALTREP=\"urn:uuid:9b2d0c4e-0000-4000-8000-000000000000\":Someone\r\n"),
+        event("plain", "CONTACT:Marie Exemple\\, +33 1 23 45 67 89\r\n"),
+    ]);
+    fixture.tasks.push(Task { uid: "call-marie".into(), title: "Call Marie".into(), contacts: vec![ContactRef { name: "Marie Exemple".into(), uri: "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6".into() }], ..Task::default() });
+    let index = TieIndex::build(&fixture.world(), &fixture.sources);
+    let world = fixture.world();
+    let marie = "sioul:contact/f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
+    both(&index, &world, "sioul:event/haircut", "contact", marie, "involves");
+    both(&index, &world, "sioul:event/colour", "contact", "sioul:contact/bookings.k1.k2@extensions.sioul", "involves");
+    both(&index, &world, "sioul:task/call-marie", "contact", marie, "involves");
+    assert!(tied(&index, &world, &Open, "sioul:event/stranger").is_empty(), "a UID no card has");
+    assert!(tied(&index, &world, &Open, "sioul:event/plain").is_empty(), "a contact without an address");
+    // The same without the index (`World::edges` read directly).
+    assert!(world.related("sioul:event/haircut").iter().any(|r| r.uri == marie && r.kind == links::Kind::Contact));
+}
+
+/// Undoing that tie takes the event's `CONTACT` line off (`Loaded::untie`),
+/// every other line as it was.
+#[test]
+fn a_contact_named_by_its_uid_is_untied() {
+    crate::config::stand_ins_only();
+    let calendar = crate::vdir::create(crate::vdir::Kind::Calendars, crate::vdir::LOCAL, "Ties by UID", None, &["VEVENT"]).unwrap();
+    let path = calendar.dir.join("haircut.ics");
+    let text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Another program//EN\r\nBEGIN:VEVENT\r\nUID:haircut-untie\r\nDTSTAMP:20261103T090000Z\r\nDTSTART:20261103T090000Z\r\nDTEND:20261103T100000Z\r\nSUMMARY:Haircut\r\nCONTACT;ALTREP=\"urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6\":Marie Exemple\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+    std::fs::write(&path, text).unwrap();
+    let event = crate::agenda::event_ref(text, &path.display().to_string(), &jiff::tz::TimeZone::UTC).unwrap();
+    let loaded = Loaded { events: vec![event], contacts: vec![Contact { uid: "f81d4fae-7dec-11d0-a765-00a0c91e6bf6".into(), name: "Marie Exemple".into(), ..Contact::default() }], ..Loaded::default() };
+    let undone = loaded.untie("sioul:event/haircut-untie", "sioul:contact/f81d4fae-7dec-11d0-a765-00a0c91e6bf6", &jiff::Zoned::now());
+    assert_eq!(undone.len(), 1);
+    assert!(!undone[0].text.contains("CONTACT") && undone[0].text.contains("SUMMARY:Haircut"), "{}", undone[0].text);
+}

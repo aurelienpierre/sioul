@@ -117,6 +117,7 @@ nav = [
       { "Holding other apps' notifications" = "dev/research/android-holding.md" },
       { "A device for each part of life" = "dev/research/devices.md" },
       { "Invoices: the law and the standard" = "dev/research/invoicing.md" },
+      { "An event's contact and categories" = "dev/research/calendar-contacts.md" },
     ] },
     { "Building" = [
       { "Building and running" = "dev/building.md" },

@@ -94,10 +94,13 @@ pub enum Access {
     /// Read and write: what its server allows unless you say less.
     #[default]
     Write,
-    /// Read only: its server's rights, or your choice.
+    /// Read only: its server's rights, or your choice (which an extension's
+    /// door alone writes past, into a calendar chosen for it:
+    /// `agenda::as_extension_door`).
     Read,
     /// Its busy times only, never a title, a place or notes, whatever its
-    /// server sends; nothing on it is ever written.
+    /// server sends; nothing on it is written but by an extension's door,
+    /// into a calendar chosen for it (`agenda::as_extension_door`).
     Availability,
 }
 

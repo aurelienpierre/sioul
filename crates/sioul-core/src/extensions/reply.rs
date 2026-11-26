@@ -13,14 +13,17 @@
 //! the agenda's door for events. Its sets of contacts are read field by
 //! field, each counted and each text cleaned (`contact_sets`): no field
 //! carries a line of a card, which the contacts' door writes itself
-//! (`cards`). Anything that does not read as the interface says is
-//! nonsense: the call ends, nothing is taken in.
+//! (`cards`). An event may name the person of one of the reply's sets it
+//! is with (`PERSON_LINE`): read and taken off its calendar, kept beside it
+//! when a set of the same reply holds that person (`AgendaReply::ties`), for
+//! the door to tie the event to their card. Anything that does not read as
+//! the interface says is nonsense: the call ends, nothing is taken in.
 
 use crate::agenda;
-use calcard::icalendar::{ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarProperty, ICalendarValue};
+use calcard::icalendar::{ICalendar, ICalendarComponent, ICalendarComponentType, ICalendarEntry, ICalendarParameterName, ICalendarParameterValue, ICalendarProperty, ICalendarValue};
 use jiff::Timestamp;
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Why a reply was not taken: said in the log, the call ended with one sentence.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,7 +94,37 @@ pub struct AgendaReply {
     /// door writes; this is only the default for that choice (Planity true,
     /// Skolengo false). Interface stays version 1 (additive).
     pub busy: bool,
+    /// The person each event is with, by the event's own UID (as the
+    /// extension wrote it): a person of a set of contacts this same reply
+    /// hands back, named on the event by `PERSON_LINE`. The door ties the
+    /// event to that person's card (`door::lessons`). An event naming a
+    /// person the reply's sets do not hold is tied to nobody. Interface stays
+    /// version 1 (additive: a Sioul before it drops the line with every `X-` line).
+    pub ties: BTreeMap<String, Tied>,
 }
+
+/// The person an event is with: the set and the person's own id in it, as
+/// the extension gave them (never written as they are: the door writes the
+/// card's UID), and the person's name as the service writes it, which the
+/// door writes as the event's `CONTACT`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Tied {
+    pub set: String,
+    pub person: String,
+    pub name: String,
+}
+
+/// The line by which an extension names, on an event of its agenda, the
+/// person of one of its sets of contacts the event is with:
+/// `X-SIOUL-PERSON;X-SIOUL-SET=<set id>:<person id>`, the id escaped as a
+/// text (RFC 5545 §3.3.11). Read and taken off by Sioul (`clean`), never
+/// written anywhere.
+pub const PERSON_LINE: &str = "X-SIOUL-PERSON";
+/// Its parameter naming the set.
+pub const SET_PARAMETER: &str = "X-SIOUL-SET";
+/// The most categories of its own an extension's event holds (`CATEGORIES`:
+/// a salon's services), each a text of `MOST_TEXT` characters at most.
+pub const MOST_CATEGORIES: usize = 16;
 
 /// A person a set of contacts holds, read and cleaned: every text without
 /// control characters nor marks that turn a line around, on one line but the
@@ -227,7 +260,8 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         None | Some(Value::Null) => None,
         Some(found) => Some(problem(found)?),
     };
-    let mut agendas: Vec<AgendaReply> = Vec::new();
+    // Each agenda with the people its events name, tied once the sets are read.
+    let mut agendas: Vec<(AgendaReply, BTreeMap<String, (String, String)>)> = Vec::new();
     let listed: &[Value] = match reply.get("agendas") {
         None | Some(Value::Null) => &[],
         Some(Value::Array(all)) => all,
@@ -242,7 +276,7 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if !set_id(id) {
             return nonsense("an agenda's id that is not one");
         }
-        if agendas.iter().any(|a| a.id == id) {
+        if agendas.iter().any(|(a, _)| a.id == id) {
             return nonsense("an agenda handed twice");
         }
         let Some(name) = plain(&agenda["name"], 80) else { return nonsense("an agenda without a name") };
@@ -254,7 +288,7 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         if crate::subscribed::shape(calendar).is_none() {
             return nonsense("a calendar cut short");
         }
-        let (calendar, events) = clean(calendar)?;
+        let (calendar, events, named) = clean_named(calendar)?;
         let read = match &agenda["period"] {
             Value::Null => None,
             period => {
@@ -278,9 +312,24 @@ pub fn refresh_reply(text: &str) -> Result<RefreshReply, Nonsense> {
         }
         // The extension's suggestion, parsed leniently: anything but `true` reads false.
         let busy = agenda["busy"].as_bool().unwrap_or(false);
-        agendas.push(AgendaReply { id: id.to_string(), name, calendar, events, read, unread, busy });
+        agendas.push((AgendaReply { id: id.to_string(), name, calendar, events, read, unread, busy, ties: BTreeMap::new() }, named));
     }
     let contacts = contact_sets(reply.get("contacts"))?;
+    // Each event's person, when a set of this reply holds them: with their name as the service writes it.
+    let people: BTreeMap<(&str, &str), &str> = contacts.iter().flat_map(|set| set.people.iter().map(move |p| ((set.id.as_str(), p.id.as_str()), p.name.as_str()))).collect();
+    let agendas = agendas
+        .into_iter()
+        .map(|(mut agenda, named)| {
+            agenda.ties = named
+                .into_iter()
+                .filter_map(|(event, (set, person))| {
+                    let name = people.get(&(set.as_str(), person.as_str()))?.to_string();
+                    Some((event, Tied { set, person, name }))
+                })
+                .collect();
+            agenda
+        })
+        .collect();
     Ok(RefreshReply { agendas, contacts, problem })
 }
 
@@ -412,11 +461,14 @@ pub fn check_brought(reply: &RefreshReply, brings: &[String]) -> Result<(), Nons
 }
 
 /// What an extension's event keeps (X3, X4): its identifier, start, end or
-/// duration, title, place, description, status, busy or free, categories,
-/// its stamps and sequence. Dropped in this version: guests, organizer,
-/// alarms, every `X-` line (Sioul's own included: a reminder, the time kept
-/// around, costs, an area, ties to your things are yours, never an
-/// extension's), repeat rules, links, attachments, conference lines, class.
+/// duration, title, place, description, status, busy or free, categories
+/// (its own, which the door writes after the extension's name: a salon's
+/// services), its stamps and sequence. Dropped in this version: guests,
+/// organizer, alarms, every `X-` line (Sioul's own included: a reminder, the
+/// time kept around, costs, an area, ties to your things are yours, never an
+/// extension's; the person an event is with, `PERSON_LINE`, is read before
+/// and never kept), repeat rules, links, contacts (the door writes its own),
+/// attachments, conference lines, class.
 const KEPT: [ICalendarProperty; 14] = [
     ICalendarProperty::Uid,
     ICalendarProperty::Dtstart,
@@ -476,6 +528,44 @@ fn kept_entry(entry: &ICalendarEntry, kept: &[ICalendarProperty]) -> Option<ICal
 /// override of a series, a task, a zone no event names). Each event has a
 /// UID of its own and a start. The text, and how many events it holds.
 pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
+    clean_named(calendar).map(|(text, events, _)| (text, events))
+}
+
+/// The person an event names (`PERSON_LINE`), once at most: its set's id and
+/// the person's id, cleaned as a person's id in a set is (`person_text`).
+/// None when it names nobody; nonsense when the line is not one.
+fn person_named(event: &ICalendarComponent) -> Result<Option<(String, String)>, Nonsense> {
+    let mut named = None;
+    for entry in event.entries.iter().filter(|e| matches!(&e.name, ICalendarProperty::Other(n) if n.eq_ignore_ascii_case(PERSON_LINE))) {
+        if named.is_some() {
+            return nonsense("an event naming two people");
+        }
+        let set = entry
+            .params
+            .iter()
+            .find(|p| matches!(&p.name, ICalendarParameterName::Other(n) if n.eq_ignore_ascii_case(SET_PARAMETER)))
+            .and_then(|p| match &p.value {
+                ICalendarParameterValue::Text(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .unwrap_or("");
+        let person = match entry.values.as_slice() {
+            [one] => one.as_text().map(|text| plain_value(text, false).trim().to_string()).unwrap_or_default(),
+            _ => String::new(),
+        };
+        if !set_id(set) || person.is_empty() || person.chars().count() > MOST_TEXT {
+            return nonsense("an event's person that is not one");
+        }
+        named = Some((set.to_string(), person));
+    }
+    Ok(named)
+}
+
+/// `clean`, with the person each event names (`PERSON_LINE`), by the event's
+/// UID; that line is never kept. An event's own categories (`CATEGORIES`, a
+/// salon's services) are counted: `MOST_CATEGORIES` at most, each
+/// `MOST_TEXT` characters at most once plain.
+fn clean_named(calendar: &str) -> Result<(String, usize, BTreeMap<String, (String, String)>), Nonsense> {
     let Some(read) = agenda::parse(calendar) else { return nonsense("a calendar that is not one") };
     let Some(root) = read.components.first().filter(|c| c.component_type == ICalendarComponentType::VCalendar) else { return nonsense("a calendar that is not one") };
     let top: Vec<&ICalendarComponent> = root.component_ids.iter().filter_map(|i| read.components.get(*i as usize)).collect();
@@ -489,6 +579,7 @@ pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
     ];
     let mut out = ICalendar { components: vec![ICalendarComponent { component_type: ICalendarComponentType::VCalendar, entries: head, component_ids: Vec::new() }] };
     let (mut events, mut uids, mut named) = (Vec::new(), BTreeSet::new(), BTreeSet::new());
+    let mut people = BTreeMap::new();
     for event in top.iter().filter(|c| c.component_type == ICalendarComponentType::VEvent) {
         // An override of a series: no series in this version.
         if event.property(&ICalendarProperty::RecurrenceId).is_some() {
@@ -502,6 +593,13 @@ pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
         }
         if !uids.insert(uid.to_string()) {
             return nonsense("an event's UID twice");
+        }
+        let categories: Vec<&str> = entries.iter().filter(|e| e.name == ICalendarProperty::Categories).flat_map(|e| e.values.iter().filter_map(|v| v.as_text())).collect();
+        if categories.len() > MOST_CATEGORIES || categories.iter().any(|c| c.trim().chars().count() > MOST_TEXT) {
+            return nonsense("an event with more categories than it may hold");
+        }
+        if let Some(person) = person_named(event)? {
+            people.insert(uid.to_string(), person);
         }
         named.extend(entries.iter().filter_map(|e| e.tz_id().map(str::to_string)));
         events.push(ICalendarComponent { component_type: ICalendarComponentType::VEvent, entries, component_ids: Vec::new() });
@@ -541,7 +639,7 @@ pub fn clean(calendar: &str) -> Result<(String, usize), Nonsense> {
         out.components[0].component_ids.push(at);
         out.components.push(event);
     }
-    Ok((out.to_string(), count))
+    Ok((out.to_string(), count, people))
 }
 
 #[cfg(test)]
@@ -727,6 +825,61 @@ mod tests {
         assert!(refresh_reply(&reply.to_string()).is_err(), "a thousand agendas in one reply");
         let reply = serde_json::json!({ "agendas": (0..MOST_AGENDAS).map(one).collect::<Vec<_>>() });
         assert_eq!(refresh_reply(&reply.to_string()).unwrap().agendas.len(), MOST_AGENDAS);
+    }
+
+    /// The person an event is with (`PERSON_LINE`): tied when a set of the
+    /// same reply holds them, with their name as the set gives it; the line
+    /// itself never kept; a person no set of the reply holds ties nothing; a
+    /// line that is not one, or two on one event, is nonsense.
+    #[test]
+    fn an_event_names_the_person_it_is_with() {
+        let tied = event("B1", "20261119T080000Z", "X-SIOUL-PERSON;X-SIOUL-SET=clients:client-41\r\n");
+        let other_set = event("B2", "20261119T090000Z", "X-SIOUL-PERSON;X-SIOUL-SET=staff:client-41\r\n");
+        let unknown = event("B3", "20261119T100000Z", "X-SIOUL-PERSON;X-SIOUL-SET=clients:client-99\r\n");
+        let escaped = event("B4", "20261119T110000Z", "x-sioul-person;x-sioul-set=clients:client\\,\\;42\r\n");
+        let alone = event("B5", "20261119T120000Z", "");
+        let people = serde_json::json!([{ "id": "client-41", "name": "Marie Exemple" }, { "id": "client,;42", "name": "Jean Exemple" }]);
+        let reply = |events: &str, sets: bool| {
+            let mut reply = serde_json::json!({ "agendas": [{ "id": "salon", "name": "Salon", "calendar": calendar(events) }] });
+            if sets {
+                reply["contacts"] = serde_json::json!([{ "id": "clients", "name": "Clients", "people": people }]);
+            }
+            refresh_reply(&reply.to_string())
+        };
+        let read = reply(&format!("{tied}{other_set}{unknown}{escaped}{alone}"), true).unwrap();
+        let agenda = &read.agendas[0];
+        assert_eq!(agenda.ties.get("B1"), Some(&Tied { set: "clients".into(), person: "client-41".into(), name: "Marie Exemple".into() }));
+        assert_eq!(agenda.ties.get("B4").map(|t| (t.person.as_str(), t.name.as_str())), Some(("client,;42", "Jean Exemple")), "an id escaped as a text, names in any case");
+        assert_eq!(agenda.ties.len(), 2, "another set's, a person the set does not hold, an event naming nobody: none");
+        assert_eq!(agenda.events, 5);
+        assert!(!agenda.calendar.to_ascii_uppercase().contains("X-SIOUL") && !agenda.calendar.contains("client-41"), "the line is never kept:\n{}", agenda.calendar);
+        // The same events without any set of contacts: nobody is tied.
+        assert!(reply(&format!("{tied}{escaped}"), false).unwrap().agendas[0].ties.is_empty());
+        for (what, extra) in [
+            ("two people", "X-SIOUL-PERSON;X-SIOUL-SET=clients:a\r\nX-SIOUL-PERSON;X-SIOUL-SET=clients:b\r\n"),
+            ("no set", "X-SIOUL-PERSON:client-41\r\n"),
+            ("a set's id that is not one", "X-SIOUL-PERSON;X-SIOUL-SET=Clients:client-41\r\n"),
+            ("no id", "X-SIOUL-PERSON;X-SIOUL-SET=clients:\u{202E}\r\n"),
+            ("an id too long", &format!("X-SIOUL-PERSON;X-SIOUL-SET=clients:{}\r\n", "x".repeat(MOST_TEXT + 1))),
+            ("two values", "X-SIOUL-PERSON;X-SIOUL-SET=clients:a;b\r\n"),
+        ] {
+            assert!(reply(&event("B1", "20261119T080000Z", extra), true).is_err(), "{what}");
+        }
+    }
+
+    /// An event's own categories (a salon's services) are kept, counted and
+    /// bounded: `MOST_CATEGORIES` at most, each `MOST_TEXT` characters at most.
+    #[test]
+    fn an_event_s_own_categories_are_kept_within_bounds() {
+        let read = |extra: &str| clean(&calendar(&event("B1", "20261119T080000Z", extra)));
+        let (kept, _) = read("CATEGORIES:Coupe,Couleur\\, mèches\r\n").unwrap();
+        let line = crate::lines::unfold(&kept).into_iter().find(|l| crate::lines::name(l) == "CATEGORIES").unwrap();
+        assert_eq!(crate::contacts::categories_of(&[line.clone()]), vec!["Coupe".to_string(), "Couleur, mèches".to_string()], "{line}");
+        let names = |n: usize| (0..n).map(|i| format!("Service {i}")).collect::<Vec<_>>().join(",");
+        assert!(read(&format!("CATEGORIES:{}\r\n", names(MOST_CATEGORIES))).is_ok());
+        assert!(read(&format!("CATEGORIES:{}\r\nCATEGORIES:One more\r\n", names(MOST_CATEGORIES))).is_err(), "counted over every line");
+        assert!(read(&format!("CATEGORIES:{}\r\n", "c".repeat(MOST_TEXT))).is_ok());
+        assert!(read(&format!("CATEGORIES:{}\r\n", "c".repeat(MOST_TEXT + 1))).is_err());
     }
 
     /// A set of contacts as an extension hands it back.

@@ -796,6 +796,49 @@ pub fn move_made(from: &vdir::Collection, to: &vdir::Collection, extension: &str
     (moved, refused)
 }
 
+/// The UID of the card each person of `extension` is bound to, by their mark
+/// (`super::person_mark`), in the address books this device holds: a card
+/// whose UID is the mark (one the door made) first, else the first card
+/// carrying the mark (`MARK_LINE`), the books and their cards in the order
+/// of their folders and files (not always the card `take` completes, which
+/// looks in the set's chosen book first: two bound copies of one client
+/// could differ). A card without a UID is no card an event can name. What
+/// the agendas' door ties an extension's events to (`door::lessons`), read
+/// after the sets of the same reply are written, so that a card made, bound,
+/// merged into another (which keeps the mark: `duplicates::merge`) or made
+/// again is the one named. An address book on this device only
+/// (`vdir::LOCAL`) counts only for a calendar on this device only
+/// (`local`): a calendar its server carries would name a card no other
+/// device holds, and the tie, part of each event's hash, would differ from
+/// device to device, each rewriting the appointments the other wrote.
+pub fn uids_by_mark(extension: &str, local: bool) -> BTreeMap<String, String> {
+    let ours = |mark: &str| super::uid_mark(mark).is_some_and(|m| m.extension == extension);
+    let mut books: Vec<vdir::Collection> = vdir::collections(vdir::Kind::Contacts).into_iter().filter(|b| local || b.account != vdir::LOCAL).collect();
+    books.sort_by(|a, b| a.dir.cmp(&b.dir));
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    let mut made: BTreeSet<String> = BTreeSet::new();
+    for book in books {
+        let mut paths = book.items();
+        paths.sort();
+        for path in paths {
+            let Some(card) = read_card(&path) else { continue };
+            let uid = uid_of(&card);
+            if uid.is_empty() {
+                continue;
+            }
+            if ours(&uid) && made.insert(uid.clone()) {
+                out.insert(uid.clone(), uid.clone());
+            }
+            for mark in card.iter().filter(|l| lines::raw_name(l) == MARK_LINE).map(|l| lines::value(l).trim().to_string()).filter(|m| ours(m)) {
+                if !made.contains(&mark) {
+                    out.entry(mark).or_insert_with(|| uid.clone());
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Remove: this device's notes of the extension's cards go; every card stays as it is.
 pub fn forget(extension: &str) {
     let _ = std::fs::remove_file(noted_path(extension));

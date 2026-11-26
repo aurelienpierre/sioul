@@ -8,7 +8,7 @@
 //! extension itself: its hosts, whether it signs in and what it watches for.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The form of manifest Sioul reads.
 pub const FORMAT: u32 = 1;
@@ -54,8 +54,9 @@ impl CredField {
 /// The most credential fields a sign-in may ask for.
 const MOST_CREDS: usize = 4;
 
-/// Words in both of Sioul's languages.
+/// Words in both of Sioul's languages (either may be left out: the other shows).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Words {
     pub en: String,
     pub fr: String,
@@ -88,9 +89,61 @@ pub struct Offer {
     /// An extension has a redirect `sign_in` or `credentials`, never both.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub credentials: Vec<CredField>,
+    /// The publisher's own words for a credential field, by its kind
+    /// (`[extension.fields.web-address]`): its label, in place of Sioul's word
+    /// for the kind, and a line of help under it (where the service shows that
+    /// link, say). Optional; one that does not read, or is longer than its
+    /// bound, is passed over (`FieldWords::label_in`, `help_in`), never the
+    /// offer. A Sioul before 26 November 2026 passes the whole key over and
+    /// shows its own words.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "fields_read")]
+    pub fields: BTreeMap<String, FieldWords>,
     /// An `https` address, or a name beside the manifest.
     pub file: String,
     pub sha256: String,
+}
+
+/// The most characters a credential field's label from the manifest holds
+/// (a phone's form gives it one line); past it, Sioul's own word shows.
+pub const MOST_LABEL: usize = 40;
+/// The most characters a credential field's help holds; past it, none shows.
+pub const MOST_HELP: usize = 400;
+
+/// The publisher's words for one credential field (`Offer::fields`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct FieldWords {
+    pub label: Words,
+    pub help: Words,
+}
+
+/// Words of the manifest made one plain line: control characters and the
+/// marks that turn a line around taken out, spaces trimmed; none when empty
+/// or longer than `most` characters.
+fn one_line(text: &str, most: usize) -> Option<String> {
+    let kept: String = text.chars().filter(|c| !c.is_control() && !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')).collect();
+    let kept = kept.trim();
+    (!kept.is_empty() && kept.chars().count() <= most).then(|| kept.to_string())
+}
+
+impl FieldWords {
+    /// Its label in the language asked (`Words::said`), when it is one line
+    /// of `MOST_LABEL` characters at most.
+    pub fn label_in(&self, french: bool) -> Option<String> {
+        one_line(self.label.said(french), MOST_LABEL)
+    }
+
+    /// Its help, when it is one line of `MOST_HELP` characters at most.
+    pub fn help_in(&self, french: bool) -> Option<String> {
+        one_line(self.help.said(french), MOST_HELP)
+    }
+}
+
+/// `Offer::fields` read leniently: each field's words that read kept, the
+/// others passed over, never the offer refused for them.
+fn fields_read<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<String, FieldWords>, D::Error> {
+    let raw = BTreeMap::<String, toml::Value>::deserialize(deserializer).unwrap_or_default();
+    Ok(raw.into_iter().filter_map(|(kind, words)| Some((kind, words.try_into().ok()?))).collect())
 }
 
 /// What an extension is given beyond the time and its log: the hosts it may
@@ -406,6 +459,41 @@ mod tests {
     /// `sign_in`. Built by replacing SAMPLE's sign-in line.
     fn credentials_sample(credentials: &str) -> String {
         SAMPLE.replace(r#"sign_in = "example-app://sign-in-callback""#, &format!("credentials = [{credentials}]"))
+    }
+
+    /// A credential field may carry the publisher's words (26 November 2026:
+    /// Planity's "iCal private link" and where it is found): read by kind,
+    /// in either language; one too long, or that does not read, is passed
+    /// over and Sioul's own word shows, never the offer refused; a manifest
+    /// without them reads as before.
+    #[test]
+    fn a_credential_field_may_carry_the_publishers_words() {
+        let sample = credentials_sample(r#""email", "password", "web-address""#);
+        let with = |fields: &str| parse(&format!("{sample}{fields}")).unwrap();
+        let read = with("\n[extension.fields.web-address]\nlabel = { en = \"iCal private link\", fr = \"Lien iCal privé\" }\nhelp = { en = \"In the service: Admin, then « Sync ».\", fr = \"Dans le service : Admin, puis « Synchroniser ».\" }\n");
+        assert!(read.left_out.is_empty(), "{:?}", read.left_out);
+        let words = &read.offers[0].fields["web-address"];
+        assert_eq!((words.label_in(false).as_deref(), words.label_in(true).as_deref()), (Some("iCal private link"), Some("Lien iCal privé")));
+        assert_eq!(words.help_in(true).as_deref(), Some("Dans le service : Admin, puis « Synchroniser »."));
+        // One language alone: the other shows it.
+        let english = with("\n[extension.fields.web-address]\nlabel = { en = \"iCal private link\" }\n");
+        assert_eq!(english.offers[0].fields["web-address"].label_in(true).as_deref(), Some("iCal private link"));
+        assert_eq!(english.offers[0].fields["web-address"].help_in(false), None);
+        // Too long, a line break: Sioul's word instead; words that do not read: passed over, the offer kept.
+        let long = with(&format!("\n[extension.fields.web-address]\nlabel = {{ en = \"{}\" }}\nhelp = {{ en = \"{}\" }}\n", "l".repeat(MOST_LABEL + 1), "h".repeat(MOST_HELP + 1)));
+        assert_eq!((long.offers[0].fields["web-address"].label_in(false), long.offers[0].fields["web-address"].help_in(false)), (None, None));
+        assert_eq!(with("\n[extension.fields.web-address]\nlabel = { en = \"Link\\n\\u202Eknil\" }\n").offers[0].fields["web-address"].label_in(false).as_deref(), Some("Linkknil"));
+        let odd = with("\n[extension.fields]\nweb-address = 7\nemail = { label = { en = \"Salon email\" } }\n");
+        assert_eq!(odd.offers.len(), 1, "{:?}", odd.left_out);
+        assert_eq!(odd.offers[0].fields.keys().collect::<Vec<_>>(), vec!["email"]);
+        let numbered = parse(&format!("{sample}\nfields = 3\n")).unwrap();
+        assert!(numbered.offers.len() == 1 && numbered.offers[0].fields.is_empty(), "words that do not read: none, the offer kept");
+        // None given: none, and the record of the offer is written without them.
+        let bare = parse(&sample).unwrap();
+        assert!(bare.offers[0].fields.is_empty());
+        assert!(!toml::to_string(&bare.offers[0]).unwrap().contains("fields"));
+        // Their words ask for nothing more: no question before an update that only words them.
+        assert!(!read.offers[0].grants().asks_more_than(&bare.offers[0].grants()));
     }
 
     #[test]

@@ -250,16 +250,88 @@ Item {
                             wrapMode: Text.Wrap
                             color: tab.theme.muted
                         }
-                        ComboBox {
+                        // Every calendar of yours that holds events, each saying whose it is (as the
+                        // agendas' table says it); one the extension cannot write (its server's word,
+                        // a subscription, Sioul's busy times, not on this device) listed last, its
+                        // reason under it, not to be chosen (26 November 2026).
+                        PlainComboBox {
                             id: calendarChoice
+
+                            readonly property int chosenAt: Math.max(0, agenda.choices.findIndex(c => c.choice === "place:" + agenda.modelData.place))
 
                             objectName: "extensionCalendar:" + agenda.modelData.id
                             Layout.fillWidth: true
                             Layout.maximumWidth: 460
-                            model: agenda.choices.map(c => tab.theme.plain(c.label))
-                            currentIndex: Math.max(0, agenda.choices.findIndex(c => c.choice === "place:" + agenda.modelData.place))
+                            textRole: "label"
+                            model: agenda.choices.map(c => Object.assign({}, c, { label: tab.theme.plain(c.label) }))
+                            currentIndex: calendarChoice.chosenAt
                             Accessible.name: tab.sioul.textWith("extension-calendar-for", "name", agenda.modelData.name)
-                            onActivated: index => tab.choose(offer.modelData.id, agenda.modelData, agenda.choices[index].choice)
+                            onActivated: index => {
+                                // One that cannot be chosen chooses nothing: the box goes back to the one chosen.
+                                if (agenda.choices[index].closed) {
+                                    calendarChoice.currentIndex = Qt.binding(() => calendarChoice.chosenAt)
+                                    return
+                                }
+                                tab.choose(offer.modelData.id, agenda.modelData, agenda.choices[index].choice)
+                            }
+
+                            delegate: ItemDelegate {
+                                id: calendarLine
+
+                                required property var modelData
+                                required property int index
+
+                                objectName: "extensionCalendarLine:" + agenda.modelData.id + ":" + calendarLine.index
+                                width: ListView.view.width
+                                enabled: !calendarLine.modelData.closed
+                                highlighted: calendarChoice.highlightedIndex === calendarLine.index
+                                Accessible.name: [calendarLine.modelData.label, calendarLine.modelData.whose, calendarLine.modelData.why].filter(t => t).join(", ")
+
+                                contentItem: ColumnLayout {
+                                    spacing: 0
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: calendarLine.modelData.label
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        font.weight: calendarChoice.currentIndex === calendarLine.index ? Font.DemiBold : Font.Normal
+                                        color: calendarLine.enabled ? tab.theme.text : tab.theme.muted
+                                    }
+                                    Label {
+                                        objectName: "extensionCalendarWhose:" + calendarLine.index
+                                        Layout.fillWidth: true
+                                        visible: text !== ""
+                                        text: calendarLine.modelData.whose || ""
+                                        textFormat: Text.PlainText
+                                        elide: Text.ElideRight
+                                        font.pixelSize: 12
+                                        color: tab.theme.muted
+                                    }
+                                    Label {
+                                        objectName: "extensionCalendarWhy:" + calendarLine.index
+                                        Layout.fillWidth: true
+                                        visible: text !== ""
+                                        text: calendarLine.modelData.why || ""
+                                        textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        font.pixelSize: 12
+                                        color: tab.theme.muted
+                                    }
+                                }
+                            }
+                        }
+                        // Your own word on that agenda (read only, its availability only) does not
+                        // keep the extension out: said here, with where it is changed.
+                        Label {
+                            objectName: "extensionCalendarKept:" + agenda.modelData.id
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: 460
+                            visible: text !== ""
+                            text: agenda.modelData.kept || ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: tab.theme.muted
                         }
                         // A new calendar for it: Agenda ⚙'s form, its account and its name proposed, events only.
                         Loader {
