@@ -95,7 +95,7 @@ Every site's notifications are accepted, then kept by Sioul; the site itself nev
 
 At set times (09:00, 13:00 and 18:00, unless you set others), one notification, "Your sites have news", gathers which sites have news since the last one, with **Open the Porch**: each news is named once, and waits on the Porch until you open its site. It names the sites of these hours whose sounds are not silenced. Three a day helped most in a field trial (Fitz et al. 2019).
 
-The times are **Gathered at**, in Settings ▸ What reaches you ▸ Your rules ▸ Sioul's own notices ▸ Sites and apps ([The gathered times](notifications.md#the-gathered-times)). In the same place, **At once** instead of **At the gathered times** brings each site's news as it comes, in those same hours.
+The times are **Gathered at**, in Settings ▸ What reaches you ▸ Notifications on this computer ([The gathered times](notifications.md#the-gathered-times)). An exception for your sites' gathered notifications, **When you are awake**, brings each site's news as it comes, in those same hours; **Never** makes no gathered notification at all.
 
 A site whose hours have not come keeps its notifications, real time and calls included, until they do.
 

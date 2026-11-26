@@ -147,7 +147,7 @@ runs=(
     # at once (with hours, only those of the hours now).
     "no-hours --no-hours demo - porch-hours budgets bank-accounts"
     # Settings ▸ What reaches you, at 1400 by 1500, and a contact's sheet.
-    "attention - attention - attention-rules:settings-attention attention-own attention-moments:attention-dnd attention-circles attention-table attention-sheet"
+    "attention - attention - attention-rules:settings-attention attention-exception attention-own-times attention-dnd attention-circles attention-table attention-decided attention-sheet"
     # The status line's card of what reaches you, on a phone.
     "reach - reach phone reach-card reach-card-lengths"
     # Mail: a search by conditions, a selection held over a folder; the filters in Mail's ⚙.

@@ -2857,6 +2857,26 @@ fn set_account_item(path: &Path, id: &str, key: &str, item: Item) -> Result<(), 
 /// `remove`, keys or tables taken out ("reach", "pause.doses"): one write,
 /// the comments kept (`attention`'s rows, the older keys they replace).
 pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)], remove: &[&str]) -> Result<(), String> {
+    set_table_ranked(path, table, &words_items(keys), remove, &|_: &str| None)
+}
+
+/// Each key's words as the value a table holds (a list of words), or none.
+pub fn words_items(keys: &[(String, Option<Vec<String>>)]) -> Vec<(String, Option<Item>)> {
+    keys.iter().map(|(key, words)| (key.clone(), words.as_ref().map(|w| value(w.iter().map(String::as_str).collect::<Array>())))).collect()
+}
+
+/// A key's place among a table's keys (`set_table_ranked`): none for a key it
+/// says nothing of.
+pub type Rank<'a> = &'a dyn Fn(&str) -> Option<(u32, String)>;
+
+/// `set_table` with values of any kind, a key set for the first time put
+/// among the others as `rank` orders them: right before the nearest key it
+/// ranks after it, else at the end; a key it does not rank, and the keys
+/// already there, stay where they are, their comments with them. So a key
+/// taken out and set again comes back where it was, and a table Sioul wrote
+/// reads the same byte for byte (`attention::rank`: the start, the matrix's
+/// rows in their order, then the sources' by id).
+pub fn set_table_ranked(path: &Path, table: &str, keys: &[(String, Option<Item>)], remove: &[&str], rank: Rank) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let mut doc = read_document(path)?;
@@ -2875,25 +2895,70 @@ pub fn set_table(path: &Path, table: &str, keys: &[(String, Option<Vec<String>>)
         if !doc.contains_key(table) {
             doc[table] = toml_edit::table();
         }
-        let section = doc[table].as_table_like_mut().ok_or_else(|| format!("{}: {table} is not a table", path.display()))?;
-        for (key, words) in keys {
-            match words {
-                Some(words) => {
-                    let item = value(words.iter().map(String::as_str).collect::<Array>());
-                    match section.get_mut(key) {
-                        Some(slot) => *slot = item,
+        if doc[table].as_table_like().is_none() {
+            return Err(format!("{}: {table} is not a table", path.display()));
+        }
+        for (key, item) in keys {
+            match item {
+                Some(item) => {
+                    let item = item.clone();
+                    if let Some(slot) = doc[table].as_table_like_mut().and_then(|s| s.get_mut(key)) {
+                        *slot = item;
+                        continue;
+                    }
+                    match doc[table].as_table_mut() {
+                        Some(section) => insert_ranked(section, key, item, rank),
+                        // A table written inline (`attention = { … }`): at its end.
                         None => {
-                            section.insert(key, item);
+                            if let Some(section) = doc[table].as_table_like_mut() {
+                                section.insert(key, item);
+                            }
                         }
                     }
                 }
                 None => {
-                    section.remove(key);
+                    if let Some(section) = doc[table].as_table_like_mut() {
+                        section.remove(key);
+                    }
                 }
             }
         }
         write_document(path, &doc)
     })
+}
+
+/// A table taken out of the file when it holds no key any more (a section
+/// left empty by the last key taken out of it).
+pub fn drop_empty_table(path: &Path, table: &str) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if doc.get(table).and_then(Item::as_table_like).is_some_and(|t| t.is_empty()) {
+            doc.remove(table);
+            return write_document(path, &doc);
+        }
+        Ok(())
+    })
+}
+
+/// A key new to `section`, put right before the nearest key `rank` orders
+/// after it (those from there on taken out with their comments and put
+/// back after it, in their order); else at the end.
+fn insert_ranked(section: &mut Table, key: &str, item: Item, rank: Rank) {
+    let Some(mine) = rank(key) else {
+        section.insert(key, item);
+        return;
+    };
+    let names: Vec<String> = section.iter().map(|(k, _)| k.to_string()).collect();
+    let at = names.iter().enumerate().filter_map(|(i, k)| rank(k).filter(|r| *r > mine).map(|r| (r, i))).min().map(|(_, i)| i);
+    let Some(at) = at else {
+        section.insert(key, item);
+        return;
+    };
+    let moved: Vec<(toml_edit::Key, Item)> = names[at..].iter().filter_map(|k| section.remove_entry(k)).collect();
+    section.insert(key, item);
+    for (k, v) in moved {
+        section.insert_formatted(&k, v);
+    }
 }
 
 /// A day as people write it: as ISO 8601 (2027-01-01), or day first, with

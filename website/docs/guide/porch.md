@@ -57,7 +57,7 @@ When mail your circles let through now arrives at an address for what now is for
 - **Never** for codes (they have their own, above), mail set aside, what your own spam filter flagged or moved (it waits in "Caught by your own spam filter", [below](#spam-and-your-own-filter)), blocked senders, your less important addresses, what you send yourself, newsletters unless you include them, or mail you already read elsewhere. Nothing while you sleep or pause.
 - **No sound**, but on a phone for a batch with someone Always through in it, while Sioul's do-not-disturb holds. With a phone and a computer, only the one you used last tells (once you said [what each device is for](hours.md#what-each-device-is-for), what is not for it waits, and comes on a device it is for once you pick that one up), and the other does not tell again what it told, once your sharing has carried it: a message told on one just before the other fetches it may still come on both. On Android's lock screen, the notification says how many e-mails came, not who wrote.
 
-Settings ▸ What reaches you ▸ Your rules ▸ People, under the table: **Tell me of new mail**, on unless you turn it off, and **Include newsletters**, off unless you turn it on ([What reaches you, and when](notifications.md#by-person)).
+Settings ▸ What reaches you, as exceptions of Sioul's own notices: new mail is told unless an exception says **New mail: never told**, and newsletters are not unless one says **Newsletters and mailing lists: told as other mail is** ([Your exceptions](notifications.md#your-exceptions)).
 
 ## The lanes {#the-lanes}
 

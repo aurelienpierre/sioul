@@ -3,8 +3,8 @@
 
 // Two tables drawn with their French words, at the widths a window 1280 and
 // 1400 points wide gives them (the guide's pictures): Settings ▸ What reaches
-// you, Your rules (ReachesTab.qml: the column of 720 points that Settings
-// keeps for reading), its table of People first; and Settings ▸ Devices
+// you (ReachesTab.qml: the column of 720 points that Settings
+// keeps for reading), its rule first; and Settings ▸ Devices
 // (DevicesTab.qml), the whole width, its table's four titles over two
 // computers, each whole on one line, then each card's Details opened. No
 // word shown is cut: a label wraps rather than ends in "…", a button's
@@ -31,11 +31,15 @@ Item {
         id: reachesMock
 
         readonly property var words: ({
-            "reach-people": "Personnes",
-            "reach-own-notices": "Les avis de Sioul",
-            "reach-moments": "Moments",
+            "reach-rule": "La règle habituelle",
+            "reach-exceptions": "Vos exceptions",
+            "reach-add": "Ajouter une exception…",
+            "reach-edit": "Modifier",
+            "reach-dnd": "« Ne pas déranger » se met tout seul",
+            "reach-apps-computer": "Les notifications sur cet ordinateur",
+            "reach-start": "Partir de",
             "reach-circles": "Qui est dans quel cercle",
-            "reach-circles-help": "Toute personne de vos carnets d’adresses est parmi vos contacts, sans rien régler."
+            "reach-worked-out": "Ce qui vient quand, en détail"
         })
         function text(key) {
             return reachesMock.words[key] || key
@@ -46,64 +50,34 @@ Item {
         function textArgs(key, args) {
             return reachesMock.text(key)
         }
-        function cell(channel, value, label) {
-            const all = [["always", "Toujours"], ["awake", "Quand vous ne dormez pas"], ["work-admin", "Aux heures de travail et de démarches"], ["work", "Aux heures de travail"], ["gathered", "Aux heures de regroupement"], ["never", "Jamais notifié"]]
-            return { channel: channel, value: value, label: label, choices: all.map(c => ({ id: c[0], label: c[1], help: "" })), rows: [channel + ".x"] }
-        }
         function reachesView() {
-            const c = reachesMock.cell
+            const line = (text, pattern) => ({ text: text, note: "", value: { what: { kind: "channel", channel: "mail" }, whom: { kind: "circle", person: "neutral" }, where: { kind: "everywhere" }, when: { kind: "pattern", pattern: pattern } } })
             return JSON.stringify({
-                now: ["Maintenant : travail, jusqu’à 17:00."],
+                now: ["Maintenant : travail, jusqu’à 17:00."],
                 state: "usual",
-                column: "work",
-                now_columns: ["work"],
-                presets: [{ id: "usual", label: "Comme Sioul le fait maintenant", current: true, changes: 0 }, { id: "quieter", label: "Plus calme", current: false, changes: 12 }, { id: "reachable", label: "Plus joignable", current: false, changes: 6 }],
-                presets_note: "Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils.",
-                changed: "",
-                people: {
-                    channels: [{ id: "mail", label: "Courriels", note: "" }, { id: "messages", label: "Messages", note: "" }],
-                    rows: [
-                        { id: "always", label: "Passent toujours", help: "Les personnes de votre liste Passent toujours.", cells: [c("mail", "always", "Toujours"), c("messages", "always", "Toujours")] },
-                        { id: "safe", label: "Sûrs", help: "Il n’y entre que qui vous y mettez.", cells: [c("mail", "awake", "Quand vous ne dormez pas"), c("messages", "awake", "Quand vous ne dormez pas")] },
-                        { id: "contacts", label: "Vos contacts", help: "Toute personne de vos carnets d’adresses.", cells: [c("mail", "work-admin", "Aux heures de travail et de démarches"), c("messages", "own", "À votre façon")] },
-                        { id: "restricted", label: "Restreints", help: "Connus, entendus seulement aux moments que vous choisissez.", cells: [c("mail", "gathered", "Aux heures de regroupement"), c("messages", "work", "Aux heures de travail")] },
-                        { id: "others", label: "Tous les autres", help: "Dans aucun carnet d’adresses et sur aucune liste.", cells: [c("mail", "never", "Jamais notifié"), c("messages", "never", "Jamais notifié")] }
-                    ],
-                    blocked: { label: "Bloqués", help: "Jamais, sur aucun canal.", word: "Jamais" },
-                    notes: ["Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant."],
-                    own_help: "Réglé case par case, dans Ce qui vient quand."
-                },
-                own: [
-                    { id: "asked", label: "Ce que vous avez réglé ou demandé", holds: "Les codes et liens que vous demandez, les prises, le réveil et les alarmes d’un événement.", value: "sleep", value_label: "Prises pendant le sommeil", choices: [{ id: "sleep", label: "Prises pendant le sommeil" }, { id: "waking", label: "Prises au réveil" }], switches: [], gathered: "" },
-                    { id: "reminders", label: "Rappels", holds: "Avant un événement, le jour travaillé d’avant, les dates, les attentes, les paiements et les papiers.", value: "awake", value_label: "Quand vous ne dormez pas", choices: [{ id: "awake", label: "Quand vous ne dormez pas" }, { id: "off", label: "Non" }], switches: [], gathered: "" },
-                    { id: "sites", label: "Sites et applications", holds: "Les nouvelles des sites sur un ordinateur, les notifications automatiques des applications sur un téléphone.", value: "gathered", value_label: "Aux heures de regroupement", choices: [{ id: "now", label: "Tout de suite" }, { id: "gathered", label: "Aux heures de regroupement" }], switches: [], gathered: "" }
-                ],
-                moments: {
-                    columns: ["Qui passe", "Mis par", "Sur votre téléphone"],
-                    rows: [{ id: "usual", label: "Comme d’habitude", who: "Vos règles ci-dessus", by: "Rien", phone: "Comme Android est réglé" }, { id: "dnd", label: "Ne pas déranger", who: "Passent toujours, et ce que vous avez réglé", by: "L’interrupteur, et les cases ci-dessous", phone: "Le mode de Sioul, qui laisse passer qui Sioul laisse passer" }],
-                    holds_title: "Qui retient quoi sur un téléphone",
-                    holds_columns: ["Sioul", "Android"],
-                    holds: [],
-                    principle: "Sioul décide de ce qui passe, et quand ; le mode Ne pas déranger d’Android décide seulement s’il fait un bruit."
-                },
-                elsewhere: { line: "Rien n’est réglé ailleurs.", links: [] },
-                calls: "Les appels se règlent pour chaque téléphone dans Paramètres ▸ Appareils.",
-                rows: [],
-                grid: { columns: [], marks: [], rows: [] },
                 phone: false,
+                start: { id: "usual", choices: [{ id: "usual", label: "Comme Sioul le fait maintenant" }, { id: "quieter", label: "Plus calme" }, { id: "reachable", label: "Plus joignable" }] },
+                rule: [
+                    { circle: "always", text: "Passent toujours : toujours, même pendant « Ne pas déranger » ; leurs courriels montrés sans un mot la nuit et en pause.", count: "3 personnes" },
+                    { circle: "neutral", text: "Vos contacts : quand vous ne dormez pas ; leurs courriels aux heures de travail et de démarches.", count: "312 fiches" },
+                    { circle: "stranger", text: "Tous les autres : aux heures de travail et de démarches, regroupés en dehors ; leurs courriels aux heures de travail et de démarches.", count: "" }
+                ],
+                idle: [],
+                exceptions: [line("Les courriels de vos contacts : quand vous ne dormez pas.", "awake"), line("Les courriels de tous les autres : tout de suite pendant le travail et les démarches ; montrés sans un mot pendant les loisirs ; plus tard le reste du temps.", "work")],
+                card: { what: [], whom: [], where: [] },
+                now_columns: ["work"],
+                grid: { columns: [], marks: [], rows: [] },
+                circle: { title: "Vos proches", help: "", people: [] },
                 exact: true
             })
         }
         function settings(view) {
             return "[]"
         }
-        function reachesChoose(what, value) {
-            return ""
+        function reachesAct(verb, json) {
+            return JSON.stringify({ problem: "" })
         }
-        function reachesSet(row, words, shown) {
-            return ""
-        }
-        function reachesPreset(id) {
+        function appNotesSetup() {
             return ""
         }
         function dndSetup() {
@@ -243,18 +217,18 @@ Item {
             return walk(item, []).find(i => i.objectName === name) || null
         }
 
-        // Settings ▸ What reaches you, Your rules: the People table first, then Sioul's own and the moments.
+        // Settings ▸ What reaches you: the rule's sentences first, then the exceptions and the rest.
         function test_what_reaches_you_cuts_no_french_word() {
             reaches.visible = true
             devices.visible = false
             reaches.reload()
             waitForRendering(reaches)
-            const people = named(reaches, "part-people")
-            verify(people !== null, "the People table shown")
-            const cutPeople = cut(people)
-            compare(cutPeople.length, 0, "cut in People: " + cutPeople.join("; "))
+            const rule = named(reaches, "part-rule")
+            verify(rule !== null, "the usual rule shown")
+            const cutRule = cut(rule)
+            compare(cutRule.length, 0, "cut in the rule: " + cutRule.join("; "))
             const cutAll = cut(reaches)
-            compare(cutAll.length, 0, "cut in Your rules: " + cutAll.join("; "))
+            compare(cutAll.length, 0, "cut in the page: " + cutAll.join("; "))
         }
 
         // Settings ▸ Devices, the whole width of a window 1400 and 1280 wide: the

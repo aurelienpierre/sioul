@@ -441,7 +441,7 @@ pub fn for_view(view: &str, config: &Config, tr: &Translator, lists: &[(String, 
                 b.note(tr.text("unsubscribed-note", None), lines);
             }
         }
-        // Who is in which circle, under Settings ▸ What reaches you ▸ People:
+        // Who is in which circle, a fold of Settings ▸ What reaches you:
         // three lists (Safe, Restricted, Blocked); the people placed on them; the
         // groups of your contacts (their cards' categories), each on a list or none.
         // Your contacts are everyone in your address books, with nothing to set:

@@ -95,7 +95,7 @@ Les notifications de chaque site sont acceptées, puis gardées par Sioul ; le
 
 À heures fixes (09:00, 13:00 et 18:00, sauf si vous en réglez d’autres), une seule notification, « Vos sites ont des nouvelles », rassemble les sites qui ont du nouveau depuis la précédente, avec **Ouvrir le Porche** : chaque nouvelle est nommée une fois, et attend sur le Porche jusqu’à ce que vous ouvriez son site. Elle nomme les sites de ces heures-ci dont les sons ne sont pas coupés. Trois par jour ont le plus aidé dans un essai en conditions réelles (Fitz et al. 2019).
 
-Ces heures sont **Regroupées à**, dans Paramètres ▸ Ce qui vous joint ▸ Vos règles ▸ Les avis de Sioul ▸ Sites et applications ([Les heures de regroupement](notifications.md#the-gathered-times)). Au même endroit, **Tout de suite** au lieu de **Aux heures de regroupement** fait venir les nouvelles de chaque site dès qu’elles arrivent, dans ces mêmes heures.
+Ces heures sont **Regroupées à**, dans Paramètres ▸ Ce qui vous joint ▸ Les notifications sur cet ordinateur ([Les heures de regroupement](notifications.md#the-gathered-times)). Une exception pour les notifications regroupées de vos sites, **Quand vous ne dormez pas**, fait venir les nouvelles de chaque site dès qu’elles arrivent, dans ces mêmes heures ; **Jamais** ne fait aucune notification regroupée.
 
 Un site dont les heures ne sont pas venues garde ses notifications, temps réel et appels compris, jusqu’à ce qu’elles viennent.
 

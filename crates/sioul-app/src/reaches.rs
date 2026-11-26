@@ -2,23 +2,25 @@
 // Copyright © 2026 Aurélien Pierre
 
 //! Settings ▸ What reaches you (« Ce qui vous joint », ReachesTab.qml), as
-//! the window reads it (`view`): the moment now in sentences, the three
-//! states, where you started from (the presets); Your rules, the matrix read
-//! as a few choices (`sioul_core::behaviours`): the people's table, Sioul's
-//! own notices in four groups, the moments and who holds what on a phone,
-//! what is set elsewhere, the calls' line; What comes when, the matrix's grid
-//! a word per cell. A choice is written as the cells it names (`choose`), a
-//! cell of the grid as its row (`set_row`), a preset whole (`preset`). And a
-//! person's sheet (PersonSheet.qml): their list and why, Always through, and
-//! what each channel does with them at each time. The matrix is
-//! `sioul_core::attention` (docs/attention.md); this file says it in words,
-//! and writes what is changed here.
+//! the window reads it (`view`; the redesign of 24 November 2026: the rule
+//! once, then only the exceptions): the moment now in sentences and the
+//! three states; the usual rule, a sentence per circle, from the start
+//! chosen (`exceptions::rule`); your exceptions, a sentence each, read from
+//! every store as differences (`exceptions::list`), with where they do
+//! nothing on this device; the card that adds or changes one (`act`); What
+//! comes when, worked out, read-only, each cell with the line that decides
+//! it. And a person's sheet (PersonSheet.qml): their list and why, Always
+//! through, and what each channel does with them at each time. The matrix
+//! is `sioul_core::attention` (docs/attention.md); the exceptions
+//! `sioul_core::exceptions`; this file says them in words, and writes what
+//! is changed here.
 
 use crate::backend::{config_path, load_config};
 use serde_json::{Value, json};
+use sioul_core::appnotes::Choices;
 use sioul_core::attention::{self, Attention, Column, Kind, Level, Now, Person, Preset, Row};
-use sioul_core::behaviours::{self, Behaviour, Circle, Group};
 use sioul_core::config::{Config, SettingValue};
+use sioul_core::exceptions::{self, Device, Exception, Notice, Paths, Place, Stores, What, When, Whom};
 use sioul_core::everywhere::People;
 use sioul_core::i18n::Translator;
 use sioul_core::reach::{Channel, Who};
@@ -460,292 +462,598 @@ fn column_now(now: &Now) -> Column {
     now.times.first().copied().unwrap_or(Column::Work)
 }
 
-// ---------------------------------------------------------------- the tab
+// ---------------------------------------------------------------- the page
 
-/// The tab, as JSON (ReachesTab.qml; design-reach §1): {now: sentences,
-/// state: "usual", "dnd" or "reachable", column: the time now, now_columns: those read now (a layer's too),
-/// presets [{id, label, current, changes}], presets_note, changed, people {channels
-/// [{id, label, note}], rows [{id, label, help, cells [{channel, value,
-/// label, choices [{id, label}]}]}], blocked {label, help, word}, notes
-/// \[lines\]}, own [{id, label, holds, value, label_value, choices [{id,
-/// label}], switches [{kind, label, on}], gathered}], moments {rows [{id,
-/// label, who, by, phone}], holds [{id, label, sioul, android}],
-/// principle}, elsewhere {line, links [{id, label}]}, calls, rows [ids
-/// shown in What comes when], grid (`attention::grid`, a short word per
-/// cell), phone, exact}.
+/// Your devices, for "Where" and the phones' names: every device of the
+/// sharing that has not left, by the name you gave it, this one marked;
+/// this one alone without the sharing.
+fn devices(config: &Config) -> Vec<Device> {
+    let Some((here, vault)) = crate::share::vault() else { return Vec::new() };
+    let named = |id: &str, fallback: &str| sioul_core::device_said::name_of(config, id).map(str::to_string).unwrap_or_else(|| fallback.to_string());
+    let mut out: Vec<Device> = vault
+        .map(|(folder, key)| sioul_sync::devices::all(&folder, &key).0)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !e.left)
+        .map(|e| Device { name: named(&e.id, &e.name), phone: e.kind == sioul_sync::devices::PHONE, here: e.id == here, id: e.id })
+        .collect();
+    if !out.iter().any(|d| d.here) {
+        out.push(Device { id: here.clone(), name: named(&here, &text("reach-this-device")), phone: cfg!(target_os = "android"), here: true });
+    }
+    out
+}
+
+/// A person's name by the id their own row writes: their card's, else the
+/// number or the address as you would read it. Never stored.
+fn person_name(cards: &[sioul_core::contacts::Contact], who: &str) -> String {
+    let region = region();
+    let named = |card: Option<&sioul_core::contacts::Contact>| card.map(|c| c.name.trim().to_string()).filter(|n| !n.is_empty());
+    if let Some(uid) = who.strip_prefix(sioul_core::porch::CONTACT) {
+        return named(cards.iter().find(|c| c.uid.trim() == uid)).unwrap_or_else(|| text("sender-card-elsewhere"));
+    }
+    if let Some(number) = who.strip_prefix(sioul_core::porch::TEL) {
+        let wanted = sioul_core::phones::key(number, region);
+        return named(cards.iter().find(|c| c.phones.iter().any(|p| sioul_core::phones::key(&p.value, region) == wanted))).unwrap_or_else(|| sioul_core::calls::shown_number(&wanted, region));
+    }
+    named(sioul_core::contacts::by_address(cards, who)).unwrap_or_else(|| who.to_string())
+}
+
+/// Where a rule does nothing on what this device knows, said there (the
+/// redesign's point 4), by the channel it concerns: on a phone, messages
+/// when Sioul holds none of other apps' (no access, holding off) or no
+/// person's (people's messages not held), calls when Sioul does not screen
+/// them; on a computer, as far as the sharing knows the phones.
+fn idle(reach: Reach) -> Vec<(Channel, String)> {
+    let mut out = Vec::new();
+    if reach.phone {
+        let choices = crate::appnotes::choices_here();
+        let messages = match crate::appnotes::access_here() {
+            Some(false) => Some("reach-idle-messages-access"),
+            _ if !choices.hold => Some("reach-idle-messages-hold"),
+            _ if !choices.holds_people() => Some("reach-idle-messages-people"),
+            _ => None,
+        };
+        if let Some(id) = messages {
+            out.push((Channel::Messages, text(id)));
+        }
+        if !crate::calls::screens_here() {
+            out.push((Channel::Calls, text("reach-idle-calls-phone")));
+        }
+        return out;
+    }
+    match reach.phones {
+        Phones::None => {
+            for channel in [Channel::Calls, Channel::Messages] {
+                out.push((channel, text("reach-idle-no-phone")));
+            }
+            return out;
+        }
+        Phones::WithoutAccess => out.push((Channel::Messages, text("reach-idle-messages-no-access"))),
+        Phones::Holding => {}
+    }
+    if !reach.calls {
+        out.push((Channel::Calls, text("reach-idle-calls")));
+    }
+    out
+}
+
+/// The channels an exception speaks of: a circle's or a person's, an app's
+/// and a conversation's (messages); none for Sioul's own notices.
+fn channels_of(e: &Exception) -> Vec<Channel> {
+    match (&e.what, &e.whom) {
+        (What::Channel { channel }, _) => vec![*channel],
+        (What::App { .. } | What::Conversation { .. }, _) => vec![Channel::Messages],
+        (What::Anything, Whom::Person { .. }) => vec![Channel::Calls, Channel::Messages],
+        (What::Anything, Whom::Circle { person }) => Channel::ALL.into_iter().filter(|c| attention::persons(*c).contains(person) && !attention::screened(Row::People(*c, *person))).collect(),
+        (What::Anything, _) => Channel::ALL.to_vec(),
+        (What::Own { .. }, _) => Vec::new(),
+    }
+}
+
+/// What an exception's line says beside it where it does nothing: the
+/// sentence of each channel it speaks of whose rules do nothing, once each.
+/// An exception for one device speaks of that device alone: nothing is said
+/// of it elsewhere.
+fn idle_of(e: &Exception, idle: &[(Channel, String)]) -> String {
+    if !matches!(e.place, Place::Everywhere) && !matches!(&e.place, Place::Device { id, .. } if *id == crate::notices::here_id()) {
+        return String::new();
+    }
+    let channels = channels_of(e);
+    if channels.is_empty() {
+        return String::new();
+    }
+    let said: Vec<&String> = idle.iter().filter(|(c, _)| channels.contains(c)).map(|(_, s)| s).collect();
+    // Said only when none of its channels acts here.
+    if channels.iter().all(|c| idle.iter().any(|(i, _)| i == c)) {
+        let mut once: Vec<&String> = Vec::new();
+        for line in said {
+            if !once.contains(&line) {
+                once.push(line);
+            }
+        }
+        return once.into_iter().cloned().collect::<Vec<_>>().join(" ");
+    }
+    String::new()
+}
+
+/// How many a circle holds, in words: "2 groups, 5 people and 1 domain";
+/// "" for everyone else, who are on no list.
+fn count_of(circle: Person) -> String {
+    let config = load_config();
+    let counted = |id: &str, n: usize| (n > 0).then(|| tr().text(id, Some(&tr().counted(n))));
+    let parts: Vec<String> = match circle {
+        Person::Always => vec![counted("reach-count-people", People::load(&People::default_path()).people.len())],
+        Person::People => vec![counted("reach-count-people", your_people().len())],
+        Person::Neutral => vec![counted("reach-count-cards", sioul_core::contacts::all().len())],
+        Person::Safe | Person::Restricted | Person::Blocked => {
+            let path = match circle {
+                Person::Safe => config.safe_senders_path(),
+                Person::Restricted => config.restricted_senders_path(),
+                _ => config.blocked_senders_path(),
+            };
+            let list = sioul_core::porch::SenderList::load(&path);
+            let entries = list.entries();
+            let domains = entries.iter().filter(|e| e.contains('*')).count();
+            let people = list.cards().len() + list.numbers().len() + entries.len() - domains;
+            vec![counted("reach-count-groups", list.categories().len()), counted("reach-count-people", people), counted("reach-count-domains", domains)]
+        }
+        _ => Vec::new(),
+    }
+    .into_iter()
+    .flatten()
+    .collect();
+    listed(&parts, false)
+}
+
+/// A choice of the card's drop-downs: its value (what the core reads) and its words.
+fn choice(value: Value, label: String) -> Value {
+    json!({ "value": value, "label": label })
+}
+
+/// The card's choices that do not depend on one another (the redesign's
+/// "Add an exception…"): What (anything, mail, calls, messages, the apps and
+/// conversations known here, Sioul's own notices that act on this device),
+/// From whom (anyone, the circles, your contacts' groups, a person…), Where
+/// (every device, then each).
+fn card_choices(reach: Reach, devices: &[Device], apps: Option<&Choices>, attention: &Attention) -> Value {
+    let what = |w: What| serde_json::to_value(w).unwrap_or(Value::Null);
+    let mut whats = vec![choice(what(What::Anything), text("reach-what-anything"))];
+    for channel in Channel::ALL {
+        whats.push(choice(what(What::Channel { channel }), text(&format!("except-{}", channel.id()))));
+    }
+    // The apps known here: their rows' names, and on a phone those it has seen chosen for.
+    let mut known: Vec<(String, String)> = attention.sources().keys().filter_map(|id| id.strip_prefix(attention::APP_ROW).map(|p| (p.to_string(), attention.source_name(id).to_string()))).collect();
+    if let Some(apps) = apps {
+        for (package, choice) in &apps.app {
+            if !known.iter().any(|(p, _)| p == package) {
+                known.push((package.clone(), choice.label.clone()));
+            }
+        }
+    }
+    for (package, name) in known {
+        let label = if name.trim().is_empty() { package.clone() } else { name.clone() };
+        whats.push(choice(what(What::App { package, name }), label));
+    }
+    if let Some(apps) = apps {
+        for (key, talk) in apps.conversation.iter().filter(|(_, t)| !t.title.trim().is_empty()) {
+            let e = Exception { what: What::Conversation { key: key.clone(), title: talk.title.clone(), app: talk.app.clone() }, whom: Whom::Anyone, place: Place::Everywhere, when: When::pattern(exceptions::Pattern::Always), store: None };
+            whats.push(choice(what(e.what.clone()), exceptions::subject_words(tr(), &e)));
+        }
+    }
+    let mut own: Vec<Kind> = kinds(reach.phone);
+    own.push(Kind::Time);
+    for kind in Kind::ALL.into_iter().filter(|k| own.contains(k)) {
+        whats.push(choice(what(What::Own { notice: Notice::Kind(kind) }), attention::row_label(tr(), Row::Own(kind))));
+    }
+    for notice in [Notice::NewMail, Notice::Newsletters] {
+        whats.push(choice(what(What::Own { notice }), text(&format!("except-own-{}", notice.id()))));
+    }
+    let whom = |w: Whom| serde_json::to_value(w).unwrap_or(Value::Null);
+    let mut whoms = vec![choice(whom(Whom::Anyone), capital(&text("except-whom-anyone")))];
+    let people = circle_holds_someone();
+    for person in exceptions::CIRCLES.into_iter().filter(|p| *p != Person::People || people) {
+        whoms.push(choice(whom(Whom::Circle { person }), capital(&text(&format!("except-whom-{}", person.id())))));
+    }
+    let senders = sioul_core::porch::Senders::load(&load_config());
+    for name in senders.contacts.names() {
+        whoms.push(choice(whom(Whom::Group { name: name.clone() }), capital(&say("except-whom-group", &[("group", name)]))));
+    }
+    // A person: chosen by name in a field under the drop-down (`find`).
+    whoms.push(json!({ "value": { "kind": "person", "id": "", "name": "" }, "label": text("reach-whom-person"), "search": true }));
+    let place = |p: Place| serde_json::to_value(p).unwrap_or(Value::Null);
+    let mut places = vec![choice(place(Place::Everywhere), text("reach-where-everywhere"))];
+    for device in devices {
+        let label = if device.here { say("reach-where-here", &[("device", device.name.clone())]) } else { device.name.clone() };
+        places.push(choice(place(Place::Device { id: device.id.clone(), name: device.name.clone() }), label));
+    }
+    json!({ "what": whats, "whom": whoms, "where": places })
+}
+
+/// Settings ▸ What reaches you, as JSON (ReachesTab.qml; the redesign of 24
+/// November 2026): {now: sentences, state, phone, start {id, choices [{id,
+/// label}]}, rule [{circle, text, count}], idle \[sentences\], exceptions
+/// [{text, note, value}], card {what, whom, where}, grid (the worked-out
+/// grid, each cell with the line that decides it and the exception it
+/// would start from), now_columns, circle (your people by name, for Who is
+/// in which circle), apps (on a phone: this phone's switches for other apps)}.
 pub(crate) fn view(realtime: bool) -> String {
     let _ = realtime;
     let config = load_config();
     let attention = crate::hours::attention();
     let reach = reach();
     let now = crate::hours::attention_now();
-    let current = column_now(&now);
-    let usual = Attention::usual();
-    let rows = table_rows(reach.phone);
-    // What the page shows, alone, is compared (review R3): a row this device's
-    // table does not show is not counted; the calls' rows are, What comes when showing them.
-    let presets: Vec<Value> = Preset::ALL
-        .iter()
-        .map(|p| {
-            let changes = attention.changes_in(&p.matrix(), &rows);
-            json!({ "id": p.id(), "label": text(&format!("attention-preset-{}", p.id())), "current": changes == 0, "changes": changes })
+    let start = exceptions::start_of(&config, &attention);
+    let devices = devices(&config);
+    let apps = reach.phone.then(crate::appnotes::choices_here);
+    let cards = sioul_core::contacts::all();
+    let name = |who: &str| person_name(&cards, who);
+    let list = exceptions::list(&Stores { attention: &attention, config: &config, devices: &devices, apps: apps.as_ref(), name: &name });
+    let idle = idle(reach);
+    let people = circle_holds_someone();
+    let rule: Vec<Value> = exceptions::rule(tr(), start, people)
+        .into_iter()
+        .map(|line| {
+            // Everyone else's calls are the call screening's: said where a phone of yours screens them.
+            let text = if line.circle == Person::Stranger && reach.calls { format!("{} {}", line.text, screening_line(&config)) } else { line.text };
+            json!({ "circle": line.circle.id(), "text": text, "count": count_of(line.circle) })
         })
         .collect();
-    let from_usual = attention.changes_in(&usual, &rows);
-    let changed = if from_usual == 0 { String::new() } else { tr().text("attention-changes", Some(&tr().counted(from_usual))) };
+    // Said once under the rule: each sentence of a channel whose rules do nothing here.
+    let mut idle_said: Vec<String> = Vec::new();
+    for (_, line) in &idle {
+        if !idle_said.contains(line) {
+            idle_said.push(line.clone());
+        }
+    }
+    let lines: Vec<Value> = list.iter().map(|e| exception_line(e, &attention, people, &idle)).collect();
     let mut now_columns: Vec<&str> = now.times.iter().map(|c| c.id()).collect();
     now_columns.extend([(now.slot, Column::Slot), (now.dnd, Column::Dnd)].iter().filter(|(on, _)| *on).map(|(_, c)| c.id()));
-    let grid = attention::grid(&attention, tr(), &rows, Preset::Usual);
     json!({
         "now": now_sentences(&attention, &now, reach),
         // As usual, Do not disturb or Reachable, as the status line's button says it.
         "state": crate::everywhere::moment()["state"].as_str().unwrap_or("usual"),
-        "column": current.id(),
-        "now_columns": now_columns,
-        "presets": presets,
-        // A preset leaves the calls as they are: each phone's (review R3).
-        "presets_note": text("reach-presets-calls"),
-        "changed": changed,
-        "people": people(&attention, reach),
-        "own": own_groups(&attention, &config, &rows),
-        "moments": moments(),
-        "elsewhere": elsewhere(&attention, &config, reach),
-        "calls": text("reach-calls"),
-        // Under the calls' rows of What comes when: a phone's own table replaces them, but in a
-        // pause and during do-not-disturb; its door opens that table (`settings:devices.calls`).
-        "calls_grid": { "text": text("reach-calls-grid"), "door_label": text("reach-calls-grid-open"), "door": "settings:devices.calls" },
-        "rows": rows.iter().map(|r| r.id()).collect::<Vec<_>>(),
-        "grid": grid,
         "phone": reach.phone,
+        "start": {
+            "id": start.id(),
+            "choices": Preset::ALL.iter().map(|p| json!({ "id": p.id(), "label": text(&format!("attention-preset-{}", p.id())) })).collect::<Vec<_>>(),
+        },
+        "rule": rule,
+        "idle": idle_said,
+        "exceptions": lines,
+        "card": card_choices(reach, &devices, apps.as_ref(), &attention),
+        "now_columns": now_columns,
+        "grid": worked_out(&attention, &list, &table_rows(reach.phone), start, &config, reach.phone),
+        "circle": {
+            "title": text("reach-circle-people"),
+            "help": text("reach-circles-people-help"),
+            "people": your_people().iter().map(|p| json!({ "id": p.id, "name": p.name, "notes": p.notes })).collect::<Vec<_>>(),
+        },
         // Android lets Sioul set exact alarms (Devices says when it does not).
         "exact": !reach.phone || crate::alarms::exact(),
     })
     .to_string()
 }
 
-/// The rows of What comes when, by id: mail's, calls' and messages', but the
-/// blocked (never, said once); Sioul's own that act on this device. The
-/// calls' rows are the table every phone follows until it has a table of its
-/// own (Settings ▸ Devices), and still decide there in a pause and during
-/// do-not-disturb: the full ledger shows them, changeable as every row
-/// (review of `phones`, "For `reach`"); Your rules has no calls' column.
-/// Your people's rows only while the circle holds someone: no row of
-/// controls for a circle that holds nobody.
+/// An exception as the page lists it: its sentence (your people named where
+/// they follow it, while the circle holds someone), where it does nothing
+/// here, its value; a phone's table of calls with the question asked before
+/// ✕, since taking it out takes the whole table, its groups' rows and its
+/// switches with it.
+fn exception_line(e: &Exception, attention: &Attention, people: bool, idle: &[(Channel, String)]) -> Value {
+    let follow = if people { exceptions::followed_by_people(e, attention) } else { Vec::new() };
+    let ask = if matches!(e.store, Some(exceptions::Store::Phone { .. })) { text("reach-remove-phone-ask") } else { String::new() };
+    json!({ "text": exceptions::sentence_for(tr(), e, &follow), "note": idle_of(e, idle), "ask": ask, "value": e })
+}
+
+/// The rows of the worked-out grid, by id: mail's, calls' and messages',
+/// the call screening's aside; Sioul's own that act on this device. Your
+/// people's rows only while the circle holds someone.
 fn table_rows(phone: bool) -> Vec<Row> {
     let people = circle_holds_someone();
     shown_rows(phone).into_iter().filter(|r| people || !matches!(r, Row::People(_, Person::People))).collect()
 }
 
-/// A behaviour, or "Your own", in words.
-fn behaviour_label(behaviour: Option<Behaviour>) -> String {
-    match behaviour {
-        Some(b) => text(&format!("reach-behaviour-{}", b.id())),
-        None => text("reach-own"),
-    }
-}
-
-/// The people's table (design 1.1): a line per circle, a cell per channel,
-/// each the behaviour its rows read (`behaviours::reading`), "own" when
-/// none, with the behaviours it may take; the blocked last, never; then
-/// what stays automatic.
-fn people(attention: &Attention, reach: Reach) -> Value {
-    let channels: Vec<Value> = behaviours::CHANNELS.iter().map(|c| json!({ "id": c.id(), "label": text(&format!("attention-group-{}", c.id())), "note": channel_note(*c, reach) })).collect();
-    // Your people's line only while the circle holds someone besides you (decision 6 of 20 November 2026).
-    let close = your_people();
-    let rows: Vec<Value> = Circle::ALL
-        .iter()
-        .filter(|circle| **circle != Circle::People || !close.is_empty())
-        .map(|circle| {
-            let cells: Vec<Value> = behaviours::CHANNELS
-                .iter()
-                .map(|channel| {
-                    let read = behaviours::reading(attention, *channel, *circle);
-                    let help = |b: Behaviour| match b {
-                        Behaviour::Never => text(&format!("reach-behaviour-never-help-{}", channel.id())),
-                        Behaviour::WorkAdminGathered => text("reach-behaviour-work-admin-gathered-help"),
-                        _ => String::new(),
-                    };
-                    let choices: Vec<Value> = behaviours::offered(*channel, *circle).iter().map(|b| json!({ "id": b.id(), "label": behaviour_label(Some(*b)), "help": help(*b) })).collect();
-                    json!({
-                        "channel": channel.id(),
-                        "value": read.map_or("own", Behaviour::id),
-                        "label": behaviour_label(read),
-                        "choices": choices,
-                        "rows": behaviours::rows(*channel, *circle).iter().map(|r| r.id()).collect::<Vec<_>>(),
-                    })
-                })
-                .collect();
-            json!({ "id": circle.id(), "label": text(&format!("reach-circle-{}", circle.id())), "help": text(&format!("reach-circle-{}-help", circle.id())), "cells": cells })
-        })
-        .collect();
-    json!({
-        "channels": channels,
-        "rows": rows,
-        "blocked": { "label": text("reach-circle-blocked"), "help": text("reach-circle-blocked-help"), "word": text("attention-word-never") },
-        "notes": [text("reach-people-automatic"), text("reach-people-mail-off"), text("reach-people-groups-note")],
-        "own_help": text("reach-own-help"),
-        // No one in Your people yet: one sentence, the door to Contacts ▸ Your people.
-        "none": if close.is_empty() { text("reach-people-none") } else { String::new() },
-        // Who is in which circle: Your people by name, read from Contacts, not edited here, each by the
-        // row they are judged on: what holds one of them out said, with its door (their page, where a
-        // card is linked; a card's sheet, where its list is chosen).
-        "circle": {
-            "title": text("reach-circle-people"),
-            "help": text("reach-circles-people-help"),
-            "people": close.iter().map(|p| json!({ "id": p.id, "name": p.name, "notes": p.notes })).collect::<Vec<_>>(),
-        },
-    })
-}
-
-/// Sioul's own notices in four groups (design 1.2): each its choice as its
-/// rows read it (`behaviours::group_reading`), "own" when none; care's
-/// switches one by one; the gathered times under Sites and apps.
-fn own_groups(attention: &Attention, config: &Config, rows: &[Row]) -> Value {
-    let usual = Attention::usual();
-    let groups: Vec<Value> = Group::ALL
-        .iter()
-        .map(|group| {
-            let read = behaviours::group_reading(attention, *group);
-            // "Your own" points at What comes when only where this device's table shows the row
-            // set cell by cell (review R5): a row of a phone's alone, on a computer, says so.
-            let hidden = group.kinds().iter().any(|k| !rows.contains(&Row::Own(*k)) && Column::ALL.iter().any(|c| attention.cell(Row::Own(*k), *c) != usual.cell(Row::Own(*k), *c)));
-            let choice_label = |choice: &str| text(&format!("reach-choice-{}-{choice}", group.id()));
-            let switches: Vec<Value> = if *group == Group::Care {
-                group.kinds().iter().map(|k| json!({ "kind": k.id(), "label": attention::row_label(tr(), Row::Own(*k)), "on": behaviours::care(attention, *k) })).collect()
-            } else {
-                Vec::new()
+/// What comes when, worked out (read-only): the matrix's grid, a word per
+/// cell (`attention::grid`), each cell with the line that decides it
+/// (`exceptions::decide`, asked for this device: the usual rule for its
+/// circle or kind, or an exception), marked `changed` where an exception
+/// does, and the exception it would start from ("Add an exception for
+/// this…": its row's what and who, every device, its cells read as a pattern
+/// or as your own times). Your people's row that follows Safe's is decided
+/// by Safe's lines. What the matrix alone does not say is said over it
+/// (`decided_over`): new mail never told, Free time's "Nothing at all", a
+/// site's news not gathered, and on a phone with a table of its own, that
+/// table for the calls of the people it has rows for.
+fn worked_out(attention: &Attention, list: &[Exception], rows: &[Row], start: Preset, config: &Config, phone: bool) -> Value {
+    let grid = attention::grid(attention, tr(), rows, start);
+    let mut value = serde_json::to_value(&grid).unwrap_or(Value::Null);
+    let here = crate::notices::here_id();
+    let table = if phone { crate::calls::line_here(config) } else { None };
+    let Some(shown) = value["rows"].as_array_mut() else { return value };
+    for line in shown.iter_mut() {
+        let Some(row) = line["id"].as_str().and_then(Row::read) else { continue };
+        let (what, whom) = match row {
+            Row::People(channel, person) => (What::Channel { channel }, Whom::Circle { person }),
+            Row::Own(kind) => (What::Own { notice: Notice::Kind(kind) }, Whom::Anyone),
+        };
+        // Your people's mail or messages not written: as Safe's stand, so Safe's lines decide them.
+        let mut ask = exceptions::Ask::row(attention, row);
+        ask.device = Some(here.clone());
+        let cells = Column::ALL.map(|c| attention.cell(row, c));
+        let usual = match row {
+            Row::People(_, person) => say("reach-by-rule", &[("circle", text(&format!("except-circle-{}", person.id())))]),
+            Row::Own(_) => text("reach-by-sioul"),
+        };
+        let from = Exception { what, whom, place: Place::Everywhere, when: exceptions::reading(row, &cells), store: None };
+        let from = if exceptions::store_of(&from).is_ok() { serde_json::to_value(&from).unwrap_or(Value::Null) } else { Value::Null };
+        // Each level's word on this row, as the grid words it.
+        let words: Vec<(String, String)> = line["choices"].as_array().map(|marks| marks.iter().map(|m| (m["id"].as_str().unwrap_or_default().to_string(), m["word"].as_str().unwrap_or_default().to_string())).collect()).unwrap_or_default();
+        let Some(cells) = line["cells"].as_array_mut() else { continue };
+        for cell in cells.iter_mut() {
+            let Some(column) = cell["column"].as_str().and_then(Column::read) else { continue };
+            let level = cell["value"].as_str().and_then(Level::read).unwrap_or(Level::Now);
+            // A phone's table speaks of its own moments alone: elsewhere every device's lines decide.
+            let mut asked = ask.clone();
+            if table_moment(row, column, config).is_none() {
+                asked.device = None;
+            }
+            let by = exceptions::decide(list, &asked, column);
+            let mut said = match by {
+                Some(i) => say("reach-by-exception", &[("line", exceptions::sentence(tr(), &list[i]))]),
+                None => usual.clone(),
             };
-            let choices: Vec<Value> = if *group == Group::Care { Vec::new() } else { group.choices().iter().map(|c| json!({ "id": c, "label": choice_label(c) })).collect() };
-            json!({
-                "id": group.id(),
-                "label": text(&format!("reach-group-{}", group.id())),
-                "holds": text(&format!("reach-group-{}-holds", group.id())),
-                "value": read.unwrap_or("own"),
-                "value_label": match read {
-                    Some(choice) if *group != Group::Care => choice_label(choice),
-                    Some(_) => String::new(),
-                    None => text("reach-own"),
-                },
-                "choices": choices,
-                "switches": switches,
-                "gathered": if *group == Group::Sites { say("reach-gathered", &[("times", gathered_times(config))]) } else { String::new() },
-                "own_help": text(if hidden { "reach-own-help-elsewhere" } else { "reach-own-help" }),
-            })
-        })
-        .collect();
-    json!(groups)
-}
-
-/// The three moments and who holds what on a phone (design 1.3), in words.
-fn moments() -> Value {
-    let rows: Vec<Value> = ["usual", "dnd", "reachable"]
-        .iter()
-        .map(|id| {
-            json!({
-                "id": id,
-                "label": text(&format!("reach-moment-{id}")),
-                "who": text(&format!("reach-moment-{id}-who")),
-                "by": text(&format!("reach-moment-{id}-by")),
-                "phone": text(&format!("reach-moment-{id}-phone")),
-            })
-        })
-        .collect();
-    let holds: Vec<Value> = ["call", "message", "dnd", "modes"]
-        .iter()
-        .map(|id| json!({ "id": id, "label": text(&format!("reach-hold-{id}")), "sioul": text(&format!("reach-hold-{id}-sioul")), "android": text(&format!("reach-hold-{id}-android")) }))
-        .collect();
-    json!({
-        "columns": [text("reach-moment-who"), text("reach-moment-by"), text("reach-moment-phone")],
-        "rows": rows,
-        "holds_title": text("reach-holds"),
-        "holds_columns": [text("reach-holds-sioul"), text("reach-holds-android")],
-        "holds": holds,
-        "principle": text("reach-principle"),
-    })
-}
-
-/// What is set elsewhere, counted (design 1.5): a site's Real time and
-/// Silenced (a computer's sites), an event's own reminder (the coming
-/// sixty days), Health's days changed from today on, a person's own times;
-/// one line, and a link to each place that holds some.
-fn elsewhere(attention: &Attention, config: &Config, reach: Reach) -> Value {
-    let sites: Vec<sioul_core::sites::Site> = if reach.phone { Vec::new() } else { config.accounts.iter().filter_map(sioul_core::sites::Site::of).collect() };
-    let live = sites.iter().filter(|s| s.realtime && !s.muted).count();
-    let muted = sites.iter().filter(|s| s.muted).count();
-    let now = sioul_core::zone::now();
-    let stamp = now.timestamp().as_second();
-    let events = sioul_core::agenda::occurrences(stamp, stamp + 60 * 86_400).iter().filter(|e| !e.remind.trim().is_empty()).map(|e| e.uid.clone()).collect::<std::collections::BTreeSet<_>>().len();
-    let health = sioul_core::needs::Days::load(&sioul_core::needs::Days::default_path()).0.keys().filter(|d| **d >= now.date()).count();
-    let persons = attention.sources().keys().filter(|id| attention::is_person(id)).count();
-    // An app's or a conversation's own times (a phone's): listed in that phone's card in Settings ▸ Devices (review R4).
-    let sources = attention.sources().keys().filter(|id| !attention::is_person(id)).count();
-    let counted = |id: &str, n: usize| {
-        let mut args = sioul_core::i18n::args();
-        args.set("n", n);
-        tr().text(id, Some(&args))
-    };
-    let mut parts: Vec<String> = Vec::new();
-    let mut links: Vec<Value> = Vec::new();
-    // Each place by the id the window opens (`reminderOpened`) and its button's word.
-    let mut link = |id: &str, word: &str| {
-        if !links.iter().any(|l| l["id"] == id) {
-            links.push(json!({ "id": id, "label": text(&format!("reach-elsewhere-open-{word}")) }));
-        }
-    };
-    for (n, id, place, word) in [
-        (live, "reach-elsewhere-sites-live", "sites", "sites"),
-        (muted, "reach-elsewhere-sites-muted", "sites", "sites"),
-        (events, "reach-elsewhere-events", "agenda", "agenda"),
-        (health, "reach-elsewhere-health", "health", "health"),
-        (persons, "reach-elsewhere-persons", "contacts", "contacts"),
-        (sources, "reach-elsewhere-sources", "settings:devices.apps", "devices"),
-    ] {
-        if n > 0 {
-            parts.push(counted(id, n));
-            link(place, word);
+            let mut changed = by.is_some();
+            if let Some((over, why)) = decided_over(row, column, level, list, config, table.as_ref()) {
+                if over != level {
+                    let word = words.iter().find(|(id, _)| id == over.id()).map(|(_, w)| w.clone()).unwrap_or_default();
+                    cell["value"] = json!(over.id());
+                    cell["word"] = json!(word);
+                    cell["said"] = json!(cell_said(row, column, over));
+                }
+                if let Some(why) = why {
+                    said = why;
+                    changed = true;
+                }
+            }
+            cell["by"] = json!(said);
+            cell["changed"] = json!(changed);
+            cell["except"] = from.clone();
         }
     }
-    let line = if parts.is_empty() { text("reach-elsewhere-none") } else { say("reach-elsewhere", &[("what", listed(&parts, false))]) };
-    json!({ "line": line, "links": links })
+    value
 }
 
-/// A choice made on the page (`what`: `"people.<channel>.<circle>"`,
-/// `"group.<group>"`, `"care.<kind>"`; `value`: a behaviour's or a choice's
-/// id), the cells it names written (`attention::apply_rows`). "" when kept,
-/// else why not.
-pub(crate) fn choose(what: &str, value: &str) -> String {
-    match choose_at(&config_path(), what, value) {
+/// The moment of a phone's table of calls a column of the matrix reads as
+/// (`calls::line_frames`): work, the rest of the day, the night; none where
+/// the table says nothing (a pause, do-not-disturb, time for you, the night
+/// or Free time when they turn do-not-disturb on: every phone's rule holds).
+fn table_moment(row: Row, column: Column, config: &Config) -> Option<sioul_core::calls_line::When> {
+    use sioul_core::calls_line::When;
+    if !matches!(row, Row::People(Channel::Calls, Person::Safe | Person::Neutral | Person::Restricted)) {
+        return None;
+    }
+    match column {
+        Column::Work => Some(When::Work),
+        Column::Admin | Column::Leisure | Column::Meals => Some(When::Day),
+        Column::Free if !config.dnd.pauses && !config.free_time.nothing => Some(When::Day),
+        Column::Sleep if !config.dnd.sleep => Some(When::Night),
+        _ => None,
+    }
+}
+
+/// What decides a cell over the matrix's own value, and the sentence of the
+/// line that does (none: the line `decide` named stays): new mail never
+/// told (mail that would come at once is shown without a word); Free time's
+/// "Nothing at all" (only Always through comes); a site's news not gathered
+/// (never told); this phone's own table of calls, at its moments.
+fn decided_over(row: Row, column: Column, level: Level, list: &[Exception], config: &Config, table: Option<&sioul_core::calls_line::Grid>) -> Option<(Level, Option<String>)> {
+    let line = |e: &Exception| Some(say("reach-by-exception", &[("line", exceptions::sentence(tr(), e))]));
+    match row {
+        // As the matrix reads it (`Attention::level`): every state's row held in Free time.
+        Row::People(_, person) if config.free_time.nothing && column == Column::Free && person.state() => Some((Level::Later, Some(text("reach-by-free-nothing")))),
+        Row::People(Channel::Mail, _) if !config.reminders.mail && level == Level::Now => {
+            let e = list.iter().find(|e| matches!(e.what, What::Own { notice: Notice::NewMail }))?;
+            Some((Level::Quiet, line(e)))
+        }
+        Row::Own(Kind::Sites) if !config.reminders.gather && level == Level::Gathered => {
+            let e = list.iter().find(|e| matches!(e.store, Some(exceptions::Store::Switch { ref key }) if key == "reminders.gather"))?;
+            Some((Level::Never, line(e)))
+        }
+        Row::People(Channel::Calls, person) => {
+            use sioul_core::calls_line::{Cell, Row as Line};
+            let moment = table_moment(row, column, config)?;
+            let line_row = match person {
+                Person::Safe => Line::Safe,
+                Person::Neutral => Line::Contacts,
+                _ => Line::Restricted,
+            };
+            let level = match table?.cell(&line_row, moment)? {
+                Cell::Rings => Level::Now,
+                Cell::Voicemail => Level::Later,
+                Cell::Usual => return None,
+            };
+            // The line that names the table: `decide`, asked for this phone, already gives it.
+            Some((level, None))
+        }
+        _ => None,
+    }
+}
+
+/// A cell of the worked-out grid in a sentence, as `attention::grid` says it
+/// ("Mail, Safe, at Work: At once."), for a value said over the matrix's.
+fn cell_said(row: Row, column: Column, level: Level) -> String {
+    let label = attention::row_label(tr(), row);
+    let group = text(&format!("attention-group-{}", row.group()));
+    let mut args = sioul_core::i18n::args();
+    args.set("row", if matches!(row, Row::People(..)) { format!("{group}, {label}") } else { label });
+    args.set("column", attention::column_label(tr(), column));
+    args.set("value", attention::level_label(tr(), row, level));
+    tr().text("attention-cell", Some(&args))
+}
+
+/// One of the card's values, as the core reads it; none when it does not read.
+fn read<T: serde::de::DeserializeOwned>(asked: &Value, key: &str) -> Option<T> {
+    serde_json::from_value(asked[key].clone()).ok()
+}
+
+/// The card's "When it reaches you" for what it names so far
+/// (`exceptions::offered`): each choice in words, then whether your own
+/// times may be set, and each moment's levels.
+fn offered(asked: &Value) -> Value {
+    let (Some(what), Some(whom), Some(place)) = (read::<What>(asked, "what"), read::<Whom>(asked, "whom"), read::<Place>(asked, "where")) else { return json!({ "when": [], "own": false, "moments": [], "why": text("reach-when-pick") }) };
+    // The exception changed (Edit): its own When kept as a choice where the card cannot say it.
+    let old: Option<Exception> = read(asked, "old");
+    // A device that cannot keep it: said, nothing offered.
+    let probe = Exception { what: what.clone(), whom: whom.clone(), place: place.clone(), when: When::pattern(exceptions::Pattern::Always), store: None };
+    if let Some(why) = exceptions::place_refused(&probe, &devices(&load_config())) {
+        return json!({ "when": [], "own": false, "moments": [], "why": text(why) });
+    }
+    // Each choice with the cells it writes on its first row, where it is one of times: "Your own
+    // times…" starts from the pattern chosen before it.
+    let cells_of = |w: &When| -> Value {
+        let When::Pattern { pattern } = w else { return Value::Null };
+        let probe = Exception { what: what.clone(), whom: whom.clone(), place: place.clone(), when: w.clone(), store: None };
+        let cells = match exceptions::store_of(&probe) {
+            Ok(exceptions::Store::Rows { rows }) => rows.first().and_then(|r| Row::read(r)).and_then(|r| exceptions::cells(r, *pattern)),
+            Ok(exceptions::Store::Source { id }) => exceptions::source_cells(&id, *pattern),
+            _ => None,
+        };
+        cells.map_or(Value::Null, |c| json!(c.map(|l| l.id())))
+    };
+    let when: Vec<Value> = exceptions::offered_for(&what, &whom, &place, old.as_ref())
+        .into_iter()
+        .map(|w| json!({ "value": serde_json::to_value(&w).unwrap_or(Value::Null), "label": capital(&exceptions::when_words(tr(), &w, &what)), "cells": cells_of(&w) }))
+        .collect();
+    let own = exceptions::own_times(&what, &whom, &place);
+    // Nothing to choose for what is chosen: said why (Mail on one device, anyone on a channel…).
+    let why = if when.is_empty() && !own { text("reach-when-pick") } else { String::new() };
+    let probe = Exception { what: what.clone(), whom, place, when: When::Own { cells: [Level::Now; 9] }, store: None };
+    let channel = match &what {
+        What::Channel { channel } => Some(*channel),
+        What::App { .. } | What::Conversation { .. } => Some(Channel::Messages),
+        _ => None,
+    };
+    let moments: Vec<Value> = if own {
+        exceptions::own_choices(&probe)
+            .iter()
+            .zip(Column::ALL)
+            .map(|(levels, column)| json!({ "column": column.id(), "label": attention::column_label(tr(), column), "levels": levels.iter().map(|l| json!({ "value": l.id(), "label": capital(&exceptions::level_words(tr(), *l, channel)) })).collect::<Vec<_>>() }))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    json!({ "when": when, "own": own, "moments": moments, "why": why })
+}
+
+/// People of your address books whose names hold `text`, for "From whom: a
+/// person…": their card's own row (`contact:<UID>`), at most twelve.
+fn find(text: &str) -> Value {
+    let wanted: String = sioul_core::text::fold(text.trim()).into_iter().collect::<String>().to_lowercase();
+    if wanted.chars().count() < 2 {
+        return json!([]);
+    }
+    let found: Vec<Value> = sioul_core::contacts::all()
+        .into_iter()
+        .filter(|c| !c.uid.trim().is_empty() && attention::is_person(&attention::person_row(&format!("contact:{}", c.uid.trim()))))
+        .filter(|c| sioul_core::text::fold(&c.name).into_iter().collect::<String>().to_lowercase().contains(&wanted))
+        .take(12)
+        .map(|c| choice(serde_json::to_value(Whom::Person { id: format!("contact:{}", c.uid.trim()), name: c.name.trim().to_string() }).unwrap_or(Value::Null), c.name.trim().to_string()))
+        .collect();
+    json!(found)
+}
+
+/// Where the page's writes land: the configuration, and on a phone its own choices for other apps.
+fn paths() -> Paths {
+    Paths { config: config_path(), apps: cfg!(target_os = "android").then(sioul_core::appnotes::Choices::default_path) }
+}
+
+/// A change made on the page, and how to undo it.
+pub(crate) struct Changed {
+    /// The status line's words: "Taken out: Mail from your contacts…".
+    pub(crate) line: String,
+    /// What the stores held before, put back by Undo.
+    pub(crate) kept: exceptions::Kept,
+}
+
+/// What the page asks (ReachesTab.qml's `act`): "offered" {what, whom,
+/// where} the card's choices for When; "find" {text} people by name;
+/// "save" {old?, new} an exception made or changed; "remove" {value} one
+/// taken out; "start" {id, sure} a start chosen, asked first when it
+/// replaces exceptions. Answers {problem, ask, ...} as JSON, and the change
+/// made with what Undo puts back.
+pub(crate) fn act(verb: &str, json: &str) -> (String, Option<Changed>) {
+    let asked: Value = serde_json::from_str(json).unwrap_or(Value::Null);
+    let answer = |problem: String| json!({ "problem": problem }).to_string();
+    match verb {
+        "offered" => (offered(&asked).to_string(), None),
+        "find" => (find(asked["text"].as_str().unwrap_or_default()).to_string(), None),
+        "save" | "remove" => {
+            let new: Option<Exception> = serde_json::from_value(asked["new"].clone()).ok();
+            let old: Option<Exception> = serde_json::from_value(if verb == "remove" { asked["value"].clone() } else { asked["old"].clone() }).ok();
+            if old.is_none() && new.is_none() {
+                return (answer(text("reach-not-saved")), None);
+            }
+            let kept = match exceptions::save(&paths(), old.as_ref(), new.as_ref(), &devices(&load_config())) {
+                Ok(Some(kept)) => kept,
+                // Saved as it was: nothing written, nothing to undo.
+                Ok(None) => return (answer(String::new()), None),
+                Err(exceptions::Refusal::Words(id)) => return (answer(text(id)), None),
+                // The core's own words go to the log; the person reads a sentence of theirs.
+                Err(exceptions::Refusal::Failed(e)) => {
+                    eprintln!("What reaches you: {e}");
+                    return (answer(text("reach-not-saved")), None);
+                }
+            };
+            let line = match (&old, &new) {
+                (Some(old), None) => say("reach-removed", &[("line", exceptions::sentence(tr(), old))]),
+                (None, Some(new)) => say("reach-added", &[("line", exceptions::sentence(tr(), new))]),
+                (_, Some(new)) => say("reach-changed", &[("line", exceptions::sentence(tr(), new))]),
+                (None, None) => String::new(),
+            };
+            (answer(String::new()), Some(Changed { line, kept }))
+        }
+        "start" => {
+            let Some(to) = asked["id"].as_str().and_then(Preset::read) else { return (answer(text("reach-not-saved")), None) };
+            let attention = crate::hours::attention();
+            let config = load_config();
+            let from = exceptions::start_of(&config, &attention);
+            // The start shown and kept: nothing to write. Shown but never kept (settings from before it
+            // was kept read as As Sioul does): choosing it keeps it, every row as it was.
+            if from == to && exceptions::stored_start(&config).is_some() {
+                return (answer(String::new()), None);
+            }
+            let devices = devices(&config);
+            let cards = sioul_core::contacts::all();
+            let name = |who: &str| person_name(&cards, who);
+            let apps = cfg!(target_os = "android").then(crate::appnotes::choices_here);
+            let list = exceptions::list(&Stores { attention: &attention, config: &config, devices: &devices, apps: apps.as_ref(), name: &name });
+            let gone: Vec<String> = exceptions::gives_way(&list, from, to).into_iter().map(|i| exceptions::sentence(tr(), &list[i])).collect();
+            if !gone.is_empty() && asked["sure"] != true {
+                let mut args = tr().counted(gone.len());
+                args.set("start", text(&format!("attention-preset-{}", to.id())));
+                args.set("lines", gone.join(" "));
+                return (json!({ "problem": "", "ask": tr().text("reach-start-replaces", Some(&args)) }).to_string(), None);
+            }
+            let paths = paths();
+            let rows = exceptions::start_rows(from, to);
+            let kept = exceptions::keep(&paths, &[], &rows);
+            if let Err(e) = exceptions::apply(&paths, &exceptions::choosing(from, to), to) {
+                let _ = exceptions::put_back(&paths, &kept);
+                eprintln!("What reaches you: {e}");
+                return (answer(text("reach-not-saved")), None);
+            }
+            let line = say("reach-started", &[("start", text(&format!("attention-preset-{}", to.id())))]);
+            (answer(String::new()), Some(Changed { line, kept }))
+        }
+        _ => (answer(text("reach-not-saved")), None),
+    }
+}
+
+/// Undo of a change of the page: the stores put back as they were; what went wrong, else "".
+pub(crate) fn undo(kept: &exceptions::Kept) -> String {
+    match exceptions::put_back(&paths(), kept) {
         Ok(()) => String::new(),
         Err(e) => e,
-    }
-}
-
-/// `choose`, on the configuration at `path`.
-fn choose_at(path: &std::path::Path, what: &str, value: &str) -> Result<(), String> {
-    let config = if path.exists() { Config::load(path)? } else { Config::default() };
-    writes_of(what, value).and_then(|rows| attention::apply_rows(path, &config, &rows))
-}
-
-/// The cells a choice of the page writes (`choose`), per row; why not, when it cannot.
-fn writes_of(what: &str, value: &str) -> Result<Vec<(Row, behaviours::Cells)>, String> {
-    if let Some(rest) = what.strip_prefix("people.") {
-        let (channel, circle) = rest.split_once('.').unwrap_or((rest, ""));
-        match (Channel::read(channel), Circle::read(circle), Behaviour::read(value)) {
-            (Some(channel), Some(circle), Some(behaviour)) if behaviours::CHANNELS.contains(&channel) => behaviours::writes(channel, circle, behaviour),
-            _ => Err(format!("{what}: {value}: not understood")),
-        }
-    } else if let Some(group) = what.strip_prefix("group.") {
-        match Group::read(group) {
-            Some(group) if group != Group::Care => behaviours::group_writes(group, value, None),
-            _ => Err(format!("{what}: not understood")),
-        }
-    } else if let Some(kind) = what.strip_prefix("care.") {
-        match Kind::read(kind) {
-            Some(kind) => behaviours::group_writes(Group::Care, value, Some(kind)),
-            None => Err(format!("{what}: not understood")),
-        }
-    } else {
-        Err(format!("{what}: not understood"))
     }
 }
 
@@ -854,19 +1162,6 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
     out
 }
 
-/// What a channel's rows say of where they apply: calls once a phone screens
-/// them; messages on a phone that holds other apps' notifications, as far
-/// as the sharing knows (`Phones`); "" where they apply here.
-fn channel_note(channel: Channel, reach: Reach) -> String {
-    match channel {
-        Channel::Calls if !reach.calls => text("attention-channel-calls-none"),
-        Channel::Messages if !reach.messages && reach.phones == Phones::WithoutAccess => text("attention-channel-messages-no-access"),
-        Channel::Messages if !reach.messages => text("attention-channel-messages-none"),
-        Channel::Messages if !reach.phone => text("attention-channel-messages-phone"),
-        _ => String::new(),
-    }
-}
-
 // ---------------------------------------------------------------- a channel, at each time
 
 /// What a channel does with someone at each time, in sentences: "Their mail
@@ -937,30 +1232,6 @@ fn level_word(level: Level) -> &'static str {
         // A message's at the gathered times by day (held apps phase 1, A3).
         Level::Gathered => "gathered",
         _ => "later",
-    }
-}
-
-// ---------------------------------------------------------------- writing
-
-/// A row changed from the tab: its words whole (`words`, a JSON list), as
-/// `attention::apply` reads them. "" when kept, else why not.
-pub(crate) fn set_row(row: &str, words: &str, shown: &str) -> String {
-    let words: Vec<String> = serde_json::from_str(words).unwrap_or_default();
-    // What the row showed: only the cells changed from it are set, over the row as it is now.
-    let shown: Option<Vec<String>> = serde_json::from_str(shown).ok();
-    match attention::apply_change(&config_path(), &format!("attention.{row}"), shown.map(SettingValue::Texts).as_ref(), &SettingValue::Texts(words)) {
-        Ok(()) => String::new(),
-        Err(e) => e,
-    }
-}
-
-/// A preset chosen ("usual", "quieter", "reachable"): every row as it says,
-/// the fixed cells untouched. "" when kept, else why not.
-pub(crate) fn preset(id: &str) -> String {
-    let Some(preset) = Preset::read(id) else { return format!("{id}: usual, quieter or reachable") };
-    match attention::apply_preset(&config_path(), &load_config(), preset) {
-        Ok(()) => String::new(),
-        Err(e) => e,
     }
 }
 
@@ -1375,144 +1646,123 @@ mod tests {
         }
     }
 
-    /// Every word of the page, for the usual matrix, the presets and a matrix
-    /// changed everywhere, on a computer and a phone, in both languages: the
-    /// labels and cells whole, each help and note one sentence, said well.
+    /// Every line of the page in both languages, for the usual matrix, the
+    /// presets and a matrix changed everywhere, on a computer and a phone:
+    /// the rule's sentences, the counts, the card's choices, the worked-out
+    /// grid's lines that decide, the sentences where a rule does nothing.
     #[test]
     fn every_line_of_the_page_is_said_whole_in_both_languages() {
-        let config = Config::default();
         for language in ["en", "fr"] {
             speak(language);
-            for attention in [Attention::usual(), Preset::Quieter.matrix(), Preset::Reachable.matrix(), changed_everywhere()] {
+            for preset in Preset::ALL {
+                for line in exceptions::rule(tr(), preset, true) {
+                    said_well(&line.text, language);
+                }
+            }
+            for (attention, start) in [(Attention::usual(), Preset::Usual), (Preset::Quieter.matrix(), Preset::Quieter), (Preset::Reachable.matrix(), Preset::Reachable), (changed_everywhere(), Preset::Usual)] {
                 for phone in [false, true] {
                     let reach = Reach { phone, calls: phone, messages: phone, ..Reach::default() };
-                    let page = people(&attention, reach);
-                    for channel in page["channels"].as_array().unwrap() {
-                        worded(channel["label"].as_str().unwrap(), language);
-                    }
-                    for row in page["rows"].as_array().unwrap() {
-                        worded(row["label"].as_str().unwrap(), language);
-                        said_well(row["help"].as_str().unwrap(), language);
-                        for cell in row["cells"].as_array().unwrap() {
-                            worded(cell["label"].as_str().unwrap(), language);
-                            for choice in cell["choices"].as_array().unwrap() {
-                                worded(choice["label"].as_str().unwrap(), language);
-                            }
-                        }
-                    }
-                    for note in page["notes"].as_array().unwrap() {
-                        said_well(note.as_str().unwrap(), language);
-                    }
-                    said_well(page["own_help"].as_str().unwrap(), language);
-                    said_well(page["blocked"]["help"].as_str().unwrap(), language);
-                    for group in own_groups(&attention, &config, &table_rows(false)).as_array().unwrap() {
-                        worded(group["label"].as_str().unwrap(), language);
-                        said_well(group["holds"].as_str().unwrap(), language);
-                        said_well(group["own_help"].as_str().unwrap(), language);
-                        for choice in group["choices"].as_array().unwrap() {
+                    let card = card_choices(reach, &[Device { id: "p".into(), name: "Phone".into(), phone: true, here: true }], None, &attention);
+                    for part in ["what", "whom", "where"] {
+                        for choice in card[part].as_array().unwrap() {
                             worded(choice["label"].as_str().unwrap(), language);
                         }
-                        for switch in group["switches"].as_array().unwrap() {
-                            worded(switch["label"].as_str().unwrap(), language);
-                        }
-                        if let Some(gathered) = group["gathered"].as_str().filter(|g| !g.is_empty()) {
-                            said_well(gathered, language);
-                        }
                     }
-                }
-                for channel in Channel::ALL {
-                    for person in attention::persons(channel).iter().filter(|p| **p != Person::Always) {
-                        for always in [false, true] {
-                            said_well(&channel_line(&attention, channel, *person, always, "attention-sheet-line").unwrap(), language);
+                    let grid = worked_out(&attention, &[], &table_rows(phone), start, &Config::default(), phone);
+                    for row in grid["rows"].as_array().unwrap() {
+                        for cell in row["cells"].as_array().unwrap() {
+                            said_well(cell["by"].as_str().unwrap(), language);
                         }
                     }
                 }
             }
-            let moments = moments();
-            for word in moments["columns"].as_array().unwrap().iter().chain(moments["holds_columns"].as_array().unwrap()) {
-                worded(word.as_str().unwrap(), language);
-            }
-            for row in moments["rows"].as_array().unwrap().iter().chain(moments["holds"].as_array().unwrap()) {
-                for (key, value) in row.as_object().unwrap() {
-                    if key != "id" {
-                        worded(value.as_str().unwrap(), language);
-                    }
-                }
-            }
-            worded(&text("reach-holds"), language);
-            said_well(moments["principle"].as_str().unwrap(), language);
-            said_well(&text("reach-calls"), language);
-            said_well(&text("reach-elsewhere-none"), language);
-            for (id, n) in [("reach-elsewhere-sites-live", 1), ("reach-elsewhere-sites-muted", 2), ("reach-elsewhere-events", 3), ("reach-elsewhere-health", 1), ("reach-elsewhere-persons", 2)] {
-                let mut args = sioul_core::i18n::args();
-                args.set("n", n);
-                let part = tr().text(id, Some(&args));
-                worded(&part, language);
-                said_well(&say("reach-elsewhere", &[("what", part)]), language);
-            }
-            for id in ["sites", "agenda", "health", "contacts"] {
-                worded(&text(&format!("reach-elsewhere-open-{id}")), language);
-            }
-            for id in ["reach-tab-rules", "reach-tab-table", "reach-people", "reach-own-notices", "reach-moments", "reach-circles", "reach-start", "reach-calls-open", "busy", "busy-task"] {
-                worded(&text(id), language);
-            }
-            for id in ["reach-circles-help", "busy-help", "busy-task-help", "reach-behaviour-never-help-mail", "reach-behaviour-never-help-messages"] {
+            for id in ["reach-idle-no-phone", "reach-idle-messages-no-access", "reach-idle-calls", "reach-idle-messages-access", "reach-idle-messages-hold", "reach-idle-messages-people", "reach-idle-calls-phone", "reach-by-sioul", "reach-where-this-phone", "reach-where-phones", "reach-where-every", "reach-not-kept", "reach-same-as-usual", "reach-not-offered", "reach-not-saved", "reach-remove-phone-ask", "reach-by-free-nothing"] {
                 said_well(&text(id), language);
             }
-            for key in ["attention-channel-calls-none", "attention-channel-messages-none", "attention-channel-messages-no-access", "attention-channel-messages-phone"] {
-                said_well(&text(key), language);
+            for (id, n) in [("reach-count-people", 1), ("reach-count-people", 5), ("reach-count-groups", 2), ("reach-count-domains", 1), ("reach-count-cards", 312)] {
+                worded(&tr().text(id, Some(&tr().counted(n))), language);
             }
+            for id in ["reach-rule", "reach-exceptions", "reach-add", "reach-dnd", "reach-apps", "reach-apps-computer", "reach-worked-out", "reach-circles", "reach-start", "reach-what", "reach-whom", "reach-where", "reach-when", "reach-whom-person", "reach-when-own", "reach-what-anything", "reach-where-everywhere", "reach-edit", "reach-remove", "reach-card-add", "reach-card-edit", "reach-save", "reach-add-for-this", "reach-none", "reach-find", "reach-remove-phone-take", "reach-remove-phone-keep"] {
+                worded(&text(id), language);
+            }
+            for id in ["reach-removed", "reach-added", "reach-changed"] {
+                said_well(&say(id, &[("line", "Mail from your contacts: never.".to_string())]), language);
+            }
+            said_well(&say("reach-started", &[("start", text("attention-preset-quieter"))]), language);
+            let mut args = tr().counted(2);
+            args.set("start", text("attention-preset-quieter"));
+            args.set("lines", "Mail from your contacts: never. Messages from your people: always.".to_string());
+            said_well(&tr().text("reach-start-replaces", Some(&args)), language);
+            said_well(&text("reach-rule-help"), language);
         }
         assert_eq!(capital("les courriels"), "Les courriels");
         assert_eq!(small("Temps libre"), "temps libre");
     }
 
-    /// As Sioul ships it, the page reads a behaviour on every line and a
-    /// choice in every group, in words; What comes when holds no call.
+    /// As Sioul ships it, the page says the rule in seven sentences and
+    /// lists no exception; the worked-out grid shows the calls' rows (not
+    /// the call screening's), each cell decided by the usual rule; an
+    /// exception decides its own cells, marked, and the cell it would start
+    /// from is its row's.
     #[test]
-    fn the_usual_page_reads_as_sioul_ships_it() {
-        let usual = Attention::usual();
+    fn the_usual_page_says_the_rule_and_no_exception() {
         speak("en");
-        let page = people(&usual, Reach { phone: true, calls: true, messages: true, ..Reach::default() });
-        let read = |circle: &str| -> Vec<(String, String)> {
-            let row = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == circle).unwrap();
-            row["cells"].as_array().unwrap().iter().map(|c| (c["value"].as_str().unwrap().to_string(), c["label"].as_str().unwrap().to_string())).collect()
-        };
-        let pair = |a: &str, la: &str, b: &str, lb: &str| vec![(a.to_string(), la.to_string()), (b.to_string(), lb.to_string())];
-        assert_eq!(read("always"), pair("always", "Always", "always", "Always"));
-        assert_eq!(read("safe"), pair("awake", "When awake", "awake", "When awake"));
-        assert_eq!(read("contacts"), pair("work-admin", "In work and admin hours", "awake", "When awake"));
-        assert_eq!(read("restricted"), pair("work", "In work hours", "work", "In work hours"));
-        // Held apps phase 1, A3: everyone else's messages at the gathered times in leisure and meals, said with its help.
-        assert_eq!(read("others"), pair("work-admin", "In work and admin hours", "work-admin-gathered", "Gathered outside work and admin hours"));
-        let others = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "others").unwrap();
-        let offered = others["cells"][1]["choices"].as_array().unwrap().iter().find(|c| c["id"] == "work-admin-gathered").unwrap();
-        assert_eq!(offered["help"], text("reach-behaviour-work-admin-gathered-help"));
-        assert!(others["cells"][0]["choices"].as_array().unwrap().iter().all(|c| c["id"] != "work-admin-gathered"), "never for mail");
-        let groups = own_groups(&usual, &Config::default(), &table_rows(false));
-        let value = |id: &str| groups.as_array().unwrap().iter().find(|g| g["id"] == id).unwrap()["value"].as_str().unwrap().to_string();
-        assert_eq!([value("asked"), value("reminders"), value("care"), value("sites")], ["sleep", "awake", "on", "gathered"]);
-        // "Your own" on a computer, for a row only a phone's table shows (review R5): said so.
-        let reachable = Preset::Reachable.matrix();
-        let sites = |rows: &[Row]| own_groups(&reachable, &Config::default(), rows).as_array().unwrap().iter().find(|g| g["id"] == "sites").unwrap().clone();
-        assert_eq!(sites(&table_rows(false))["value"], "own");
-        assert_eq!(sites(&table_rows(false))["own_help"], text("reach-own-help-elsewhere"));
-        assert_eq!(sites(&table_rows(true))["own_help"], text("reach-own-help"));
-        // The calls' rows in the full ledger, as the table every phone follows until it has its own.
-        assert!(table_rows(false).contains(&Row::People(Channel::Calls, Person::Neutral)) && table_rows(true).contains(&Row::People(Channel::Calls, Person::Neutral)));
-        assert!(table_rows(false).contains(&Row::Own(Kind::Sites)) && table_rows(true).contains(&Row::Own(Kind::AppAutomatons)));
-        // A row changed in the grid: "Your own", in words.
-        let mut own = Attention::usual();
-        own.set(Row::People(Channel::Mail, Person::Safe), Column::Meals, Level::Later).unwrap();
-        let page = people(&own, Reach::default());
-        let safe = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "safe").unwrap();
-        assert_eq!((safe["cells"][0]["value"].as_str(), safe["cells"][0]["label"].as_str()), (Some("own"), Some("Your own")));
-        speak("fr");
-        let page = people(&usual, Reach::default());
-        let contacts = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "contacts").unwrap();
-        assert_eq!(contacts["label"], "Vos contacts");
-        assert_eq!(contacts["cells"][1]["label"], "Quand vous ne dormez pas");
+        let usual = Attention::usual();
+        let rows = table_rows(false);
+        assert!(rows.contains(&Row::People(Channel::Calls, Person::Neutral)) && !rows.contains(&Row::People(Channel::Calls, Person::Stranger)));
+        let grid = worked_out(&usual, &[], &rows, Preset::Usual, &Config::default(), false);
+        let cell = |grid: &Value, row: &str, column: &str| grid["rows"].as_array().unwrap().iter().find(|r| r["id"] == row).unwrap()["cells"].as_array().unwrap().iter().find(|c| c["column"] == column).unwrap().clone();
+        let safe = cell(&grid, "mail.safe", "work");
+        assert_eq!(safe["by"], "Decided by the usual rule for Safe.");
+        assert_eq!(safe["changed"], false);
+        assert_eq!(safe["except"]["what"]["channel"], "mail");
+        assert_eq!(safe["except"]["when"]["pattern"], "awake");
+        let mut changed = Attention::usual();
+        changed.set(Row::People(Channel::Mail, Person::Neutral), Column::Leisure, Level::Never).unwrap();
+        let list = vec![Exception { what: What::Channel { channel: Channel::Mail }, whom: Whom::Circle { person: Person::Neutral }, place: Place::Everywhere, when: When::Own { cells: Column::ALL.map(|c| changed.cell(Row::People(Channel::Mail, Person::Neutral), c)) }, store: None }];
+        let grid = worked_out(&changed, &list, &rows, Preset::Usual, &Config::default(), false);
+        let contacts = cell(&grid, "mail.neutral", "leisure");
+        assert_eq!(contacts["changed"], true);
+        assert!(contacts["by"].as_str().unwrap().starts_with("Decided by your exception: Mail from your contacts:"), "{}", contacts["by"]);
+        assert_eq!(cell(&grid, "messages.neutral", "leisure")["changed"], false);
+        assert_eq!(cell(&grid, "codes", "work")["by"], text("reach-by-sioul"));
     }
+
+    /// What the matrix alone does not say is said over it: new mail never
+    /// told (mail that would come at once is shown without a word, its line
+    /// named), Free time's "Nothing at all" (every state's row held); your
+    /// people's mail that follows Safe's is decided by Safe's line.
+    #[test]
+    fn the_grid_says_what_the_switches_and_safe_s_line_decide() {
+        speak("en");
+        let rows = vec![Row::People(Channel::Mail, Person::Safe), Row::People(Channel::Mail, Person::People), Row::People(Channel::Messages, Person::Neutral)];
+        let mut config = Config::default();
+        config.reminders.mail = false;
+        config.free_time.nothing = true;
+        let safe_row = Row::People(Channel::Mail, Person::Safe);
+        let mut attention = Attention::usual();
+        attention.set(safe_row, Column::Leisure, Level::Later).unwrap();
+        assert!(attention.follows(Row::People(Channel::Mail, Person::People)));
+        let safe = Exception { what: What::Channel { channel: Channel::Mail }, whom: Whom::Circle { person: Person::Safe }, place: Place::Everywhere, when: When::Own { cells: Column::ALL.map(|c| attention.cell(safe_row, c)) }, store: Some(exceptions::Store::Rows { rows: vec![safe_row.id()] }) };
+        let new_mail = Exception { what: What::Own { notice: Notice::NewMail }, whom: Whom::Anyone, place: Place::Everywhere, when: When::pattern(exceptions::Pattern::Never), store: Some(exceptions::Store::Switch { key: "reminders.mail".into() }) };
+        let list = vec![safe, new_mail];
+        let grid = worked_out(&attention, &list, &rows, Preset::Usual, &config, false);
+        let cell = |row: &str, column: &str| grid["rows"].as_array().unwrap().iter().find(|r| r["id"] == row).unwrap()["cells"].as_array().unwrap().iter().find(|c| c["column"] == column).unwrap().clone();
+        let work = cell("mail.safe", "work");
+        assert_eq!(work["value"], "quiet", "{work}");
+        assert_eq!(work["by"], say("reach-by-exception", &[("line", exceptions::sentence(tr(), &list[1]))]));
+        assert_eq!(work["changed"], true);
+        let people = cell("mail.people", "leisure");
+        assert_eq!(people["by"], say("reach-by-exception", &[("line", exceptions::sentence(tr(), &list[0]))]), "Safe's line decides your people's mail");
+        let free = cell("messages.neutral", "free");
+        assert_eq!(free["value"], "later");
+        assert_eq!(free["by"], text("reach-by-free-nothing"));
+        for language in ["en", "fr"] {
+            speak(language);
+            said_well(&text("reach-by-free-nothing"), language);
+        }
+    }
+
 
     /// Your people (decision of 20 November 2026): no line, no row of What
     /// comes when and no word of theirs while Contacts ▸ Your people holds
@@ -1529,7 +1779,6 @@ mod tests {
         use sioul_core::persons::{Circle, Person as Someone, Persons};
         use sioul_core::porch::{Book, SenderList, Senders};
         let usual = Attention::usual();
-        let ids = |page: &Value| page["rows"].as_array().unwrap().iter().map(|r| r["id"].as_str().unwrap().to_string()).collect::<Vec<_>>();
         let card = |uid: &str, name: &str, emails: &[&str], place: &str| sioul_core::contacts::Contact { uid: uid.into(), key: format!("/stand-in/{uid}.vcf"), name: name.into(), place: place.into(), emails: emails.iter().map(|e| sioul_core::contacts::Labeled { label: String::new(), value: e.to_string() }).collect(), ..sioul_core::contacts::Contact::default() };
         let cards = [card("c-lea", "Léa Martin", &["lea@example.org"], ""), card("c-maud", "Maud", &["maud@example.org"], ""), card("c-ugo", "Ugo", &["ugo@example.org", "ugo.home@example.org"], ""), card("c-vic", "Vic", &["vic@example.org"], "nextcloud/shared")];
         let held: std::collections::BTreeSet<String> = ["nextcloud/shared".to_string()].into();
@@ -1544,11 +1793,9 @@ mod tests {
             let mut store = Persons::default();
             store.put(Someone { name: "Sam".into(), relation: "other-parent".into(), cards: vec!["c-sam".into()], ..Someone::default() });
             stand_in(&store);
-            let page = people(&usual, Reach::default());
-            assert_eq!(ids(&page), ["always", "safe", "contacts", "restricted", "others"], "{language}");
-            said_well(page["none"].as_str().unwrap(), language);
-            assert!(page["circle"]["people"].as_array().unwrap().is_empty());
-            assert!(!table_rows(false).iter().any(|r| matches!(r, Row::People(_, Person::People))), "no row of controls for nobody");
+            assert!(your_people().is_empty(), "{language}");
+            assert_eq!(exceptions::rule(tr(), Preset::Usual, circle_holds_someone()).len(), 6, "{language}: no line for nobody");
+            assert!(!table_rows(false).iter().any(|r| matches!(r, Row::People(_, Person::People))), "no row for nobody");
             assert!(!matrix_persons(Channel::Calls).contains(&Person::People));
             // Léa, a card here; Alix, none linked; Noé, a card linked that is not on this device; Maud, a
             // card on Restricted by hand; Ugo, one address restricted; Vic, a card of a book others can write.
@@ -1559,33 +1806,19 @@ mod tests {
             store.put(Someone { name: "Ugo".into(), relation: "kin".into(), cards: vec!["c-ugo".into(), "c-gone-too".into()], ..Someone::default() });
             store.put(Someone { name: "Vic".into(), relation: "kin".into(), cards: vec!["c-vic".into()], ..Someone::default() });
             stand_in(&store);
-            let page = people(&usual, Reach::default());
-            assert_eq!(ids(&page), ["always", "people", "safe", "contacts", "restricted", "others"], "{language}");
-            assert_eq!(page["none"], "", "{language}");
-            let line = page["rows"].as_array().unwrap().iter().find(|r| r["id"] == "people").unwrap();
-            worded(line["label"].as_str().unwrap(), language);
-            said_well(line["help"].as_str().unwrap(), language);
-            assert_eq!(line["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap()).collect::<Vec<_>>(), ["awake", "awake"], "as Safe until changed");
-            // Review M9: as Safe is now, tuned by a preset or by hand, in the page's line and its table.
+            assert_eq!(exceptions::rule(tr(), Preset::Usual, circle_holds_someone()).len(), 7, "{language}: their line");
+            assert!(!count_of(Person::People).is_empty());
+            // Review M9: as Safe is now, tuned by a preset or by hand, in the worked-out grid.
             let quieter = Preset::Quieter.matrix();
-            let tuned = people(&quieter, Reach::default());
-            let values = |id: &str| tuned["rows"].as_array().unwrap().iter().find(|r| r["id"] == id).unwrap()["cells"].as_array().unwrap().iter().map(|c| c["value"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-            assert_eq!(values("people"), values("safe"), "{language}");
-            assert_ne!(values("safe"), ["awake", "awake"], "{language}: Safe tuned");
             let grid = attention::grid(&quieter, tr(), &table_rows(false), Preset::Quieter);
             let cells = |id: &str| grid.rows.iter().find(|r| r.id == id).map(|r| r.cells.iter().map(|c| c.value.clone()).collect::<Vec<_>>()).unwrap();
             assert_eq!(cells("mail.people"), cells("mail.safe"), "What comes when: theirs as Safe's");
-            let circle = &page["circle"];
-            worded(circle["title"].as_str().unwrap(), language);
-            said_well(circle["help"].as_str().unwrap(), language);
-            let listed: Vec<(String, Vec<(String, String, String)>)> = circle["people"]
-                .as_array()
-                .unwrap()
+            let listed: Vec<(String, Vec<(String, String, String)>)> = your_people()
                 .iter()
-                .map(|p| (p["name"].as_str().unwrap().to_string(), p["notes"].as_array().unwrap().iter().map(|n| (n["text"].as_str().unwrap().to_string(), n["door"].as_str().unwrap().to_string(), n["key"].as_str().unwrap().to_string())).collect()))
+                .map(|p| (p.name.clone(), p.notes.iter().map(|n| (n["text"].as_str().unwrap().to_string(), n["door"].as_str().unwrap().to_string(), n["key"].as_str().unwrap().to_string())).collect()))
                 .collect();
             let notes = |name: &str| listed.iter().find(|(n, _)| n == name).map(|(_, notes)| notes.clone()).unwrap();
-            assert_eq!(listed.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().len(), 6, "everyone but the other parent: {listed:?}");
+            assert_eq!(listed.len(), 6, "everyone but the other parent: {listed:?}");
             assert!(notes("Léa").is_empty(), "Léa's card here, judged on Your people: nothing to say");
             for name in ["Alix", "Noé"] {
                 let said = notes(name);
@@ -1608,7 +1841,7 @@ mod tests {
             let vic = notes("Vic");
             assert_eq!(vic.len(), 1, "{vic:?}");
             said_well(&vic[0].0, language);
-            for id in ["reach-circles-tie", "reach-people-open", "sender-circle", "person-card-sheet", "phone-calls-row-people"] {
+            for id in ["reach-circles-tie", "sender-circle", "person-card-sheet", "phone-calls-row-people"] {
                 worded(&text(id), language);
             }
             // A person's sheet and page say why, in the circle's words.
@@ -1661,79 +1894,12 @@ mod tests {
         assert!(circle_notice(&store, today).is_none(), "told: never again");
     }
 
-    /// The page's choices name their rows and cells, and refuse what they do not offer.
-    #[test]
-    fn a_choice_names_its_rows() {
-        let rows = |what: &str, value: &str| writes_of(what, value).map(|w| w.iter().map(|(r, _)| r.id()).collect::<Vec<_>>());
-        assert_eq!(rows("people.messages.contacts", "never"), Ok(vec!["messages.neutral".to_string(), "messages.groups".to_string()]));
-        assert_eq!(rows("people.mail.others", "never"), Ok(vec!["mail.stranger".to_string()]));
-        assert_eq!(rows("group.reminders", "off"), Ok(vec!["before".to_string(), "day-before".to_string(), "dates".to_string()]));
-        assert_eq!(rows("care.move", "off"), Ok(vec!["move".to_string()]));
-        assert!(writes_of("people.messages.contacts", "gathered").is_err(), "no gathered times for people");
-        assert!(writes_of("people.messages.always", "never").is_err(), "Always through is never held");
-        assert!(writes_of("people.calls.safe", "always").is_err(), "calls are set per phone");
-        assert!(writes_of("group.care", "off").is_err(), "care is switch by switch");
-        assert!(writes_of("care.doses", "off").is_err(), "doses are no care switch");
-    }
-
-    /// The page's writer on a file (review T1): a choice of each table writes
-    /// the rows it names and no other; a row back to what Sioul ships is taken
-    /// out; the first write seeds every row the older keys set and takes them
-    /// out; the call screening's rows are refused.
-    #[test]
-    fn a_choice_reaches_the_file_through_the_page_s_writer() {
-        let dir = std::env::temp_dir().join(format!("sioul-reaches-choose-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("config.toml");
-        // An older configuration: your contacts' mail ticked for leisure too, no [attention] yet.
-        std::fs::write(&path, "language = \"en\"\n[reach]\nneutral = [\"work\", \"admin\", \"leisure\"]\n").unwrap();
-        let read = || Attention::of(&Config::load(&path).unwrap());
-        let seeded = read();
-        assert_eq!(seeded.cell(Row::People(Channel::Mail, Person::Neutral), Column::Leisure), Level::Now);
-        // People: Safe's mail In work hours writes mail.safe; the first write seeds the rest and takes [reach] out.
-        choose_at(&path, "people.mail.safe", "work").unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("[attention]") && !text.contains("[reach]"), "{text}");
-        let a = read();
-        assert_eq!(behaviours::reading(&a, Channel::Mail, behaviours::Circle::Safe), Some(Behaviour::Work));
-        assert_eq!(a.cell(Row::People(Channel::Mail, Person::Neutral), Column::Leisure), Level::Now, "the seeded row kept");
-        let before = read();
-        // Sioul's own: Reminders off writes its three rows, no other.
-        choose_at(&path, "group.reminders", "off").unwrap();
-        let after = read();
-        for row in Row::ALL {
-            let named = matches!(row, Row::Own(Kind::Before | Kind::DayBefore | Kind::Dates));
-            for column in Column::ALL {
-                if !named {
-                    assert_eq!(after.cell(row, column), before.cell(row, column), "{} {column:?}", row.id());
-                }
-            }
-        }
-        assert_eq!(behaviours::group_reading(&after, Group::Reminders), Some("off"));
-        // A care switch: one row.
-        choose_at(&path, "care.move", "off").unwrap();
-        assert_eq!(behaviours::care(&read(), Kind::Move), Some(false));
-        assert_eq!(behaviours::care(&read(), Kind::Needs), Some(true));
-        // Back to what Sioul ships: the row taken out of the file.
-        choose_at(&path, "group.reminders", "awake").unwrap();
-        choose_at(&path, "people.mail.safe", "awake").unwrap();
-        let config = Config::load(&path).unwrap();
-        let said = config.attention.as_ref().unwrap();
-        assert!(said.words("mail.safe").is_none() && said.words("before").is_none(), "{:?}", std::fs::read_to_string(&path));
-        // The call screening's rows: refused through the same writer.
-        let screened = [(Row::People(Channel::Calls, Person::Stranger), [Some(Level::Now); 9])];
-        assert!(attention::apply_rows(&path, &config, &screened).unwrap_err().contains("screening"));
-        assert!(choose_at(&path, "people.calls.safe", "always").is_err(), "calls are set per phone");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
     /// On a computer, a phone in the sharing holds messages unless its entry
     /// says it does not give Sioul notification access (an older Sioul's,
-    /// which says nothing, holds them); when every phone says no, the
-    /// messages' rows say why they do not apply, and the moment leaves messages out.
+    /// which says nothing, holds them); where no phone acts on a channel,
+    /// the page says so beside the rules and the exceptions that do nothing.
     #[test]
-    fn a_phone_holds_messages_as_far_as_the_sharing_knows() {
+    fn a_rule_that_does_nothing_says_so() {
         use sioul_sync::devices::{COMPUTER, Entry, PHONE};
         let entry = |kind: &str, notifications: Option<bool>, left: bool| Entry { id: "x".into(), kind: kind.into(), notifications, left, working: true, ..Entry::default() };
         assert_eq!(Phones::of(&[]), Phones::None);
@@ -1741,18 +1907,23 @@ mod tests {
         assert_eq!(Phones::of(&[entry(PHONE, Some(true), false)]), Phones::Holding);
         assert_eq!(Phones::of(&[entry(PHONE, None, false)]), Phones::Holding, "an older Sioul says nothing: holding, as before phones said it");
         assert_eq!(Phones::of(&[entry(PHONE, Some(false), false)]), Phones::WithoutAccess, "it said no");
-        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, Some(true), false)]), Phones::Holding);
-        assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, None, false)]), Phones::Holding);
         assert_eq!(Phones::of(&[entry(PHONE, Some(false), false), entry(PHONE, None, true)]), Phones::WithoutAccess, "one that left counts no more");
-        assert_eq!(Phones::of(&[entry(PHONE, Some(true), true)]), Phones::None);
         speak("en");
-        let computer = |phones: Phones| Reach { messages: phones == Phones::Holding, phones, ..Reach::default() };
-        assert_eq!(channel_note(Channel::Messages, computer(Phones::None)), text("attention-channel-messages-none"));
-        assert_eq!(channel_note(Channel::Messages, computer(Phones::WithoutAccess)), "None of your phones gives Sioul notification access, as each last said: these rows apply once one does (Settings ▸ Devices, the phone's card, on the phone).");
-        assert_eq!(channel_note(Channel::Messages, computer(Phones::Holding)), text("attention-channel-messages-phone"));
-        assert_eq!(channel_note(Channel::Mail, computer(Phones::WithoutAccess)), "");
-        // The moment and the channels said: messages only from a phone that holds them.
-        assert_eq!(channels(computer(Phones::WithoutAccess)), [Channel::Mail]);
-        assert_eq!(channels(computer(Phones::Holding)), [Channel::Mail, Channel::Messages]);
+        let computer = |phones: Phones, calls: bool| Reach { messages: phones == Phones::Holding, phones, calls, ..Reach::default() };
+        let said = |reach: Reach| idle(reach).into_iter().map(|(c, s)| (c, s)).collect::<Vec<_>>();
+        assert!(said(computer(Phones::Holding, true)).is_empty());
+        assert_eq!(said(computer(Phones::None, false)).len(), 2, "no phone: calls and messages");
+        let without = said(computer(Phones::WithoutAccess, true));
+        assert_eq!(without, [(Channel::Messages, text("reach-idle-messages-no-access"))]);
+        // An exception on messages says it beside itself; one on mail, or on calls that act, says nothing.
+        let on = |what: What| Exception { what, whom: Whom::Circle { person: Person::Safe }, place: Place::Everywhere, when: When::pattern(exceptions::Pattern::Always), store: None };
+        assert_eq!(idle_of(&on(What::Channel { channel: Channel::Messages }), &without), text("reach-idle-messages-no-access"));
+        assert_eq!(idle_of(&on(What::Channel { channel: Channel::Mail }), &without), "");
+        assert_eq!(idle_of(&on(What::Anything), &without), "", "mail and calls still act");
+        let nothing = said(computer(Phones::None, false));
+        assert_eq!(idle_of(&on(What::Channel { channel: Channel::Calls }), &nothing), text("reach-idle-no-phone"));
+        // Messages said once, from the channels' sentences.
+        assert_eq!(channels(computer(Phones::WithoutAccess, false)), [Channel::Mail]);
+        assert_eq!(channels(computer(Phones::Holding, false)), [Channel::Mail, Channel::Messages]);
     }
 }

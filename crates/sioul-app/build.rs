@@ -106,6 +106,7 @@ fn main() {
         "qml/LeaveSpam.qml",
         "qml/MailFilters.qml",
         "qml/AttentionGrid.qml",
+        "qml/ExceptionCard.qml",
         "qml/LevelMark.qml",
         "qml/ReachesTab.qml",
         "qml/WordsTab.qml",

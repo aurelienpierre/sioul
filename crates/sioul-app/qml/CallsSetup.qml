@@ -231,7 +231,7 @@ ColumnLayout {
                 width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
                 flat: true
                 text: setup.sioul.text("calls-setup-people-open")
-                onClicked: setup.sioul.reminderOpened("settings:attention.exceptions", "", "")
+                onClicked: setup.sioul.reminderOpened("settings:attention.circles", "", "")
             }
         }
     }

@@ -4027,7 +4027,7 @@ settings-tab-ai = Agents d’IA
 # Les paramètres sur un téléphone : la liste des sections, chacune avec une ligne qui dit ce qu’elle contient.
 settings-about-look = Langue, couleurs, nom des lieux, mots de passe pendant la saisie, lecture des longs textes.
 settings-about-hours = Fuseau horaire, heures de travail, heures pour vos démarches, repas et nuit, congés.
-settings-about-attention = Qui vous joint, et quand ; les avis de Sioul ; « Ne pas déranger » sur tous vos appareils.
+settings-about-attention = Qui vous joint, et quand : la règle habituelle et vos exceptions ; « Ne pas déranger » sur tous vos appareils.
 settings-about-words = Les mots que Sioul cherche dans les courriels, les papiers, les appels et les tâches, dans vos langues.
 settings-about-reminders = Rappels des dates demandées, fenêtre de Sioul fermée aussi.
 settings-about-pauses = Temps libre et pause : quand le travail finit, ce qui vous aide, l’écran de la pause.
@@ -6592,7 +6592,7 @@ dnd-setup-here = Sur cet appareil
 dnd-setup-critical = Pendant « Ne pas déranger », les notifications de Sioul pour les personnes qui passent toujours partent comme importantes, et ce bureau les affiche.
 dnd-setup-plasma-mail = Plasma est réglé pour cacher même les notifications importantes en mode « Ne pas déranger » : les courriels des personnes qui passent toujours ne peuvent pas s’afficher ici pendant ce temps, sauf si Sioul peut s’afficher dans ce mode dans les paramètres de notification de Plasma.
 dnd-setup-list = Passent toujours
-dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Ce qui vous joint de leur part, c’est la ligne Passent toujours de chaque canal, ci-dessus ; jamais les bloqués, même sur la liste. Sur un téléphone, les modes « Ne pas déranger » de Sioul laissent sonner leurs messages une fois ces personnes mises en favori dans ses contacts. Leurs appels sonnent aussi une fois en favori ou, tant que Sioul filtre les appels du téléphone, dès qu’elles sont dans ses contacts.
+dnd-setup-list-help = La même liste sur tous vos appareils, gardée scellée dans votre dossier de partage. Ce qui vous joint de leur part, c’est la règle habituelle pour Passent toujours, et vos exceptions ; jamais les bloqués, même sur la liste. Sur un téléphone, les modes « Ne pas déranger » de Sioul laissent sonner leurs messages une fois ces personnes mises en favori dans ses contacts. Leurs appels sonnent aussi une fois en favori ou, tant que Sioul filtre les appels du téléphone, dès qu’elles sont dans ses contacts.
 dnd-setup-empty = Personne pour l’instant.
 dnd-setup-add-safe = Ajouter vos expéditeurs sûrs
 dnd-setup-add-contact = Ajouter un contact…
@@ -6820,10 +6820,10 @@ appnotes-why-answered = Une conversation à laquelle vous avez répondu depuis u
 appnotes-why-times = Comme vous l’avez choisi pour ce moment : laissée passer.
 appnotes-why-times-held = Comme vous l’avez choisi pour ce moment : retenue jusqu’à { $when }.
 appnotes-title = Notifications des autres applications
-appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courriels) suivent le choix de leur cercle dans Paramètres ▸ Ce qui vous joint ▸ Personnes (Messages ; Courriels pour une application de courriel), comme vos courriels ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
+appnotes-does = Sioul retient les notifications des autres applications jusqu’à leur moment, et laisse passer ce qui peut venir maintenant. Les messages entre personnes (SMS, discussions, courriels) suivent la règle habituelle de leur cercle et vos exceptions dans Paramètres ▸ Ce qui vous joint (messages ; courriels pour une application de courriel), comme vos courriels ; les notifications des automates (boutiques, actualités, réseaux sociaux, les sites de votre navigateur) viennent aux heures de regroupement.
 appnotes-never = Sioul ne garde ni n’envoie jamais ce qu’elles disent, ne répond jamais, ne marque rien comme lu, et ne touche jamais aux accusés de lecture ni à « en train d’écrire » : les applications et les personnes qui y sont n’en voient rien. Une notification retenue revient entière, avec son propre toucher et ses actions ; aucune n’est jamais supprimée.
 appnotes-access-on = Accès aux notifications : donné.
-appnotes-access-off = Accès aux notifications : pas donné. Sans lui, les notifications des autres applications viennent comme elles sont envoyées, et seul « Ne pas déranger » les retient : le vôtre, et celui de Sioul (son interrupteur, les pauses ; votre sommeil et vos indisponibilités quand Ce qui vous joint ▸ Moments le dit).
+appnotes-access-off = Accès aux notifications : pas donné. Sans lui, les notifications des autres applications viennent comme elles sont envoyées, et seul « Ne pas déranger » les retient : le vôtre, et celui de Sioul (son interrupteur, les pauses ; votre sommeil et vos indisponibilités quand Ce qui vous joint ▸ « Ne pas déranger » se met tout seul le dit).
 appnotes-steps = Sioul installé depuis un fichier (un APK) demande deux étapes dans les paramètres d’Android :
 appnotes-step-restricted = 1. Accès aux notifications (Notifications des appareils et des applications) ▸ Sioul : touchez-le une fois ; Android peut répondre « Paramètre restreint ». Puis Android ▸ Applications ▸ Sioul ▸ ⋮ (en haut) ▸ Autoriser les paramètres restreints, et confirmez avec votre code : jusque-là, l’interrupteur de Sioul y reste grisé (Android 13 et après).
 appnotes-step-access = 2. Accès aux notifications (Notifications des appareils et des applications) ▸ Sioul ▸ activé, et confirmez.
@@ -6853,8 +6853,7 @@ appnotes-lost-public = Avant le redémarrage, Sioul retenait des notifications�
 appnotes-many = de nombreux
 appnotes-many-f = de nombreuses
 appnotes-times = Les notifications des automates reviennent à { $times }, jamais pendant le sommeil, une pause, le temps libre ou « Ne pas déranger ».
-appnotes-times-change = Changer les heures
-appnotes-sound = Android commence à jouer le son d’une notification avant que Sioul la voie, et l’arrête dès que Sioul la retient, un instant plus tard. Ce que Sioul regroupe revient sans son. Pour épargner même cet instant, rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont commencé à sonner), ou laissez Sioul le faire. Les discussions et les SMS gardent leur son, pour que sonnent les personnes laissées passer ; un message que Sioul retient est coupé dès qu’il est retenu, et revient à son heure. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos indisponibilités aussi quand Ce qui vous joint ▸ Moments le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.
+appnotes-sound = Android commence à jouer le son d’une notification avant que Sioul la voie, et l’arrête dès que Sioul la retient, un instant plus tard. Ce que Sioul regroupe revient sans son. Pour épargner même cet instant, rendez silencieuses dans les paramètres d’Android les applications que Sioul retient (ci-dessous, chacune de celles qui ont commencé à sonner), ou laissez Sioul le faire. Les discussions et les SMS gardent leur son, pour que sonnent les personnes laissées passer ; un message que Sioul retient est coupé dès qu’il est retenu, et revient à son heure. Pendant une pause, le temps libre et « Ne pas déranger » (son interrupteur ; votre sommeil et vos indisponibilités aussi quand Ce qui vous joint ▸ « Ne pas déranger » se met tout seul le dit), le mode de Sioul ne laisse passer que ce que leurs lignes laissent venir à ce moment.
 appnotes-rang = Ont commencé à sonner avant que Sioul les retienne :
 appnotes-rang-line = { $app } : { $channel }
 appnotes-make-silent = Rendre silencieux
@@ -6904,7 +6903,7 @@ appnotes-privacy = Sioul lit les mots de chaque notification des applications qu
 appnotes-contacts-off = Pour savoir qui a écrit quand une application donne un numéro ou un contact, Sioul lit vos contacts (il ne les modifie jamais).
 appnotes-contacts-ask = Lire les contacts
 appnotes-heard = Android a passé une notification à Sioul pour la dernière fois { $when }.
-appnotes-computer = Sur Android, un téléphone ou une tablette, Sioul retient les notifications des autres applications jusqu’à leur moment (l’accès aux notifications d’Android). Sur un ordinateur, ce sont les notifications de vos sites qui sont regroupées : Paramètres ▸ Ce qui vous joint ▸ Les avis de Sioul.
+appnotes-computer = Sur Android, un téléphone ou une tablette, Sioul retient les notifications des autres applications jusqu’à leur moment (l’accès aux notifications d’Android). Sur un ordinateur, ce sont les notifications de vos sites qui sont regroupées, aux heures réglées dans Paramètres ▸ Ce qui vous joint.
 
 ## Les appels filtrés sur un téléphone (docs/android.md, « Calls » ; crates/sioul-core/src/calls.rs, crates/sioul-app/src/calls.rs)
 calls-who-hidden = un numéro masqué
@@ -6990,7 +6989,7 @@ phone-calls-profile-both-said = Professionnel pendant vos heures de travail, Per
 phone-calls-profile-as-android-said = Sioul ne filtre rien sur ce téléphone : Android décide.
 phone-calls-profile-none-said = Changé à la main : le tableau ci-dessous est le vôtre.
 phone-calls-always-rings = Sonne à tout moment, quoi que dise le tableau.
-phone-calls-people-note = Vos proches sonnent comme le dit Ce qui vous joint ▸ Ce qui vient quand, de même sur tous les téléphones : la table propre à un téléphone les laisse tels quels.
+phone-calls-people-note = Vos proches sonnent comme le dit Ce qui vous joint, de même sur tous les téléphones : la table propre à un téléphone les laisse tels quels.
 phone-calls-people-dnd = Sioul ne filtre pas les appels sur ce téléphone : son mode « Ne pas déranger » retient donc les appels de vos proches comme ceux de tout contact. Pour qu’ils sonnent alors, activez-y le filtrage des appels, ou mettez cette personne dans Passent toujours.
 phone-calls-people-older = Le Sioul de ce téléphone ne connaît pas encore Vos proches : il les juge par leurs listes et leurs carnets d’adresses, comme avant, et suit la ligne de Vos proches dès sa mise à jour.
 phone-card-apps = Notifications des autres applications
@@ -7421,47 +7420,13 @@ attention-word-later-messages = Retenu
 attention-word-quiet-messages = Sans son
 
 ## Settings ▸ What reaches you, as one page (design-reach §1; behaviours.rs, reaches.rs)
-reach-tab-rules = Vos règles
-reach-tab-table = Ce qui vient quand
 reach-start = Partir de
-reach-people = Personnes
 reach-circle-always = Passent toujours
-reach-circle-always-help = Les personnes de votre liste Passent toujours.
 reach-circle-people = Vos proches
-reach-circle-people-help = Toutes les personnes de Contacts ▸ Proches, par leurs contacts.
-reach-circle-safe = Sûrs
-reach-circle-safe-help = Il n’y entre que qui vous y mettez.
-reach-circle-contacts = Vos contacts
-reach-circle-contacts-help = Toute personne de vos carnets d’adresses.
-reach-circle-restricted = Restreints
-reach-circle-restricted-help = Connus, entendus seulement aux moments que vous choisissez.
-reach-circle-others = Tous les autres
-reach-circle-others-help = Dans aucun carnet d’adresses et sur aucune liste.
-reach-circle-blocked = Bloqués
-reach-circle-blocked-help = Jamais, sur aucun canal.
-reach-behaviour-always = Toujours
-reach-behaviour-awake = Quand vous ne dormez pas
-reach-behaviour-work-admin-gathered = Regroupés hors des heures de travail et de démarches
-reach-behaviour-work-admin-gathered-help = Aussitôt aux heures de travail et de démarches ; en loisirs et aux repas, aux heures de regroupement ; retenus pendant le sommeil, une pause ou le temps libre, et sous « Ne pas déranger ».
-reach-behaviour-work-admin = Aux heures de travail et de démarches
-reach-behaviour-work = Aux heures de travail
-reach-behaviour-gathered = Aux heures de regroupement
-reach-behaviour-never = Jamais notifié
-reach-behaviour-never-help-mail = Le courriel reste sur le Porche, sans un mot.
-reach-behaviour-never-help-messages = Un message est retenu à tout moment, sur votre téléphone : il reste dans son application, et la fiche Ce qui vous joint maintenant compte ce que le téléphone retient.
-reach-own = À votre façon
-reach-free-time = Pendant le temps libre
 reach-grid-key = Aussitôt : notifié tout de suite. Affiché : dans Sioul, sans notification. Sans son : un message dans l’ombre, sans un son. Plus tard : attend son moment. Retenu : un message gardé sur le téléphone jusqu’à son moment. Messagerie : un appel va sur la messagerie. Regroupé : aux heures de regroupement. À l’événement : quand son événement tombe à ce moment. Porche : sur le Porche seulement. Passe : passe « Ne pas déranger », à leurs moments. Jamais : pas du tout.
 reach-state-now = en cours
-reach-own-help = Réglé case par case, dans Ce qui vient quand.
-reach-own-help-elsewhere = Réglé case par case sur un autre appareil : Ce qui vient quand ne montre pas cette ligne ici.
-reach-people-automatic = Un message n’est notifié que lorsque l’adresse ou l’application à laquelle il a été écrit est pour maintenant.
-reach-people-mail-off = Hors de ses moments, le courriel de vos expéditeurs sûrs attend sur le Porche, celui des autres hors de vue.
-reach-people-groups-note = Les messages de vos contacts règlent aussi les conversations de groupe.
 reach-circles = Qui est dans quel cercle
 reach-circles-help = Toute personne de vos carnets d’adresses est parmi vos contacts, sans rien régler.
-reach-people-none = Vos proches ont une ligne à eux dès que vous les ajoutez dans Contacts ▸ Proches.
-reach-people-open = Ouvrir Contacts ▸ Proches
 reach-people-told-title = Vos proches ont une ligne à eux
 reach-people-told = Paramètres ▸ Ce qui vous joint donne désormais aux personnes de Contacts ▸ Proches une ligne à elles : leurs courriels et leurs messages viennent comme ceux de vos expéditeurs sûrs, et leurs appels sonnent à tout moment, la nuit aussi, là où Sioul filtre les appels. Ouvrez-la pour la changer.
 reach-circles-people-help = Lu dans Contacts ▸ Proches, où vous ajoutez une personne ou changez qui elle est pour vous : vous, l’autre parent d’un enfant et une relation qui a pris fin mis à part. Sûr réglé à la main cède devant cette ligne ; ce qui restreint l’une d’elles, sur sa fiche, une adresse ou un numéro, passe d’abord, et se dit sous son nom.
@@ -7476,90 +7441,15 @@ reach-circles-missing-some = { $n ->
    *[other] { $Count } contacts liés à { $name } ne sont pas sur cet appareil.
 }
 reach-circles-tie = Lier un contact…
-reach-own-notices = Les avis de Sioul
-reach-group-asked = Ce que vous avez réglé ou demandé
-reach-group-asked-holds = Les codes et liens que vous demandez, les prises, le réveil et les alarmes d’un événement. Les prises, les codes et le réveil viennent tout de suite ; les alarmes d’un événement viennent pendant le sommeil et le temps libre quand leur événement tombe à ce moment.
-reach-choice-asked-sleep = Prises pendant le sommeil
-reach-choice-asked-waking = Prises au réveil
-reach-group-reminders = Rappels
-reach-group-reminders-holds = Avant un événement, le jour travaillé d’avant, les dates, les attentes, les paiements et les papiers.
-reach-choice-reminders-awake = Quand vous ne dormez pas
-reach-choice-reminders-off = Non
-reach-group-care = Soin
-reach-group-care-holds = Les avis qui prennent soin de votre journée.
-reach-group-sites = Sites et applications
-reach-group-sites-holds = Les nouvelles des sites sur un ordinateur, les notifications automatiques des applications sur un téléphone.
-reach-choice-sites-now = Tout de suite
-reach-choice-sites-gathered = Aux heures de regroupement
-reach-gathered = Regroupés à { $times }.
-reach-moments = Moments
-reach-moment-who = Qui passe
-reach-moment-by = Mis par
-reach-moment-phone = Sur votre téléphone
 reach-moment-usual = Comme d’habitude
-reach-moment-usual-who = Vos règles ci-dessus
-reach-moment-usual-by = Rien
-reach-moment-usual-phone = Comme Android est réglé
 reach-moment-dnd = Ne pas déranger
-reach-moment-dnd-who = Passent toujours, et ce que vous avez réglé
-reach-moment-dnd-by = L’interrupteur, et les cases ci-dessous
-reach-moment-dnd-phone = Le mode de Sioul, qui laisse passer qui Sioul laisse passer
 reach-moment-reachable = Joignable
-reach-moment-reachable-who = Toute personne non bloquée
-reach-moment-reachable-by = L’interrupteur, pour une durée
-reach-moment-reachable-phone = Le mode de Sioul enlevé
-reach-holds = Qui retient quoi sur un téléphone
-reach-holds-sioul = Sioul
-reach-holds-android = Android
-reach-hold-call = Un appel
-reach-hold-call-sioul = Sonne, ou va sur la messagerie
-reach-hold-call-android = Si un appel qui sonne fait du bruit
-reach-hold-message = Un message, la notification d’une autre application
-reach-hold-message-sioul = S’affiche maintenant, ou attend
-reach-hold-message-android = S’il fait du bruit ; il peut commencer à sonner avant que Sioul l’apprenne, et s’arrête quand Sioul le retient
-reach-hold-dnd = Ne pas déranger
-reach-hold-dnd-sioul = Un interrupteur pour tous vos appareils
-reach-hold-dnd-android = Repris comme le mode « Ne pas déranger (Sioul) »
-reach-hold-modes = Vos propres modes : Coucher, conduite
-reach-hold-modes-sioul = Lus comme un appui sur l’interrupteur
-reach-hold-modes-android = Rien qu’à vous
-reach-principle = Sioul décide de ce qui passe, et quand ; le « Ne pas déranger » d’Android décide seulement si cela fait du bruit.
-reach-presets-calls = Un préréglage laisse les appels tels quels : ils se règlent pour chaque téléphone, dans Paramètres ▸ Appareils.
-reach-calls = Les appels se règlent pour chaque téléphone dans Paramètres ▸ Appareils.
-reach-calls-open = Ouvrir Appareils
-reach-calls-grid = Ces lignes sont le tableau que suit chaque téléphone tant qu’il n’a pas le sien. Un téléphone qui a son propre tableau (Paramètres ▸ Appareils) le suit à la place, sauf pendant une pause et pendant « Ne pas déranger », où ces lignes décident toujours.
-reach-calls-grid-open = Le tableau de chaque téléphone
-reach-elsewhere = Réglé ailleurs : { $what }.
-reach-elsewhere-none = Rien n’est réglé ailleurs.
-reach-elsewhere-sites-live = { $n ->
-    [one] un site en temps réel
-   *[other] { $n } sites en temps réel
 }
-reach-elsewhere-sites-muted = { $n ->
-    [one] un site mis en silence
-   *[other] { $n } sites mis en silence
 }
-reach-elsewhere-events = { $n ->
-    [one] le rappel propre d’un événement
-   *[other] les rappels propres de { $n } événements
 }
-reach-elsewhere-health = { $n ->
-    [one] un jour de Santé
-   *[other] { $n } jours de Santé
 }
-reach-elsewhere-persons = { $n ->
-    [one] les moments propres d’une personne
-   *[other] les moments propres de { $n } personnes
 }
-reach-elsewhere-sources = { $n ->
-    [one] les moments propres d’une application ou d’une conversation
-   *[other] les moments propres de { $n } applications et conversations
 }
-reach-elsewhere-open-sites = Sites
-reach-elsewhere-open-devices = Appareils
-reach-elsewhere-open-agenda = Agenda
-reach-elsewhere-open-health = Santé
-reach-elsewhere-open-contacts = Contacts
 ## The Busy mark (busy.rs): an event's card and form, a task's panel
 busy = Indisponible
 busy-help = Compte dans la disponibilité que vous partagez, et tant qu’il dure vos règles pour les moments indisponibles s’appliquent.
@@ -7567,7 +7457,7 @@ busy-task = Indisponible pendant que j’y travaille
 busy-task-help = Son temps compte dans la disponibilité que vous partagez là où il est connu (un créneau, une heure de début, le temps que le plan lui donne avant sa date), et tant que son minuteur tourne vos règles pour les moments indisponibles s’appliquent.
 busy-calendar-free = Son agenda est disponible dans son ensemble : aucun de ses événements ne vous rend indisponible, quoi que chacun dise.
 busy-dnd-first-title = Ne pas déranger, pendant une indisponibilité
-busy-dnd-first-body = Un événement ou une tâche marqués indisponibles ont mis « Ne pas déranger », comme le demande « Pendant une indisponibilité ». À changer dans Paramètres ▸ Ce qui vous joint ▸ Moments.
+busy-dnd-first-body = Un événement ou une tâche marqués indisponibles ont mis « Ne pas déranger », comme le demande « Pendant une indisponibilité ». À changer dans Paramètres ▸ Ce qui vous joint ▸ « Ne pas déranger » se met tout seul.
 busy-time-holds = { $more ->
     [0] Dans la disponibilité que vous partagez : { $spans }.
    *[other] Dans la disponibilité que vous partagez : { $spans }, et { $more } autres.
@@ -7994,8 +7884,6 @@ device-kind-phone = un téléphone
 device-kind-tablet = une tablette
 device-kind-computer = un ordinateur
 attention-start-from = Partir de :
-attention-back-to-usual = Revenir à Comme Sioul le fait maintenant
-attention-preset-replaces = { $preset } remplace vos propres changements, sur chaque ligne ; les cases fixes restent comme elles sont.
 attention-preset-take = Partir de là
 attention-preset-keep = Garder les miens
 attention-view-time = Par moment
@@ -8019,7 +7907,6 @@ attention-open-agenda = Ouvrir l’Agenda
 attention-exceptions-health = Un repas, une sieste, la nuit, un jour
 attention-exceptions-health-help = Chacun peut se passer de ses avis pour un jour, sur la page Santé, ou pour de bon, dans Paramètres ▸ Heures.
 attention-open-needs = Vos repas et nuits habituels
-attention-dnd-turns-on = Ce qui l’active
 attention-dnd-while = Tant qu’il est actif
 attention-sheet-title = Comment { $name } vous joint
 attention-sheet-them = cette personne
@@ -8377,10 +8264,6 @@ attention-card-screening = Les appels des numéros que personne ne connaît et d
 attention-card-screening-held = Les appels des numéros que personne ne connaît et des numéros masqués : sur votre messagerie à ce moment-là, comme ceux de vos contacts, sauf si vous attendez un appel (Paramètres ▸ Appareils, la carte du téléphone).
 attention-switch-realtime-on = Le temps réel est mis jusqu’à la fin des heures où vous l’avez coché : les courriels sont relevés chaque minute, et les notifications de chaque site arrivent tout de suite.
 attention-switch-realtime-off = Le temps réel est éteint : « Le courrier chaque minute », dans la carte Ce qui vous joint maintenant (le bouton de la ligne d’état), relève les courriels chaque minute et fait venir tout de suite les notifications de chaque site, jusqu’à la fin des heures où vous êtes.
-attention-channel-calls-none = Aucun de vos téléphones ne filtre encore les appels : ces lignes s’appliquent dès que l’un d’eux le fait (Paramètres ▸ Appareils, la carte du téléphone, sur le téléphone).
-attention-channel-messages-none = Sioul ne connaît encore aucun de vos téléphones : ces lignes s’appliquent sur un téléphone qui retient les notifications des autres applications (Paramètres ▸ Appareils, la carte du téléphone, sur le téléphone).
-attention-channel-messages-no-access = Aucun de vos téléphones ne donne à Sioul l’accès aux notifications, d’après ce que chacun a dit en dernier : ces lignes s’appliquent dès que l’un le fait (Paramètres ▸ Appareils, la carte du téléphone, sur le téléphone).
-attention-channel-messages-phone = Ces lignes s’appliquent sur votre téléphone, où Sioul retient les notifications des autres applications (Paramètres ▸ Appareils, la carte du téléphone, sur le téléphone).
 attention-gathered-at = Sioul les regroupe à { $times } ; les heures sont dans Paramètres ▸ Rappels.
 attention-spam-held = Les courriels que votre filtre à indésirables juge peut-être ou probablement indésirables attendent sur le Porche, dans « Retenu par votre filtre à indésirables », sans notification : Courriels ⚙ ▸ Votre filtre à indésirables.
 attention-spam-told = Votre filtre à indésirables laisse les courriels des inconnus là où ils sont, notifiés comme le dit leur ligne : Courriels ⚙ ▸ Votre filtre à indésirables.
@@ -8391,7 +8274,7 @@ attention-site-muted = en silence, ses notifications ne viennent jamais
 attention-site-gathered = ses notifications arrivent aux heures de regroupement
 attention-own-help-list = Chaque type de notification que Sioul envoie. Appuyez sur l’un pour voir ce qu’il fait à chaque moment, et le changer.
 attention-person-list-help = Chaque liste de personnes sur ce canal. Appuyez sur l’une pour voir ce qu’elle fait à chaque moment, et la changer.
-attention-sheet-always-off-help = Cochée, cette personne passe plus que sa liste ne le permet, sur tous vos appareils : comme le dit la ligne Passent toujours de chaque canal, dans Ce qui vous joint ▸ Personnes.
+attention-sheet-always-off-help = Cochée, cette personne passe plus que sa liste ne le permet, sur tous vos appareils : comme le dit la règle habituelle pour Passent toujours, dans Ce qui vous joint.
 
 ## Les mots que Sioul repère : Paramètres ▸ Mots (docs/words.md)
 
@@ -11655,3 +11538,173 @@ rule-preset-invoice-due-told = Quand une facture que vous avez émise arrive à 
 rule-preset-letter-read = Quand un scan arrive dans la boîte des lettres, il est lu et montré comme une lettre.
 rule-preset-paper-renewal-told = Quand un papier est bientôt à renouveler, un rappel vient.
 rule-preset-site-file-kept = Quand un site propose un fichier, il est gardé là où vous l’avez demandé, et tout de suite comme papier.
+## Ce qui vous joint, lu comme la règle habituelle et ses exceptions (exceptions.rs)
+except-line = { $what } : { $when }.
+except-on = { $what }, sur { $device }
+except-whom-anyone = n’importe qui
+except-whom-always = vos personnes qui passent toujours
+except-whom-people = vos proches
+except-whom-safe = vos personnes sûres
+except-whom-neutral = vos contacts
+except-whom-restricted = vos personnes restreintes
+except-whom-stranger = tous les autres
+except-whom-hidden = les numéros masqués
+except-whom-groups = les conversations de groupe
+except-whom-blocked = les personnes bloquées
+except-whom-group = le groupe { $group }
+except-mail = Les courriels
+except-calls = Les appels
+except-messages = Les messages
+except-mail-from = Les courriels de { $whom }
+except-calls-from = Les appels de { $whom }
+except-messages-from = Les messages de { $whom }
+except-anything-from = Courriels, appels et messages de { $whom }
+except-talk-from = Appels et messages de { $whom }
+except-messages-groups = Les messages des conversations de groupe
+except-group = Les personnes du groupe { $group }
+except-conversation = { $app } ▸ { $title }
+except-conversation-of = Une conversation de { $app }
+except-conversation-unknown = Une conversation sur l’un de vos téléphones
+except-own-new-mail = Les nouveaux courriels
+except-own-newsletters = Les infolettres et listes de diffusion
+except-when-always = toujours
+except-when-always-mail = toujours, montrés sans un mot la nuit et en pause
+except-when-always-through = toujours, même pendant « Ne pas déranger »
+except-when-awake = quand vous ne dormez pas
+except-when-work-admin-gathered = aux heures de travail et de démarches, regroupés en dehors
+except-when-work-admin = aux heures de travail et de démarches
+except-when-work = aux heures de travail
+except-when-gathered = aux heures de regroupement
+except-when-shown = montrés, jamais dits
+except-when-never = jamais
+except-when-never-mail = jamais dits, gardés dans leur file
+except-when-never-calls = toujours vers la messagerie
+except-when-never-messages = retenus, jamais laissés passer
+except-when-never-new-mail = jamais dits ; ils attendent sur le Porche
+except-when-told-newsletters = dites comme les autres courriels
+except-when-blocked = jamais
+except-like-safe = comme Sûrs
+except-like-contacts = comme vos contacts
+except-like-restricted = comme Restreints
+except-like-blocked = bloquées, jamais
+except-calls-professional = comme un téléphone de travail : ils sonnent aux heures de travail
+except-calls-personal = comme un téléphone à vous : vos contacts sonnent le jour, les numéros inconnus seulement s’ils rappellent
+except-calls-both = comme un téléphone pour le travail et pour vous : la règle du travail aux heures de travail, la vôtre en dehors
+except-calls-as-android = comme le fait Android : Sioul n’y filtre rien
+except-calls-none = selon la table réglée sur ce téléphone
+except-is-usual = notification par notification
+except-is-people = toutes ses notifications comme des messages entre personnes
+except-is-automaton = toutes ses notifications comme automatiques, regroupées
+except-is-at-once = tout de suite, comme celles de Sioul
+except-is-area = { $is }, pour { $area } seulement
+except-cells-during = { $level } pendant { $times }
+except-cells-otherwise = { $level } le reste du temps
+except-cells-separator = { "\u202F; " }
+except-level-now = tout de suite
+except-level-quiet = montrés sans un mot
+except-level-quiet-messages = dans le volet, sans un son
+except-level-event = quand leur événement tombe alors
+except-level-gathered = aux heures de regroupement
+except-level-later = plus tard
+except-level-later-calls = vers la messagerie
+except-level-later-messages = retenus
+except-level-never = jamais
+except-level-never-mail = jamais dits
+except-level-as = comme d’habitude
+except-circle-always = Passent toujours
+except-circle-people = Vos proches
+except-circle-safe = Sûrs
+except-circle-neutral = Vos contacts
+except-circle-restricted = Restreints
+except-circle-stranger = Tous les autres
+except-circle-blocked = Bloqués
+except-rule-line = { $circle } : { $when }.
+except-rule-their = { $main } ; leurs { $channel } { $when }
+except-rule-mail-night = { $main } ; leurs courriels montrés sans un mot la nuit et en pause
+except-their-mail = courriels
+except-their-calls = appels
+except-their-messages = messages
+except-level-through = tout de suite, même pendant « Ne pas déranger »
+except-layer-slot = le temps pour vous
+except-layer-dnd = « Ne pas déranger »
+except-mail-messages-from = Les courriels et les messages de { $whom }
+except-whom-safe-people = vos personnes sûres et vos proches
+except-people-follow = Les { $channels } de vos proches la suivent aussi.
+
+## Paramètres ▸ Ce qui vous joint : la règle une fois, puis les exceptions seules (reaches.rs, ReachesTab.qml)
+reach-rule = La règle habituelle
+reach-rule-help = Sioul décide de ce qui passe, et quand ; le mode « Ne pas déranger » d’Android décide seulement si ce qui est passé fait du bruit. Le travail, les démarches, les loisirs et les repas sont vos heures ; le sommeil, une pause et le temps libre retiennent davantage ; « Ne pas déranger » et le temps pour vous retiennent par-dessus. Comme d’habitude, ces règles valent ; « Ne pas déranger » laisse passer vos personnes qui passent toujours et ce que vous avez réglé vous-même ; Joignable laisse passer tout le monde sauf les bloqués. Sur un téléphone, Sioul envoie vers la messagerie un appel qui ne doit pas sonner, et retient le message d’une autre application jusqu’à son heure.
+reach-exceptions = Vos exceptions
+reach-none = Aucune : tout arrive comme le dit la règle habituelle.
+reach-add = Ajouter une exception…
+reach-edit = Modifier
+reach-remove = Retirer
+reach-remove-name = Retirer : { $line }
+reach-dnd = « Ne pas déranger » se met tout seul
+reach-apps = Les autres applications de ce téléphone
+reach-apps-computer = Les notifications sur cet ordinateur
+reach-worked-out = Ce qui vient quand, en détail
+reach-what = Quoi
+reach-whom = De qui
+reach-where = Où
+reach-when = Quand cela vous joint
+reach-whom-person = Une personne…
+reach-when-own = Vos propres moments…
+reach-what-anything = Courriels, appels et messages
+reach-where-everywhere = Tous les appareils
+reach-where-here = { $device } (cet appareil)
+reach-this-device = Cet appareil
+reach-card-add = Ajouter une exception
+reach-card-edit = Modifier cette exception
+reach-save = Ajouter
+reach-add-for-this = Ajouter une exception pour ceci…
+reach-find = Son nom
+reach-find-none = Personne de vos carnets d’adresses ne porte ce nom.
+reach-when-pick = Choisissez d’abord quoi et de qui.
+reach-removed = Retirée : { $line }
+reach-added = Ajoutée : { $line }
+reach-changed = Modifiée : { $line }
+reach-started = Désormais à partir de { $start }.
+reach-start-replaces = { $n ->
+    [one] Partir de { $start } remplace une de vos exceptions : { $lines }
+   *[other] Partir de { $start } remplace { $n } de vos exceptions : { $lines }
+}
+reach-by-rule = Décidé par la règle habituelle pour { $circle }.
+reach-by-sioul = Décidé par ce que Sioul fait de cette notification.
+reach-by-exception = Décidé par votre exception : { $line }
+reach-count-people = { $n ->
+    [one] une personne
+   *[other] { $n } personnes
+}
+reach-count-groups = { $n ->
+    [one] un groupe
+   *[other] { $n } groupes
+}
+reach-count-domains = { $n ->
+    [one] un domaine
+   *[other] { $n } domaines
+}
+reach-count-cards = { $n ->
+    [one] une fiche
+   *[other] { $n } fiches
+}
+reach-idle-no-phone = Aucun de vos téléphones ne partage avec cet appareil : les règles des appels et des messages n’agissent que sur un téléphone.
+reach-idle-messages-no-access = Aucun de vos téléphones ne donne à Sioul l’accès aux notifications, comme chacun l’a dit en dernier : les règles des messages ne font encore rien.
+reach-idle-calls = Aucun de vos téléphones ne filtre les appels : les règles des appels ne font encore rien.
+reach-idle-messages-access = Sioul n’a pas l’accès aux notifications sur ce téléphone : les règles des messages n’y font rien.
+reach-idle-messages-hold = Sioul ne retient aucune notification des autres applications sur ce téléphone : les règles des messages n’y font rien.
+reach-idle-messages-people = Les messages des personnes ne sont pas retenus sur ce téléphone : ils arrivent tout de suite, quoi que disent les règles des messages.
+reach-idle-calls-phone = Sioul ne filtre pas les appels sur ce téléphone : les règles des appels n’y font rien.
+reach-where-this-phone = Ce qu’est une application ou une conversation sur un appareil est gardé sur le téléphone qui la connaît : choisissez ce téléphone, ou tous les appareils.
+reach-where-phones = Les appels se règlent pour un téléphone : choisissez l’un de vos téléphones, ou tous les appareils.
+reach-where-every = C’est le même réglage sur tous les appareils : choisissez Tous les appareils.
+reach-not-kept = Rien ne peut garder ce choix : changez quoi, de qui ou où.
+reach-same-as-usual = C’est déjà ce que dit la règle habituelle : il n’y a rien à ajouter.
+reach-not-offered = L’un des moments choisis n’est pas proposé ici : choisissez-le de nouveau.
+reach-not-saved = Ce changement n’a pas pu être écrit ; rien n’a changé.
+reach-remove-phone-ask = Retirer ceci retire toute la table réglée sur ce téléphone, les lignes de ses groupes et ses interrupteurs : le téléphone filtre alors les appels selon la règle habituelle.
+reach-remove-phone-take = La retirer
+reach-remove-phone-keep = La garder
+reach-by-free-nothing = Décidé par « Rien du tout » du temps libre : seules vos personnes qui passent toujours viennent alors.
+except-circle-groups = Conversations de groupe
+except-circle-hidden = Numéros masqués

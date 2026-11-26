@@ -4214,8 +4214,8 @@ SioulWindow {
                     if (window.phoneGrab)
                         grabber.save("restricted-3")
                 },
-                // The Always through list, with where each is starred (What reaches you ▸ Exceptions).
-                () => window.showParameters("attention.exceptions"),
+                // The Always through list, with where each is starred (What reaches you ▸ Who is in which circle).
+                () => window.showParameters("attention.circles"),
                 () => {},
                 () => {},
                 () => parametersPage.bringIntoView(grabber.named(parametersPage, "starsSwitch")),
@@ -4828,7 +4828,7 @@ SioulWindow {
             // fixed cell's why, a row's times on a phone; a contact's card and how they
             // reach you; then Busy on an event's card and on a task's panel.
             readonly property var attentionSteps: [
-                // Settings ▸ What reaches you: Your rules, top to bottom; a circle's choices.
+                // Settings ▸ What reaches you: the rule, your exceptions, top to bottom.
                 () => {
                     if (!window.phoneGrab)
                         window.width = 1400
@@ -4840,38 +4840,40 @@ SioulWindow {
                 () => parametersPage.scrollBy(0.45),
                 () => {},
                 () => grabber.save("attention-rules-2"),
-                () => parametersPage.scrollBy(0.45),
+                // The card: an exception for your contacts' messages; then your own times.
+                () => window.showParameters("attention.exceptions"),
+                () => window.reachesTab().openCard(null, null),
+                () => {
+                    const card = window.reachesTab().card
+                    card.what = card.choices.what.find(c => c.value.kind === "channel" && c.value.channel === "messages").value
+                    card.whom = card.choices.whom.find(c => c.value.kind === "circle" && c.value.person === "neutral").value
+                    card.refresh()
+                },
                 () => {},
-                () => grabber.save("attention-rules-3"),
-                () => window.showParameters("attention.own"),
+                () => grabber.savePopup(window.reachesTab().card, "attention-exception"),
+                () => window.reachesTab().card.chooseOwn(),
                 () => {},
-                () => {},
-                () => grabber.save("attention-own"),
+                () => grabber.savePopup(window.reachesTab().card, "attention-own-times"),
+                () => window.reachesTab().closeChoices(),
+                // Do not disturb, and other apps or this computer's notifications.
                 () => window.showParameters("attention.dnd"),
                 () => {},
                 () => {},
-                () => grabber.save("attention-moments"),
-                () => window.showParameters("attention.person"),
-                () => {},
-                () => {},
-                () => window.reachesTab().openChoice("contacts", "mail"),
-                () => {},
-                () => grabber.saveWindow("attention-choices"),
-                () => window.reachesTab().closeChoices(),
+                () => grabber.save("attention-dnd"),
                 // Who is in which circle: your safe senders put on Always through first.
                 () => sioul.dndChange("add-safe", "{}"),
-                () => window.showParameters("attention.exceptions"),
+                () => window.showParameters("attention.circles"),
                 () => {},
                 () => {},
                 () => grabber.save("attention-circles"),
-                // What comes when: the grid in words; a fixed cell's why; on a phone, a row's values.
+                // What comes when, worked out: the grid in words; which line decides a cell; on a phone, a row's moments.
                 () => window.showParameters("attention.table"),
                 () => {},
                 () => {},
                 () => grabber.save("attention-table"),
-                () => window.reachesTab().openCell("doses", "dnd"),
+                () => window.reachesTab().openCell("mail.neutral", "leisure"),
                 () => {},
-                () => grabber.saveWindow("attention-fixed"),
+                () => grabber.saveWindow("attention-decided"),
                 () => window.reachesTab().closeChoices(),
                 () => window.reachesTab().rowOpen = "mail.neutral",
                 () => {},

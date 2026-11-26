@@ -56,10 +56,13 @@ Each day of each week is on or off, with one range of hours or several: **+** ad
 
 ## What reaches you {#what-reaches-you}
 
-One page for when each thing reaches you: Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound. On top, what holds now in a sentence, the three states (As usual, Do not disturb, Reachable) and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**. Then two tabs:
+One page for when each thing reaches you: Sioul decides what gets through, and when; Android's do-not-disturb only decides whether it makes a sound. On top, what holds now in a sentence and the three states (As usual, Do not disturb, Reachable). Then:
 
-- **Your rules**: **People**, a choice per circle (Always through, Safe, Your contacts, Restricted, Everyone else) for mail and for messages, with **Tell me of new mail** and **Include newsletters**; **Who is in which circle**, Always through beside the lists Safe, Restricted and Blocked, the people placed on them and your groups; **Sioul's own notices**, in four groups, with **Gathered at** under **Sites and apps** (the times at which what your sites notify comes in one notification: 09:00, 13:00 and 18:00 unless you set others; [The gathered times](notifications.md#the-gathered-times)) and, on a computer, **Informative notices last** (5 minutes unless you change it); **Moments**, what turns do-not-disturb on (**While busy** among them) and who holds what on a phone. One line counts what is set elsewhere, with a button to each place; calls are set for each phone, in **Devices**.
-- **What comes when**: every row at every time, a word in each cell, a press to change it.
+- **The usual rule**: a sentence per circle (Always through, Your people, Safe, Your contacts, Restricted, Everyone else, Blocked), with how many each holds, and **Start from**: **As Sioul does now**, **Quieter** or **More reachable**.
+- **Your exceptions**: what differs from the usual rule, a sentence each, with **Edit** and **✕**; **Add an exception…** opens one card: **What**, **From whom**, **Where**, **When it reaches you** ([Your exceptions](notifications.md#your-exceptions)).
+- **Do not disturb comes on by itself**: while you sleep, during the pauses, while busy, and Free time's **Nothing at all**.
+- **Other apps on this phone** (on a computer, **Notifications on this computer**): on a phone, its switches for other apps; **Gathered at** (09:00, 13:00 and 18:00 unless you set others; [The gathered times](notifications.md#the-gathered-times)) and, on a computer, **Informative notices last** (5 minutes unless you change it).
+- Folded: **Who is in which circle**, Always through beside the lists Safe, Restricted and Blocked; **What comes when, worked out**, every row at every time, read-only, a press saying which line decides a cell.
 
 See [What reaches you, and when](notifications.md).
 
@@ -80,7 +83,7 @@ When each reminder may come, and new mail, is in [What reaches you](#what-reache
 
 ## Pauses
 
-Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Moments**, **In Free time**. See [Pauses](pauses.md).
+Free time and the pause, set up on a calm day: how far the end of work may move, whether movement is offered; for the pause, what helps you, your line, the breathing guide, what the rest of the day holds after it, whose numbers show; **Try the pause screen**; **Forget the last pause**, once there was one. Free time's **Nothing at all** is in [What reaches you](#what-reaches-you), under **Do not disturb comes on by itself**. See [Pauses](pauses.md).
 
 ## A phone's card {#this-phone}
 

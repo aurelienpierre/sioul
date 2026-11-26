@@ -5,11 +5,12 @@
 // from other apps"), in two parts (`part`). This phone ("phone"): what Sioul
 // does with other apps' notifications and what it never does; Android's
 // notification access and its two steps for an app installed from a file;
-// holding on or off, and people's messages held too or not (held apps
-// phase 1, A2); the line in the phone's shade of what Sioul holds (B1); the gathered times; what rang before Sioul held it,
+// when automatons come back (the switches for holding, people's messages
+// and the line in the shade are in Settings ▸ What reaches you ▸ Other apps
+// on your phones); what rang before Sioul held it,
 // each with Android's page to make it silent, or made silent by Sioul itself
 // once Android links it to your computer (what it made silent, each app's
-// sound given back, Stop). What reaches you ▸ Exceptions
+// sound given back, Stop). The lists
 // ("lists"): each app and conversation by time, a row of the matrix of what
 // reaches you (AttentionGrid.qml: as usual, at once, gathered or held at each
 // time), then each app, conversation and site seen, with its choice. On a
@@ -191,35 +192,8 @@ ColumnLayout {
     }
 
     // ---------------------------------------------------------------- holding, and when
-    SettingRow {
-        visible: setup.phonePart && setup.shown.hold !== null
-        Layout.fillWidth: true
-        Layout.topMargin: 12
-        setting: setup.shown.hold || { key: "hold", kind: "bool", label: "", help: "", value: true, choices: [] }
-        sioul: setup.sioul
-        theme: setup.theme
-        onSave: (key, value) => setup.act("set", { key: key, value: value })
-    }
-    // People's messages held too, by who writes and when, while holding is on; off, they come at once.
-    SettingRow {
-        objectName: "appNotesPeople"
-        visible: setup.phonePart && setup.holding && setup.shown.people !== null && setup.shown.people !== undefined
-        Layout.fillWidth: true
-        setting: setup.shown.people || { key: "people", kind: "bool", label: "", help: "", value: false, choices: [] }
-        sioul: setup.sioul
-        theme: setup.theme
-        onSave: (key, value) => setup.act("set", { key: key, value: value })
-    }
-    // The line in the phone's shade while Sioul holds something (held apps phase 1, B1): on unless turned off.
-    SettingRow {
-        objectName: "appNotesShade"
-        visible: setup.phonePart && setup.holding && setup.shown.shade !== null && setup.shown.shade !== undefined
-        Layout.fillWidth: true
-        setting: setup.shown.shade || { key: "shade", kind: "bool", label: "", help: "", value: true, choices: [] }
-        sioul: setup.sioul
-        theme: setup.theme
-        onSave: (key, value) => setup.act("set", { key: key, value: value })
-    }
+    // Holding, people's messages held too and the line in the shade are switched in Settings ▸ What
+    // reaches you ▸ Other apps on your phones (the redesign of 24 November 2026), with the gathered times.
     Label {
         visible: setup.phonePart
         text: setup.shown.times
@@ -227,17 +201,6 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.Wrap
         color: setup.theme.text
-    }
-    Flow {
-        visible: setup.phonePart
-        Layout.fillWidth: true
-        spacing: 6
-
-        Button {
-            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
-            text: setup.sioul.text("appnotes-times-change")
-            onClicked: setup.sioul.reminderOpened("settings:reminders.gathered", "", "")
-        }
     }
     Label {
         visible: setup.phonePart

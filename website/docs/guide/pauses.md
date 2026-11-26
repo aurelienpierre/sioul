@@ -14,7 +14,7 @@ Sioul is not an emergency service. It does not watch you, and it acts only when 
 
 Press **Free time** and now is leisure, whatever the hour, until you press it again.
 
-- **Who reaches you**: your safe senders' calls and messages, their mail shown without a notification, and your Always through people. **Nothing at all** keeps even your safe senders away: this time, from the status line's menu (a right click or a long press on **Free time**, while it is on); every time, under **In Free time** in Settings ▸ What reaches you ▸ Your rules ▸ **Moments**. Doses and the codes you asked for still come. What waits, and what still comes: [What reaches you, by time](notifications.md#by-time).
+- **Who reaches you**: your safe senders' calls and messages, their mail shown without a notification, and your Always through people. **Nothing at all** keeps even your safe senders away: this time, from the status line's menu (a right click or a long press on **Free time**, while it is on); every time, in Settings ▸ What reaches you ▸ **Do not disturb comes on by itself**. Doses and the codes you asked for still come. What waits, and what still comes: [What reaches you, by time](notifications.md#by-time).
 - **What is offered**: the Tasks page shows "Free time" and, under "If you want:", your own leisure items, in the order you made them, eight at most. Nothing to finish, no next step, no timer. Movement and exercise are among them unless you turn **Offer movement and exercise** off in [Settings ▸ Pauses](settings.md#pauses); with **Even days** on (for an illness that limits your energy), they are off unless you turn them on.
 - **A focus session** running stops when you press it, and counts; Sioul offers a line on where you stopped.
 - **The night comes first**: Free time ends by itself when your night begins (or at midnight without one), and a nap in it is a nap.
@@ -85,7 +85,7 @@ From Free time, **Keep my usual end** turns it into a pause that moves nothing: 
 
 ## Notifications and do-not-disturb {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: the **Pause** and **Free time** columns of What comes when, in [What reaches you](notifications.md#by-time); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>During a pause and in Free time, Sioul's own notifications wait on all your devices, and each device silences itself as far as its system lets it. What waits and what still comes: the **Pause** and **Free time** columns of What comes when, worked out, in [What reaches you](notifications.md#by-time); what each phone and computer does: [Do not disturb on every device](notifications.md#what-each-system-does).
 
 ## What Sioul does not do {#what-sioul-does-not-do}
 

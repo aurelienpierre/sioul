@@ -66,6 +66,7 @@
 //! - [`reach`]: who reaches you, on which channel, and the clock that says what time it is, ahead.
 //! - [`attention`]: what reaches you, and when: one matrix of who and what by time, its pipeline, its words.
 //! - [`behaviours`]: the matrix read as a few choices for Settings ▸ What reaches you: a behaviour per circle, Sioul's own notices in four groups.
+//! - [`exceptions`]: what reaches you read as the usual rule and its exceptions: every store read as differences from the start, said in sentences, written back in the same shapes; which line decides.
 //! - [`mailnote`]: new mail as a notification, at the times it may come.
 //! - [`letters`]: paper letters: a scan read by OCR, understood, and shown as a card.
 //! - [`voicemail`]: voicemail that the phone operator sends by mail.
@@ -255,6 +256,7 @@ pub mod titles;
 pub mod duplicates;
 pub mod einvoice;
 pub mod everywhere;
+pub mod exceptions;
 pub mod extensions;
 pub mod folders;
 pub mod github;

@@ -12,7 +12,9 @@
 // Each choice is saved at once, the row whole ("attention.<row>"). With
 // `words` (What reaches you ▸ What comes when), each cell says its value in
 // one or two words in place of a mark, and the columns read now (`now`)
-// are marked.
+// are marked. With `explains` (What comes when, worked out: read-only), a
+// press says which line decides the cell (its `by`) and offers "Add an
+// exception for this…" (`except`, with the exception the cell starts from).
 
 pragma ComponentBehavior: Bound
 
@@ -34,6 +36,11 @@ ColumnLayout {
     // A row's words, nine of them, the one chosen changed.
     // `shown`: the row's words as it showed them, so that only the cell changed is set.
     signal save(string key, var value, var shown)
+    // Read-only (`explains`): "Add an exception for this…" pressed on a cell, `start` its exception.
+    signal except(var start)
+
+    // Read-only: a press says which line decides the cell, and offers an exception for it.
+    property bool explains: false
 
     // Where a row is saved: "attention." and its id ("attention.mail.safe").
     property string prefix: "attention."
@@ -131,6 +138,8 @@ ColumnLayout {
             return []
         const column = grid.columns.find(c => c.id === grid.openCell.column)
         const out = [{ head: grid.openRow.label + " · " + (column ? column.label : "") }, { note: grid.openRow.help }]
+        if (grid.explains)
+            return [out[0], { note: grid.openCell.by || "" }].concat(grid.openCell.except ? [{ id: "except", label: grid.sioul.text("reach-add-for-this") }] : [])
         if (grid.openCell.locked)
             return out.concat([{ note: grid.openCell.locked }])
         return out.concat(grid.openRow.choices.filter(c => grid.openCell.choices.indexOf(c.id) >= 0))
@@ -519,7 +528,7 @@ ColumnLayout {
                 required property var modelData
                 readonly property bool said: line.modelData.head !== undefined || line.modelData.note !== undefined
                 // The value the cell has: said in bold and in the accent, beside its own mark.
-                readonly property bool current: !line.said && grid.openCell !== null && grid.openCell.value === line.modelData.id
+                readonly property bool current: !line.said && !grid.explains && grid.openCell !== null && grid.openCell.value === line.modelData.id
 
                 enabled: !line.said
                 Accessible.checkable: !line.said
@@ -528,7 +537,7 @@ ColumnLayout {
                     spacing: 8
 
                     LevelMark {
-                        visible: !line.said && !grid.words
+                        visible: !line.said && !grid.words && !grid.explains
                         value: line.said ? "" : line.modelData.id
                         always: grid.openRow !== null && grid.openRow.id.endsWith(".always")
                         tint: line.current ? grid.theme.accent : grid.theme.text
@@ -546,7 +555,12 @@ ColumnLayout {
                         color: line.modelData.note !== undefined ? grid.theme.muted : line.current ? grid.theme.accent : grid.theme.text
                     }
                 }
-                onTriggered: grid.choose(line.modelData.id)
+                onTriggered: {
+                    if (grid.explains)
+                        grid.except(grid.openCell.except)
+                    else
+                        grid.choose(line.modelData.id)
+                }
             }
             onObjectAdded: (index, object) => choices.insertItem(index, object)
             onObjectRemoved: (index, object) => choices.removeItem(object)

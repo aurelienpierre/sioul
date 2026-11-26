@@ -14,7 +14,7 @@ Sioul n’est pas un service d’urgence. Il ne vous surveille pas, et n’agit 
 
 Appuyez sur **Temps libre** : le moment présent devient des loisirs, quelle que soit l’heure, jusqu’à ce que vous appuyiez de nouveau.
 
-- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leurs courriels affichés sans notification, et les personnes qui passent toujours. **Rien du tout** tient même vos expéditeurs sûrs à l’écart : cette fois-ci, depuis le menu de la ligne d’état (un clic droit ou un appui long sur **Temps libre**, tant qu’il est en cours) ; à chaque fois, sous **Pendant le temps libre** dans Paramètres ▸ Ce qui vous joint ▸ Vos règles ▸ **Moments**. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
+- **Qui vous joint** : les appels et les messages de vos expéditeurs sûrs, leurs courriels affichés sans notification, et les personnes qui passent toujours. **Rien du tout** tient même vos expéditeurs sûrs à l’écart : cette fois-ci, depuis le menu de la ligne d’état (un clic droit ou un appui long sur **Temps libre**, tant qu’il est en cours) ; à chaque fois, dans Paramètres ▸ Ce qui vous joint ▸ **« Ne pas déranger » se met tout seul**. Les rappels de prises et les codes demandés viennent toujours. Ce qui attend, et ce qui vient quand même : [Ce qui vous joint, par moment](notifications.md#by-time).
 - **Ce qui est proposé** : la page Tâches affiche « Temps libre » et, sous « Si vous voulez : », vos propres loisirs, dans l’ordre où vous les avez créés, huit au plus. Rien à finir, pas d’étape suivante, pas de minuteur. Le mouvement et l’exercice en font partie, sauf si vous désactivez **Proposer le mouvement et l’exercice** dans [Paramètres ▸ Pauses](settings.md#pauses) ; avec **Des journées égales** (pour une maladie qui limite votre énergie), ils n’en font pas partie, sauf si vous les activez.
 - **Une séance de concentration** en cours s’arrête quand vous appuyez, et compte ; Sioul propose une ligne sur où vous en êtes.
 - **La nuit d’abord** : le temps libre finit tout seul quand votre nuit commence (ou à minuit, sans nuit réglée), et une sieste pendant ce temps reste une sieste.
@@ -85,7 +85,7 @@ Depuis le temps libre, **Garder ma fin habituelle** en fait une pause qui ne dé
 
 ## Les notifications et « Ne pas déranger » {#do-not-disturb-on-every-device}
 
-<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : les colonnes **En pause** et **Temps libre** de Ce qui vient quand, dans [Ce qui vous joint](notifications.md#by-time) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
+<span id="silencing-the-phone-and-the-computer"></span>Pendant une pause et le temps libre, les notifications de Sioul attendent sur tous vos appareils, et chaque appareil se met en silence autant que son système le permet. Ce qui attend et ce qui vient quand même : les colonnes **En pause** et **Temps libre** de Ce qui vient quand, en détail, dans [Ce qui vous joint](notifications.md#by-time) ; ce que fait chaque téléphone et chaque ordinateur : [Ne pas déranger sur tous vos appareils](notifications.md#what-each-system-does).
 
 ## Ce que Sioul ne fait pas {#what-sioul-does-not-do}
 

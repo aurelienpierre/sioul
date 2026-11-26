@@ -3010,21 +3010,12 @@ pub mod qobject {
         #[qinvokable]
         fn reach_talk(self: Pin<&mut Sioul>, verb: &QString, key: &QString) -> QString;
 
-        /// A row of the matrix changed (`row`: "mail.safe", "codes"; `words`: its
-        /// words whole, a JSON list; `shown`: its words as the row showed them,
-        /// so that only the cells changed are set): what went wrong, else "".
+        /// What Settings ▸ What reaches you asks (`reaches::act`; `verb`:
+        /// "offered", "find", "save", "remove", "start"; `json` its
+        /// arguments): its answer as JSON; a change made is said in the
+        /// status line with Undo, and every page shown again.
         #[qinvokable]
-        fn reaches_set(self: Pin<&mut Sioul>, row: &QString, words: &QString, shown: &QString) -> QString;
-
-        /// A preset chosen ("usual", "quieter", "reachable"): what went wrong, else "".
-        #[qinvokable]
-        fn reaches_preset(self: Pin<&mut Sioul>, id: &QString) -> QString;
-
-        /// A choice of Settings ▸ What reaches you (`reaches::choose`; `what`:
-        /// "people.mail.safe", "group.reminders", "care.move"; `value`: a
-        /// behaviour's or a choice's id), its rows written whole: what went wrong, else "".
-        #[qinvokable]
-        fn reaches_choose(self: Pin<&mut Sioul>, what: &QString, value: &QString) -> QString;
+        fn reaches_act(self: Pin<&mut Sioul>, verb: &QString, json: &QString) -> QString;
 
         /// How someone reaches you, as JSON (`reaches::person`): a card's file or
         /// UID, or a sender's addresses (a JSON array, or one).
@@ -9012,28 +9003,19 @@ impl qobject::Sioul {
         QString::from(&crate::reaches::now_card(self.shared().realtime.load(Ordering::Relaxed)))
     }
 
-    fn reaches_set(self: Pin<&mut Self>, row: &QString, words: &QString, shown: &QString) -> QString {
-        let problem = crate::reaches::set_row(&row.to_string(), &words.to_string(), &shown.to_string());
-        if problem.is_empty() {
-            self.attention_changed();
+    fn reaches_act(mut self: Pin<&mut Self>, verb: &QString, json: &QString) -> QString {
+        let (answer, changed) = crate::reaches::act(&verb.to_string(), &json.to_string());
+        if let Some(changed) = changed {
+            let (qt, shared) = (self.qt_thread(), self.shared());
+            // Undo in the status line: the stores put back as they were, and every page shown again.
+            mail::offer_back(&qt, &shared, changed.line, move |qt, _shared| {
+                let problem = crate::reaches::undo(&changed.kept);
+                let _ = qt.queue(|mut sioul| sioul.as_mut().attention_changed());
+                problem
+            });
+            self.as_mut().attention_changed();
         }
-        QString::from(&problem)
-    }
-
-    fn reaches_preset(self: Pin<&mut Self>, id: &QString) -> QString {
-        let problem = crate::reaches::preset(&id.to_string());
-        if problem.is_empty() {
-            self.attention_changed();
-        }
-        QString::from(&problem)
-    }
-
-    fn reaches_choose(self: Pin<&mut Self>, what: &QString, value: &QString) -> QString {
-        let problem = crate::reaches::choose(&what.to_string(), &value.to_string());
-        if problem.is_empty() {
-            self.attention_changed();
-        }
-        QString::from(&problem)
+        QString::from(&answer)
     }
 
     fn person_sheet(&self, key: &QString, addresses: &QString) -> QString {

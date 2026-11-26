@@ -2389,6 +2389,40 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9]
     })
 }
 
+/// Rows put back as `to` has them (an exception taken out of What reaches
+/// you, a start chosen: `exceptions`): each cell as `to` says, a fixed cell
+/// kept; your people's mail and messages following Safe's again where
+/// `to`'s do, and taking Safe's cells as they are then. Written as `apply`
+/// writes a row, under the configuration's lock, from the file as it is
+/// then: a row as Sioul ships it taken out, your people's while it follows.
+/// The call screening's rows are left as they are.
+pub fn apply_back(path: &Path, config: &Config, rows: &[Row], to: &Attention) -> Result<(), String> {
+    crate::filelock::with_lock(path, || {
+        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let mut attention = Attention::of(&fresh);
+        let rows: Vec<Row> = rows.iter().copied().filter(|r| !screened(*r)).collect();
+        for row in &rows {
+            for column in Column::ALL {
+                if lock(*row, column).is_none() {
+                    attention.cells[row.index()][column.index()] = to.cell(*row, column);
+                }
+            }
+            if let Some(i) = follower(*row) {
+                attention.follows[i] = to.follows[i];
+            }
+        }
+        // A row of your people that follows takes Safe's cells as they stand now.
+        for people in [Row::People(Channel::Mail, Person::People), Row::People(Channel::Messages, Person::People)] {
+            if attention.follows(people) {
+                let Row::People(channel, _) = people else { continue };
+                let safe = Row::People(channel, Person::Safe);
+                attention.cells[people.index()] = attention.cells[safe.index()];
+            }
+        }
+        write(path, &fresh, &attention, &rows)
+    })
+}
+
 /// The refusal said when a write would set one of the call screening's rows.
 fn screened_refusal(key: &str) -> String {
     format!("{key}: the call screening's own (Settings ▸ Devices ▸ this phone's card ▸ The call screening on this phone: screening.unknown, screening.hidden)")
@@ -2448,7 +2482,29 @@ fn write_with(path: &Path, config: &Config, attention: &Attention, rows: &[Row],
         let words = attention.source_words(id);
         said.push((id.clone(), (!words.is_empty()).then_some(words)));
     }
-    crate::config::set_table(path, "attention", &said, if first { OLDER } else { &[] })
+    crate::config::set_table_ranked(path, "attention", &crate::config::words_items(&said), if first { OLDER } else { &[] }, &rank)
+}
+
+/// The key of `[attention]` that keeps the start chosen in Settings ▸ What
+/// reaches you ("usual", "quieter", "reachable": `exceptions::start_of`).
+/// Neither a row nor a source: a Sioul until 0.1.0 reads neither it nor
+/// anything else it does not know there, and keeps it when it writes the
+/// table (`config::set_table` sets only the keys it names); the sharing
+/// carries it as any key of the configuration.
+pub const START: &str = "start";
+
+/// The order of `[attention]`'s keys (`config::set_table_ranked`): the start,
+/// then the matrix's rows as `Row::ALL` lists them, then the sources' own
+/// rows by id; a key it does not know, none.
+pub fn rank(key: &str) -> Option<(u32, String)> {
+    let key = key.trim();
+    if key == START {
+        return Some((0, String::new()));
+    }
+    if let Some(row) = Row::read(key).filter(|r| r.id() == key) {
+        return Some((1 + row.index() as u32, String::new()));
+    }
+    is_source(key).then(|| (u32::MAX, key.to_string()))
 }
 
 // ---------------------------------------------------------------- time for you
