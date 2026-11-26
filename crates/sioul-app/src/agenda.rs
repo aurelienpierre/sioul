@@ -341,7 +341,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     } else {
         String::new()
     };
-    json(&serde_json::json!({
+    let mut card = serde_json::json!({
         "id": item.as_ref().map(|i| i.id.clone()).unwrap_or_default(),
         "key": o.key,
         "uid": o.uid,
@@ -388,13 +388,15 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         "pause": if o.recurring && text.contains("X-SIOUL-PAUSE") { crate::series::card_lines(&text).1 } else { String::new() },
         // An event an extension brought (its UID's form alone says so): where it comes from.
         "brought_by": sioul_core::extensions::uid_mark(&o.uid).map(|m| crate::backend::say("extension-event-from", &[("name", sioul_core::extensions::category(&m.extension))])).unwrap_or_default(),
-        "whose": whose,
-        // Another person's (`Occurrence::another_persons`): your rules for busy time never hold for it.
-        "another_persons": o.another_persons(),
         "own_answer": own_answer,
         "people": people,
         "geo": geo,
-    }))
+    });
+    // Whose agenda it is, and whether it is another person's (`Occurrence::another_persons`): your
+    // rules for busy time never hold for it. Set apart: the macro above reaches its depth.
+    card["whose"] = serde_json::json!(whose);
+    card["another_persons"] = serde_json::json!(o.another_persons());
+    json(&card)
 }
 
 /// Whether a calendar's name names `person` already, as whole words, case
