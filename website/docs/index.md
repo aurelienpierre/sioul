@@ -95,6 +95,10 @@ Most software splits one matter across a mail program, a calendar, a task list, 
 
 Money works the same way: the Budgets page counts each account from one income to the next, and each payment keeps the mail, the invoice or the letter that told of it beside your bank's line. A matter you follow for months, a tax return, a lease, a client's work, can be a project: its mail comes to it by itself, and it lays its tasks, events, notes and people on one line of time.
 
+## Your admin stays usable without Sioul
+
+Interoperability is the ground of Sioul. Your mail stays on your mail server, your agenda and your contacts on your calendar and contacts server, your notes in a folder of Markdown files, your papers and letters as the PDF files and images they are: every program that speaks these standards opens them, with Sioul or without it. There is no private file format. Sioul gathers only the management of your admin and the links between things, in one application on each system you use. Its extensions turn closed services, such as a school's timetable or a salon's bookings, into ordinary calendars and address books, which you can share with people who do not use Sioul. What opens each kind of data, and the few places where this does not hold yet: [Your admin stays usable without Sioul](guide/without-sioul.md)
+
 ## Your people
 
 Admin is done for others too: a child, a parent you help, a partner. Sioul is made for people who carry it for others, or alone, or both: parents alone with their children, people who are autistic, have ADHD or both, the self-employed.

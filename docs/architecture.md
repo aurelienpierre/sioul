@@ -18,6 +18,7 @@ New to Rust, Qt Quick, CXX-Qt, Fluent or Android? [Start here](start-here.md) ma
 - **History**: a file another device changes is kept as it was, on this device, to be put back ([database.md](database.md#earlier-versions)).
 - **Between your devices**: what only Sioul keeps (settings, senders, time, health…) travels as sealed records, one file per device, through a folder your sync app carries ([database.md](database.md)).
 - **Projects**: your own Markdown files, and one file that names them, among Sioul's own lists ([notes-folder.md](notes-folder.md#what-lives-where)).
+- **Every kind of data, one by one**: where it lives on the device and on servers, its format, what is Sioul's own, and the way out without Sioul's window: [formats.md](formats.md).
 
 ## Protocols
 - **Mail**: IMAP (RFC 9051, IDLE, CONDSTORE/QRESYNC), JMAP (RFC 8620/8621), SMTP submission.

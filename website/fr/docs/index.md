@@ -95,6 +95,10 @@ La plupart des logiciels éparpillent les pièces d’une même affaire entre le
 
 L’argent fonctionne de la même façon : la page Budgets suit chaque compte d’un revenu au suivant, et chaque paiement garde le courriel, la facture ou la lettre qui l’a annoncé à côté de la ligne de votre banque. Une affaire que vous suivez des mois, une déclaration d’impôts, un bail, le travail pour un client, peut être un projet : ses courriels lui arrivent tout seuls, et il pose ses tâches, ses événements, ses notes et ses personnes sur une ligne de temps.
 
+## Votre administratif reste utilisable sans Sioul {#your-admin-stays-usable-without-sioul}
+
+L’interopérabilité est le socle de Sioul. Vos courriels restent sur votre serveur de courriel, votre agenda et vos contacts sur votre serveur d’agendas et de contacts, vos notes dans un dossier de fichiers Markdown, vos papiers et vos courriers sous forme des fichiers PDF et des images qu’ils sont : tout programme qui parle ces normes les ouvre, avec Sioul ou sans lui. Il n’y a aucun format de fichier privé. Sioul ne rassemble que la gestion de votre administratif et les liens entre les choses, dans une même application sur chaque système que vous utilisez. Ses extensions changent des services fermés, comme l’emploi du temps d’un établissement scolaire ou les réservations d’un salon, en agendas et en carnets d’adresses ordinaires, que vous pouvez partager avec des personnes qui n’utilisent pas Sioul. Ce qui ouvre chaque type de données, et les quelques endroits où ce n’est pas encore vrai : [Votre administratif reste utilisable sans Sioul](guide/without-sioul.md)
+
 ## Vos proches {#your-people}
 
 Les démarches se font aussi pour d’autres : un enfant, un parent que vous aidez, un ou une partenaire. Sioul est fait pour les personnes qui les portent pour d’autres, ou seules, ou les deux : les parents seuls avec leurs enfants, les personnes autistes, avec un TDAH ou les deux, les indépendants.

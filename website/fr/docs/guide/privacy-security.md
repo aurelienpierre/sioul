@@ -65,7 +65,7 @@ La CNIL le résume : en 2024, « le nombre de violations touchant plus d’u
 
 Sioul tourne sur votre appareil. Il n’y a pas de serveur Sioul ni de compte chez nous ; Sioul n’envoie ni statistiques, ni rapports de plantage, ni vérification de mise à jour, et ne contacte jamais le développeur. Vos courriels, vos agendas et vos contacts ne voyagent qu’entre votre appareil et vos propres fournisseurs.
 
-Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers, lisibles par d’autres programmes, et à vous de les copier, de les sauvegarder ou de les effacer :
+Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers, lisibles par d’autres programmes, et à vous de les copier, de les sauvegarder ou de les effacer (quels programmes ouvrent chaque type de données, et là où ce n’est pas encore vrai : [Votre administratif reste utilisable sans Sioul](without-sioul.md)) :
 
 | Quoi | Où, sous Linux |
 |---|---|
@@ -77,7 +77,7 @@ Tout ce que Sioul garde est dans des fichiers simples, dans vos propres dossiers
 | Les notes | votre dossier de notes, là où vous l’avez choisi |
 | Les fichiers de vos papiers ; les numérisations de vos courriers | le dossier des papiers et celui des courriers, `~/Documents/Papers` et `~/Documents/Letters` sauf si vous en avez choisi d’autres |
 
-Sur un appareil qui a utilisé Sioul avant la version 0.0.12, les listes de Sioul, vos papiers et vos lettres scannées sont dans votre dossier de notes tant que vous ne les en avez pas sortis ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Sous Windows, les réglages de Sioul sont dans `%APPDATA%\sioul` et ses données dans `%LOCALAPPDATA%\sioul` ; sous macOS, les deux sont dans `~/Library/Application Support/sioul`. Sous Linux et macOS, Sioul rend ses propres dossiers accessibles à vous seul chaque fois qu’il démarre : les autres comptes du même ordinateur ne peuvent pas les ouvrir. Vos dossiers des notes, des papiers et des courriers gardent les droits que vous leur avez donnés.
+Sur un appareil qui a utilisé Sioul avant la version 0.0.12, les listes de Sioul, vos papiers et vos lettres scannées sont dans votre dossier de notes tant que vous ne les en avez pas sortis ([Où Sioul garde ses listes](sharing.md#where-sioul-keeps-its-lists)). Sous Windows, les réglages de Sioul sont dans `%APPDATA%\sioul`, ses données dans `%LOCALAPPDATA%\sioul`, et ce que Linux garde dans `~/.local/state/sioul/` dans `%LOCALAPPDATA%\state\sioul` ; sous macOS, ses réglages et ses données sont dans `~/Library/Application Support/sioul`, et ce que Linux garde dans `~/.local/state/sioul/` dans `~/Library/Application Support/state/sioul`. Sous Linux et macOS, Sioul rend ses propres dossiers accessibles à vous seul chaque fois qu’il démarre : les autres comptes du même ordinateur ne peuvent pas les ouvrir. Vos dossiers des notes, des papiers et des courriers gardent les droits que vous leur avez donnés.
 
 **Les mots de passe**, l’accès à Google, les clés et les jetons des services que vous activez, et les phrases de passe vont dans le trousseau de votre système : GNOME Keyring ou KWallet sous Linux, le Gestionnaire d’identification sous Windows, le Trousseau d’accès sous macOS ; sur Android, chiffrés avec une clé que garde son KeyStore. Jamais dans un fichier en clair.
 
