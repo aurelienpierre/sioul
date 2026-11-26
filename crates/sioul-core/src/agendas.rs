@@ -167,7 +167,8 @@ pub struct Said {
     /// plan (its reminders still come there), the nearest it knows; with
     /// "someone" in `whose` it would have read unsaid, so yours. Read only
     /// while `whose` says "shared": an older Sioul that changes `whose` leaves
-    /// it behind, unread.
+    /// it behind, unread while `whose` says another word, and read again if
+    /// `whose` is set back to "shared" there (second review: rare, said).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
     /// Whose name: a child's above all ("Léa").

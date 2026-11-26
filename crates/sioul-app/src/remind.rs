@@ -211,20 +211,27 @@ pub(crate) fn of_event(key: &str, start: i64) -> String {
 /// itself. Marked told in the state folder (`told-whose-reminds`), whatever
 /// there was to say.
 pub(crate) fn tell_once_since_whose(qt: &QtThread) {
+    if let Some(line) = once_since_whose(&load_config()) {
+        crate::backend::set_status(qt, line);
+    }
+}
+
+/// What `tell_once_since_whose` says, once on this device: None when it was
+/// said before or there is nothing to say; marked told either way.
+fn once_since_whose(config: &sioul_core::config::Config) -> Option<String> {
     let mark = sioul_core::config::state_dir().join("told-whose-reminds");
     if mark.exists() {
-        return;
+        return None;
     }
     let told_before = reminders::told_dir().is_dir();
-    let names: Vec<String> = sioul_core::agendas::all(&load_config()).into_iter().filter(|a| a.events && a.whose.another_person()).map(|a| a.name).collect();
+    let names: Vec<String> = sioul_core::agendas::all(config).into_iter().filter(|a| a.events && a.whose.another_person()).map(|a| a.name).collect();
     let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
     let _ = std::fs::write(&mark, "");
-    let line = match (names.is_empty(), told_before) {
-        (false, _) => say("reminders-update-theirs", &[("agendas", names.join(", "))]),
-        (true, true) => say("reminders-update-free", &[]),
-        (true, false) => return,
-    };
-    crate::backend::set_status(qt, line);
+    match (names.is_empty(), told_before) {
+        (false, _) => Some(say("reminders-update-theirs", &[("agendas", names.join(", "))])),
+        (true, true) => Some(say("reminders-update-free", &[])),
+        (true, false) => None,
+    }
 }
 
 /// An event's own reminder changed from its details, for every time it
@@ -512,6 +519,24 @@ mod tests {
         assert_eq!((untimed.about.as_str(), untimed.hint.as_str()), ("sioul:event/yoga", "/c/yoga.ics"), "no time known: its file");
         let task = reminders::Reminder { kind: Kind::Asked, target: "sioul:task/t1".into(), starts: None, ..event }.notice("Open");
         assert_eq!((task.about.as_str(), task.hint.as_str(), task.until), ("sioul:task/t1", "", None));
+    }
+
+    /// Said once on each device after the update (second review, item 6): the
+    /// agendas that no longer remind, by name; never twice.
+    #[test]
+    fn the_update_is_said_once_with_the_agendas_that_no_longer_remind() {
+        sioul_core::config::stand_ins_only();
+        let _turn = crate::children::TEST_STAND_INS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        use sioul_core::vdir::{self, Kind as Collections};
+        let mark = sioul_core::config::state_dir().join("told-whose-reminds");
+        let _ = std::fs::remove_file(&mark);
+        let calendar = vdir::create(Collections::Calendars, vdir::LOCAL, "Kim's lessons, update test", None, &["VEVENT"]).unwrap();
+        let config: sioul_core::config::Config = toml::from_str(&format!("[agenda.calendars.\"{}\"]\nwhose = \"someone\"\n", sioul_core::agendas::place(&calendar))).unwrap();
+        let said = once_since_whose(&config).unwrap_or_default();
+        assert!(said.contains("Kim's lessons, update test"), "{said}");
+        assert_eq!(once_since_whose(&config), None, "once");
+        let _ = std::fs::remove_dir_all(&calendar.dir);
+        let _ = std::fs::remove_file(&mark);
     }
 
     #[test]

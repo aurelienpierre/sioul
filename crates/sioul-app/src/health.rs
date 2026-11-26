@@ -8477,5 +8477,12 @@ mod tests {
         days.change(friday, "nap:0", |b| b.off = true);
         let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &[], held: &Vec::new, tonight: true }, friday, &now);
         assert!(view.items.iter().filter(|i| i.key == "nap:0").all(|i| i.off && i.waking.is_empty() && !i.rings), "taken out: no alarm");
+        // The day's whole days in words: yours, never another person's (their day off; second review, item 2).
+        let midnight = friday.to_zoned(now.time_zone().clone()).unwrap().timestamp().as_second();
+        let whole = |summary: &str, other: bool| sioul_core::agenda::Occurrence { summary: summary.into(), all_day: true, start: midnight, end: midnight + 86_400, theirs: other, other_person: other, ..Default::default() };
+        let events = [whole("Kim's day off", true), whole("Holiday", false)];
+        let view = day_view(&health, &HealthState::default(), &DoseRecords::default(), &knowledge, &days, &Around { events: &events, held: &Vec::new, tonight: true }, friday, &now);
+        let said = view.lines.join("\n");
+        assert!(said.contains("Holiday") && !said.contains("Kim's day off"), "{said}");
     }
 }

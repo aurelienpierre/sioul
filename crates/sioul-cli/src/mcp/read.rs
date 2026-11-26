@@ -1054,13 +1054,6 @@ pub(super) fn tasks_list(s: &Session, desk: &Desk, by: &str, done: bool, query: 
 
 // The agenda and contacts.
 
-/// The agenda from `from` for `days` days, as an agent may see it
-/// (`Desk::agent_days`): each day's events, with the same fields and the
-/// same content as before (decision d), a task's time blocks among them;
-/// and the steps the plan gives it, within the plan's reach (`steps`: each
-/// task's address, title and time; pinned, done, or of that day's plan with
-/// no time left that day; laid in a time block, that block's address too:
-/// review of 1880bce, L14); health and your hours never.
 /// Whose each agenda of `events` is, where it names someone (24 November 2026): "Sam's
 /// agenda", by place. Another person's events (a partner's, another parent's, someone
 /// else's) are theirs, never the person's own appointments; a person closed to agents has
@@ -1083,6 +1076,13 @@ fn whose_note(said: &str, another: bool) -> String {
     }
 }
 
+/// The agenda from `from` for `days` days, as an agent may see it
+/// (`Desk::agent_days`): each day's events, with the same fields and the
+/// same content as before (decision d), a task's time blocks among them;
+/// and the steps the plan gives it, within the plan's reach (`steps`: each
+/// task's address, title and time; pinned, done, or of that day's plan with
+/// no time left that day; laid in a time block, that block's address too:
+/// review of 1880bce, L14); health and your hours never.
 pub fn agenda(s: &Session, args: &Args) -> Result<Answer, String> {
     let zone = sioul_core::zone::current();
     let today = sioul_core::zone::now().date();

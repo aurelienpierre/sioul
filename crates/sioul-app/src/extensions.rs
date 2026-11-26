@@ -124,35 +124,53 @@ pub(crate) fn another_persons(place: &str) -> bool {
 
 /// "Whose it is" of the agenda at `place` changed, crossing between the
 /// person's own and another person's (`was`: another person's before): each
-/// extension agenda written into it has its lessons taken out and written
-/// again with its mark as it is now (`busy_default`), as `choose_busy` does;
-/// a lesson's mark is not part of its hash, so a refresh alone would leave them.
+/// extension agenda written into it whose extension this device runs (and
+/// so writes back at once: `split_rewritable`) has its lessons taken out and
+/// written again with its mark as it is now (`busy_default`), as
+/// `choose_busy` does; a lesson's mark is not part of its hash, so a refresh
+/// alone would leave them. The others are left as they are, a line in their
+/// log (second review, 1): taking them out from a device that never writes
+/// them back would empty that calendar on every device until the one that
+/// runs the extension refreshes. Their old mark is read only by the
+/// calendar's server, a phone's own calendar app and a Sioul 0.1.0; an
+/// updated Sioul decides by whose the agenda is, whatever the mark says.
 pub(crate) fn whose_changed(qt: &QtThread, place: &str, was: bool) {
     if another_persons(place) == was {
         return;
     }
     let Some(config) = crate::backend::config_read() else { return };
-    let agendas: Vec<(String, String)> = config.extensions.calendars.iter().filter(|(_, p)| p.as_str() == place).filter_map(|(key, _)| key.split_once('/').map(|(e, a)| (e.to_string(), a.to_string()))).collect();
-    if agendas.is_empty() {
+    let (rewritten, left) = split_rewritable(&config.extensions.calendars, place, &state::load(&state::path()));
+    for (id, agenda) in &left {
+        let _ = state::append_log(&state::log_path(id), &[format!("{} sioul: agenda {agenda}: whose its calendar is changed; its lessons left as they are, this device not running the extension", jiff::Timestamp::now())]);
+    }
+    if rewritten.is_empty() {
         return;
     }
     let (qt, place) = (qt.clone(), place.to_string());
     std::thread::spawn(move || {
-        let installed = state::load(&state::path());
         let Some(calendar) = door::calendar_at(&place) else { return };
         let mut refreshed = BTreeSet::new();
-        for (id, agenda) in agendas {
+        for (id, agenda) in rewritten {
             let (removed, refused) = door::take_out_of(&calendar, &id, &agenda);
             let _ = state::append_log(&state::log_path(&id), &[format!("{} sioul: agenda {agenda}: whose its calendar is changed; {removed} lessons taken out to rewrite their busy state, {refused} refused", jiff::Timestamp::now())]);
-            if let Some(i) = installed.get(&id)
-                && i.enabled
-                && (i.signed_in || i.offer.sign_in.is_none())
-                && refreshed.insert(id.clone())
-            {
+            if refreshed.insert(id.clone()) {
                 refresh(Some(&qt), &id);
             }
         }
     });
+}
+
+/// The extension agendas written into `place` (`[extensions.calendars]`, the
+/// same on every device), by (extension, agenda): first those whose
+/// extension this device runs, installed, enabled, and signed in or needing
+/// no sign-in (`installed`, this device's own), so that a refresh writes
+/// their lessons back at once; then the others, never taken out from here.
+fn split_rewritable(calendars: &BTreeMap<String, String>, place: &str, installed: &State) -> (Vec<(String, String)>, Vec<(String, String)>) {
+    calendars
+        .iter()
+        .filter(|(_, p)| p.as_str() == place)
+        .filter_map(|(key, _)| key.split_once('/').map(|(e, a)| (e.to_string(), a.to_string())))
+        .partition(|(id, _)| installed.get(id).is_some_and(|i| i.enabled && !i.leaving && (i.signed_in || i.offer.sign_in.is_none())))
 }
 
 /// Whose the calendar at `place` is, in words, for an extension's agenda
@@ -2164,6 +2182,25 @@ mod tests {
         let marked = |whose: &str| -> sioul_core::config::Config { toml::from_str(&format!("[agenda.calendars.\"cloud/lessons\"]\nwhose = \"{whose}\"\n")).unwrap() };
         assert!(!busy_offered(&collection, &marked("partner")) && !busy_offered(&collection, &marked("someone")) && busy_offered(&collection, &marked("yours")) && busy_offered(&collection, &marked("shared")));
         assert_eq!((busy_default(&collection, &marked("partner"), true), busy_default(&collection, &marked("yours"), true), busy_default(&collection, &marked("yours"), false)), (false, true, false));
+        // Whose changed on a device that does not run the extension (second review, 1): nothing to take
+        // out from here, its lessons left; one that runs it, signed in, rewrites them.
+        let calendars: BTreeMap<String, String> = [("school/lessons".to_string(), "cloud/lessons".to_string()), ("school/other".to_string(), "cloud/elsewhere".to_string())].into();
+        let (rewritten, left) = split_rewritable(&calendars, "cloud/lessons", &State::default());
+        assert!(rewritten.is_empty(), "not installed here: nothing taken out");
+        assert_eq!(left, [("school".to_string(), "lessons".to_string())]);
+        let offer = sioul_core::extensions::manifest::parse(&format!(
+            "format = 1\nserial = 1\n[[extension]]\nid = \"school\"\nversion = \"1\"\ninterface = 1\nname = {{ en = \"S\", fr = \"S\" }}\nabout = {{ en = \"S\", fr = \"S\" }}\nbrings = [\"agenda\"]\nhosts = [\"api.example.org\"]\nsign_in = \"app://cb\"\nfile = \"s.wasm\"\nsha256 = \"{}\"\n",
+            "0".repeat(64)
+        ))
+        .unwrap()
+        .offers
+        .remove(0);
+        let mut here = State { extensions: vec![Installed::new(offer)], ..State::default() };
+        assert!(split_rewritable(&calendars, "cloud/lessons", &here).0.is_empty(), "installed but not signed in: nothing taken out");
+        here.extensions[0].signed_in = true;
+        assert_eq!(split_rewritable(&calendars, "cloud/lessons", &here), (vec![("school".to_string(), "lessons".to_string())], Vec::new()));
+        here.extensions[0].enabled = false;
+        assert!(split_rewritable(&calendars, "cloud/lessons", &here).0.is_empty(), "disabled: nothing taken out");
         let chosen: sioul_core::config::Config = toml::from_str("[agenda.calendars.\"cloud/lessons\"]\nwhose = \"partner\"\n[extensions.busy]\n\"school/lessons\" = true\n").unwrap();
         assert!(chosen.extensions.busy_for("school", "lessons", busy_default(&collection, &chosen, false)), "a choice the person made is honoured");
         for lang in ["en", "fr"] {

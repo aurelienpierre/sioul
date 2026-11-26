@@ -26,9 +26,9 @@ ColumnLayout {
 
     required property var sioul
     required property var theme
-    // The persons each role may name, `agenda::setup`'s `persons`: {child: [{id, name}], partner: […], parent: […]}.
+    // The persons each role may name, `agenda::setup`'s `persons`: {child: [{id, name}], partner: […], parent: […], someone: […]}.
     property var persons: ({})
-    // "yours", "child", "parent", "partner" or "shared".
+    // "yours", "child", "parent", "partner", "someone" or "shared".
     property string whose: "yours"
     // Whose it is as a person, by id; "" none.
     property string personId: ""

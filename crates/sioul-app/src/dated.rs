@@ -29,8 +29,9 @@ pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> i
         occurrences
             .iter()
             .filter(|o| jiff::Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
-            // Never another person's event (a co-worker's lesson that day): not yours to stand for it (review of 3346ff96, 8).
-            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && !o.theirs && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+            // Never another person's event (a co-worker's lesson that day): not yours to stand for it
+            // (review of 3346ff96, 8); a child's event typed by hand still is (second review).
+            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && !o.another_persons() && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
             .collect()
     }
 }
@@ -331,6 +332,9 @@ mod tests {
         // Another person's at its time (a co-worker's lesson): never yours to stand for it (review of 3346ff96, 8).
         let theirs = Occurrence { key: "/nowhere/lesson.ics".into(), uid: "lesson".into(), summary: "Lesson".into(), theirs: true, other_person: true, start: at("14:00"), end: at("15:00"), ..Occurrence::default() };
         assert!(marked(std::slice::from_ref(&theirs)), "nor another person's");
+        // A child's event typed by hand for the child's appointment still stands for it (second review).
+        let childs = Occurrence { theirs: true, child: true, other_person: false, uid: "lea".into(), ..theirs.clone() };
+        assert!(!marked(std::slice::from_ref(&childs)), "a child's event does");
         let doctor = Occurrence { cancelled: false, ..cancelled };
         assert!(!marked(&[block, doctor]), "an event of yours at its time stands for it");
     }
