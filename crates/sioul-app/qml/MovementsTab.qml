@@ -10,7 +10,7 @@
 // count, no red: a sum only when the filters ask a question that has one.
 // A row opens on a tap, in a pane of its own with Back: every field, where
 // each fee was read, what told of it (each opens), what it is tied to. Its
-// menu (a long press, a right click, "⋯") runs the acts, each with Undo.
+// menu (⋮, a long press, a right click) runs the acts, each with Undo.
 // New movement sits at the top; For the declaration shows the books of a
 // declaration's period (sioul_core::books): what to declare and by when, the
 // VAT summary, the thresholds, and the receipts book, saved as CSV and PDF;
@@ -234,7 +234,8 @@ Item {
                 objectName: "movementsFilters"
                 // As wide as what it shows: the style's buttons are 100 pixels at least.
                 implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                text: tab.compact ? "" : tab.sioul.text("movements-filters")
+                // In words on a phone too: an icon alone was named on hover only.
+                text: tab.sioul.text("movements-filters")
                 icon.name: "view-filter"
                 icon.color: tab.theme.text
                 Accessible.name: tab.sioul.text("movements-filters")
@@ -400,9 +401,10 @@ Item {
                             font.weight: line.way === "in" ? Font.DemiBold : Font.Normal
                             color: tab.theme.text
                         }
+                        // Its menu, on a phone too (a long press opens it as well): ⋮, the one sign for more.
                         ToolButton {
-                            visible: !tab.compact
-                            text: "⋯"
+                            icon.name: "overflow-menu"
+                            icon.color: tab.theme.text
                             Accessible.name: tab.sioul.text("movements-menu")
                             onClicked: tab.menuOf(line.address)
                         }
@@ -448,7 +450,7 @@ Item {
                 spacing: 8
 
                 // Each button as wide as its name, never the style's 100 points: the row
-                // fits a phone's 360 points (10 November 2026: ⋯ was past its edge).
+                // fits a phone's 360 points (10 November 2026: ⋮ was past its edge).
                 Button {
                     objectName: "movementBack"
                     flat: true
@@ -484,7 +486,8 @@ Item {
                 }
                 ToolButton {
                     visible: tab.detail !== null
-                    text: "⋯"
+                    icon.name: "overflow-menu"
+                    icon.color: tab.theme.text
                     Accessible.name: tab.sioul.text("movements-menu")
                     onClicked: actions.show(tab.detail)
                 }

@@ -687,24 +687,26 @@ Item {
                     view: "notes"
                 }
 
-                // What the list shows, and of which type: one line under the buttons,
-                // as wide as the column gives, each choice kept on this device as it
-                // was left (notesview.rs). Their names show when the line has room
-                // for them; the boxes alone say them to a screen reader.
-                RowLayout {
+                // What the list shows, and of which type, each with its name: one line
+                // under the buttons when the column has room for both, else each on its
+                // own line, its name beside it; each choice kept on this device as it was
+                // left (notesview.rs).
+                GridLayout {
                     id: choices
 
-                    readonly property bool named: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.spacing + 4
+                    readonly property bool oneLine: choices.width >= showName.implicitWidth + typeName.implicitWidth + showBox.implicitWidth + typeBox.implicitWidth + 5 * choices.columnSpacing + 4
 
                     objectName: "noteChoices"
                     visible: !page.shown.missing && !notesHead.filtersFolded
                     width: notesHead.row.width
-                    spacing: 6
+                    columns: choices.oneLine ? 6 : 2
+                    columnSpacing: 6
+                    rowSpacing: 6
 
                     Label {
                         id: showName
 
-                        visible: choices.named
+                        objectName: "noteShowName"
                         text: page.sioul.text("note-show")
                         textFormat: Text.PlainText
                         color: page.theme.muted
@@ -753,12 +755,13 @@ Item {
                         }
                     }
                     Item {
+                        visible: choices.oneLine
                         implicitWidth: 4
                     }
                     Label {
                         id: typeName
 
-                        visible: choices.named
+                        objectName: "noteTypeName"
                         text: page.sioul.text("note-type")
                         textFormat: Text.PlainText
                         color: page.theme.muted
@@ -805,6 +808,7 @@ Item {
                         }
                     }
                     Item {
+                        visible: choices.oneLine
                         Layout.fillWidth: true
                     }
                 }
@@ -873,6 +877,9 @@ Item {
                     readonly property bool heading: row.modelData.type === "heading"
                     // A folder of the tree, or what changed lately: both fold.
                     readonly property bool folder: row.modelData.type === "folder" || row.modelData.type === "recent"
+                    // What changed lately is a heading of the list as All notes is: drawn alike
+                    // (no icon, the headings' weight and colour), its arrow because it folds.
+                    readonly property bool headed: row.heading || row.modelData.type === "recent"
 
                     width: list.width - 10
                     enabled: !row.heading
@@ -923,8 +930,8 @@ Item {
                             color: page.theme.muted
                         }
                         Icon {
-                            visible: !row.heading
-                            iconName: row.modelData.type === "recent" ? "document-open-recent" : row.folder ? "inode-directory" : ({ "image": "image-x-generic", "pdf": "application-pdf", "audio": "audio-x-generic", "document": "x-office-document" })[row.heading ? "" : row.modelData.note.kind] || "text-x-generic"
+                            visible: !row.headed
+                            iconName: row.folder ? "inode-directory" : ({ "image": "image-x-generic", "pdf": "application-pdf", "audio": "audio-x-generic", "document": "x-office-document" })[row.heading ? "" : row.modelData.note.kind] || "text-x-generic"
                             size: 16
                         }
                         ColumnLayout {
@@ -937,7 +944,7 @@ Item {
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 font.weight: row.heading || row.folder ? Font.DemiBold : Font.Normal
-                                color: row.heading ? page.theme.muted : page.theme.text
+                                color: row.headed ? page.theme.muted : page.theme.text
                             }
                             // Where it is, in the list and in what was found.
                             Label {
@@ -1003,8 +1010,10 @@ Item {
                         Layout.fillWidth: true
                         spacing: 6
 
+                        // Its title and path, cut in the room left: never asking their one-line width.
                         ColumnLayout {
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 0
                             spacing: 0
 
                             Label {
@@ -1016,11 +1025,14 @@ Item {
                                 elide: Text.ElideRight
                                 color: page.theme.text
                             }
+                            // Its path and its tags: a long path loses its middle, never its
+                            // file's name nor its tags, and never widens the panel.
                             Label {
                                 Layout.fillWidth: true
+                                Layout.preferredWidth: 0
                                 text: page.note ? page.note.path + (page.note.tags.length > 0 ? "  ·  #" + page.note.tags.join("  #") : "") : ""
                                 textFormat: Text.PlainText
-                                elide: Text.ElideRight
+                                elide: Text.ElideMiddle
                                 font.pixelSize: 12
                                 color: page.theme.muted
                             }

@@ -69,7 +69,7 @@ As it arrives, and each time the project's page shows it, mail is checked before
 
 A route can make a task of each message it takes: a shop's notification of a sale, "[New sale] Gift card 50 €", becomes the task "Gift card 50 €" in the project and in your plan, with the message one press away in its ties, everything to print in it. Nothing of the mail is copied into the task.
 
-- **Make a task of each message**, under a route, opens its form; from a message, **⋯ ▸ Make a task of mail like this…** opens the same form, filled with its sender and the words between brackets in its subject ("New sale"), in its project, or a new project you name there.
+- **Make a task of each message**, under a route, opens its form; from a message, **⋮ ▸ Make a task of mail like this…** opens the same form, filled with its sender and the words between brackets in its subject ("New sale"), in its project, or a new project you name there.
 - **The task**: its name ("Send a gift card"), words before its title ("Send:"), the list it goes into (your usual one unless you choose), **the date asked**, so many business days after the mail came (3 at first: a sale on Friday is asked for Wednesday), its first estimate, and the supplies each task will use ([Supplies](supplies.md)), which count as planned at once.
 - **Business days** are the days with working hours in your week (Monday to Friday when you set none), less your days off: the periods you typed, and public holidays once their calendar is subscribed ([Vacations and holidays](hours.md)). Before that calendar is subscribed, a public holiday counts as a business day.
 - **Once per message, on every device**: two of your devices that receive the same mail make one task. A task you deleted is never made again.

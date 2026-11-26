@@ -1331,6 +1331,25 @@ Item {
             // their end: the areas ticked, then each address's mark, switched
             // on or off (on a phone, both in the folders' sheet). Nothing counted.
             Flow {
+                id: boxChips
+
+                // Each address by its whole name beside its mark when everything fits on the
+                // chips' one line; else its mark alone, its address on hover and to screen readers.
+                readonly property bool addressesNamed: {
+                    let used = 0
+                    for (let i = 0; i < boxChips.children.length; i++) {
+                        const child = boxChips.children[i]
+                        if (!child.visible)
+                            continue
+                        // An address by the width it would take named, never by its own: that one
+                        // follows this very choice.
+                        const width = child.namedWidth !== undefined ? child.namedWidth : child.implicitWidth
+                        if (width > 0)
+                            used += width + boxChips.spacing
+                    }
+                    return used - boxChips.spacing <= boxChips.width
+                }
+
                 objectName: "mailboxChips"
                 visible: page.boxListed
                 Layout.fillWidth: true
@@ -1369,7 +1388,9 @@ Item {
                 Repeater {
                     model: page.box && page.boxListed && !page.window.compact ? page.box.addresses : []
 
-                    delegate: AddressSwitch {}
+                    delegate: AddressSwitch {
+                        named: boxChips.addressesNamed
+                    }
                 }
                 // The topics' filter, once there are topics (a phone's in the folders' sheet).
                 Loader {
@@ -2295,6 +2316,9 @@ Item {
             required property var model
             required property int index
             readonly property bool chosen: page.selected[boxRow.model.key] === true
+            // Narrow (the list beside an open message): who and the time on its first
+            // line, the subject under them, as a phone's row, each readable.
+            readonly property bool narrow: boxRow.width < 560
 
             objectName: "mailboxRow:" + boxRow.model.subject
             width: boxList.width - 12
@@ -2362,80 +2386,128 @@ Item {
             ToolTip.text: page.theme.plain(page.boxRowWords(boxRow.model))
             ToolTip.delay: 900
 
-            contentItem: RowLayout {
-                spacing: 8
+            contentItem: ColumnLayout {
+                spacing: 3
 
-                Label {
-                    visible: text !== ""
-                    // rich on purpose: the marks' letters on their tints, each letter one of your own addresses' (`mailbox::letters`), escaped.
-                    text: page.marksText(boxRow.model.marks)
-                    textFormat: Text.RichText
-                    font.pixelSize: 11
-                    font.weight: Font.DemiBold
-                }
-                // Unread, and its time has come: a small dot, not bold.
-                Rectangle {
-                    Layout.preferredWidth: 7
-                    Layout.preferredHeight: 7
-                    radius: 3.5
-                    color: boxRow.model.unread ? page.theme.accent : "transparent"
-                }
-                // A message's own words are plain text: a "<" opens no tag, loads nothing.
-                Label {
-                    Layout.preferredWidth: Math.round(boxRow.availableWidth * 0.24)
-                    text: boxRow.model.who
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: boxRow.model.hostile ? page.theme.muted : page.theme.text
-                }
-                Label {
+                RowLayout {
                     Layout.fillWidth: true
-                    // The room left: a long subject is cut, never widens the list.
-                    Layout.preferredWidth: 0
-                    text: boxRow.model.subject
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: boxRow.model.hostile ? page.theme.muted : page.theme.text
-                }
-                // Quiet marks: answered, an attachment, flagged; spam's word, "forged".
-                Icon {
-                    visible: boxRow.model.answered
-                    iconName: "mail-replied"
-                    size: 14
-                }
-                Icon {
-                    visible: boxRow.model.attachments
-                    iconName: "mail-attachment"
-                    size: 14
-                }
-                Icon {
-                    visible: boxRow.model.flagged
-                    iconName: "mail-flag"
-                    size: 14
-                }
-                Label {
-                    visible: text !== ""
-                    text: page.quietWord(boxRow.model)
-                    textFormat: Text.PlainText
-                    font.pixelSize: 12
-                    color: boxRow.model.trust_level === "forged" ? page.theme.forged : page.theme.muted
-                }
-                // Flagged, or in the junk: your word, Spam or Not spam, the row changing
-                // at once; made only for such a row.
-                Loader {
-                    active: page.settles(boxRow.model)
-                    visible: active
-                    sourceComponent: Component {
-                        SettleButtons {
-                            item: page.boxRows[boxRow.index]
+                    spacing: 8
+
+                    Label {
+                        id: boxMarks
+
+                        visible: text !== ""
+                        // rich on purpose: the marks' letters on their tints, each letter one of your own addresses' (`mailbox::letters`), escaped.
+                        text: page.marksText(boxRow.model.marks)
+                        textFormat: Text.RichText
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+                    // Unread, and its time has come: a small dot, not bold.
+                    Rectangle {
+                        Layout.preferredWidth: 7
+                        Layout.preferredHeight: 7
+                        radius: 3.5
+                        color: boxRow.model.unread ? page.theme.accent : "transparent"
+                    }
+                    // A message's own words are plain text: a "<" opens no tag, loads nothing.
+                    Label {
+                        Layout.fillWidth: boxRow.narrow
+                        Layout.preferredWidth: boxRow.narrow ? 0 : Math.round(boxRow.availableWidth * 0.24)
+                        text: boxRow.model.who
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: boxRow.model.hostile ? page.theme.muted : page.theme.text
+                    }
+                    Label {
+                        visible: !boxRow.narrow
+                        Layout.fillWidth: true
+                        // The room left: a long subject is cut, never widens the list.
+                        Layout.preferredWidth: 0
+                        text: boxRow.model.subject
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: boxRow.model.hostile ? page.theme.muted : page.theme.text
+                    }
+                    // Quiet marks: answered, an attachment, flagged; spam's word, "forged".
+                    Icon {
+                        visible: boxRow.model.answered
+                        iconName: "mail-replied"
+                        size: 14
+                    }
+                    Icon {
+                        visible: boxRow.model.attachments
+                        iconName: "mail-attachment"
+                        size: 14
+                    }
+                    Icon {
+                        visible: boxRow.model.flagged
+                        iconName: "mail-flag"
+                        size: 14
+                    }
+                    Label {
+                        visible: text !== "" && !boxRow.narrow
+                        text: page.quietWord(boxRow.model)
+                        textFormat: Text.PlainText
+                        font.pixelSize: 12
+                        color: boxRow.model.trust_level === "forged" ? page.theme.forged : page.theme.muted
+                    }
+                    // Flagged, or in the junk: your word, Spam or Not spam, the row changing
+                    // at once; made only for such a row.
+                    Loader {
+                        active: page.settles(boxRow.model) && !boxRow.narrow
+                        visible: active
+                        sourceComponent: Component {
+                            SettleButtons {
+                                item: page.boxRows[boxRow.index]
+                            }
                         }
                     }
+                    Label {
+                        text: boxRow.model.time
+                        textFormat: Text.PlainText
+                        font.pixelSize: 13
+                        color: page.theme.muted
+                    }
                 }
-                Label {
-                    text: boxRow.model.time
-                    textFormat: Text.PlainText
-                    font.pixelSize: 13
-                    color: page.theme.muted
+                // Narrow: the subject on a line of its own, its quiet word and Spam or Not spam
+                // after it; made only then.
+                Loader {
+                    active: boxRow.narrow
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.leftMargin: boxMarks.width + (boxMarks.visible ? 8 : 0) + 7 + 8
+
+                    sourceComponent: Component {
+                        RowLayout {
+                            spacing: 8
+
+                            Label {
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 0
+                                text: boxRow.model.subject
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: boxRow.model.hostile ? page.theme.muted : page.theme.text
+                            }
+                            Label {
+                                visible: text !== ""
+                                text: page.quietWord(boxRow.model)
+                                textFormat: Text.PlainText
+                                font.pixelSize: 12
+                                color: boxRow.model.trust_level === "forged" ? page.theme.forged : page.theme.muted
+                            }
+                            Loader {
+                                active: page.settles(boxRow.model)
+                                visible: active
+                                sourceComponent: Component {
+                                    SettleButtons {
+                                        item: page.boxRows[boxRow.index]
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2625,27 +2697,52 @@ Item {
     }
 
     // An address's mark at the chips' end (a computer), switched on or off in
-    // the filter: its outline alone when off; its whole address in the
-    // tooltip and to screen readers.
+    // the filter: its outline alone when off; its whole address beside it where
+    // the row has room (`named`), else in the tooltip; to screen readers always.
     component AddressSwitch: ToolButton {
         id: addressSwitch
 
         required property var modelData
+        // Its address written beside its mark.
+        property bool named: false
+        // Its width so, whatever it shows now: what the chips' row weighs (`addressesNamed`).
+        readonly property real namedWidth: 16 + 6 + Math.ceil(addressWords.advanceWidth) + addressSwitch.leftPadding + addressSwitch.rightPadding
 
         objectName: "address:" + addressSwitch.modelData.account
         checkable: true
         checked: addressSwitch.modelData.on !== false
         Accessible.name: addressSwitch.modelData.title
-        ToolTip.visible: hovered
+        ToolTip.visible: hovered && !addressSwitch.named
         ToolTip.text: page.theme.plain(addressSwitch.modelData.title)
         ToolTip.delay: 400
         onToggled: {
             page.switchAddress(addressSwitch.modelData.account, addressSwitch.checked)
             addressSwitch.checked = Qt.binding(() => addressSwitch.modelData.on !== false)
         }
-        contentItem: AddressMark {
-            mark: addressSwitch.modelData
-            hollow: !addressSwitch.checked
+        contentItem: Row {
+            spacing: 6
+
+            AddressMark {
+                anchors.verticalCenter: parent.verticalCenter
+                mark: addressSwitch.modelData
+                hollow: !addressSwitch.checked
+            }
+            Label {
+                visible: addressSwitch.named
+                anchors.verticalCenter: parent.verticalCenter
+                text: addressSwitch.modelData.title
+                textFormat: Text.PlainText
+                font.pixelSize: 13
+                // Switched off: quieter, as its mark's outline.
+                color: addressSwitch.checked ? page.theme.text : page.theme.muted
+            }
+        }
+
+        TextMetrics {
+            id: addressWords
+
+            font.pixelSize: 13
+            text: addressSwitch.modelData.title
         }
     }
 

@@ -75,11 +75,11 @@ A message that borrows the name of a bank, a public service or your own domain, 
 
 **Every link says where it goes before it opens**: its site in bold and its full address, under the message, while the pointer is on it. On a touch screen, the first tap shows the address and the second opens it. Only web and mail links open; a mail link opens a new message in Sioul, to that address alone.
 
-Above the message, always in the same place:
+Above the message, each with its word (on a computer, a row too narrow for them all goes on a second line; on a phone, those it has no room for wait in its **⋮**, with their words, Reply, Archive and Delete staying in the row):
 
 - **Reply**, **Reply to all** (only when there are others to answer), **Forward**;
 - **Add ▾** (a task, an event, a note, a reply, the sender to your contacts) and **Link to…** (anything else: a task, a note, a project);
-- **Archive** (absent from the archive itself), **Delete**, **Junk** (on a phone, in the ⋮);
+- **Archive** (absent from the archive itself), **Delete**, **Junk**;
 - **Unsubscribe**, on a newsletter or a list's message that says how to leave it ([below](#unsubscribing)).
 
 Archiving, deleting and junking happen at once, with **Undo** in the status line for ten seconds; the server is told only after that. There is no "are you sure?". In the trash, **Delete for good** deletes it for good, with the same ten seconds.

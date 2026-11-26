@@ -4,13 +4,15 @@
 // One row of the Porch (docs/porch.md, "Notices"): a notice, or several of
 // one conversation, said the same way whatever it is: who, what and when on
 // one line on a computer, on two on a phone; an amount, right-aligned in
-// tabular figures; the kind's main action (Open, Reply, Call back, See the
-// scan, Open in Budgets); and two quiet actions, Mark read where its item
-// has a read state, and Dismiss, which act at once, the page offering ten
-// seconds to undo them. On a phone those two are in the row's menu, at a
-// long press; on a computer the menu (⋮, a right click, the Menu key or
-// Shift+F10) holds the kind's other actions. What a kind shows under its
-// row (a voicemail, a reply's box) is the row's own content.
+// tabular figures; the kind's main action in words (Open, Reply, Call back,
+// See the scan, Open in Budgets); and two quiet actions, Mark read where its
+// item has a read state, and Dismiss, which act at once, the page offering
+// ten seconds to undo them. On a computer each action keeps a column of its
+// own, the same on every row, so that ✕ never moves from row to row; the
+// menu (⋮, a right click, the Menu key or Shift+F10) holds the kind's other
+// actions. On a phone Mark read and Dismiss are in that menu, in words,
+// behind a ⋮ every row shows (a long press opens it too). What a kind shows
+// under its row (a voicemail, a reply's box) is the row's own content.
 
 pragma ComponentBehavior: Bound
 
@@ -41,6 +43,9 @@ ItemDelegate {
     property string note: ""
     // The kind's main action, beside it ("" none: a click is its Open).
     property string mainText: ""
+    // On a computer, the main action's column: as wide on every row, so that the
+    // dates end at one place (a longer action widens its own row only).
+    property real mainColumn: 120
     property string mainIcon: ""
     // The kind's other actions, in the row's menu: [{id, text, icon}].
     property var more: []
@@ -190,10 +195,9 @@ ItemDelegate {
                 font.features: { "tnum": 1 }
                 color: row.theme.text
             }
+            // A phone's row with nothing more to say: its main action, in words, on its one line.
             Button {
-                id: main
-
-                visible: row.mainText !== "" && !row.compact
+                visible: row.compact && row.mainText !== "" && (row.notice.what || "") === ""
                 flat: true
                 font.pixelSize: 13
                 text: row.theme.plain(row.mainText)
@@ -202,24 +206,47 @@ ItemDelegate {
                 Accessible.name: (row.notice.who || "") + ", " + text
                 onClicked: row.mainPressed()
             }
-            // A phone's row with nothing more to say: its main action on its one line.
-            ToolButton {
-                visible: row.compact && row.mainText !== "" && (row.notice.what || "") === ""
-                icon.name: row.mainIcon !== "" ? row.mainIcon : "go-next"
-                icon.color: row.theme.text
-                Accessible.name: row.mainText
-                onClicked: row.mainPressed()
+            // A computer's columns, each the same width on every row, whether its
+            // action is there or not: the main action, Mark read, Dismiss, ⋮.
+            Item {
+                visible: !row.compact
+                Layout.preferredWidth: Math.max(row.mainColumn, main.visible ? main.implicitWidth : 0)
+                Layout.preferredHeight: main.implicitHeight
+
+                Button {
+                    id: main
+
+                    visible: row.mainText !== ""
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    flat: true
+                    font.pixelSize: 13
+                    text: row.theme.plain(row.mainText)
+                    icon.name: row.mainIcon
+                    icon.color: row.theme.text
+                    Accessible.name: (row.notice.who || "") + ", " + text
+                    onClicked: row.mainPressed()
+                }
             }
-            ToolButton {
-                objectName: "readButton"
-                visible: row.readable && !row.compact
-                icon.name: "dialog-ok-apply"
-                icon.color: row.theme.muted
-                Accessible.name: row.sioul.text("notice-read")
-                ToolTip.visible: hovered
-                ToolTip.text: row.sioul.text("notice-read")
-                ToolTip.delay: 400
-                onClicked: row.readPressed()
+            Item {
+                visible: !row.compact
+                Layout.preferredWidth: readButton.implicitWidth
+                Layout.preferredHeight: readButton.implicitHeight
+
+                ToolButton {
+                    id: readButton
+
+                    objectName: "readButton"
+                    visible: row.readable
+                    anchors.centerIn: parent
+                    icon.name: "dialog-ok-apply"
+                    icon.color: row.theme.muted
+                    Accessible.name: row.sioul.text("notice-read")
+                    ToolTip.visible: hovered
+                    ToolTip.text: row.sioul.text("notice-read")
+                    ToolTip.delay: 400
+                    onClicked: row.readPressed()
+                }
             }
             ToolButton {
                 objectName: "dismissButton"
@@ -232,20 +259,31 @@ ItemDelegate {
                 ToolTip.delay: 400
                 onClicked: row.dismissPressed()
             }
-            ToolButton {
-                id: moreButton
+            // ⋮: on a computer, wherever its menu holds more than Mark read and Dismiss
+            // (the kind's other actions, something new tied to it, a tie), its column
+            // kept on every row; on a phone, always, with Mark read and Dismiss in words.
+            Item {
+                Layout.preferredWidth: moreButton.implicitWidth
+                Layout.preferredHeight: moreButton.implicitHeight
 
-                visible: !row.compact && row.more.length > 0
-                icon.name: "overflow-menu"
-                icon.color: row.theme.text
-                Accessible.name: row.sioul.text("ui-more")
-                ToolTip.visible: hovered
-                ToolTip.text: row.sioul.text("ui-more")
-                ToolTip.delay: 400
-                onClicked: row.showMenu(moreButton)
+                ToolButton {
+                    id: moreButton
+
+                    visible: row.compact || row.more.length > 0 || (row.source !== null && row.window !== null)
+                    anchors.centerIn: parent
+                    icon.name: "overflow-menu"
+                    icon.color: row.theme.text
+                    Accessible.name: row.sioul.text("ui-more")
+                    // Whose row it is, for a screen reader going from one ⋮ to the next.
+                    Accessible.description: [row.notice.who, row.notice.what].filter(t => !!t).join(", ")
+                    ToolTip.visible: hovered
+                    ToolTip.text: row.sioul.text("ui-more")
+                    ToolTip.delay: 400
+                    onClicked: row.showMenu(moreButton)
+                }
             }
         }
-        // A phone's second line: what, its main action as its icon.
+        // A phone's second line: what, then its main action in words.
         RowLayout {
             visible: row.compact && (row.notice.what || "") !== ""
             Layout.fillWidth: true
@@ -261,11 +299,14 @@ ItemDelegate {
                 font.italic: row.veiled
                 color: row.veiled ? row.theme.muted : row.theme.text
             }
-            ToolButton {
+            Button {
                 visible: row.mainText !== ""
-                icon.name: row.mainIcon !== "" ? row.mainIcon : "go-next"
+                flat: true
+                font.pixelSize: 13
+                text: row.theme.plain(row.mainText)
+                icon.name: row.mainIcon
                 icon.color: row.theme.text
-                Accessible.name: row.mainText
+                Accessible.name: (row.notice.who || "") + ", " + text
                 onClicked: row.mainPressed()
             }
         }
@@ -290,8 +331,8 @@ ItemDelegate {
         }
     }
 
-    // Mark read and Dismiss, then the kind's own; on a phone its main action
-    // first; then something new tied to it, and a tie to what exists.
+    // Mark read and Dismiss, then the kind's own; then something new tied to
+    // it, and a tie to what exists. Its main action stays on the row, in words.
     Loader {
         id: rowMenu
 
@@ -306,14 +347,6 @@ ItemDelegate {
                 menu.addItem(linking.createObject(menu))
             }
 
-            MenuItem {
-                visible: row.compact && row.mainText !== ""
-                height: visible ? implicitHeight : 0
-                text: row.theme.plain(row.mainText)
-                icon.name: row.mainIcon
-                icon.color: row.theme.text
-                onTriggered: row.mainPressed()
-            }
             MenuItem {
                 visible: row.readable
                 height: visible ? implicitHeight : 0
@@ -339,7 +372,7 @@ ItemDelegate {
                     icon.color: row.theme.text
                     onTriggered: row.chosen(modelData.id)
                 }
-                onObjectAdded: (index, object) => menu.insertItem(3 + index, object)
+                onObjectAdded: (index, object) => menu.insertItem(2 + index, object)
                 onObjectRemoved: (index, object) => menu.removeItem(object)
             }
         }

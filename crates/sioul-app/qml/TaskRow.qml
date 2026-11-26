@@ -135,23 +135,35 @@ ItemDelegate {
 
         // Ticked, it is done; a step started shows half full. While choosing
         // what to change, the box above stands in its place: Done is in the bar.
+        // A task with steps is done with its last step: its circle, quieter, says
+        // so when pressed (the status line) or hovered, and to screen readers.
         AbstractButton {
             id: circle
+
+            readonly property string bySteps: row.task.has_steps && row.sioul ? row.sioul.text("task-done-by-steps") : ""
 
             visible: !(row.selecting && row.pickable)
             Layout.alignment: Qt.AlignTop
             Layout.topMargin: 2
             implicitWidth: 20
             implicitHeight: 20
-            enabled: !row.task.read_only && !row.task.has_steps
-            Accessible.name: row.sioul ? row.sioul.text(row.done ? "task-open-again" : "task-done") : ""
-            onClicked: row.tick(row.task.uid)
+            enabled: !row.task.read_only
+            Accessible.name: circle.bySteps !== "" ? circle.bySteps : row.sioul ? row.sioul.text(row.done ? "task-open-again" : "task-done") : ""
+            ToolTip.visible: circle.bySteps !== "" && circle.hovered
+            ToolTip.text: row.theme.plain(circle.bySteps)
+            ToolTip.delay: 400
+            onClicked: {
+                if (circle.bySteps !== "")
+                    row.sioul.status = circle.bySteps
+                else
+                    row.tick(row.task.uid)
+            }
 
             contentItem: Item {}
             background: Rectangle {
                 radius: 10
                 color: row.done ? row.theme.accent : "transparent"
-                border.width: circle.hovered || circle.visualFocus ? 2 : 1.5
+                border.width: (circle.hovered && !row.task.has_steps) || circle.visualFocus ? 2 : 1.5
                 border.color: row.task.has_steps ? row.theme.line : circle.hovered ? row.theme.accent : row.theme.muted
 
                 // Started: the left half filled.
@@ -241,12 +253,26 @@ ItemDelegate {
                     font.features: { "tnum": 1 }
                     color: row.theme.accent
                 }
+                // Its list's colour, named: its tip and screen readers say which list.
                 Rectangle {
+                    id: listDot
+
+                    readonly property string named: row.sioul && row.task.list !== "" ? row.sioul.textWith("task-row-list", "list", row.task.list) : ""
+
                     visible: row.task.list !== ""
                     Layout.preferredWidth: 8
                     Layout.preferredHeight: 8
                     radius: 4
                     color: row.task.color ? row.task.color : row.theme.accent
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: listDot.named
+                    ToolTip.visible: listHover.hovered
+                    ToolTip.text: row.theme.plain(listDot.named)
+                    ToolTip.delay: 400
+
+                    HoverHandler {
+                        id: listHover
+                    }
                 }
             }
             Label {
@@ -260,10 +286,14 @@ ItemDelegate {
                 font.pixelSize: 12
                 color: row.task.due_soon ? row.theme.warm : row.theme.muted
             }
+            // When it was done: cut within its column, never widening the row (a board's column).
             Label {
                 visible: row.done && !!row.task.done_on
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
                 text: row.task.done_on || ""
                 textFormat: Text.PlainText
+                elide: Text.ElideRight
                 font.pixelSize: 12
                 color: row.theme.muted
             }

@@ -137,7 +137,7 @@ Sioul has its own names for its parts. The design notes use them without explain
 | **costs, gain and margins** | What a task or an event asks of you (four costs, 0 to 10), what it gives back, and the time kept before and after it (`sioul_core::demands`). | [capacity.md](capacity.md) |
 | **needs** | Meals, naps and the night, each a *block* of the day, set first and kept free in the plan (`sioul_core::needs`). Not `sioul_core::blocks`, which is tasks pinned to a time. | [health.md](health.md) |
 | **where you stopped** | One line left when something interrupts you, shown again until you say it is done (`sioul_core::stopped`). | [end-to-end.md](end-to-end.md) |
-| **Done for today** | Closing the work day, or the whole day, at any hour. | [reviews.md](reviews.md) |
+| **Work done for today** | Closing the work day, or the whole day, at any hour. | [reviews.md](reviews.md) |
 | **the status line** | One sentence about what happened last, with "Undo"; the title bar on a computer, the bottom of the screen on a phone. | [design.md](design.md) |
 | **the places** | The column of icons on the left of the window, one per page. | [design.md](design.md) |
 | **sites** (older: **portals**) | Web-only mailboxes, chats and other sites, kept logged in on a computer, each in its own browser profile; on a phone, opened in the browser. | [sites.md](sites.md) |

@@ -83,7 +83,7 @@ Trois façons d’en commencer une :
 - **Facturer ce client**, sur la page d’un contact : un brouillon vierge pour ce client ([Vos clients](#your-clients)).
 - **Nouvelle**, au-dessus de la liste : un brouillon vierge. Vous y choisissez son client.
 
-Chacun s’ouvre dans l’éditeur. Un appui long, un clic droit ou **⋯** sur une ligne montre ce que vous pouvez en faire : **Ouvrir**, **Payée…**, **Écrire le courriel**, **Imprimer à nouveau**, **Avoir…**, ou **Supprimer** pour un brouillon. Un brouillon écrit par une version plus récente de Sioul est en lecture seule ici aussi : son menu n’a pas de **Supprimer**. **Pour la déclaration**, au-dessus de la liste, ouvre vos livres ([La déclaration](budgets.md#the-declaration)) ; son **Retour** vous ramène ici.
+Chacun s’ouvre dans l’éditeur. Son **⋮**, sur un téléphone aussi, montre ce que vous pouvez faire d’une ligne (un appui long ou un clic droit aussi) : **Ouvrir**, **Payée…**, **Écrire le courriel**, **Imprimer à nouveau**, **Avoir…**, ou **Supprimer** pour un brouillon. Un brouillon écrit par une version plus récente de Sioul est en lecture seule ici aussi : son menu n’a pas de **Supprimer**. **Pour la déclaration**, au-dessus de la liste, ouvre vos livres ([La déclaration](budgets.md#the-declaration)) ; son **Retour** vous ramène ici.
 
 ### L’éditeur {#the-editor}
 

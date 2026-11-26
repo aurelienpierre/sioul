@@ -2,7 +2,7 @@
 // Copyright © 2026 Aurélien Pierre
 
 // Sioul's icon in the tray (qml-desktop/Tray.qml): its menu holds Close the
-// work day and Close the whole day, each opening its sheet in the window, in
+// work day (Work done for today) and the whole day (Day done, before sleep), each opening its sheet in the window, in
 // a short menu (the window, the two closings, Quit); a click on one of its
 // messages goes to the window, which opens what the notice offered (on
 // Windows, the end of work's and the night's notices: main.qml's

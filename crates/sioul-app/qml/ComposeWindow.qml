@@ -59,6 +59,16 @@ SioulWindow {
     // width in a layout: in one row they would widen the whole window's column past
     // the screen, the fields and the text with it.
     readonly property bool narrow: frame.width - 2 * compose.theme.gap < actions.implicitWidth + discardButton.implicitWidth + sendButton.implicitWidth + 3 * 8 + 48
+    // The note whole between the buttons; else on its line above them, whole too
+    // (the Markdown hint was cut to "Markdown: …" between them on a computer).
+    readonly property bool saidBetween: !compose.narrow && frame.width - 2 * compose.theme.gap - (actions.implicitWidth + discardButton.implicitWidth + sendButton.implicitWidth + 3 * 8) >= Math.ceil(saidWords.advanceWidth) + 2
+
+    TextMetrics {
+        id: saidWords
+
+        font.pixelSize: 13
+        text: compose.said
+    }
 
     signal finished(string id)
 
@@ -625,10 +635,11 @@ SioulWindow {
                 }
             }
 
-            // On a narrow window (a phone), the note on a line of its own above the buttons:
-            // one line, or three when it says what stops sending.
+            // On a narrow window (a phone), or when it is longer than the room between the
+            // buttons, the note on a line of its own above them: one line, or three when it
+            // says what stops sending.
             Label {
-                visible: compose.narrow
+                visible: !compose.saidBetween
                 Layout.fillWidth: true
                 text: compose.said
                 textFormat: Text.PlainText
@@ -712,13 +723,13 @@ SioulWindow {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    // Delete and Send on the right, on a narrow window.
+                    // Delete and Send on the right, the note being above.
                     Item {
-                        visible: compose.narrow
+                        visible: !compose.saidBetween
                         Layout.fillWidth: true
                     }
                     Label {
-                        visible: !compose.narrow
+                        visible: compose.saidBetween
                         Layout.fillWidth: true
                         text: compose.said
                         textFormat: Text.PlainText

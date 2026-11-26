@@ -83,7 +83,7 @@ Three ways to start one:
 - **Bill this client**, on a contact's page: a blank draft for that client ([Your clients](#your-clients)).
 - **New**, above the list: a blank draft. You choose its client in it.
 
-Each opens in the editor. A long press, a right click or **⋯** on a row shows what you can do with it: **Open**, **Paid…**, **Write the mail**, **Print again**, **Credit note…**, or **Discard** for a draft. A draft written by a newer version of Sioul is read only here too: its menu has no **Discard**. **For the declaration**, above the list, opens your books ([The declaration](budgets.md#the-declaration)); its **Back** brings you here again.
+Each opens in the editor. Its **⋮**, on a phone too, shows what you can do with a row (a long press or a right click as well): **Open**, **Paid…**, **Write the mail**, **Print again**, **Credit note…**, or **Discard** for a draft. A draft written by a newer version of Sioul is read only here too: its menu has no **Discard**. **For the declaration**, above the list, opens your books ([The declaration](budgets.md#the-declaration)); its **Back** brings you here again.
 
 ### The editor {#the-editor}
 

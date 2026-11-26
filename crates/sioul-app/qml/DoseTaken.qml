@@ -53,6 +53,8 @@ Dialog {
     parent: Overlay.overlay
     anchors.centerIn: parent
     modal: true
+    // Escape, and a phone's Back, cancel it (SafePopup.qml): nothing is marked.
+    focus: true
     width: Math.min(440, (parent ? parent.width : 440) - 2 * dialog.theme.gap)
     title: dialog.sioul.text("dose-taken-title")
 

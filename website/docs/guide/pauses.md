@@ -28,7 +28,7 @@ When Free time takes some of your working hours, the end of today's work moves l
 - **It never goes past** an hour before you wind down for the night, your latest end of work (two hours after your usual end, unless you set **Latest end of work** in [Settings ▸ Pauses](settings.md#pauses)), the room the evening's time for you needs before the night, or midnight. It goes around the evening's events, meals and admin hours.
 - **Only light steps** go after your usual end; the day holds no more than before: what no longer fits goes to the next days, as the plan always lays it.
 - **Keep my usual end**, beside that sentence or in the status line's menu, leaves the end where it was, no reason asked: "Work ends at 17:00, as usual." Turn **The end of work moves** off in the settings to make it always so.
-- **Sioul ends it**: at the moved end, work rests, as after any work day. **Done for today** ends it earlier, as any day.
+- **Sioul ends it**: at the moved end, work rests, as after any work day. **Work done for today** ends it earlier, as any day.
 - Nothing is counted: no hours owed, no countdown, no record of your pauses.
 
 ## Pause {#pause}
@@ -61,7 +61,7 @@ Sioul's window is covered with a few lines: "Paused. Sioul is keeping everything
 "You are back. Nothing was lost." The rest of the day is as you chose in the settings:
 
 - **Lighter, as a hazy day**, unless you chose otherwise: today holds no more than a hazy day ([How is today?](tasks.md#how-is-today)), less room and one heavy step at most. "The rest of today is lighter.", while today's work is not over.
-- **No more work today**: the work day closes, as with **Done for today**. "Work waits until tomorrow at 09:00."
+- **No more work today**: the work day closes, as with **Work done for today**. "Work waits until tomorrow at 09:00."
 - **As planned**: nothing changes.
 
 When tomorrow is a working day, "Tomorrow can be lighter too.", with **Lighten tomorrow**, which makes tomorrow lighter, as a hazy day; doing nothing changes nothing. **Continue** shows Sioul again. What was held comes back slowly: the Porch opens at your next admin hours (else your next working hours, else tomorrow morning), or when you open it. Nothing asks what happened, nothing rates it, and closing the day in the evening does not mention it.

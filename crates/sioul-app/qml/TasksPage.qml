@@ -235,7 +235,7 @@ Item {
 
 
     // "Done for today": the end of the work day's review first (DayReview.qml,
-    // docs/reviews.md); its "Close the work day" closes the day as this button
+    // docs/reviews.md); its "Work done for today" closes the day as this button
     // always did, then `showClosing` says where everything went.
     function stopForToday() {
         page.window.reviewDay("work")
@@ -1000,7 +1000,7 @@ Item {
                                     Layout.alignment: Qt.AlignHCenter
                                     flat: true
                                     text: page.sioul.text("done-button")
-                                    icon.name: "weather-clear-night"
+                                    icon.name: "task-complete"
                                     icon.color: page.theme.text
                                     ToolTip.visible: hovered
                                     ToolTip.text: page.sioul.text("done-button-help")
@@ -1167,9 +1167,16 @@ Item {
                                     width: groups.width - 12
                                     spacing: 2
 
+                                    // Its project's or its list's name: wrapped within the list, two
+                                    // lines at most, never widening it past a phone's screen.
                                     Label {
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 0
                                         text: group.modelData.title
                                         textFormat: Text.PlainText
+                                        wrapMode: Text.Wrap
+                                        maximumLineCount: 2
+                                        elide: Text.ElideRight
                                         font.weight: Font.DemiBold
                                         font.pixelSize: 16
                                         color: page.theme.text

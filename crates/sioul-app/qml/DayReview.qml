@@ -6,7 +6,7 @@
 // night, the end of work as said then, tomorrow's first step and what the day
 // asked and gave, never a number. Then how the day felt, its mix, a note in
 // Markdown: each answer optional, and closing without any is as plain as with.
-// "Close the work day" closes it as "Done for today" always did, and the
+// "Work done for today" closes it as the Tasks button of that name always did, and the
 // screen after it says where everything went; "Not now" changes nothing. The
 // notes of the last days, folded, in the words said then: no count, no
 // streak, no calendar. Made the first time it is asked for (main.qml).

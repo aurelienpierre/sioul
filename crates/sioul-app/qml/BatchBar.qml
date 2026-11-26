@@ -165,6 +165,8 @@ ColumnLayout {
 
                 y: parent.height
                 padding: 10
+                // Escape, and a phone's Back, close it (SafePopup.qml).
+                focus: true
 
                 ColumnLayout {
                     spacing: 6

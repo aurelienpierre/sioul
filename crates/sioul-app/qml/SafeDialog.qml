@@ -27,6 +27,11 @@ Dialog {
     readonly property real roomWidth: safe.parent ? safe.parent.width - (safe.safeArea ? safe.safeArea.left + safe.safeArea.right : 0) : 800
     readonly property real roomHeight: safe.parent ? safe.parent.height - (safe.safeArea ? safe.safeArea.top + safe.safeArea.bottom : 0) : 800
 
+    // It takes the keyboard's focus when it opens: Escape, and a phone's Back,
+    // cancel it (Qt's dialogs take Android's Back only while they hold the
+    // focus: SafePopup.qml), rather than reaching the page under it.
+    focus: true
+
     topMargin: (safe.safeArea ? safe.safeArea.top : 0) + safe.safeGap
     bottomMargin: (safe.safeArea ? safe.safeArea.bottom : 0) + safe.safeGap
     leftMargin: (safe.safeArea ? safe.safeArea.left : 0) + safe.safeGap

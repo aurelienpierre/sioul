@@ -37,7 +37,7 @@ Now is always one of five times:
 | **Admin** | your hours for your admin | [Settings ▸ Hours](settings.md#hours) |
 | **Meals** | each meal, from getting it ready to its end | [Settings ▸ Hours](settings.md#hours), [Meals, rest and sleep](health.md#meals-rest-and-sleep) |
 | **Sleep** | the night, from winding down to waking; each nap, with its minutes to come back | [Settings ▸ Hours](settings.md#hours), [Meals, rest and sleep](health.md#meals-rest-and-sleep) |
-| **Leisure** | every other time: evenings, days without hours, time off, the rest of a day closed with **Done for today** | nothing to set |
+| **Leisure** | every other time: evenings, days without hours, time off, the rest of a day closed with **Work done for today** | nothing to set |
 
 **When they overlap**, sleep comes first, then meals, then the hours: lunch inside your working hours is a meal while it lasts; **Work four hours more** running into the night leaves the night to sleep. Working and admin hours may overlap: then what each brings comes, all together.
 
@@ -148,7 +148,7 @@ As of 17 November 2026, from Google's and Slack's own help pages. Other tools we
 
 ## Quiet time
 
-Quiet time is whenever it is not work's time: leisure (the evening, days without working hours, time off, the rest of a day you closed with **Done for today**), admin hours, a meal, sleep. Work rests until it comes back:
+Quiet time is whenever it is not work's time: leisure (the evening, days without working hours, time off, the rest of a day you closed with **Work done for today**), admin hours, a meal, sleep. Work rests until it comes back:
 
 - the Porch shows codes, and the mail your lists let through now;
 - work addresses fold on the Mail page, without their dots, and **All addresses** ticks only what the hours bring ([Mail](mail.md#all-addresses));
@@ -158,7 +158,7 @@ Quiet time is whenever it is not work's time: leisure (the evening, days without
 
 One sentence in the status line says until when: "Work comes back tomorrow at 09:00."
 
-**Closing is offered, never pressed.** Once your last hours of the day are over, the status line offers **Close the work day** ([Tasks](tasks.md#the-end-of-the-day)); in the evening, **Close the whole day** ([Health](health.md#before-sleep)). On a small screen, the offer takes the place of the sentence while it stands. Nothing during sleep.
+**Closing is offered, never pressed.** Once your last hours of the day are over, the status line offers **Work done for today** ([Tasks](tasks.md#the-end-of-the-day)); in the evening, **Day done, before sleep** ([Health](health.md#before-sleep)). On a small screen, the offer takes the place of the sentence while it stands. Nothing during sleep.
 
 **The way back is never suggested.** It is there if you need it: the sentence in the status line opens a menu, with **Work half an hour more**, an hour, two hours, four hours; **Back to the usual hours**; or, the day you closed it, **Back to today's plan**. During a meal or sleep, the sentence opens no menu: they come first.
 

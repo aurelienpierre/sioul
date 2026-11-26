@@ -25,7 +25,7 @@ Three tests for anything added:
 - **What you send yourself**, from one of your addresses to another (a file from your phone), comes in any hour, never screened, when it is verified: a forged own address is a classic trick.
 - **Optional exception**: a short list of people who may reach you anytime. Empty by default.
 - **Opening**: a few sentences, then one card at a time. Small numbers are written as words; there are no badges.
-- **Closing**: "Done for today". It shows what got done, and says "nothing else needs you before Friday" when that is true.
+- **Closing**: "Work done for today". It shows what got done, and says "nothing else needs you before Friday" when that is true.
 
 ## Safe opening
 Before the message itself, each card shows:

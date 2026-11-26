@@ -37,7 +37,8 @@ ItemDelegate {
     property bool ending: false
     property bool compact: false
     property bool selected: false
-    // The width the times take, the same for every row of a list.
+    // The width the times take, the same for every row of a list (its widest time's,
+    // as the list measures it: AgendaPage's `timesWidth`).
     property real timeWidth: 96
 
     signal open
@@ -69,12 +70,13 @@ ItemDelegate {
     contentItem: RowLayout {
         spacing: 8
 
+        // Its time, whole: wrapped at its words when its column is narrower, never cut.
         Label {
             Layout.preferredWidth: row.timeWidth
             Layout.alignment: Qt.AlignTop
             text: row.when
             textFormat: Text.PlainText
-            elide: Text.ElideRight
+            wrapMode: Text.WordWrap
             font.pixelSize: row.compact ? 12 : 14
             font.features: { "tnum": 1 }
             color: row.theme.muted

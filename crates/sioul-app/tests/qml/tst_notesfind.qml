@@ -472,8 +472,10 @@ Item {
                     const words = box.contentItem
                     verify(words.width - words.leftPadding - words.rightPadding >= words.contentWidth - 0.5 || words.truncated, box.objectName + "'s words whole, or ended with an ellipsis (" + width + ")")
                 }
+                verify(named(page, "noteShowName").visible && named(page, "noteTypeName").visible, "Voir and Type said, at every width (" + width + ")")
+                for (const name of [named(page, "noteShowName"), named(page, "noteTypeName")])
+                    verify(rightOf(name) <= rightOf(column) + 0.5, name.objectName + " within its column (" + width + ")")
                 if (width === 412) {
-                    verify(line.named, "Voir and Type said on the phone")
                     for (const box of [named(page, "noteShow"), named(page, "noteType")])
                         verify(box.width >= box.implicitWidth - 0.5, box.objectName + " whole: " + box.width + " for " + box.implicitWidth)
                 }

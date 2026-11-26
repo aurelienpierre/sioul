@@ -26,6 +26,7 @@
 
 pragma ComponentBehavior: Bound
 
+import QtQml.Models
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Dialogs
@@ -420,14 +421,18 @@ Item {
         spacing: page.theme.gap
 
         ColumnLayout {
+            id: listColumn
+
             // Alone, the list takes the page; beside a card or the duplicates, its left part.
             readonly property bool alone: page.person === null && !page.duplicatesShown && page.personId === ""
+            // The width its row gives it: what its head measures its room on.
+            readonly property real given: listColumn.alone ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
 
             visible: !(page.window.compact && (page.person !== null || page.editing || page.duplicatesShown || page.personId !== ""))
             Layout.fillHeight: true
             Layout.fillWidth: alone
             Layout.minimumWidth: 0
-            Layout.preferredWidth: alone ? columns.width : Math.round((columns.width - columns.spacing) * 0.38)
+            Layout.preferredWidth: listColumn.given
             spacing: 8
 
             // The household, at the head: you, the others, a person to add.
@@ -451,113 +456,217 @@ Item {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
+            // The search and ⚙, and the list's actions with their words, all measured on
+            // the room the column is given (never on the row's own width, which its
+            // minimums would hold wide). On a computer nothing folds: the actions stand
+            // beside the search while they fit beside 200 points of it, else on a line of
+            // their own under it, wrapped, each still one press away. On a phone, "+"
+            // stays, and what has no room waits in ⋮ with its words (ActionFolds.qml).
+            ColumnLayout {
+                id: listHead
 
-                TextField {
-                    id: search
+                objectName: "contactsHead"
+                // The least the search keeps, where the column has it.
+                readonly property real searchLeast: 200
+                // The column's room, as its layout gives it (`given`).
+                readonly property real given: listColumn.given
+                // ⚙, and ⋮ when something waits in it, at the row's end.
+                readonly property real ends: contactsSettings.implicitWidth + (listMore.visible ? listMore.implicitWidth + headRow.spacing : 0)
+                // The search's least width: 200 points, or all the column has beside its ends
+                // and the actions that stand beside it ("+" on a tablet beside a card).
+                readonly property real searchWidth: Math.max(0, Math.min(listHead.searchLeast, listHead.given - listHead.ends - headRow.spacing - (listHead.oneLine && listHead.actionsWidth > 0 ? listHead.actionsWidth + headRow.spacing : 0)))
+                // The actions beside the search (a phone always: what does not fit folds).
+                readonly property bool oneLine: listFolds.folding || !listFolds.wraps
+                // The actions shown, side by side: the width they take beside the search.
+                readonly property real actionsWidth: {
+                    const shown = [newContact, mapToggle, selectToggle, duplicatesToggle, importButton].filter(a => a.visible)
+                    return shown.reduce((sum, a) => sum + a.implicitWidth, 0) + Math.max(0, shown.length - 1) * listActions.spacing
+                }
+
+                Layout.fillWidth: true
+                spacing: 6
+
+                ActionFolds {
+                    id: listFolds
+
+                    folding: page.theme.touch
+                    actions: [mapToggle, selectToggle, duplicatesToggle, importButton]
+                    // Beside the search at its least, its ends and, on a phone, "+".
+                    room: listHead.given - listHead.searchLeast - contactsSettings.implicitWidth - (listFolds.folding ? newContact.implicitWidth + listMore.implicitWidth + 3 * headRow.spacing : newContact.wideWidth + 3 * headRow.spacing)
+                    spacing: headRow.spacing
+                }
+                RowLayout {
+                    id: headRow
 
                     Layout.fillWidth: true
-                    placeholderText: page.sioul.text("ui-search")
-                    onTextEdited: searching.restart()
+                    spacing: 8
 
-                    Timer {
-                        id: searching
+                    TextField {
+                        id: search
 
-                        interval: 250
-                        onTriggered: page.sioul.searchContacts(search.text)
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: listHead.searchWidth
+                        placeholderText: page.sioul.text("ui-search")
+                        onTextEdited: searching.restart()
+
+                        Timer {
+                            id: searching
+
+                            interval: 250
+                            onTriggered: page.sioul.searchContacts(search.text)
+                        }
+                    }
+                    // The actions' place on this line, while they stand beside the search.
+                    Item {
+                        id: besideSearch
+
+                        visible: listHead.oneLine
+                        implicitWidth: listHead.actionsWidth
+                        implicitHeight: listActions.implicitHeight
+                    }
+                    // ⋮ (a phone): the actions the row has no room for, with their words; Select
+                    // and Duplicates ticked while they are on.
+                    ToolButton {
+                        id: listMore
+
+                        objectName: "contactsMore"
+                        visible: listFolds.folded.length > 0
+                        icon.name: "overflow-menu"
+                        icon.color: page.theme.text
+                        Accessible.name: page.sioul.text("ui-more")
+                        ToolTip.visible: hovered
+                        ToolTip.text: page.sioul.text("ui-more")
+                        ToolTip.delay: 400
+                        onClicked: listMenu.popup(listMore, 0, listMore.height)
+
+                        SioulMenu {
+                            id: listMenu
+
+                            Instantiator {
+                                model: listFolds.folded
+
+                                delegate: MenuItem {
+                                    required property var modelData
+
+                                    text: page.theme.plain(modelData.label)
+                                    icon.name: modelData.iconName
+                                    icon.color: page.theme.text
+                                    // On (Select, Duplicates): ticked, as screen readers say it.
+                                    checkable: modelData === selectToggle || modelData === duplicatesToggle
+                                    checked: modelData.checked
+                                    onTriggered: {
+                                        modelData.clicked()
+                                        // The press ticked it by itself: the action's state says.
+                                        checked = Qt.binding(() => modelData.checked)
+                                    }
+                                }
+                                onObjectAdded: (index, item) => listMenu.insertItem(index, item)
+                                onObjectRemoved: (index, item) => listMenu.removeItem(item)
+                            }
+                        }
+                    }
+                    SettingsButton {
+                        id: contactsSettings
+
+                        objectName: "contactsSettings"
+                        sioul: page.sioul
+                        theme: page.theme
+                        view: "contacts"
                     }
                 }
-                Button {
-                    visible: page.shown.can_add
-                    // As wide as what it shows: the style's buttons are 100 pixels at least.
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: page.sioul.text("ui-new-contact")
-                    icon.name: "contact-new"
-                    icon.color: page.theme.text
-                    // Narrow beside an open card, or on a phone: the icon alone, its name on hover.
-                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
-                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: page.theme.plain(text)
-                    Accessible.name: text
-                    onClicked: page.startNew()
-                }
-                // The list, or the map.
-                Button {
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: page.mapShown ? page.sioul.text("map-list") : page.sioul.text("map-show")
-                    icon.name: page.mapShown ? "view-list-text" : "mark-location"
-                    icon.color: page.theme.text
-                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
-                    Accessible.name: text
-                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: page.theme.plain(text)
-                    onClicked: page.mapShown = !page.mapShown
-                }
-                // Duplicates, in the place of a card: shown, the button is drawn selected (a state, not the main action).
-                Button {
-                    id: duplicatesButton
+                // Their line of their own under the search, wrapped (a computer beside an open card).
+                Item {
+                    id: underSearch
 
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: page.sioul.text("dup-open")
-                    icon.name: "edit-copy"
-                    checkable: true
-                    checked: page.duplicatesShown
-                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
-                    Accessible.name: text
-                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: page.theme.plain(text)
-                    onClicked: {
-                        if (page.duplicatesShown)
-                            page.duplicatesShown = false
-                        else
-                            page.showDuplicates()
-                        // A click flips its own tick: the page's state ticks it.
-                        duplicatesButton.checked = Qt.binding(() => page.duplicatesShown)
+                    visible: !listHead.oneLine
+                    Layout.fillWidth: true
+                    implicitHeight: listActions.implicitHeight
+                }
+                Flow {
+                    id: listActions
+
+                    parent: listHead.oneLine ? besideSearch : underSearch
+                    // On one line, as wide as its actions (a pixel more: never wrapped there).
+                    width: listHead.oneLine ? listHead.actionsWidth + 1 : underSearch.width
+                    spacing: 8
+
+                    // On a phone "+" alone (rule 10 allows it), never folded: one tap, as before.
+                    ActionButton {
+                        id: newContact
+
+                        objectName: "contactsNew"
+                        offered: page.shown.can_add
+                        compact: page.theme.touch
+                        theme: page.theme
+                        iconName: page.theme.touch ? "list-add" : "contact-new"
+                        label: page.sioul.text("ui-new-contact")
+                        onClicked: page.startNew()
                     }
-                }
-                // Many at once: each row a box (ContactSelection.qml); on, the button is drawn selected.
-                Button {
-                    id: selectButton
+                    // The list, or the map.
+                    ActionButton {
+                        id: mapToggle
 
-                    objectName: "contactsSelect"
-                    visible: !page.mapShown && page.shown.contacts.length > 0
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: page.sioul.text("contacts-select")
-                    icon.name: "edit-select-all"
-                    checkable: true
-                    checked: page.selecting
-                    display: page.person === null && !page.duplicatesShown && page.personId === "" && !page.window.compact ? AbstractButton.TextBesideIcon : AbstractButton.IconOnly
-                    Accessible.name: text
-                    ToolTip.visible: hovered && display === AbstractButton.IconOnly
-                    ToolTip.text: page.theme.plain(text)
-                    onClicked: {
-                        page.selecting = !page.selecting
-                        if (!page.selecting)
-                            page.selected = {}
-                        selectButton.checked = Qt.binding(() => page.selecting)
+                        folds: listFolds
+                        rank: 1
+                        theme: page.theme
+                        iconName: page.mapShown ? "view-list-text" : "mark-location"
+                        label: page.mapShown ? page.sioul.text("map-list") : page.sioul.text("map-show")
+                        onClicked: page.mapShown = !page.mapShown
                     }
-                }
-                // A vCard or a CSV file read, its contacts imported (ContactImport.qml).
-                Button {
-                    objectName: "contactsImport"
-                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
-                    text: page.sioul.text("books-import")
-                    icon.name: "document-import"
-                    icon.color: page.theme.text
-                    display: AbstractButton.IconOnly
-                    Accessible.name: text
-                    ToolTip.visible: hovered
-                    ToolTip.text: page.theme.plain(text)
-                    onClicked: importFile.open()
-                }
-                SettingsButton {
-                    id: contactsSettings
+                    // Many at once: each row a box (ContactSelection.qml).
+                    ActionButton {
+                        id: selectToggle
 
-                    sioul: page.sioul
-                    theme: page.theme
-                    view: "contacts"
+                        objectName: "contactsSelect"
+                        offered: !page.mapShown && page.shown.contacts.length > 0
+                        folds: listFolds
+                        rank: 2
+                        theme: page.theme
+                        iconName: "edit-select-all"
+                        label: page.sioul.text("contacts-select")
+                        // On, it is drawn selected (a state, not the main action).
+                        checkable: true
+                        checked: page.selecting
+                        onClicked: {
+                            page.selecting = !page.selecting
+                            if (!page.selecting)
+                                page.selected = {}
+                            // A click flips its own tick: the page's state ticks it.
+                            selectToggle.checked = Qt.binding(() => page.selecting)
+                        }
+                    }
+                    // Duplicates, in the place of a card.
+                    ActionButton {
+                        id: duplicatesToggle
+
+                        folds: listFolds
+                        rank: 3
+                        theme: page.theme
+                        iconName: "edit-copy"
+                        label: page.sioul.text("dup-open")
+                        // Shown, it is drawn selected (a state, not the main action).
+                        checkable: true
+                        checked: page.duplicatesShown
+                        onClicked: {
+                            if (page.duplicatesShown)
+                                page.duplicatesShown = false
+                            else
+                                page.showDuplicates()
+                            duplicatesToggle.checked = Qt.binding(() => page.duplicatesShown)
+                        }
+                    }
+                    // A vCard or a CSV file read, its contacts imported (ContactImport.qml).
+                    ActionButton {
+                        id: importButton
+
+                        objectName: "contactsImport"
+                        folds: listFolds
+                        rank: 4
+                        theme: page.theme
+                        iconName: "document-import"
+                        label: page.sioul.text("books-import")
+                        onClicked: importFile.open()
+                    }
                 }
             }
 
@@ -1046,10 +1155,10 @@ Item {
                                 }
                                 // Its words carry the card's name, an office's often long: never wider than the
                                 // card's column (on a phone in French, it widened the column past the screen's edge).
+                                // At the card's edge, as the button above: it is not nested under it (rule 17).
                                 Button {
                                     visible: page.person !== null
-                                    Layout.leftMargin: 18
-                                    Layout.maximumWidth: Math.max(0, cardScroll.availableWidth - 18)
+                                    Layout.maximumWidth: cardScroll.availableWidth
                                     flat: true
                                     objectName: "personSheetButton"
                                     text: page.theme.plain(page.sioul.textWith("attention-sheet-title", "name", page.person ? (page.person.name || page.sioul.text("attention-sheet-them")) : ""))

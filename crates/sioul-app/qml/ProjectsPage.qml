@@ -185,11 +185,12 @@ Item {
         anchors.margins: page.theme.gap
         spacing: page.theme.gap
 
-        // Every project; on a phone, the whole page until one is open.
+        // Every project; the whole page until one is open (its names whole, rather than cut
+        // beside an empty pane), then its left part, and on a phone the open one alone.
         ColumnLayout {
             visible: !(page.window.compact && page.openId !== "")
             Layout.fillHeight: true
-            Layout.fillWidth: page.window.compact
+            Layout.fillWidth: page.window.compact || page.openId === ""
             Layout.preferredWidth: 300
             spacing: 8
 
@@ -314,7 +315,7 @@ Item {
         ScrollView {
             id: detail
 
-            visible: !page.window.compact || page.openId !== ""
+            visible: page.openId !== ""
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
@@ -337,8 +338,11 @@ Item {
                     visible: page.shown !== null
                     Layout.fillWidth: true
 
+                    // Its name and its kind, wrapped in the room left beside Edit: never
+                    // asking their one-line width (a phone's 412 points).
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
                         spacing: 2
 
                         Label {

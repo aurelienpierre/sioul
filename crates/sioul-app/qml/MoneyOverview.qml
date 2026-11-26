@@ -43,10 +43,6 @@ ScrollView {
 
     contentWidth: availableWidth
 
-    function moodIcon(mood) {
-        return { "better": "go-up", "as-planned": "dialog-ok-apply", "short": "go-down" }[mood] || "view-financial-budget"
-    }
-
     // What is coming in view, for the window's images.
     function showComing() {
         const flick = overview.contentItem as Flickable
@@ -59,6 +55,8 @@ ScrollView {
         spacing: overview.theme.gap
 
         RowLayout {
+            id: headBar
+
             Layout.fillWidth: true
 
             Label {
@@ -85,24 +83,35 @@ ScrollView {
                     onAsHours: overview.sioul.budgetAreasAsHours()
                 }
             }
+            // New budget, in words: here on a computer; on a phone, the same button
+            // under the title, beside the filter (one button moved, not two made: the
+            // phone's page keeps within its budget of objects, tst_coming.qml).
             Button {
-                text: overview.window.compact ? "" : overview.sioul.text("budget-new")
+                parent: overview.window.compact ? phoneBar : headBar
+                text: overview.sioul.text("budget-new")
                 icon.name: "list-add"
                 icon.color: overview.theme.text
-                Accessible.name: overview.sioul.text("budget-new")
                 onClicked: overview.newBudget()
             }
         }
-        // On a phone, the filter under the title: within 412 points.
-        AreaFilter {
-            objectName: "budgetAreasPhone"
-            visible: overview.view !== null && !!overview.view.filter && overview.window.compact
-            sioul: overview.sioul
-            theme: overview.theme
-            shown: overview.view ? overview.view.filter : null
-            help: overview.sioul.text("budgets-filter-help")
-            onTicked: areas => overview.sioul.tickBudgetAreas(areas)
-            onAsHours: overview.sioul.budgetAreasAsHours()
+        // On a phone, the filter and New budget, in words, under the title: within 412 points.
+        RowLayout {
+            id: phoneBar
+
+            visible: overview.window.compact
+            Layout.fillWidth: true
+            spacing: 8
+
+            AreaFilter {
+                objectName: "budgetAreasPhone"
+                visible: overview.view !== null && !!overview.view.filter
+                sioul: overview.sioul
+                theme: overview.theme
+                shown: overview.view ? overview.view.filter : null
+                help: overview.sioul.text("budgets-filter-help")
+                onTicked: areas => overview.sioul.tickBudgetAreas(areas)
+                onAsHours: overview.sioul.budgetAreasAsHours()
+            }
         }
         Label {
             visible: overview.view === null
@@ -276,21 +285,26 @@ ScrollView {
                     anchors.fill: parent
                     spacing: 10
 
+                    // Its name and period, cut within the card, never widening it past a
+                    // phone's screen; Open in words. (No icon before its name: the same on
+                    // every card, it said nothing, and a phone's page keeps within its
+                    // budget of objects, tst_coming.qml.)
                     RowLayout {
+                        Layout.fillWidth: true
                         spacing: 8
-
-                        Icon {
-                            iconName: "view-financial-budget"
-                        }
+                        // Its whole name while the row has room (the period gives way first), then cut.
                         Label {
+                            Layout.minimumWidth: 0
                             text: budgetCard.modelData.title
                             textFormat: Text.PlainText
+                            elide: Text.ElideRight
                             font.pixelSize: 17
                             font.weight: Font.DemiBold
                             color: overview.theme.text
                         }
                         Label {
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 0
                             text: budgetCard.modelData.period
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
@@ -299,10 +313,9 @@ ScrollView {
                         // Its ledger and its balance.
                         Button {
                             flat: true
-                            text: overview.window.compact ? "" : overview.sioul.text("ui-open")
+                            text: overview.sioul.text("ui-open")
                             icon.name: "view-financial-account"
                             icon.color: overview.theme.text
-                            Accessible.name: overview.sioul.text("ui-open")
                             onClicked: overview.openBudget(budgetCard.modelData.id)
                         }
                     }
@@ -315,6 +328,7 @@ ScrollView {
                             required property string modelData
 
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 0
                             text: modelData
                             textFormat: Text.PlainText
                             wrapMode: Text.Wrap
@@ -331,23 +345,17 @@ ScrollView {
                         wrapMode: Text.Wrap
                         color: overview.theme.text
                     }
-                    // How its period should end, in one sentence, with the reserve that covers it.
-                    RowLayout {
+                    // How its period should end, in one sentence, with the reserve that covers it:
+                    // in words alone (an up or down arrow read as a fold), a shortfall in the
+                    // warmer tone. The Budgets tab's list keeps a sign before each line.
+                    Label {
                         Layout.fillWidth: true
-                        spacing: 6
-
-                        Icon {
-                            Layout.alignment: Qt.AlignTop
-                            iconName: overview.moodIcon(budgetCard.modelData.mood)
-                            size: 16
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: budgetCard.modelData.verdict
-                            textFormat: Text.PlainText
-                            wrapMode: Text.Wrap
-                            color: overview.theme.text
-                        }
+                        // It wraps in the card's width: its own, unwrapped, asks for none.
+                        Layout.preferredWidth: 0
+                        text: budgetCard.modelData.verdict
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        color: budgetCard.modelData.mood === "short" ? overview.theme.warm : overview.theme.text
                     }
                 }
             }

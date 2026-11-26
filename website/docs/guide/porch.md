@@ -186,7 +186,7 @@ Each row says who, what and when on one line (two on a small screen), with its m
 - **Mark read**: the row goes, and what it is about is read too. A message is marked read here and on its server, as reading it would; a text is marked read on the Texts page. Calls and letters have no read state: only Dismiss.
 - **Dismiss**: the row goes from the Porch, and nothing else changes: the message stays unread in your mailbox, the letter waits.
 
-Both act at once on all your devices, with ten seconds to change your mind: **Undo**, at the foot of the list. On a small screen, both are in the row's menu, at a long press; on a computer the menu (**⋮**, a right click) holds the rest of what can be done, and something new made from it, such as a task. A message read elsewhere, on your phone or in another mail program, leaves the Porch by itself; so does its notification, where Sioul showed one.
+Both act at once on all your devices, with ten seconds to change your mind: **Undo**, at the foot of the list. On a small screen, both are in the row's menu, in words, behind the **⋮** every row shows (a long press opens it too); its main action, such as **Open** or **Copy**, stays on the row in words. On a computer, each button keeps its own column, so that Dismiss stands at the same place on every row, and the menu (**⋮**, a right click) holds the rest of what can be done, and something new made from it, such as a task. A message read elsewhere, on your phone or in another mail program, leaves the Porch by itself; so does its notification, where Sioul showed one.
 
 ## Paper letters {#paper-letters}
 
