@@ -2634,6 +2634,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             *watched = Some(sioul_sync::trigger::Stamps::of(&stores));
         }
         drop(busy);
+        // A code your phone let through, come with this exchange: told here at once (a computer's).
+        std::thread::spawn(crate::phonemsgs::tell_codes);
         // What was marked here goes up now, not at the sync app's next look:
         // Sioul keeping the folder itself sends it, its entry with it; beside
         // a sync app, Sioul sends this device's files too, then the sync app
@@ -2658,6 +2660,9 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             if sent > 0 {
                 nudge(&qt, &shared, 60, false);
             }
+            // Sioul's own link to the server down an hour after it last went
+            // through: said once in the status line for that stretch (`server_down`).
+            say_server_down(&qt, now.as_second());
         }
         // On a phone nobody reads the status line: what each exchange did goes to its
         // log (adb logcat), counts and problems only, never what was exchanged.
@@ -3702,6 +3707,84 @@ fn backup(on: bool, folder: &Path) -> Backup {
     Backup { shown: on, line, on: state.fetching(), given: state.given.clone(), found: state.confirmed_for(folder), send: state.sending(), send_switch, send_line }
 }
 
+/// How long this window must have seen Sioul's own link to the server beside
+/// the sync app (the backup's fetching, this device's own sending) failing,
+/// exchange after exchange, before the status line says so (seconds): a
+/// minute's failure, a laptop's first minutes after a night asleep, a window
+/// just opened, are never said there.
+const SERVER_DOWN_SAID: i64 = 3600;
+
+/// What Sioul's own link to the server says while it fails after it went
+/// through before: the moment it last went through (Unix seconds), the
+/// earlier of the fetching's and the sending's, and the sentence "Sioul has
+/// not reached cloud.example.org itself since 07:30: this device keeps no
+/// password for work-cloud. …". None while both go through, for what never went
+/// through (the panel says that), switched off, or where Sioul keeps the
+/// folder itself (its steps say their own). Until 24 November 2026 only
+/// Settings ▸ Sharing said it: the fetching and the sending stopped at 07:30
+/// that day and nothing else told the person.
+fn server_down(state: &sioul_sync::remote::State, sending: &sioul_sync::remote::Sending) -> Option<(i64, String)> {
+    if state.mode == sioul_sync::remote::MIRROR || !state.fetching() {
+        return None;
+    }
+    let fetched = (!state.said.is_empty() && state.last > 0).then_some((state.last, state.said.as_str()));
+    let sent = (state.sending() && !sending.said.is_empty() && sending.last > 0).then_some((sending.last, sending.said.as_str()));
+    let (since, code) = [fetched, sent].into_iter().flatten().min_by_key(|(since, _)| *since)?;
+    let (kind, about) = code.split_once(':').unwrap_or((code, ""));
+    let why = match kind {
+        "no-password" => say("share-server-down-no-password", &[("account", about.to_string())]),
+        kind => why_words(kind),
+    };
+    let host = state.host();
+    let host = if host.is_empty() { about.to_string() } else { host };
+    Some((since, say("share-server-down-status", &[("host", host), ("when", when(since)), ("why", why)])))
+}
+
+/// A stretch of Sioul's own link to the server failing, as this window
+/// follows it: the moment it last went through, when this window first saw
+/// it fail since, and whether the status line said it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Stretch {
+    since: i64,
+    seen: i64,
+    said: bool,
+}
+
+/// Whether the status line says the link down now: once for each stretch,
+/// once this window has seen it fail for `SERVER_DOWN_SAID`, never at each
+/// exchange; a stretch ends when the link goes through (`down` none), and
+/// one failing again later is another.
+fn server_down_due(stretch: &mut Option<Stretch>, down: Option<i64>, now: i64) -> bool {
+    let Some(since) = down else {
+        *stretch = None;
+        return false;
+    };
+    match stretch {
+        Some(s) if s.since == since => {
+            if s.said || now - s.seen < SERVER_DOWN_SAID {
+                return false;
+            }
+            s.said = true;
+            true
+        }
+        _ => {
+            *stretch = Some(Stretch { since, seen: now, said: false });
+            false
+        }
+    }
+}
+
+/// `server_down` said in the status line when due (`server_down_due`).
+fn say_server_down(qt: &QtThread, now: i64) {
+    static STRETCH: Mutex<Option<Stretch>> = Mutex::new(None);
+    let memory = memory_path();
+    let down = server_down(&sioul_sync::remote::State::load(&memory), &sioul_sync::remote::Sending::load(&memory));
+    let due = STRETCH.lock().is_ok_and(|mut stretch| server_down_due(&mut stretch, down.as_ref().map(|(since, _)| *since), now));
+    if let Some((_, line)) = down.filter(|_| due) {
+        crate::backend::set_status(qt, line);
+    }
+}
+
 /// A send's code in words, for the panel: "network" → "the server could not be reached".
 fn why_words(code: &str) -> String {
     tr().text(
@@ -3873,6 +3956,49 @@ fn say_of_device(id: &str, field: &str, value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sioul's own link to the server beside the sync app, down since it last
+    /// went through (24 November 2026: the fetching and the sending stopped at
+    /// 07:30, "no password", and only Settings ▸ Sharing said it): the status
+    /// line says it once for that stretch, once this window has seen it fail
+    /// for an hour, the earlier of the two said; never while it goes through,
+    /// switched off, or for what never went through; again only for another
+    /// stretch; in both languages.
+    #[test]
+    fn server_down_is_said_once_in_the_status_line() {
+        use sioul_sync::remote::{Sending, State};
+        let mut state = State { url: "https://cloud.example.org/remote.php/dav/files/someone/Documents/Sioul/".into(), last: 1_000, ..State::default() };
+        let sending = Sending { last: 2_000, ..Sending::default() };
+        assert_eq!(server_down(&state, &sending), None, "both went through");
+        state.said = "no-password:example".into();
+        let (since, line) = server_down(&state, &sending).unwrap();
+        assert_eq!(since, 1_000);
+        assert!(line.contains("cloud.example.org") && line.contains("example") && !line.contains('{'), "{line}");
+        let sending = Sending { said: "network:cloud.example.org".into(), last: 500, ..sending };
+        assert_eq!(server_down(&state, &sending).map(|(since, _)| since), Some(500), "the earlier stretch is said");
+        assert_eq!(server_down(&State { last: 0, ..state.clone() }, &Sending { last: 0, ..sending.clone() }), None, "what never went through: the panel says it");
+        state.on = Some(false);
+        assert_eq!(server_down(&state, &sending), None, "switched off");
+        let mut stretch = None;
+        assert!(!server_down_due(&mut stretch, Some(1_000), 10_000), "seen failing now: not yet");
+        assert!(!server_down_due(&mut stretch, Some(1_000), 10_000 + SERVER_DOWN_SAID - 1));
+        assert!(server_down_due(&mut stretch, Some(1_000), 10_000 + SERVER_DOWN_SAID), "an hour seen failing: said");
+        assert!(!server_down_due(&mut stretch, Some(1_000), 10_000 + 5 * SERVER_DOWN_SAID), "never twice for a stretch");
+        assert!(!server_down_due(&mut stretch, None, 30_000), "it went through");
+        assert!(!server_down_due(&mut stretch, Some(30_000), 40_000), "another stretch: an hour again");
+        assert!(server_down_due(&mut stretch, Some(30_000), 40_000 + SERVER_DOWN_SAID));
+        for language in ["en", "fr"] {
+            let tr = sioul_core::i18n::Translator::new(language);
+            let mut args = sioul_core::i18n::args();
+            for (name, value) in [("host", "cloud.example.org"), ("when", "07:30"), ("why", "why"), ("account", "example")] {
+                args.set(name, value.to_string());
+            }
+            for id in ["share-server-down-status", "share-server-down-no-password"] {
+                let said = tr.text(id, Some(&args));
+                assert!(!said.is_empty() && said != id && !said.contains('{'), "{language}: {id}: {said}");
+            }
+        }
+    }
 
     /// Your people on a phone's section Calls (reviews M8, H2 to H4): their
     /// row after Always through's where the phone's Sioul knows the circle,

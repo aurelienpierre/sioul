@@ -434,7 +434,7 @@ pub(crate) fn title_of(c: &appnotes::Conversation) -> String {
 /// conversation's, else the title; the app's name when that name may hold
 /// the code itself (four digits in a row that are no phone number, a short
 /// number included), or nothing.
-fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
+pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
     let last = p.messages.iter().rev().find_map(|m| m.sender.as_ref().filter(|s| !is_user(p, s))).map(|s| s.name.as_str());
     let named = [last.unwrap_or(""), p.people.first().map_or("", |s| s.name.as_str()), p.conversation.as_str(), p.title.as_str()].into_iter().map(|n| one_line(n, NAME_MAX)).find(|n| !n.is_empty()).unwrap_or_default();
     // Four digits in a row that are no phone number may be the code itself ("G-482913"): never said.
@@ -728,6 +728,23 @@ pub fn reaches_now(attention: &Attention, line: &Line, who: Option<(Who, bool)>,
     let row = Row::People(via, person);
     let never = !always && !attention.has_sources(&sources) && Column::TIMES.iter().all(|c| attention.cell(row, *c) != Level::Now);
     never && !now.dnd && now.times.iter().any(|c| matches!(c, Column::Work | Column::Admin))
+}
+
+// ---------------------------------------------------------------- a code told on a computer
+
+/// How long after it came a phone's code is told on a computer: the time a
+/// code usually lasts (`codes::CodeKind::Code`), half an hour.
+pub const CODE_TOLD_MS: i64 = 30 * 60_000;
+
+/// The codes a phone let through that this computer (`here`) tells now (the
+/// owner's word of 24 November 2026: a code by text reaches the computers
+/// too): another device's code lines, the phone having let them through
+/// (`Line::shows`), come within `CODE_TOLD_MS`, neither told here already
+/// (`told`, by the line's id) nor seen on any device (`seen`). Oldest first.
+pub fn codes_to_tell<'a>(all: &'a [Line], here: &str, told: &BTreeSet<String>, seen: &BTreeSet<String>, now_ms: i64) -> Vec<&'a Line> {
+    all.iter()
+        .filter(|l| l.code && l.device != here && l.shows <= now_ms && now_ms - l.at.max(l.shows) <= CODE_TOLD_MS && !told.contains(&l.id) && !seen.contains(&l.id))
+        .collect()
 }
 
 // ---------------------------------------------------------------- the Porch's lines
@@ -1256,6 +1273,32 @@ mod tests {
 
     fn lister_at<'a>(now: &'a Zoned, tr: &'a Translator, shows: &'a dyn Fn(&Line) -> bool, column: &'a dyn Fn(i64) -> String) -> Lister<'a> {
         Lister { now, tr, region: fr(), name_of: &|key: &str| (key == "+33199001234").then(|| "Dr Martin".to_string()), shows, phone: &|_: &str| String::new(), column }
+    }
+
+    /// A phone's code told once on each computer (24 November 2026): another
+    /// device's code line, let through and within its half hour, not told
+    /// here yet nor seen anywhere; never this device's own, a message that
+    /// is no code, one the phone has not let through yet, nor an old one.
+    #[test]
+    fn a_phone_s_code_is_told_once_on_each_computer() {
+        const AT: i64 = 1_795_553_578_000;
+        let line = |id: &str, device: &str, code: bool, at: i64, shows: i64| Line { id: id.into(), device: device.into(), code, at, shows, app: "foundation.e.message".into(), kind: "text".into(), name: "Message".into(), ..Line::default() };
+        let all = vec![
+            line("code", "phone", true, AT, AT),
+            line("text", "phone", false, AT, AT),
+            line("mine", "laptop", true, AT, AT),
+            line("later", "phone", true, AT, AT + 3_600_000),
+            line("old", "phone", true, AT - 2 * CODE_TOLD_MS, AT - 2 * CODE_TOLD_MS),
+        ];
+        let none = BTreeSet::new();
+        let ids = |lines: Vec<&Line>| lines.into_iter().map(|l| l.id.clone()).collect::<Vec<_>>();
+        assert_eq!(ids(codes_to_tell(&all, "laptop", &none, &none, AT + 60_000)), ["code"]);
+        assert_eq!(ids(codes_to_tell(&all, "desktop", &none, &none, AT + 60_000)), ["code", "mine"], "another computer's own line too");
+        let told: BTreeSet<String> = ["code".to_string()].into();
+        assert!(codes_to_tell(&all, "laptop", &told, &none, AT + 60_000).is_empty(), "told once");
+        assert!(codes_to_tell(&all, "laptop", &none, &told, AT + 60_000).is_empty(), "seen on a device");
+        assert!(codes_to_tell(&all, "laptop", &none, &none, AT + CODE_TOLD_MS + 1).is_empty(), "its half hour over");
+        assert_eq!(ids(codes_to_tell(&all, "laptop", &none, &none, AT + 3_600_000)), ["later"], "once the phone let it through");
     }
 
     #[test]

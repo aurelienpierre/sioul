@@ -24,6 +24,9 @@ sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, form
 # sioul-app/src/appnotes.rs: the window's own notes of what it said (state): no item.
 sioul-app/src/appnotes.rs	release_talk	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
+# sioul-app/src/phonemsgs.rs: the codes that came to a phone and that this computer already said, kept a day (state, its own): no item.
+sioul-app/src/phonemsgs.rs	tell_codes	1	sioul_core::filelock::replace(&path, text.as_bytes())
+
 # sioul-app/src/attach.rs: pictures made smaller for a message, in a folder of their own: no item.
 sioul-app/src/attach.rs	reduce_picture	1	std::fs::remove_file(&trying)
 sioul-app/src/attach.rs	make	1	std::fs::rename(&again, out_of(i, "jpg"))
@@ -996,6 +999,8 @@ sioul-sync/src/share.rs	place_put_back	1	std::fs::rename(opened, &beside)
 sioul-sync/src/share.rs	place_put_back	1	std::fs::remove_file(&beside)
 #   after_prepare: tests' hook after a put back's copy (no writing in the programs).
 sioul-sync/src/share.rs	after_prepare	1	std::fs::OpenOptions::new()
+#   take_out_own_copies: the copies a sync app made of this device's own files in the sharing folder, taken out once nothing is in them that this device does not say elsewhere.
+sioul-sync/src/share.rs	take_out_own_copies	1	std::fs::remove_file(dir.join(&name))
 #   write_seen: the sharing's notes to the other devices.
 sioul-sync/src/share.rs	write_seen	1	write_atomically(&path, text.as_bytes())
 #   remove_old_rounds: the sharing's records past their time.
@@ -1003,6 +1008,12 @@ sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(shar
 sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(&dir, id, *round))
 #   remove_device_files: a removed device's files in the sharing folder.
 sioul-sync/src/share.rs	remove_device_files	1	std::fs::remove_file(path)
+
+# sioul-sync/src/share_journal.rs: what an exchange wrote that its memory does not hold yet, noted on this device before each write and taken out once the memory is saved (state, its own, never shared): no item.
+sioul-sync/src/share_journal.rs	forget	1	std::fs::remove_file(&self.path)
+sioul-sync/src/share_journal.rs	note	2	std::fs::OpenOptions::new()
+sioul-sync/src/share_journal.rs	settle	1	std::fs::remove_file(&self.path)
+sioul-sync/src/share_journal.rs	settle	1	write_synced(&self.path, &text)
 
 # sioul-sync/src/verify.rs: the sharing folder's checks: no item.
 sioul-sync/src/verify.rs	verify_folder	1	std::fs::rename(&temporary, &path)

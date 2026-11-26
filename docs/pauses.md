@@ -45,7 +45,7 @@ The pause, then sleep, then Free time, then meals, then the hours' own overrides
 | Sleep (the night, a nap) | sleep | doses, as [health.md](health.md) says |
 | Free time | leisure, whatever the hour | your safe senders' mail, or nobody's; doses; codes you asked for; your events' own alarms (GP5) |
 
-- The pause is `Time::Sleep` for what comes, `Reason::Paused` for what is said: no notification but doses and the alarms you set (an event's own alarm is one), no task, no project, the Porch's codes waiting (P7). (R; an event's alarm reading as an alarm you set: O, through the notifications' rule "never during sleep or a pause unless the event falls in it")
+- The pause is `Time::Sleep` for what comes, `Reason::Paused` for what is said: no notification but doses and the alarms you set (an event's own alarm is one), no task, no project; the codes you asked for still come (the Codes row is at once in a pause, and since 24 November 2026 at every time). (R; an event's alarm reading as an alarm you set: O, through the notifications' rule "never during sleep or a pause unless the event falls in it")
 - Free time ends by itself at the night's start (its wind-down), else at midnight: it never covers the night, and tomorrow starts as usual (O; GP10a: the night is sleep's). A nap inside it is a nap.
 - Pressing Pause during Free time ends Free time, and today's end of work stays as usual: a pause never costs an evening (GP19–GP20, P7). (R)
 

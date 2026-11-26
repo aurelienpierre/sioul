@@ -333,8 +333,8 @@ fn could_tell(config: &Config, attention: &sioul_core::attention::Attention, lis
 }
 
 /// Whether a code asked for now is fetched by the background step: codes
-/// come at once now (the Codes row: as usual, but while you sleep) and the
-/// phone is in use (`in_use`, its screen on): a code is asked for at a
+/// come at once now (the Codes row, fixed at once at every time since 24
+/// November 2026, sleep included) and the phone is in use (`in_use`, its screen on): a code is asked for at a
 /// device, and one in your hand fetches what it may need; put away, the
 /// step skips as `could_tell` says. Sioul's window, while open, fetches by
 /// itself, and a computer fetches at all times. The one place of this rule
@@ -1355,8 +1355,8 @@ mod tests {
 
     /// A code is fetched for while the phone is in use (review of phase 2,
     /// M2; the owner's question 12, the coordinator's recommendation): codes
-    /// at once now and the screen on; put away, or asleep (codes wait on the
-    /// Porch then), not. `tellable_in`, the glue (L8): the hours' moment, the
+    /// at once now and the screen on, asleep too (24 November 2026: a code
+    /// asked for at night comes); put away, not. `tellable_in`, the glue (L8): the hours' moment, the
     /// Always through list, the phone's use. The step withdraws settled mail
     /// notices at every step, a round or not (M1), and tells its batch after
     /// its exchange (M3).
@@ -1366,7 +1366,8 @@ mod tests {
         let usual = Attention::usual();
         assert!(fetches_for_codes(&usual, &Now::time(Column::Leisure), true));
         assert!(!fetches_for_codes(&usual, &Now::time(Column::Leisure), false), "put away");
-        assert!(!fetches_for_codes(&usual, &Now::time(Column::Sleep), true), "asleep: codes wait on the Porch");
+        assert!(fetches_for_codes(&usual, &Now::time(Column::Sleep), true), "asleep, the phone in hand: a code asked for comes");
+        assert!(!fetches_for_codes(&usual, &Now::time(Column::Sleep), false), "asleep, put away");
         assert!(fetches_for_codes(&usual, &Now::time(Column::Pause), true), "a pause: codes come");
         // The glue, with folders made for tests: a work address in the evening.
         sioul_core::config::stand_ins_only();
@@ -1380,7 +1381,8 @@ mod tests {
         let _ = std::fs::remove_file(&people);
         assert!(!tellable_in(&config, &evening, &now, false), "nothing could be told: no round");
         assert!(tellable_in(&config, &evening, &now, true), "the phone in hand: a code may be wanted");
-        assert!(!tellable_in(&config, &mode(sioul_core::areas::Time::Sleep, sioul_core::quiet::Reason::Sleep), &now, true), "asleep");
+        assert!(!tellable_in(&config, &mode(sioul_core::areas::Time::Sleep, sioul_core::quiet::Reason::Sleep), &now, false), "asleep, put away");
+        assert!(tellable_in(&config, &mode(sioul_core::areas::Time::Sleep, sioul_core::quiet::Reason::Sleep), &now, true), "asleep, the phone in hand: a code may be wanted");
         let mut listed = sioul_core::everywhere::People::default();
         listed.add(sioul_core::everywhere::Person { name: "Lou".into(), emails: vec!["lou@example.org".into()], ..Default::default() }, None);
         listed.save(&people).unwrap();

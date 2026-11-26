@@ -65,7 +65,7 @@ Les loisirs réglés en heures par un Sioul plus ancien (son « temps libre 
 | Démarches | vos démarches ; le travail aussi, tant qu’il n’a pas d’heures | les loisirs |
 | Loisirs | les loisirs, et rien d’autre | le travail et les démarches |
 | Un repas | les loisirs : un repas est une pause | le travail et les démarches |
-| Sommeil | rien ne notifie, sauf les prises et les personnes qui passent toujours ; les loisirs, si vous ouvrez Sioul, les codes demandés sur le Porche | tout le reste |
+| Sommeil | rien ne notifie, sauf les prises, les codes demandés et les personnes qui passent toujours ; les loisirs, si vous ouvrez Sioul | tout le reste |
 | Aucune heure de travail ni de démarches | tout, comme avant d’en régler (repas et sommeil gardent leur temps) | rien |
 
 La ligne d’état (la barre de titre de la fenêtre sur un ordinateur, la ligne du bas sur un téléphone) dit ce qu’est le moment présent, et jusqu’à quand : « Temps des démarches jusqu’à 19:00 : organismes, factures, courriers. », « Repas jusqu’à 13:00. », « Loisirs jusqu’à 22:00 : ce qui vous plaît. », « Avant de dormir : rien ne dérange jusqu’à 07:00. »
@@ -167,7 +167,7 @@ Une phrase dans la ligne d’état dit jusqu’à quand : « Le travail revi
 Du moment de se détendre au réveil, et pendant une sieste, rien ne dérange :
 
 - **presque aucune notification**, sauf si vous le changez ([Ce qui vous joint, et quand](notifications.md#by-time)) : ni site, ni rappel avant une date, ni pause pour bouger, ni avis de repas ou de sieste, ni message, ni appel sauf ceux des personnes qui passent toujours. Ce qui a encore du sens au réveil vient alors ;
-- **les codes que vous venez de demander attendent sur le Porche**, sans notification : leur carte les y montre, et la nuit reste calme. Pour qu’ils soient notifiés pendant le sommeil, choisissez **Tout de suite** dans la case **Sommeil** de la ligne **Codes et liens demandés**, dans Paramètres ▸ Ce qui vous joint ▸ [Ce qui vient quand](notifications.md#by-time) ;
+- **les codes que vous venez de demander arrivent tout de suite**, comme à toute heure : vous en avez demandé un, et il ne vaut que quelques minutes ([Le Porche](porch.md#codes-and-links-come-at-once)) ;
 - **les prises viennent quand même** : c’est vous qui avez réglé leurs heures, et une prise à 05:00 est faite pour vous réveiller. Pour qu’elles restent silencieuses pendant le sommeil, choisissez **Prises au réveil** sous **Ce que vous avez réglé ou demandé**, dans Paramètres ▸ Ce qui vous joint ▸ [Les avis de Sioul](notifications.md#doses) : elles viennent au réveil. Sioul ne fait jamais taire une prise sans ce choix ;
 - si vous ouvrez Sioul, le Porche montre ce que vos listes laissent passer à ce moment, rien sur l’argent ni sur les lettres papier ; un courriel sur un projet vient parmi les personnes que vous connaissez ;
 - chaque adresse se replie sur la page Courriels ; seuls les sites de loisirs sont listés ;

@@ -217,6 +217,9 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
         json!({ "at": at + 2000, "id": "m-3", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Paul", "who": "safe", "text": "See you at six." }),
         // Held by the phone until tomorrow: not given before.
         json!({ "at": at + 3000, "id": "m-4", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Paul", "who": "safe", "text": "Later words.", "shows": (now + 86_400) * 1000 }),
+        // A password and a PIN after their word, which the phone did not take for codes.
+        json!({ "at": at + 4000, "id": "m-5", "app": "org.example.sms", "label": "Messages", "kind": "text", "name": "Anna", "who": "safe", "text": "Password: Lune-Rouge-58" }),
+        json!({ "at": at + 4500, "id": "m-6", "app": "org.example.chat", "label": "Chat", "kind": "text", "name": "Example Shop", "who": "automaton", "text": "Here is your PIN: 7314" }),
     ];
     std::fs::write(phone.join("phone-1.jsonl"), lines.iter().map(Value::to_string).collect::<Vec<_>>().join("\n") + "\n").unwrap();
     let calls = root.join("state/sioul/calls/log");
@@ -241,6 +244,12 @@ fn closed_project(root: &Path, store: &Path, mail: &Path) {
         sms("sms-2", &["+33199001234"], "See you tomorrow at the market.", 40),
         sms("sms-3", &["+33261910000"], "The Zeugma invoice is attached.", 30),
         sms("sms-4", &["+33199001234", "+33353010000"], "Hello from the group.", 20),
+        // A password, a PIN and a code after their word, as people and services text them
+        // (in English: the tests' configuration reads English words; French in `codes`' own tests).
+        sms("sms-5", &["+33199005678"], "Password: Lune-Rouge-58", 58),
+        sms("sms-6", &["+33199005678"], "Here is your PIN: 7314", 57),
+        sms("sms-7", &["+33199005678"], "Pottery class on Thursday evening. Code: 2958", 56),
+        sms("sms-8", &["+33199005678"], "Your provisional code is 48291357.", 55),
     ];
     let log = sioul_core::texts::own_file(&sioul_core::texts::folder(), sioul_core::texts::LOG, "phone-1");
     sioul_core::texts::append(&log, &texts, &seal, None).unwrap();
@@ -2029,6 +2038,12 @@ fn the_phone_messages_and_calls() {
     assert!(!said.contains("Later words") && answer["structuredContent"]["waiting"] == 1, "{answer}");
     // Never found by a code's digits.
     assert_eq!(call(&mut server, "phone_messages", json!({ "query": "913" }))["structuredContent"]["total"], 0);
+    // A password or a PIN after its word: masked as mail masks it, the password's message kept whole.
+    assert!(said.contains("[This message gives a password") && said.contains("Here is your PIN: [code hidden]"), "{said}");
+    assert!(!answer.to_string().contains("Lune-Rouge") && !answer.to_string().contains("7314"), "{answer}");
+    for query in ["Lune", "7314"] {
+        assert_eq!(call(&mut server, "phone_messages", json!({ "query": query }))["structuredContent"]["total"], 0, "{query}");
+    }
     let calls = call(&mut server, "calls", json!({}));
     assert!(text(&calls).contains("declined") && calls["structuredContent"]["calls"].as_array().unwrap().len() == 1, "{calls}");
     // The moment now, read-only and cheap: what now is for and what reaches the person.
@@ -2072,6 +2087,15 @@ fn texts_only_when_allowed_and_never_sent() {
     for digits in ["830517", "830 517", "Zeugma"] {
         let found = call(&mut server, "search_texts", json!({ "query": digits }));
         assert!(found["structuredContent"]["found"].as_array().unwrap().is_empty(), "{digits}: {found}");
+    }
+    // A password, a PIN, a code and a provisional code after their word: masked as in mail, never found by their digits.
+    let words = call(&mut server, "texts", json!({ "conversation": "+33199005678" }));
+    let said = text(&words);
+    assert!(said.contains("[This message gives a password") && said.contains("Here is your PIN: [code hidden]") && said.contains("Code: [code hidden]") && said.contains("code is [code hidden]"), "{said}");
+    for secret in ["Lune-Rouge", "7314", "2958", "48291357"] {
+        assert!(!words.to_string().contains(secret) && !call(&mut server, "texts", json!({})).to_string().contains(secret), "{secret}: {words}");
+        let found = call(&mut server, "search_texts", json!({ "query": secret }));
+        assert!(found["structuredContent"]["found"].as_array().unwrap().is_empty(), "{secret}: {found}");
     }
     let kept = call(&mut server, "texts", json!({ "conversation": "+33261910000" }));
     assert_eq!(kept["isError"], true, "{kept}");

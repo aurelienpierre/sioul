@@ -677,9 +677,9 @@ pub(crate) fn watch_command(s: &Session) -> Result<(), String> {
                 }
                 let arrived = triage_files(&config, &report.new);
                 print_right_now(s, &arrived);
-                // As the matrix of what reaches you says (as usual, at once at any
-                // time; "On the Porch only" a choice while you sleep), with its
-                // layers read from their files: a code not told waits on the Porch.
+                // As the matrix of what reaches you says (at once at every time,
+                // sleep included, fixed since 24 November 2026), with its layers
+                // read from their files.
                 use sioul_core::attention::{self, Attention, Kind, Level, Row, Slots};
                 let now = sioul_core::zone::now();
                 let stamp = now.timestamp().as_second();
