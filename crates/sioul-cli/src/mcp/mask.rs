@@ -13,7 +13,7 @@ use sioul_core::words::Words;
 
 /// IBANs, card numbers and social security numbers hidden: the core's own,
 /// which rules use too for what they copy from a message.
-pub use sioul_core::masking::text;
+use sioul_core::masking::{NIR, card_at, iban_at, nir_at};
 
 const CODE: &str = "[code hidden]";
 const LINK: &str = "[link hidden]";

@@ -784,6 +784,15 @@ sioul-learn/src/train.rs	train_with	1	std::fs::File::create(&token_path)
 sioul-learn/src/train.rs	train_with	1	std::fs::rename(&fresh, dirs.language())
 sioul-learn/src/train.rs	train_with	1	corpus::write_whole(&dirs.trained(), text.as_bytes())
 
+
+# sioul-core/src/wiring/engine.rs: the papers a rule keeps from a message's attachment, written, taken back by Undo and put back (files of Papers): no item.
+sioul-core/src/wiring/engine.rs	papers	1	crate::filelock::remove_wiping(path)
+sioul-core/src/wiring/engine.rs	papers	2	std::fs::write(&file, bytes)
+sioul-core/src/wiring/engine.rs	papers	1	std::fs::remove_dir(&folder)
+sioul-core/src/wiring/engine.rs	remove_paper	1	crate::filelock::remove_wiping(&file)
+sioul-core/src/wiring/engine.rs	put_back	1	std::fs::remove_file(&file)
+# sioul-core/src/wiring/store.rs: the list of your rules, written whole and read again (settings of the rules): no item.
+sioul-core/src/wiring/store.rs	write	1	std::fs::write(&temporary, &text)
 # sioul-sync/src/antivirus.rs: the antivirus's signatures: no item.
 sioul-sync/src/antivirus.rs	refresh_signatures	1	std::fs::write(&settings, format!("DatabaseDirectory {}\nDatabaseMirror database.clamav.net\nNotifyClamd no\n", own.display()))
 

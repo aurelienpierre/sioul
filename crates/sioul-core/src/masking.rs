@@ -8,7 +8,7 @@
 //! line's `mcp::mask`) and what a rule copies into a title or a notice
 //! (`wiring::engine`) are masked by this one function.
 
-const NIR: &str = "[social security number hidden]";
+pub const NIR: &str = "[social security number hidden]";
 
 /// A text with its IBANs, card numbers and social security numbers hidden;
 /// the last four characters of an IBAN or a card stay, to tell them apart.
@@ -60,7 +60,7 @@ fn runs(chars: &[char], start: usize, allowed: impl Fn(char) -> bool, hyphens: b
 
 /// An IBAN starting at `start`, written whole or in groups: ISO 13616, its
 /// check digits by mod 97. The longest form that checks out is taken.
-fn iban_at(chars: &[char], start: usize) -> Option<(usize, String)> {
+pub fn iban_at(chars: &[char], start: usize) -> Option<(usize, String)> {
     let head: Vec<char> = chars.get(start..start + 4)?.to_vec();
     if !(head[0].is_ascii_uppercase() && head[1].is_ascii_uppercase() && head[2].is_ascii_digit() && head[3].is_ascii_digit()) {
         return None;
@@ -86,7 +86,7 @@ fn iban_checks(iban: &str) -> bool {
 /// A payment card number, Luhn's check digit right: 16 or 19 digits from a
 /// network's first digit (2 to 6), or 15 from American Express's 34 and 37.
 /// Fourteen digits are left alone: a SIRET has a Luhn key too, and is no secret.
-fn card_at(chars: &[char], start: usize) -> Option<(usize, String)> {
+pub fn card_at(chars: &[char], start: usize) -> Option<(usize, String)> {
     if !matches!(chars.get(start), Some('2'..='6')) {
         return None;
     }
@@ -113,7 +113,7 @@ fn luhn(digits: &str) -> bool {
 /// A French social security number (NIR): 15 characters, the first 1, 2, 7
 /// or 8, the last two its key, 97 less the first thirteen modulo 97; Corsica's
 /// departments, 2A and 2B, count as 19 and 18 in the key.
-fn nir_at(chars: &[char], start: usize) -> Option<(usize, String)> {
+pub fn nir_at(chars: &[char], start: usize) -> Option<(usize, String)> {
     if !matches!(chars.get(start), Some('1' | '2' | '7' | '8')) {
         return None;
     }
