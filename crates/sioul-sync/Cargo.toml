@@ -61,8 +61,13 @@ icu_normalizer = { version = "2", default-features = false, features = ["compile
 # files run by wasmi, an interpreter in pure Rust (MIT or Apache-2.0): no
 # code made at run time, so the same on Linux, in the Flatpak, on Windows,
 # macOS and Android; fuel and memory limits. `validate` checks a module before
-# it runs; no WAT, no SIMD's text, no default features.
-wasmi = { version = "2.0.1", default-features = false, features = ["std", "validate"] }
+# it runs; no WAT, no SIMD's text. `auto-dispatch`, the one default feature
+# kept: wasmi passes from one instruction's handler to the next by a jump
+# only where the build makes it one (optimised, without debug assertions:
+# a release), and runs a loop elsewhere. Without it a debug build calls each
+# handler from the one before, and a module's long stretch overflows its
+# thread's stack.
+wasmi = { version = "2.0.1", default-features = false, features = ["std", "validate", "auto-dispatch"] }
 
 # Security keys (OpenPGP cards: a YubiKey, a Nitrokey) on every device: the
 # card protocol, the backend traits its transports implement, and the PIN as

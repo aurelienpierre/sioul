@@ -41,10 +41,11 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.num-bigint-dig]
 opt-level = 3
-# The extensions' interpreter calls one handler per WebAssembly instruction,
-# each into the next, which only an optimised build turns into jumps:
-# unoptimised, an extension's refresh (a real profile's) grows its thread's
-# stack until it overflows and the window aborts.
+# The extensions' interpreter, optimised in debug builds too, so that an
+# extension's refresh and the extensions' tests run at a usable speed. Its
+# stack is bounded by wasmi's feature `auto-dispatch` (crates/sioul-sync's
+# Cargo.toml), not by this: the debug assertions stay on here, and with them
+# wasmi runs its loop, never a chain of calls one per instruction.
 [profile.dev.package.wasmi]
 opt-level = 3
 [profile.dev.package.wasmi_ir]
