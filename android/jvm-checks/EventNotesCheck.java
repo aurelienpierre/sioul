@@ -61,6 +61,25 @@ public final class EventNotesCheck
         String rust = new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "eventalarms.rs")), StandardCharsets.UTF_8);
         int code = rust.indexOf("pub(crate) fn code_note(");
         expect("a code's public version: its title, never its body", code > 0 && rust.indexOf("Some((&notice.title, \"\"))", code) > code);
+        // Sioul's notice of a code another app brought (AppNotes.codeNotice): its public version is Rust's
+        // title alone too; posted only while one of Sioul's modes passes, the reminders' words never written
+        // from the listener, once per code and notification, taken away with the app's notification.
+        String listener = new String(Files.readAllBytes(sources.resolve("AppNotes.java")), StandardCharsets.UTF_8);
+        String codeNotice = body(listener, "    private void codeNotice(");
+        int told = codeNotice.indexOf("before[1].equals(told)");
+        int passes = codeNotice.indexOf("PauseMode.actChannelNow(");
+        int quiet = codeNotice.indexOf("notice.words = null;");
+        int post = codeNotice.indexOf("Notices.post(context, notice);");
+        expect("a code told once per notification, before anything", told > 0 && told < passes);
+        expect("a new message's code or approval rings: its end in what is kept", codeNotice.contains("notice.body + \"\\n\" + notice.endsMs"));
+        expect("posted only while one of Sioul's modes passes", passes > 0 && codeNotice.indexOf("== null)", passes) > passes && codeNotice.indexOf("return;", passes) < post);
+        expect("the reminders' words never written from the listener", quiet > passes && quiet < post);
+        expect("the code kept by its notification's key", codeNotice.contains("codeNotices.put(sbn.getKey(), new String[] { notice.tag, told });"));
+        String removed = body(listener, "    private void removed(");
+        expect("taken away with the app's notification", removed.contains("codeNotices.remove(key)") && removed.contains("Notices.dismiss(getApplicationContext(), code[0])"));
+        String rustNotes = new String(Files.readAllBytes(Paths.get(System.getProperty("sioul.root"), "crates", "sioul-app", "src", "appnotes.rs")), StandardCharsets.UTF_8);
+        int notice = rustNotes.indexOf("fn code_notice(");
+        expect("the listener's code notice: its title alone on the lock screen", notice > 0 && rustNotes.indexOf("Some((&title, \"\"))", notice) > notice);
         System.out.println("EventNotesCheck: " + (checked - failed) + " of " + checked + " held");
         if (failed > 0)
             System.exit(1);

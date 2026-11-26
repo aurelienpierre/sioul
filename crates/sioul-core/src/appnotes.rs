@@ -127,6 +127,9 @@ pub struct Person {
 pub struct Message {
     pub sender: Option<Person>,
     pub text: String,
+    /// When it was sent (ms, `MessagingStyle.Message.getTimestamp`, as Java
+    /// hands it with each message); 0 unsaid.
+    pub at: i64,
 }
 
 /// A notification as the listener hands it (AppNotes.java): what Android
@@ -316,10 +319,34 @@ pub fn is_code(p: &Posted, words: &crate::words::Words) -> bool {
     approvals.channels.iter().any(|word| crate::text::find_word(&channel, word, 0).is_some())
 }
 
-/// What a notification says, its title aside: its text, its expanded text,
-/// its sub-text, its lines and its messages, one per line: what `is_code`
-/// reads with the title.
+/// The newest message of someone else in a conversation's notification, by
+/// its place among `Posted::messages`: the one with the greatest time and,
+/// of the same time, the last; when their times say nothing (none given, or
+/// all the same) and there are several, the first and the last, since an
+/// app may list them either way (Android asks for the oldest first). Empty
+/// for a notification without messages, or whose messages are all the
+/// person's own.
+pub fn newest_from_others(p: &Posted) -> Vec<usize> {
+    let others: Vec<usize> = p.messages.iter().enumerate().filter(|(_, m)| m.sender.as_ref().is_some_and(|s| !is_user(p, s))).map(|(i, _)| i).collect();
+    let (Some(&first), Some(&last)) = (others.first(), others.last()) else { return Vec::new() };
+    let timed = others.iter().any(|&i| p.messages[i].at != p.messages[first].at);
+    if !timed && first != last {
+        return vec![first, last];
+    }
+    others.into_iter().max_by_key(|&i| (p.messages[i].at, i)).into_iter().collect()
+}
+
+/// What a notification says, its title aside, as `is_code` reads it with the
+/// title: a conversation's newest message of someone else alone, its earlier
+/// ones, still unread, saying nothing of it (a promotion before a code, a
+/// code before a payment's notice, an older code before a newer one: review
+/// of 25 November 2026, should-fix 2); else its text, its expanded text, its
+/// sub-text and its lines, one per line.
 fn words_of(p: &Posted) -> String {
+    let newest = newest_from_others(p);
+    if !newest.is_empty() {
+        return newest.iter().map(|&i| p.messages[i].text.as_str()).collect::<Vec<_>>().join("\n");
+    }
     let mut body = vec![p.text.as_str(), p.big.as_str(), p.sub.as_str()];
     body.extend(p.lines.iter().map(String::as_str));
     body.extend(p.messages.iter().map(|m| m.text.as_str()));
@@ -334,6 +361,28 @@ pub fn code_of(p: &Posted, words: &crate::words::Words) -> Option<crate::codes::
         return None;
     }
     crate::codes::detect(&words.codes, subject_of(p), &words_of(p))
+}
+
+/// The code one message's own words hand over, read as `is_code` reads the
+/// newest (`subject_of` its subject): an earlier message of a conversation
+/// that holds one never leaves the phone in its words
+/// (`phonemsgs::messages_of`), and keeps its notification let through while
+/// its code lasts (sioul-app's `decide_at`).
+pub fn code_in_message(p: &Posted, text: &str, words: &crate::words::Words) -> Option<crate::codes::OneTimeCode> {
+    crate::codes::detect(&words.codes, subject_of(p), text)
+}
+
+/// The codes of a conversation's earlier messages of someone else (all but
+/// its newest, `newest_from_others`), each with its message's time (ms, 0
+/// unsaid): what keeps its notification let through while one lasts.
+pub fn earlier_codes(p: &Posted, words: &crate::words::Words) -> Vec<(i64, crate::codes::OneTimeCode)> {
+    let newest = newest_from_others(p);
+    p.messages
+        .iter()
+        .enumerate()
+        .filter(|(i, m)| !newest.contains(i) && m.sender.as_ref().is_some_and(|s| !is_user(p, s)))
+        .filter_map(|(_, m)| code_in_message(p, &m.text, words).map(|code| (m.at, code)))
+        .collect()
 }
 
 /// What a notification gives the detector as its subject: its title; but a
@@ -2808,6 +2857,47 @@ mod tests {
         // Another app's title still reads as it did: a chat's subject may hold its code.
         let chat = posted(r#"{"key":"k","package":"org.example.chat","title":"482913 est votre code Exemple","text":"Bienvenue"}"#);
         assert!(is_code(&chat));
+    }
+
+    /// Review of 25 November 2026, should-fix 2: a conversation's
+    /// notification is read for its newest message of someone else alone:
+    /// a code before a payment's notice is no code any more; a promotion
+    /// before a code takes nothing from it; of two codes, the newer.
+    #[test]
+    fn a_conversation_is_read_for_its_newest_message() {
+        let words = crate::words::Words::builtin_ref();
+        // Two messages of the same short number, each with the time Java hands (ms), in the order given.
+        let listed = |messages: &[(&str, i64)]| {
+            let messages: Vec<serde_json::Value> = messages.iter().map(|(text, at)| serde_json::json!({ "text": text, "sender": { "name": "36123" }, "at": at })).collect();
+            posted(&serde_json::json!({
+                "key": "0|foundation.e.message|7|null|10123", "package": "foundation.e.message", "app": "Message", "category": "msg",
+                "template": "android.app.Notification$MessagingStyle", "title": "36123", "text": messages.last().map_or("", |m| m["text"].as_str().unwrap_or("")), "sms_app": true,
+                "messages": messages,
+            }).to_string())
+        };
+        let conversation = |older: &str, newest: &str| listed(&[(older, 1_795_553_000_000), (newest, 1_795_553_060_000)]);
+        let code = "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple.";
+        let paid = conversation(code, "Votre paiement de 23,90 EUR a été accepté.");
+        assert!(!super::is_code(&paid, words), "an older code does not make a later message one");
+        assert_ne!(classify(&paid, &Choices::default()), Kind::Code);
+        let after_promo = conversation("Profitez de -10 % avec le code promo EXEMPLE10.", code);
+        assert_eq!(classify(&after_promo, &Choices::default()), Kind::Code, "an older promotion takes nothing from a code");
+        assert_eq!(code_of(&after_promo, words).and_then(|c| c.code).as_deref(), Some("482913"));
+        let two = conversation("222222 est le code de votre transaction de 23,90 EUR chez Boutique Exemple.", "Votre code de sécurité est 111111.");
+        assert_eq!(code_of(&two, words).and_then(|c| c.code).as_deref(), Some("111111"), "the newer code");
+        // The person's own reply after the code: the code is still the newest of someone else's.
+        let mut replied = conversation("Bonjour", code);
+        replied.messages.push(Message { sender: None, text: "Merci".into(), at: 1_795_553_120_000 });
+        assert_eq!(code_of(&replied, words).and_then(|c| c.code).as_deref(), Some("482913"));
+        assert_eq!(newest_from_others(&replied), [1]);
+        // Found by its time, never by its place (review of 25 November 2026, second round, fix 4): the newest
+        // listed first; and times that say nothing read the first and the last.
+        let newest_first = listed(&[(code, 1_795_553_060_000), ("Profitez de -10 % avec le code promo EXEMPLE10.", 1_795_553_000_000)]);
+        assert_eq!(classify(&newest_first, &Choices::default()), Kind::Code);
+        assert_eq!(code_of(&newest_first, words).and_then(|c| c.code).as_deref(), Some("482913"));
+        let untimed = listed(&[(code, 0), ("Votre paiement de 23,90 EUR a été accepté.", 0)]);
+        assert_eq!(newest_from_others(&untimed), [0, 1]);
+        assert_eq!(code_of(&untimed, words).and_then(|c| c.code).as_deref(), Some("482913"), "either may be the newest");
     }
 
     #[test]

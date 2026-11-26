@@ -433,8 +433,16 @@ pub(crate) fn title_of(c: &appnotes::Conversation) -> String {
 /// Who a code came from, as safe to say: the last sender's name, else the
 /// conversation's, else the title; the app's name when that name may hold
 /// the code itself (four digits in a row that are no phone number, a short
-/// number included), or nothing.
+/// number included, and a bare number of eight digits at most: a code's
+/// length, never a phone number's, which a "+", a space or a ninth digit
+/// shows), or nothing.
 pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
+    code_sender_or_app(p, words).0
+}
+
+/// `code_sender`, with whether what it says is the app's name in place of a
+/// sender (its words then say "a code in Message", never "from Message").
+pub fn code_sender_or_app(p: &Posted, words: &crate::words::Words) -> (String, bool) {
     let last = p.messages.iter().rev().find_map(|m| m.sender.as_ref().filter(|s| !is_user(p, s))).map(|s| s.name.as_str());
     let named = [last.unwrap_or(""), p.people.first().map_or("", |s| s.name.as_str()), p.conversation.as_str(), p.title.as_str()].into_iter().map(|n| one_line(n, NAME_MAX)).find(|n| !n.is_empty()).unwrap_or_default();
     // Four digits in a row that are no phone number may be the code itself ("G-482913"): never said.
@@ -443,10 +451,11 @@ pub fn code_sender(p: &Posted, words: &crate::words::Words) -> String {
         run = if c.is_ascii_digit() { run + 1 } else { 0 };
         run >= 4
     });
-    if named.is_empty() || crate::codes::detect(&words.codes, &named, "").is_some() || (coded && appnotes::number_in(&named).is_none()) {
-        one_line(&p.app, NAME_MAX)
+    let bare = named.chars().all(|c| c.is_ascii_digit()) && named.len() <= 8;
+    if named.is_empty() || crate::codes::detect(&words.codes, &named, "").is_some() || (coded && (bare || appnotes::number_in(&named).is_none())) {
+        (one_line(&p.app, NAME_MAX), true)
     } else {
-        named
+        (named, false)
     }
 }
 
@@ -522,6 +531,8 @@ fn messages_of(n: &Notice, line: Line, heard: i64) -> Vec<Line> {
     if !from_others.is_empty() {
         let timed = from_others.iter().all(|(i, _, _)| n.extra.messages.get(*i).is_some_and(|e| e.at > 0));
         let chosen: Vec<&(usize, &appnotes::Message, &Person)> = if timed { from_others.iter().collect() } else { from_others.last().into_iter().collect() };
+        // An earlier message that holds a code never travels in its words: its own line said it came, when it was the newest.
+        let chosen: Vec<&(usize, &appnotes::Message, &Person)> = chosen.into_iter().filter(|(_, message, _)| appnotes::code_in_message(p, &message.text, n.words).is_none()).collect();
         // A conversation between two: its number is the conversation's, for Text back.
         let theirs = (!line.group).then(|| p.people.iter().find(|s| s.uri.trim().starts_with("tel:"))).flatten();
         return chosen
@@ -1088,7 +1099,7 @@ mod tests {
             template: "android.app.Notification$MessagingStyle".into(),
             title: from.name.clone(),
             text: texts.last().map_or(String::new(), |t| t.to_string()),
-            messages: texts.iter().map(|t| Message { sender: Some(from.clone()), text: t.to_string() }).collect(),
+            messages: texts.iter().enumerate().map(|(i, t)| Message { sender: Some(from.clone()), text: t.to_string(), at: NOW - 600_000 + i as i64 * 60_000 }).collect(),
             people: vec![Person { uri: from.uri.clone(), ..Person::default() }],
             sms_app: true,
             ..Posted::default()
@@ -1182,11 +1193,25 @@ mod tests {
         assert_eq!(lines.len(), 1);
         assert!(lines[0].code && lines[0].text.is_empty() && lines[0].name == "Ma Banque", "{lines:?}");
         assert!(!padded(&lines[0]).contains("482913"));
+        // The same code, then the bank's next text before the conversation is read: the next text travels,
+        // the code's message never (second review of the codes, fix 1).
+        let (later, extra) = texted(&bank, &["Votre code de validation est 482913. Ne le communiquez à personne.", "Votre paiement de 23,90 EUR a été accepté."]);
+        let lines = decided(&later, &extra, Some(Who::Neutral), now_through(), Send::Words);
+        assert!(lines.iter().all(|l| !l.code && !padded(l).contains("482913")), "{lines:?}");
+        assert_eq!(lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>(), ["Votre paiement de 23,90 EUR a été accepté."]);
         // A code from a short number, or a title that may be the code: the app's name said instead.
         let short = Person { name: "38015".into(), ..Person::default() };
         let (code, extra) = texted(&short, &["G-482913 est votre code de vérification."]);
         let lines = decided(&code, &extra, None, Decision::through(Why::Code), Send::Words);
         assert_eq!(lines.iter().map(|l| (l.code, l.name.as_str())).collect::<Vec<_>>(), [(true, "Message")]);
+        // A title of seven or eight bare digits may be the code itself (review of 25 November 2026,
+        // should-fix 6): the app's name; a phone number, with its "+" or its spaces, is said.
+        for (name, said) in [("4829135", "Message"), ("48291357", "Message"), ("+33199001234", "+33199001234"), ("06 39 98 01 01", "06 39 98 01 01")] {
+            let sender = Person { name: name.into(), ..Person::default() };
+            let (code, extra) = texted(&sender, &["G-482913 est votre code de vérification."]);
+            let lines = decided(&code, &extra, None, Decision::through(Why::Code), Send::Words);
+            assert_eq!(lines.iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), [said], "{name}");
+        }
         // A copy Android redacted: a code too, its words never carried.
         let (mut redacted, extra) = texted(&bank, &["Sensitive notification content hidden"]);
         redacted.redacted = true;

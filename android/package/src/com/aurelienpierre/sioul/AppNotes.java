@@ -185,8 +185,13 @@ public final class AppNotes extends NotificationListenerService
     private final List<FileObserver> watches = new ArrayList<>();
     /** Each app's name as the phone shows it, by package, found once a process (`label`). */
     private final Map<String, String> labels = new HashMap<>();
-    /** Sioul's own notices of codes another app brought, by that app's notification's key: taken away with it. On the worker. */
-    private final Map<String, String> codeNotices = new HashMap<>();
+    /**
+     * Sioul's own notices of codes another app brought, by that app's
+     * notification's key: their tag (taken away with it) and what each said
+     * (one sound per code: the same notification posted again with the same
+     * code says nothing more). On the worker.
+     */
+    private final Map<String, String[]> codeNotices = new HashMap<>();
     /** Android's words in a redacted notification, in the phone's language; read once (`redacted`). */
     private String redactedWords;
     /** The phone's default SMS app's package, "" for none (`smsApp`), and when it was last asked. */
@@ -737,9 +742,9 @@ public final class AppNotes extends NotificationListenerService
     private void removed(String pkg, String key, int reason)
     {
         // Its code's notice of Sioul's own, when Sioul posted one (`codeNotice`), goes with it.
-        String code = codeNotices.remove(key);
+        String[] code = codeNotices.remove(key);
         if (code != null)
-            Notices.dismiss(getApplicationContext(), code);
+            Notices.dismiss(getApplicationContext(), code[0]);
         try {
             DoseAlarms.load(getApplicationContext());
             String answer = nativeReply("removed", new JSONObject().put("package", pkg).put("key", key).put("reason", reason).toString());
@@ -814,13 +819,20 @@ public final class AppNotes extends NotificationListenerService
     {
         Context context = getApplicationContext();
         Notices.Said notice = Notices.Said.of(said);
+        // Told already for this notification, the same code: once (an update, a repost, an older message's reading).
+        // Its end too, which counts from its message's time: a second approval or redacted code, whose words are the
+        // same fixed sentence, is a new message and rings.
+        String told = notice.title + "\n" + notice.body + "\n" + notice.endsMs;
+        String[] before = codeNotices.get(sbn.getKey());
+        if (before != null && before[1].equals(told))
+            return;
         if (notice.tag.isEmpty() || PauseMode.actChannelNow(context, Notices.word(context, notice.words, "act-pause")) == null)
             return;
         // The listener reads the reminders' words, never writes them (EventAlarms.keepWords): an older copy could replace them.
         notice.words = null;
         Notification n = sbn.getNotification();
         notice.tap = n == null ? null : n.contentIntent;
-        codeNotices.put(sbn.getKey(), notice.tag);
+        codeNotices.put(sbn.getKey(), new String[] { notice.tag, told });
         Notices.post(context, notice);
     }
 

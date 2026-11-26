@@ -25,7 +25,7 @@ sioul-app/src/alarms.rs	write_zone	1	sioul_core::health::write_synced(path, form
 sioul-app/src/appnotes.rs	release_talk	1	sioul_core::filelock::replace(&path, text.as_bytes())
 
 # sioul-app/src/phonemsgs.rs: the codes that came to a phone and that this computer already said, kept a day (state, its own): no item.
-sioul-app/src/phonemsgs.rs	tell_codes	1	sioul_core::filelock::replace(&path, text.as_bytes())
+sioul-app/src/phonemsgs.rs	tell_codes_in	1	sioul_core::filelock::replace(path, text.as_bytes())
 
 # sioul-app/src/attach.rs: pictures made smaller for a message, in a folder of their own: no item.
 sioul-app/src/attach.rs	reduce_picture	1	std::fs::remove_file(&trying)

@@ -312,11 +312,18 @@ fn decide_at(json: &str, now: &Zoned) -> String {
             }
             _ => false,
         };
+    // A code of an earlier message still valid: the notification that shows it stays (second review of the codes, fix 2).
+    let earlier_code = earlier_code_lasts(json, &posted, &sioul_core::words::Words::of(&config), stamp);
     let path = Ledger::default_path();
     let (decision, released, returning, quiet, people, waited) = sioul_core::filelock::with_lock(&path, || {
         let mut ledger = Ledger::load(&path);
         let returning = ledger.returning(&hash, stamp);
         let mut decision = appnotes::decide(&kind, who, admitted, &choices, &ask);
+        // A later text never takes a still valid code out of the shade: its notification is let through as the
+        // code's was; nothing more is told (it is no code itself). Never for what is held for good (the blocked).
+        if earlier_code && decision.until.is_some() && decision.why != Why::Never {
+            decision = Decision::through(Why::Code);
+        }
         if answered {
             decision = decision.answered();
         }
@@ -404,7 +411,7 @@ fn decide_at(json: &str, now: &Zoned) -> String {
         && posted.intercepted
         && decision.until.is_none()
         && !blocked_code
-        && let Some(notice) = code_notice(&posted, &sioul_core::words::Words::of(&config), stamp)
+        && let Some(notice) = code_notice(&posted, &sioul_core::words::Words::of(&config), stamp, said_at(json, &posted, stamp))
     {
         answer["code"] = notice;
     }
@@ -438,25 +445,60 @@ fn decide_at(json: &str, now: &Zoned) -> String {
 /// the code and how long it lasts, with Copy; on the lock screen its title
 /// alone, never the code (`code_note`'s rule). The app's own notification
 /// stays, silent, in the shade: Java takes Sioul's away with it. Its tag is
-/// the app's notification's, hashed. None when it no longer lasts.
-fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64) -> Option<Value> {
+/// the app's notification's, hashed. Its life counts from when its message
+/// was sent (`said`, Unix seconds): none once it no longer lasts.
+fn code_notice(posted: &Posted, words: &sioul_core::words::Words, now: i64, said: i64) -> Option<Value> {
     use sioul_core::notice::{Act, Kind as Of, Notice};
     let found = appnotes::code_of(posted, words);
-    let sender = sioul_core::phonemsgs::code_sender(posted, words);
-    let title = crate::backend::say("appnotes-code-title", &[("sender", sender)]);
+    // From whom, as safe to say; the app's name in place of a sender that may hold a code: "A code in Message".
+    let (sender, app) = sioul_core::phonemsgs::code_sender_or_app(posted, words);
+    let title = if app { crate::backend::say("appnotes-code-title-app", &[("app", sender)]) } else { crate::backend::say("appnotes-code-title", &[("sender", sender)]) };
     let lasts = found.as_ref().map_or(sioul_core::codes::CodeKind::Code.usual_minutes(), sioul_core::codes::OneTimeCode::lasts_minutes);
     let code = found.as_ref().and_then(|c| c.code.clone());
     let validity = found.as_ref().and_then(|c| c.expires_minutes).map(|minutes| tr().validity(minutes));
     let body = match (&code, validity) {
         (Some(code), Some(validity)) => format!("{code}, {validity}"),
         (Some(code), None) => code.clone(),
-        (None, _) => tr().text("appnotes-code-body-open", None),
+        // A copy Android redacted: a code came; else an approval (a sign-in, a payment), no code in it.
+        (None, _) if posted.redacted => tr().text("appnotes-code-body-open", None),
+        (None, _) => tr().text("appnotes-code-body-approval", None),
     };
-    let mut notice = Notice::new("", Of::Own(sioul_core::attention::Kind::Codes), title.clone(), body).until(Some(now + i64::from(lasts) * 60));
+    // Its life counts from when its message was sent: a notification posted again long after (a restart) says nothing.
+    let until = said + i64::from(lasts) * 60;
+    if until <= now {
+        return None;
+    }
+    let mut notice = Notice::new("", Of::Own(sioul_core::attention::Kind::Codes), title.clone(), body).until(Some(until));
     if let Some(code) = code {
         notice = notice.action(tr().text("notify-copy", None), Act::Copy(code));
     }
     crate::eventalarms::notice_json(&format!("code:{}", appnotes::key_hash(&posted.key)), &notice, true, Some((&title, "")), now)
+}
+
+/// Whether an earlier message of someone else in a notification hands over
+/// a code still valid at `now` (Unix seconds), its life counted from its own
+/// time, else from the notification's `when`, else from its posting; never
+/// when none of them is said.
+fn earlier_code_lasts(json: &str, posted: &Posted, words: &sioul_core::words::Words, now: i64) -> bool {
+    let codes = appnotes::earlier_codes(posted, words);
+    if codes.is_empty() {
+        return false;
+    }
+    let extra = sioul_core::phonemsgs::Extra::read(json);
+    codes.iter().any(|(at, code)| {
+        let from = [*at, extra.when, extra.posted].into_iter().find(|ms| *ms > 0);
+        from.is_some_and(|ms| ms / 1000 + i64::from(code.lasts_minutes()) * 60 > now)
+    })
+}
+
+/// When a notification's message was sent (Unix seconds): its newest
+/// message of someone else's own time, else the notification's `when`,
+/// else when Android posted it, never later than `now`; `now` when Java
+/// says none.
+fn said_at(json: &str, posted: &Posted, now: i64) -> i64 {
+    let extra = sioul_core::phonemsgs::Extra::read(json);
+    let message = appnotes::newest_from_others(posted).into_iter().map(|i| posted.messages[i].at).max();
+    [message, Some(extra.when), Some(extra.posted)].into_iter().flatten().find(|ms| *ms > 0).map_or(now, |ms| (ms / 1000).min(now))
 }
 
 /// The listener's line when a person's message from someone Sioul could not
@@ -2299,7 +2341,7 @@ mod tests {
         assert_eq!(code["tag"], json!(format!("code:{}", appnotes::key_hash("0|foundation.e.message|7|null|10123"))), "{decided}");
         assert_eq!((code["class"].as_str(), code["pierce"].as_bool(), code["kind"].as_str()), (Some("actionable"), Some(true), Some("codes")), "{code}");
         // In the window's language, as this process read it once (`backend::tr`): not always the test configuration's.
-        let title = crate::backend::say("appnotes-code-title", &[("sender", "Message".to_string())]);
+        let title = crate::backend::say("appnotes-code-title-app", &[("app", "Message".to_string())]);
         assert_eq!(code["title"], json!(title), "the short number may hold a code: the app's name");
         assert_eq!(code["body"], json!("482913"));
         assert_eq!(code["actions"], json!([{ "label": tr().text("notify-copy", None), "copy": "482913" }]));
@@ -2310,6 +2352,34 @@ mod tests {
         let decided: serde_json::Value = serde_json::from_str(&decide_at(&heard, &evening)).unwrap();
         assert_eq!((decided["hold"].as_i64(), decided["why"].as_str()), (Some(0), Some("code")), "{decided}");
         assert!(decided.get("code").is_none(), "{decided}");
+        // Posted again three hours after its message (a restart): its code is over, nothing of Sioul's;
+        // half an hour's code an hour after its message neither; ten minutes after, its notice, lasting
+        // from the message's time (should-fix 2, d).
+        let at = |minutes: i64| (evening.timestamp().as_second() - minutes * 60) * 1000;
+        for (minutes, said) in [(180, false), (60, false), (10, true)] {
+            let late = PAYMENT.replace("\"intercepted\":true", &format!("\"intercepted\":true,\"when\":{}", at(minutes)));
+            let decided: serde_json::Value = serde_json::from_str(&decide_at(&late, &evening)).unwrap();
+            assert_eq!(decided.get("code").is_some(), said, "{minutes} minutes: {decided}");
+            if said {
+                assert_eq!(decided["code"]["ends"].as_i64(), Some(at(minutes) + 30 * 60_000), "{decided}");
+            }
+        }
+        // The same sender's next text, no code, while the code is unread (second review of the codes, fix 2): the
+        // notification that shows the code a minute old stays let through, nothing more told; three hours old, the
+        // code is over and the conversation is held as any automaton's.
+        let code_text = "ExamplePay: 482913 est le code de votre transaction de 23,90 EUR chez Boutique Exemple. Gardez ce code pour vous";
+        let receipt = "Votre paiement de 23,90 EUR a été accepté.";
+        for (minutes, through) in [(1, true), (180, false)] {
+            let two = json!({
+                "key": "0|foundation.e.message|7|null|10123", "package": "foundation.e.message", "app": "Message", "channel": "notifications_default",
+                "category": "msg", "template": "android.app.Notification$MessagingStyle", "title": "36123", "text": receipt, "sms_app": true, "intercepted": true,
+                "messages": [{ "text": code_text, "sender": { "name": "36123" }, "at": at(minutes) }, { "text": receipt, "sender": { "name": "36123" }, "at": at(0) }],
+            })
+            .to_string();
+            let decided: serde_json::Value = serde_json::from_str(&decide_at(&two, &evening)).unwrap();
+            assert_eq!(decided["hold"].as_i64() == Some(0), through, "{minutes} minutes: {decided}");
+            assert!(decided.get("code").is_none(), "nothing more told: {decided}");
+        }
         crate::backend::TEST_CONFIG.with(|own| *own.borrow_mut() = None);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::remove_file(Ledger::default_path());

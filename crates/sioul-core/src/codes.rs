@@ -202,21 +202,23 @@ fn every_hit(folded: &[char], phrases: &[String]) -> Vec<(usize, usize)> {
 /// a code said to be yours right after it ("123456 is your Instagram code").
 fn code_in(w: &Codes, original: &[char], folded: &[char]) -> Option<String> {
     let found = codes(original);
-    let mut hits: Vec<(usize, usize, bool)> = every_hit(folded, &w.code).into_iter().map(|(start, end)| (start, end, false)).collect();
-    hits.extend(every_hit(folded, &w.giving).into_iter().map(|(start, end)| (start, end, true)));
-    hits.extend(owned_codes(w, original, folded).into_iter().map(|(start, end)| (start, end, true)));
+    // Each hit: where, whether it hands its code over right after it (`giving`), whether it names a code (`names`: a
+    // phrase of `Codes::code`, after which a year's shape is a code too).
+    let mut hits: Vec<(usize, usize, bool, bool)> = every_hit(folded, &w.code).into_iter().map(|(start, end)| (start, end, false, true)).collect();
+    hits.extend(every_hit(folded, &w.giving).into_iter().map(|(start, end)| (start, end, true, false)));
+    hits.extend(owned_codes(w, original, folded).into_iter().map(|(start, end)| (start, end, true, false)));
     // "Code : 4821", "PIN: 4821": the word for a code as a label, the code after its colon.
     // One token of a code's shape after its colon, nothing more on its line or in its sentence.
-    let one_code = |end: usize| found.iter().find(|f| f.start >= end).is_some_and(|f| ties(w, &folded[end..f.start], true) && alone_after(original, f.end));
-    hits.extend(labelled(w, original, folded, &w.noun, false).into_iter().filter(|&(_, end)| one_code(end)).map(|(start, end)| (start, end, true)));
+    let one_code = |end: usize| found.iter().find(|f| f.start >= end).is_some_and(|f| !f.year && ties(w, &folded[end..f.start], true) && alone_after(original, f.end));
+    hits.extend(labelled(w, original, folded, &w.noun, false).into_iter().filter(|&(_, end)| one_code(end)).map(|(start, end)| (start, end, true, false)));
     // "Enter the code below", only in a message about signing in, checking who you are or paying; never
     // before a shop's code ("avec le code EXEMPLE20", "use code SAVE10": `shop_code_after`).
     if first_hit(folded, &w.sign_in).is_some() {
-        hits.extend(every_hit(folded, &w.pointing).into_iter().filter(|&(_, end)| !shop_code_after(original, end)).map(|(start, end)| (start, end, false)));
+        hits.extend(every_hit(folded, &w.pointing).into_iter().filter(|&(_, end)| !shop_code_after(original, end)).map(|(start, end)| (start, end, false, false)));
     }
     hits.sort_unstable();
     // A code said to be yours right after it is the surest reading: first.
-    named_after(w, folded, &found).or_else(|| hits.into_iter().find_map(|(start, end, giving)| code_beside(w, folded, &found, (start, end), giving)))
+    named_after(w, folded, &found).or_else(|| hits.into_iter().find_map(|(start, end, giving, names)| code_beside(w, folded, &found, (start, end), giving, names)))
 }
 
 /// Whether the first token after a pointing phrase, on its line, is a shop's
@@ -460,9 +462,19 @@ fn owner_follows(w: &Codes, text: &[char], words: &[(usize, usize)], code: usize
 /// The code next to a phrase: right after it, whatever its shape ("votre code
 /// est : 482 913", "your sign-in code: K7Q-2M9"); else, for a phrase of
 /// `Codes::code`, digits further after it, or the nearest before it
-/// ("G-482913 is your Google verification code").
-fn code_beside(w: &Codes, folded: &[char], found: &[Found], (start, end): (usize, usize), giving: bool) -> Option<String> {
-    if let Some(next) = found.iter().find(|f| f.start >= end)
+/// ("G-482913 is your Google verification code"). A year's shape ("2024")
+/// counts only right after a phrase that names a code (`names`: "votre code
+/// de sécurité est 2024"), never further, before, after a label or "your
+/// code" alone ("Votre code : 2026" stays none).
+fn code_beside(w: &Codes, folded: &[char], found: &[Found], (start, end): (usize, usize), giving: bool, names: bool) -> Option<String> {
+    if names
+        && let Some(next) = found.iter().find(|f| f.start >= end)
+        && next.year
+        && ties(w, &folded[end..next.start], giving)
+    {
+        return Some(next.code.clone());
+    }
+    if let Some(next) = found.iter().filter(|f| !f.year).find(|f| f.start >= end)
         && ties(w, &folded[end..next.start], giving)
     {
         return Some(next.code.clone());
@@ -470,7 +482,7 @@ fn code_beside(w: &Codes, folded: &[char], found: &[Found], (start, end): (usize
     if giving {
         return None;
     }
-    let plain = || found.iter().filter(|f| !f.mixed);
+    let plain = || found.iter().filter(|f| !f.mixed && !f.year);
     plain()
         .find(|f| f.start >= end && f.start < end + AFTER_WINDOW)
         .or_else(|| plain().filter(|f| f.start + BEFORE_WINDOW >= start && f.end <= start).last())
@@ -495,6 +507,10 @@ struct Found {
     end: usize,
     code: String,
     mixed: bool,
+    /// Four digits that read as a year (1900 to 2099): a code only where a
+    /// phrase names it right beside it (`named_after`, `code_beside`), never
+    /// elsewhere (review of 25 November 2026, should-fix 3).
+    year: bool,
 }
 
 /// Every code-shaped stretch of the text, in order. Groups of digits of the
@@ -514,12 +530,14 @@ fn codes(chars: &[char]) -> Vec<Found> {
         }
         let run = &tokens[i..j];
         if run.len() > 1 && run.iter().all(|t| t.text.len() == run[0].text.len()) {
-            found.extend(grouped_code(run).map(|code| Found { start: run[0].start, end: run[run.len() - 1].end, code, mixed: false }));
+            found.extend(grouped_code(run).map(|code| Found { start: run[0].start, end: run[run.len() - 1].end, code, mixed: false, year: false }));
         } else {
             for token in run {
                 let code = code_from(token).map(|c| (c, false)).or_else(|| mixed_code(&token.text).map(|c| (c, true)));
                 if let Some((code, mixed)) = code {
-                    found.push(Found { start: token.start, end: token.end, code, mixed });
+                    found.push(Found { start: token.start, end: token.end, code, mixed, year: false });
+                } else if year_alone(token) {
+                    found.push(Found { start: token.start, end: token.end, code: token.text.clone(), mixed: false, year: true });
                 }
             }
         }
@@ -625,6 +643,17 @@ fn looks_like_amount_or_year(token: &Token) -> bool {
 fn decimals_follow(token: &Token) -> bool {
     let mut after = token.after.chars();
     matches!(after.next(), Some(',' | '.')) && after.next().is_some_and(|c| c.is_ascii_digit())
+}
+
+/// Four digits that read as a year, standing alone: not part of a date
+/// ("24/11/2026", "2026-11-24", "24.11.2026"), an amount or a number.
+fn year_alone(token: &Token) -> bool {
+    let after = token.after.chars().next();
+    is_year(&token.text)
+        && !matches!(token.before, '/' | '.' | '-' | '+' | '€' | '$' | '£')
+        && !matches!(after, Some('/' | '-'))
+        && !amount_follows(token)
+        && !decimals_follow(token)
 }
 
 fn is_year(text: &str) -> bool {
@@ -1043,7 +1072,6 @@ mod tests {
             "123456 est le numéro de votre commande.",
             "123456 is the number of your order.",
             "2026 est l'année de votre adhésion.",
-            "2026 est le code de votre transaction.",
             "1234,56 est le montant de votre transaction.",
             "48291357 est le numéro de votre colis.",
             "48291357 est le code de votre colis.",
@@ -1084,6 +1112,58 @@ mod tests {
             ("Vérification", "Saisissez le code suivant pour vérifier votre identité :\n\n4829 1357", "48291357"),
         ] {
             assert_eq!(detect(title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
+    }
+
+    /// Review of 25 November 2026, should-fix 3: a code that reads as a year
+    /// is a code right beside a phrase that names it, before or after; a
+    /// year anywhere else stays none (a date, "Votre code : 2026", a label).
+    #[test]
+    fn a_year_s_shape_beside_its_phrase_is_a_code() {
+        for (title, body, code) in [
+            ("36123", "ExamplePay: 2024 est le code de votre transaction de 23,90 EUR chez Boutique Exemple.", "2024"),
+            ("Bank", "1987 is your Example verification code.", "1987"),
+            ("BANQUE", "Votre code de sécurité est 2031. Il expire dans 5 minutes.", "2031"),
+            ("Service", "Your verification code: 1999", "1999"),
+        ] {
+            assert_eq!(detect(title, body).and_then(|c| c.code).as_deref(), Some(code), "{body}");
+        }
+        for (title, body) in [
+            ("Bienvenue", "Votre code : 2026"),
+            ("", "Code : 2026"),
+            ("Your verification code", "Your verification code for 2026 is below."),
+            ("Agenda", "Votre code de vérification arrivera le 24/11/2026."),
+            ("Mairie", "Le marché de Noël 2026 ouvre le 5 décembre."),
+            ("BANQUE", "Votre code de sécurité vous sera envoyé en 2026."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+        // A year beside its phrase, a real code further on: the code.
+        assert_eq!(detect("Your verification code", "Your verification code for 2026: 4821").and_then(|c| c.code).as_deref(), Some("4821"));
+    }
+
+    /// Decimals and a currency sign make an amount, never the code before
+    /// "ce code"; the informal pointing phrases in a message about paying;
+    /// the longest phrase ("è il tuo" before "è il"); the owner within six
+    /// words after the code's word; the owners of German and Italian.
+    #[test]
+    fn amounts_informal_phrases_and_owners() {
+        for (title, body) in [
+            ("BANQUE", "Votre paiement de 1234,56 EUR est en attente. Ne partagez jamais ce code."),
+            ("Bank", "Your payment of €4821 is pending. Never share this code."),
+            ("", "482913 est le code que nous vous envoyons ce soir pour confirmer votre transaction."),
+        ] {
+            assert_eq!(detect(title, body), None, "{body}");
+        }
+        for pointing in ["saisis le code", "entre le code", "utilise le code", "tapez le code"] {
+            let body = format!("Pour confirmer ton paiement, {pointing} 551204.");
+            assert_eq!(detect("BANQUE", &body).and_then(|c| c.code).as_deref(), Some("551204"), "{body}");
+        }
+        assert_eq!(detect("Bank", "Enter code 551204 to confirm your payment.").and_then(|c| c.code).as_deref(), Some("551204"));
+        let all: crate::config::Config = toml::from_str("[words]\nlanguages = [\"fr\", \"en\", \"de\", \"es\", \"it\"]\ncountries = [\"FR\"]\n").unwrap();
+        let every = Words::of(&all);
+        for body in ["482913 è il tuo codice Esempio.", "482913 ist der Code für deine Zahlung.", "482913 è il codice della sua transazione.", "482913 è il codice della vostra transazione."] {
+            assert_eq!(super::detect(&every.codes, "", body).and_then(|c| c.code).as_deref(), Some("482913"), "{body}");
         }
     }
 

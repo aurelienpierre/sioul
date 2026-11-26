@@ -227,34 +227,51 @@ pub(crate) fn tell_codes() {
     }
     let Ok(_one) = TELLING.try_lock() else { return };
     let now = jiff::Timestamp::now().as_millisecond();
-    let path = state_dir().join(CODES_TOLD);
+    tell_codes_in(&root, &here_id(), &state_dir().join(CODES_TOLD), now, &mut |notice, settled| {
+        crate::tell::tell_as(notice, crate::tell::own(sioul_core::attention::Kind::Codes), Some(settled));
+    });
+}
+
+/// `tell_codes` over the phones' lines under `root`, as the device `here`,
+/// the codes told kept in the file `path`, at `now` (ms): each notice handed
+/// to `tell` with what settles it. Whether a notice was handed.
+fn tell_codes_in(root: &std::path::Path, here: &str, path: &std::path::Path, now: i64, tell: &mut dyn FnMut(sioul_core::notice::Notice, crate::tell::Settled)) -> bool {
     let mut told: std::collections::BTreeMap<String, i64> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let all = rules::read_logs(&root, now);
+    let all = rules::read_logs(root, now);
     let notice_of = notices_of(&all);
     let seen = crate::notices::seen_of(NoticeKind::Phone, &notice_of).seen;
     let ids: std::collections::BTreeSet<String> = told.keys().cloned().collect();
-    let fresh: Vec<Line> = rules::codes_to_tell(&all, &here_id(), &ids, &seen, now).into_iter().cloned().collect();
+    let fresh: Vec<Line> = rules::codes_to_tell(&all, here, &ids, &seen, now).into_iter().cloned().collect();
     let before = told.len();
     told.retain(|_, at| now - *at <= 86_400_000);
     if fresh.is_empty() && told.len() == before {
-        return;
+        return false;
     }
+    let handed = !fresh.is_empty();
     for line in fresh {
         told.insert(line.id.clone(), now);
-        let who = if line.name.trim().is_empty() { line.label.clone() } else { line.name.clone() };
         let ends = line.at.max(line.shows) / 1000 + rules::CODE_TOLD_MS / 1000;
-        let notice = sioul_core::notice::Notice::new(sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes), crate::backend::say("phonemsgs-code-notice", &[("who", who)]), tr().text("phonemsgs-code-notice-body", None)).until(Some(ends));
+        let notice = sioul_core::notice::Notice::new(sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes), code_notice_title(&line), tr().text("phonemsgs-code-notice-body", None)).until(Some(ends));
         // Seen on any device: settled, and taken away.
         let pair: std::collections::BTreeMap<String, String> = notice_of.get(&line.id).map(|id| (line.id.clone(), id.clone())).into_iter().collect();
         let id = line.id.clone();
         let settled: crate::tell::Settled = Box::new(move || crate::notices::seen_of(NoticeKind::Phone, &pair).seen.contains(&id));
-        crate::tell::tell_as(notice, crate::tell::own(sioul_core::attention::Kind::Codes), Some(settled));
+        tell(notice, settled);
     }
     if let Ok(text) = serde_json::to_string(&told)
-        && let Err(e) = sioul_core::filelock::replace(&path, text.as_bytes())
+        && let Err(e) = sioul_core::filelock::replace(path, text.as_bytes())
     {
         eprintln!("sioul: phone messages: {e}");
     }
+    handed
+}
+
+/// A phone's code as a computer's notice says it: from whom it came, or, when
+/// the phone said its app's name in place of a sender that may hold a code
+/// (`phonemsgs::code_sender_or_app`), in which app.
+fn code_notice_title(line: &Line) -> String {
+    let app = line.name.trim().is_empty() || line.name == line.label;
+    if app { crate::backend::say("phonemsgs-code-notice-app", &[("app", line.label.clone())]) } else { crate::backend::say("phonemsgs-code-notice", &[("who", line.name.clone())]) }
 }
 
 // ---------------------------------------------------------------- the Porch
@@ -540,6 +557,53 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `tell_codes` over a stand-in sharing folder (review of 25 November
+    /// 2026, should-fix 8): a phone's code line told once on this computer,
+    /// its notice to do, about the Porch, lasting the code's half hour from
+    /// when it came, never carrying the code; told again never, the told file
+    /// remembering it; a line of this computer's own, or a message that is no
+    /// code, never told.
+    #[test]
+    fn a_phone_s_code_is_told_once_from_the_sharing_folder() {
+        sioul_core::config::stand_ins_only();
+        let root = sioul_core::config::data_dir().join(format!("phone-codes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let log = root.join(rules::LOG);
+        std::fs::create_dir_all(&log).unwrap();
+        let now = jiff::Timestamp::now().as_millisecond();
+        let line = |id: &str, code: bool, name: &str| Line { at: now - 60_000, shows: now - 60_000, id: id.into(), app: "foundation.e.message".into(), label: "Message".into(), kind: "text".into(), name: name.into(), code, text: if code { String::new() } else { "Bonjour".into() }, ..Line::default() };
+        rules::carry_into(&log.join("phone.jsonl"), &[line("c-1", true, "Ma Banque"), line("t-1", false, "Paul")], now).unwrap();
+        rules::carry_into(&log.join("laptop.jsonl"), &[line("c-2", true, "Ma Banque")], now).unwrap();
+        let told_path = root.join("phone-codes-told.json");
+        let mut notices = Vec::new();
+        assert!(tell_codes_in(&root, "laptop", &told_path, now, &mut |notice, _| notices.push(notice)));
+        assert_eq!(notices.len(), 1, "the phone's code alone: {notices:?}");
+        let notice = &notices[0];
+        assert_eq!((notice.about.as_str(), notice.kind), (sioul_core::notice::address::PORCH, sioul_core::notice::Kind::Own(sioul_core::attention::Kind::Codes)));
+        assert_eq!(notice.title, crate::backend::say("phonemsgs-code-notice", &[("who", "Ma Banque".to_string())]));
+        assert_eq!(notice.until, Some((now - 60_000) / 1000 + rules::CODE_TOLD_MS / 1000));
+        assert!(std::fs::read_to_string(&told_path).unwrap().contains("\"c-1\""), "the told file remembers it");
+        // Once: a second look tells nothing.
+        let mut again = Vec::new();
+        tell_codes_in(&root, "laptop", &told_path, now + 1000, &mut |notice, _| again.push(notice));
+        assert!(again.is_empty(), "{again:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A phone's code as a computer says it (`tell_codes`, review of 25
+    /// November 2026, should-fixes 7 and 8): from whom it came; in which app,
+    /// when the phone said the app's name in place of a sender that may hold
+    /// a code, or nothing; the notice never carrying the code.
+    #[test]
+    fn a_phone_s_code_on_a_computer_says_from_whom_or_in_which_app() {
+        let line = |name: &str| Line { name: name.into(), label: "Message".into(), app: "foundation.e.message".into(), kind: "text".into(), code: true, ..Line::default() };
+        assert_eq!(code_notice_title(&line("Ma Banque")), crate::backend::say("phonemsgs-code-notice", &[("who", "Ma Banque".to_string())]));
+        for name in ["Message", ""] {
+            assert_eq!(code_notice_title(&line(name)), crate::backend::say("phonemsgs-code-notice-app", &[("app", "Message".to_string())]), "{name:?}");
+        }
+        assert!(!code_notice_title(&line("Ma Banque")).chars().any(|c| c.is_ascii_digit()));
+    }
 
     /// Review of part 6, F8: a phone's text's sender's own rows, by their
     /// number, else by their name as the phone's address book names people;
