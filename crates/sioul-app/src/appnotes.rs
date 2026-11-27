@@ -1837,7 +1837,9 @@ mod tests {
         let _files = crate::everywhere::FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         crate::everywhere::files_cleared();
         Choices { people: Some(true), ..Choices::default() }.save(&Choices::default_path()).unwrap();
-        let now = sioul_core::zone::now();
+        // A fixed morning, never the real clock: at night the usual sleep hours
+        // would hold the message for the night, whatever the pause says.
+        let now = sioul_core::zone::now().with().hour(10).minute(0).second(0).subsec_nanosecond(0).build().unwrap();
         let stamp = now.timestamp().as_second();
         let decided = |json: &str| -> serde_json::Value { serde_json::from_str(&decide_at(json, &now)).unwrap() };
         // In a pause: held, quiet, as a person's; not come, so nothing waited yet.
