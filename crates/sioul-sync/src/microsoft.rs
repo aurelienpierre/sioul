@@ -1204,6 +1204,8 @@ mod tests {
         let late = begin("id", &Authority::Common, "you@example.org").unwrap();
         let mut browser = std::net::TcpStream::connect(("127.0.0.1", late.listener.local_addr().unwrap().port())).unwrap();
         browser.write_all(format!("GET /?code=late&state={} HTTP/1.1\r\n\r\n", late.state).as_bytes()).unwrap();
+        // Let the answer arrive before the wait that ends at once: macOS may not have queued the connection yet.
+        std::thread::sleep(Duration::from_millis(500));
         assert_eq!(wait_for_code(&late, Duration::ZERO, &AtomicBool::new(false), None).unwrap(), "late");
         let nothing = begin("id", &Authority::Common, "you@example.org").unwrap();
         assert_eq!(wait_for_code(&nothing, Duration::ZERO, &AtomicBool::new(false), None).err(), Some(SyncError::Said(TIMEOUT, String::new())));
