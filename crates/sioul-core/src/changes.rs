@@ -145,8 +145,8 @@ pub fn stamps_dir() -> PathBuf {
 
 /// `kind` stamped in `dir`: its file written anew, its time now.
 pub fn stamp_in(dir: &Path, kind: Kind) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    std::fs::write(dir.join(kind.id()), jiff::Timestamp::now().as_millisecond().to_string())
+    crate::files::create_dir_all(dir)?;
+    crate::files::write(dir.join(kind.id()), jiff::Timestamp::now().as_millisecond().to_string())
 }
 
 /// Each kind's stamp in `dir` as it is now: its file's time and size; a kind
@@ -155,7 +155,7 @@ pub fn stamped_in(dir: &Path) -> BTreeMap<Kind, (std::time::SystemTime, u64)> {
     Kind::ALL
         .iter()
         .filter_map(|kind| {
-            let meta = std::fs::metadata(dir.join(kind.id())).ok()?;
+            let meta = crate::files::metadata(dir.join(kind.id())).ok()?;
             Some((*kind, (meta.modified().ok()?, meta.len())))
         })
         .collect()

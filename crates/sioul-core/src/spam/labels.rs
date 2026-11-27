@@ -43,6 +43,8 @@
 //! moves (the Porch's lane of the filter's catches, the training, an older
 //! Sioul) leaves it out, as a line it cannot read.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::Card;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -131,7 +133,7 @@ impl Entry {
 fn message_id_of(file: &Path) -> Option<String> {
     use std::io::Read;
     let mut raw = Vec::new();
-    std::fs::File::open(file).ok()?.take(256 * 1024).read_to_end(&mut raw).ok()?;
+    crate::files::File::open(file).ok()?.take(256 * 1024).read_to_end(&mut raw).ok()?;
     let id = crate::mailindex::bare_id(mail_parser::MessageParser::default().parse_headers(&raw[..])?.message_id()?);
     (!id.is_empty()).then_some(id)
 }
@@ -148,8 +150,8 @@ pub fn state() -> PathBuf {
 pub fn own_log(root: &Path, device: &str) -> PathBuf {
     let own = root.join(FOLDER).join(format!("{}.jsonl", file_safe(device)));
     let older = root.join(FILE);
-    if !own.exists() && older.exists() && std::fs::create_dir_all(root.join(FOLDER)).is_ok() {
-        let _ = std::fs::rename(&older, &own);
+    if !own.present() && older.present() && crate::files::create_dir_all(root.join(FOLDER)).is_ok() {
+        let _ = crate::files::rename(&older, &own);
     }
     own
 }
@@ -178,17 +180,17 @@ pub fn append_to<T: Serialize>(path: &Path, line: &T) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let line = serde_json::to_string(line).map_err(|e| e.to_string())? + "\n";
     if let Some(folder) = path.parent() {
-        let mut builder = std::fs::DirBuilder::new();
+        let mut builder = crate::files::DirBuilder::new();
         builder.recursive(true);
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.mode(0o700);
         builder.create(folder).map_err(fail)?;
     }
     crate::filelock::with_lock(path, || {
-        let mut options = std::fs::OpenOptions::new();
+        let mut options = crate::files::OpenOptions::new();
         options.create(true).append(true);
         #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        options.mode(0o600);
         options.open(path).and_then(|mut file| file.write_all(line.as_bytes())).map_err(fail)
     })
 }
@@ -196,16 +198,16 @@ pub fn append_to<T: Serialize>(path: &Path, line: &T) -> Result<(), String> {
 /// Every line of the log at `path`, in the order they were written; a line
 /// that cannot be read, cut by a crash or written by a later Sioul, is left out.
 pub fn read_from<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
-    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Ok(text) = crate::files::read_to_string(path) else { return Vec::new() };
     text.lines().filter_map(|line| serde_json::from_str(line).ok()).collect()
 }
 
 /// The logs in a folder, every device's (`*.jsonl`, by name), and `older` before them when it is there.
 fn logs_in(folder: &Path, older: Option<&Path>) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> =
-        std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.is_file()).collect();
+        crate::files::read_dir(folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.present_file()).collect();
     files.sort();
-    older.filter(|p| p.is_file()).map(Path::to_path_buf).into_iter().chain(files).collect()
+    older.filter(|p| p.present_file()).map(Path::to_path_buf).into_iter().chain(files).collect()
 }
 
 /// Every entry of every device's label log under `root` (the spam filter's
@@ -474,7 +476,7 @@ const LOOKED: std::time::Duration = std::time::Duration::from_secs(2);
 type Seal = Vec<(PathBuf, u64, Option<std::time::SystemTime>)>;
 
 fn seal_of(files: &[PathBuf]) -> Seal {
-    files.iter().map(|p| std::fs::metadata(p).map_or((p.clone(), 0, None), |m| (p.clone(), m.len(), m.modified().ok()))).collect()
+    files.iter().map(|p| crate::files::metadata(p).map_or((p.clone(), 0, None), |m| (p.clone(), m.len(), m.modified().ok()))).collect()
 }
 
 /// `f` on every device's label log, read again when one of the files

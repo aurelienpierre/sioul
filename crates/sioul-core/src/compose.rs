@@ -14,6 +14,8 @@
 //! A draft is a small TOML file, saved as you type, so closing the window
 //! never loses anything (docs/client.md, "Calm first").
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::data_dir;
 use crate::i18n::{self, Translator};
 use crate::reading;
@@ -151,7 +153,7 @@ impl Draft {
 
     /// Every message in this device's outbox, the oldest first.
     pub fn outbox_all() -> Vec<Draft> {
-        let Ok(entries) = std::fs::read_dir(Draft::outbox_folder()) else { return Vec::new() };
+        let Ok(entries) = crate::files::read_dir(Draft::outbox_folder()) else { return Vec::new() };
         let mut found: Vec<Draft> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).filter_map(|p| Draft::load(&p)).filter(|d| d.outbox).collect();
         found.sort_by(|a, b| (a.queued, &a.id).cmp(&(b.queued, &b.id)));
         found
@@ -161,29 +163,29 @@ impl Draft {
         let path = self.path();
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(fail)?;
+            crate::files::create_dir_all(folder).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, &path).map_err(fail)?;
+        crate::files::write(&temporary, text).map_err(fail)?;
+        crate::files::rename(&temporary, &path).map_err(fail)?;
         // Saved here: its copy goes to its account's Drafts folder at the next round (`draftserver`).
         crate::draftserver::saved(self);
         Ok(path)
     }
 
     pub fn load(path: &Path) -> Option<Draft> {
-        toml::from_str(&std::fs::read_to_string(path).ok()?).ok()
+        toml::from_str(&crate::files::read_to_string(path).ok()?).ok()
     }
 
     /// Every saved draft, the newest first.
     pub fn all() -> Vec<Draft> {
-        let Ok(entries) = std::fs::read_dir(Draft::folder()) else { return Vec::new() };
+        let Ok(entries) = crate::files::read_dir(Draft::folder()) else { return Vec::new() };
         let mut found: Vec<(std::time::SystemTime, Draft)> = entries
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-            .filter_map(|p| Some((std::fs::metadata(&p).and_then(|m| m.modified()).ok()?, Draft::load(&p)?)))
+            .filter_map(|p| Some((crate::files::metadata(&p).and_then(|m| m.modified()).ok()?, Draft::load(&p)?)))
             .collect();
         found.sort_by(|a, b| b.0.cmp(&a.0));
         found.into_iter().map(|(_, d)| d).collect()
@@ -195,8 +197,8 @@ impl Draft {
     pub fn discard(&self) {
         // Its copies in the server's Drafts folder go too, at the next round (`draftserver`).
         crate::draftserver::discarded(self);
-        let _ = std::fs::remove_file(self.path());
-        let _ = std::fs::remove_file(self.original_copy());
+        let _ = crate::files::remove_file(self.path());
+        let _ = crate::files::remove_file(self.original_copy());
         for path in &self.attachments {
             remove_own_copy(path);
         }
@@ -211,11 +213,11 @@ impl Draft {
     /// device names that device's folder).
     pub fn original_here(&self) -> Option<PathBuf> {
         let named = self.original.as_ref()?;
-        if named.is_file() {
+        if named.present_file() {
             return Some(named.clone());
         }
         let copy = self.original_copy();
-        copy.is_file().then_some(copy)
+        copy.present_file().then_some(copy)
     }
 
     /// Keeps a copy of the message answered or forwarded next to the draft: it
@@ -226,8 +228,8 @@ impl Draft {
         if original == copy {
             return Ok(());
         }
-        std::fs::create_dir_all(Draft::folder()).map_err(|e| e.to_string())?;
-        std::fs::copy(&original, &copy).map_err(|e| format!("{}: {e}", original.display()))?;
+        crate::files::create_dir_all(Draft::folder()).map_err(|e| e.to_string())?;
+        crate::files::copy(&original, &copy).map_err(|e| format!("{}: {e}", original.display()))?;
         self.original = Some(copy);
         self.copy_as_received = true;
         Ok(())
@@ -323,10 +325,10 @@ fn remove_own_copy_in(copies: &Path, path: &Path) {
     if !own_copy_in(copies, path) {
         return;
     }
-    let _ = std::fs::remove_file(path);
+    let _ = crate::files::remove_file(path);
     if let Some(folder) = path.parent().filter(|folder| *folder != copies) {
         // Only when empty: another of its files may still be attached.
-        let _ = std::fs::remove_dir(folder);
+        let _ = crate::files::remove_dir(folder);
     }
 }
 
@@ -378,7 +380,7 @@ pub fn split_addresses(field: &str) -> Vec<String> {
 /// recipients, subject and thread prefilled, the text left to you.
 /// `own` holds your addresses, never answered to.
 pub fn answer(original: &Path, kind: DraftKind, account: &str, own: &[String]) -> Option<Draft> {
-    let raw = std::fs::read(original).ok()?;
+    let raw = crate::files::read(original).ok()?;
     let message = MessageParser::default().parse(&raw)?;
     let mine = |address: &str| own.iter().any(|o| o.eq_ignore_ascii_case(address));
     let entries = |list: Option<&Address>| -> Vec<String> {
@@ -851,12 +853,12 @@ pub fn server_copy(draft: &Draft, from: (&str, &str), date: i64, mark: &str, mes
     }
     let html = format!("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>{}</body></html>", markdown_html(&draft.body));
     let alternative = MimePart::new("multipart/alternative", vec![MimePart::new("text/plain", draft.body.clone()), MimePart::new("text/html", html)]);
-    let held: Vec<&PathBuf> = draft.attachments.iter().filter(|p| p.is_file()).collect();
-    let size: u64 = held.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+    let held: Vec<&PathBuf> = draft.attachments.iter().filter(|p| p.present_file()).collect();
+    let size: u64 = held.iter().filter_map(|p| crate::files::metadata(p).ok()).map(|m| m.len()).sum();
     let mut files = Vec::new();
     if attached && size <= crate::draftserver::ATTACHED_AT_MOST {
         for path in held {
-            let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let bytes = crate::files::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
             let name = path.file_name().map_or_else(|| "attachment".to_string(), |n| n.to_string_lossy().to_string());
             files.push(MimePart::new(mime_of(&name), bytes).attachment(name));
         }
@@ -1148,7 +1150,7 @@ fn name_of(entry: &str) -> String {
 fn attachments(draft: &Draft, original: Option<&[u8]>) -> Result<Vec<(String, &'static str, Vec<u8>)>, String> {
     let mut out = Vec::new();
     for path in &draft.attachments {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = crate::files::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let name = path.file_name().map_or_else(|| "attachment".to_string(), |n| n.to_string_lossy().to_string());
         out.push((name.clone(), mime_of(&name), bytes));
     }

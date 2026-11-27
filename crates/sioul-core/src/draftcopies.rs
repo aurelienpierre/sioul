@@ -43,6 +43,8 @@
 //! took its place), never as the path names it afterwards: a version an
 //! exchange puts in place meanwhile is looked at again (N6).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::compose::Draft;
 use crate::filelock::{FileStamp, Prepared};
 use crate::pgp::{self, Keys};
@@ -155,7 +157,7 @@ const JUDGED_FORMAT: u32 = 1;
 impl Judged {
     /// The verdicts kept at `path`; none when it does not read.
     pub fn load(path: &Path) -> Judged {
-        let (files, waiting) = std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice::<JudgedFile>(&bytes).ok()).filter(|f| f.format == JUDGED_FORMAT).map(|f| (f.files, f.waiting)).unwrap_or_default();
+        let (files, waiting) = crate::files::read(path).ok().and_then(|bytes| serde_json::from_slice::<JudgedFile>(&bytes).ok()).filter(|f| f.format == JUDGED_FORMAT).map(|f| (f.files, f.waiting)).unwrap_or_default();
         Judged { files, waiting, met: HashSet::new(), changed: false }
     }
 
@@ -183,7 +185,7 @@ impl Judged {
             return Ok(());
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::files::create_dir_all(parent)?;
         }
         let text = serde_json::to_vec(&JudgedFile { format: JUDGED_FORMAT, files: self.files.clone(), waiting: self.waiting }).map_err(std::io::Error::other)?;
         crate::filelock::replace(path, &text)?;
@@ -247,7 +249,7 @@ thread_local! {
 }
 
 /// A copy read whole for a look (counted in tests).
-fn read_copy(path: &Path) -> std::io::Result<(Vec<u8>, std::fs::Metadata)> {
+fn read_copy(path: &Path) -> std::io::Result<(Vec<u8>, crate::files::Metadata)> {
     #[cfg(test)]
     READ.with(|n| n.set(n.get() + 1));
     crate::filelock::read_whole_with(path)
@@ -290,8 +292,8 @@ fn may_hold_decrypted(raw: &[u8], answers: Option<&str>, find: &mut dyn FnMut(&s
 /// sharing's lock, under which each copy takes its place.
 pub fn seal_beside(drafts: &Path, certs: &Certs, find: &mut dyn FnMut(&str) -> Vec<PathBuf>, judged: &mut Judged, hold: Hold) -> Sealed {
     let mut out = Sealed::default();
-    let Ok(entries) = std::fs::read_dir(drafts) else { return out };
-    let mut copies: Vec<(PathBuf, String)> = entries.filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).filter_map(|e| Some((e.path(), copy_id(&e.path())?))).collect();
+    let Ok(entries) = crate::files::read_dir(drafts) else { return out };
+    let mut copies: Vec<(PathBuf, String)> = entries.filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_file())).filter_map(|e| Some((e.path(), copy_id(&e.path())?))).collect();
     copies.sort();
     let mut batch = Batch { waiting: VecDeque::new(), bytes: 0, hold };
     let mut orphans = Vec::new();
@@ -330,7 +332,7 @@ pub fn seal_beside(drafts: &Path, certs: &Certs, find: &mut dyn FnMut(&str) -> V
         let started = Instant::now();
         while let Some(path) = orphans.pop_front() {
             // Still an orphan under the lock (its draft did not come meanwhile).
-            if !drafts.join(format!("{}.toml", copy_id(&path).unwrap_or_default())).exists() && std::fs::remove_file(&path).is_ok() {
+            if !drafts.join(format!("{}.toml", copy_id(&path).unwrap_or_default())).present() && crate::files::remove_file(&path).is_ok() {
                 out.orphans += 1;
             }
             if started.elapsed() >= HOLD_AT_MOST || held.wanted() {
@@ -347,7 +349,7 @@ pub fn seal_beside(drafts: &Path, certs: &Certs, find: &mut dyn FnMut(&str) -> V
 
 /// An encrypted copy left alone more than a day: its draft, gone, will not come.
 fn orphaned(path: &Path) -> bool {
-    let old = std::fs::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 24 * 3600);
+    let old = crate::files::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 24 * 3600);
     old && crate::filelock::read_whole(path).is_ok_and(|raw| pgp::is_encrypted(&raw))
 }
 

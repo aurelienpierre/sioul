@@ -31,7 +31,7 @@ pub(crate) fn events_on<'a>(occurrences: &'a [Occurrence], zone: &TimeZone) -> i
             .filter(|o| jiff::Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
             // Never another person's event (a co-worker's lesson that day): not yours to stand for it
             // (review of 3346ff96, 8); a child's event typed by hand still is (second review).
-            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && !o.another_persons() && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+            .map(|o| EventSeen { start: o.start, yours: !o.read_only && !o.with_others && !o.another_persons() && o.task.is_empty() && !o.cancelled, text: crate::files::read_to_string(&o.key).unwrap_or_default() })
             .collect()
     }
 }
@@ -185,7 +185,7 @@ fn letter_card(shared: &Shared, letters: &Letters, letter: &Letter, kind: Kind, 
         let occurrences = crate::agenda::occurrences_between(from, from + 86_400, &removed, &skipped, &tasks);
         let seen = events_on(&occurrences, zone)(date);
         let found = dated::letter_event(letters, letter, at, &seen)?;
-        let o = occurrences.iter().find(|o| o.start == seen[found].start && std::fs::read_to_string(&o.key).ok().as_deref() == Some(seen[found].text.as_str()))?;
+        let o = occurrences.iter().find(|o| o.start == seen[found].start && crate::files::read_to_string(&o.key).ok().as_deref() == Some(seen[found].text.as_str()))?;
         let address = sioul_core::lines::unfold(&seen[found].text).iter().any(|l| sioul_core::lines::name(l) == "LINK" && sioul_core::lines::value(l).trim() == sioul_core::links::letter_uri(&letter.id));
         let time = jiff::Timestamp::from_second(o.start).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default();
         Some(serde_json::json!({ "key": o.key, "start": o.start, "title": o.summary, "line": say("dated-in-the-agenda", &[("title", o.summary.clone()), ("time", time)]), "address": address }))

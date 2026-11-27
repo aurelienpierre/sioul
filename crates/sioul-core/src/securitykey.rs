@@ -31,6 +31,8 @@
 //! Sioul only uses a security key: it never asks for its Admin PIN, never
 //! changes or unblocks a PIN, never loads or makes keys on it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::data_dir;
 use crate::i18n::Translator;
 use openpgp::Cert;
@@ -400,10 +402,10 @@ fn no_service_hint(tr: &Translator) -> String {
         "seckey-hint-windows"
     } else if cfg!(target_os = "macos") {
         "seckey-hint-macos"
-    } else if Path::new("/.flatpak-info").exists() {
+    } else if Path::new("/.flatpak-info").present() {
         "seckey-hint-flatpak"
     } else {
-        hint_for_os_release(&std::fs::read_to_string("/etc/os-release").unwrap_or_default())
+        hint_for_os_release(&crate::files::read_to_string("/etc/os-release").unwrap_or_default())
     };
     tr.text(id, None)
 }
@@ -955,7 +957,7 @@ pub fn known_cards_in(path: &Path) -> Vec<KnownCard> {
 }
 
 fn read_known(path: &Path) -> Vec<KnownCard> {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<CardsFile>(&text).ok()).map(|f| f.cards).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str::<CardsFile>(&text).ok()).map(|f| f.cards).unwrap_or_default()
 }
 
 /// Changes the list of known security keys: read, changed, written, one
@@ -1028,12 +1030,12 @@ pub fn shared_cards() -> Vec<(KnownCard, Cert)> {
 
 /// [`shared_cards`] from the folder `dir`.
 pub fn shared_cards_in(dir: &Path) -> Vec<(KnownCard, Cert)> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     let mut found: Vec<(KnownCard, Cert)> = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-        .filter_map(|p| std::fs::read_to_string(p).ok())
+        .filter_map(|p| crate::files::read_to_string(p).ok())
         .filter_map(|text| toml::from_str::<SharedCard>(&text).ok())
         .filter_map(|shared| Some((vouched(&shared.card, &shared.certificate)?, shared.card)))
         .map(|(cert, card)| (card, cert))
@@ -1082,7 +1084,7 @@ struct Marks {
 }
 
 fn read_marks(path: &Path) -> Marks {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 fn mark_shared(path: &Path, ident: &str) -> Result<(), String> {
@@ -1092,7 +1094,7 @@ fn mark_shared(path: &Path, ident: &str) -> Result<(), String> {
     }
     marks.shared.push(ident.to_string());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(path, toml::to_string(&marks).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -1108,7 +1110,7 @@ pub fn share_cards_marked_in(cards: &Path, own: &Path, shared: &Path, marks: &Pa
     for card in known {
         let path = shared.join(shared_name(&card.ident));
         let first = !marked.shared.iter().any(|i| i.eq_ignore_ascii_case(&card.ident));
-        if path.exists() {
+        if path.present() {
             // Written again only when this device's certificate adds to it (F5): merging only adds, so this settles at once.
             share_one(&card, own, shared, true)?;
         } else if first {
@@ -1129,7 +1131,7 @@ pub fn stopped_in(root: &Path) -> Vec<String> {
         #[serde(default)]
         stopped: Vec<String>,
     }
-    std::fs::read_to_string(root.join("stopped.toml")).ok().and_then(|text| toml::from_str::<Stopped>(&text).ok()).map(|s| s.stopped).unwrap_or_default()
+    crate::files::read_to_string(root.join("stopped.toml")).ok().and_then(|text| toml::from_str::<Stopped>(&text).ok()).map(|s| s.stopped).unwrap_or_default()
 }
 
 /// `ident` added to (or, read again here, taken from) the list of security keys stopped on this device.
@@ -1143,7 +1145,7 @@ fn set_stopped_in(root: &Path, ident: &str, stopped: bool) -> Result<(), String>
     if list.len() == before && !stopped {
         return Ok(());
     }
-    std::fs::create_dir_all(root).map_err(|e| format!("{}: {e}", root.display()))?;
+    crate::files::create_dir_all(root).map_err(|e| format!("{}: {e}", root.display()))?;
     let text = format!("# Sioul: the security keys this device stopped using; never shared.\nstopped = {}\n", toml::Value::Array(list.into_iter().map(toml::Value::String).collect()));
     crate::filelock::replace(&root.join("stopped.toml"), text.as_bytes()).map_err(|e| format!("{}: {e}", root.display()))
 }
@@ -1156,7 +1158,7 @@ pub fn share_cards_in(cards: &Path, own: &Path, shared: &Path, missing: bool) ->
         return Ok(());
     }
     for card in known {
-        if missing && shared.join(shared_name(&card.ident)).exists() {
+        if missing && shared.join(shared_name(&card.ident)).present() {
             continue;
         }
         share_one(&card, own, shared, false)?;
@@ -1172,9 +1174,9 @@ pub fn share_cards_in(cards: &Path, own: &Path, shared: &Path, missing: bool) ->
 fn share_one(card: &KnownCard, own: &Path, shared: &Path, adds: bool) -> Result<(), String> {
     let fail = |path: &Path, e: std::io::Error| format!("{}: {e}", path.display());
     let path = shared.join(shared_name(&card.ident));
-    let Some(mine) = std::fs::read(own.join(format!("{}.asc", card.cert))).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) else { return Ok(()) };
+    let Some(mine) = crate::files::read(own.join(format!("{}.asc", card.cert))).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) else { return Ok(()) };
     let mine = mine.strip_secret_key_material();
-    let there = std::fs::read_to_string(&path).ok().and_then(|text| toml::from_str::<SharedCard>(&text).ok());
+    let there = crate::files::read_to_string(&path).ok().and_then(|text| toml::from_str::<SharedCard>(&text).ok());
     let vouched_there = there.as_ref().and_then(|t| vouched(&t.card, &t.certificate)).filter(|t| t.fingerprint() == mine.fingerprint());
     let cert = match &vouched_there {
         Some(shared) => mine.clone().merge_public(shared.clone()).unwrap_or(mine),
@@ -1196,19 +1198,19 @@ fn share_one(card: &KnownCard, own: &Path, shared: &Path, adds: bool) -> Result<
         "# Sioul: one of your security keys, as a computer of yours read it, and its certificate: public parts only (docs/database.md).\n{}",
         toml::to_string(&SharedCard { card: record, certificate }).map_err(|e| e.to_string())?
     );
-    if std::fs::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
+    if crate::files::read_to_string(&path).ok().as_deref() == Some(text.as_str()) {
         return Ok(());
     }
-    std::fs::create_dir_all(shared).map_err(|e| fail(shared, e))?;
+    crate::files::create_dir_all(shared).map_err(|e| fail(shared, e))?;
     let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, &text).map_err(|e| fail(&temporary, e))?;
-    std::fs::rename(&temporary, &path).map_err(|e| fail(&path, e))
+    crate::files::write(&temporary, &text).map_err(|e| fail(&temporary, e))?;
+    crate::files::rename(&temporary, &path).map_err(|e| fail(&path, e))
 }
 
 /// The shared file of the security key `ident` taken away: this device
 /// stopped using it ([`forget`]).
 fn unshare_card(shared: &Path, ident: &str) {
-    let _ = std::fs::remove_file(shared.join(shared_name(ident)));
+    let _ = crate::files::remove_file(shared.join(shared_name(ident)));
 }
 
 pub(crate) fn change_known_at<T>(path: &Path, change: impl FnOnce(&mut Vec<KnownCard>) -> T) -> Result<T, String> {
@@ -1218,11 +1220,11 @@ pub(crate) fn change_known_at<T>(path: &Path, change: impl FnOnce(&mut Vec<Known
         let text = toml::to_string(&CardsFile { cards }).map_err(|e| e.to_string())?;
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(fail)?;
+            crate::files::create_dir_all(folder).map_err(fail)?;
         }
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)?;
+        crate::files::write(&temporary, text).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)?;
         Ok(result)
     })
 }

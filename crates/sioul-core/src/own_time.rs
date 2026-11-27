@@ -66,7 +66,7 @@ pub fn default_path() -> PathBuf {
 
 /// The file as it is; empty when there is none, or it does not read.
 pub fn load(path: &Path) -> OwnTime {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// This process's writes of the file (`set`): a write here is never read stale.
@@ -84,12 +84,12 @@ struct Stamp {
     inode: u64,
 }
 
-fn stamp_of(meta: Option<&std::fs::Metadata>) -> Stamp {
+fn stamp_of(meta: Option<&crate::files::Metadata>) -> Stamp {
     #[cfg(unix)]
-    let inode = meta.map_or(0, std::os::unix::fs::MetadataExt::ino);
+    let inode = meta.map_or(0, crate::files::Metadata::ino);
     #[cfg(not(unix))]
     let inode = 0;
-    Stamp { writes: WRITES.load(std::sync::atomic::Ordering::SeqCst), modified: meta.and_then(|m| m.modified().ok()), len: meta.map_or(0, std::fs::Metadata::len), inode }
+    Stamp { writes: WRITES.load(std::sync::atomic::Ordering::SeqCst), modified: meta.and_then(|m| m.modified().ok()), len: meta.map_or(0, crate::files::Metadata::len), inode }
 }
 
 /// The file as it is now, read again only when it changed (`Stamp`): the
@@ -101,7 +101,7 @@ pub fn current() -> Arc<OwnTime> {
 fn current_at(path: &Path) -> Arc<OwnTime> {
     type Seen = Option<(PathBuf, Stamp, Arc<OwnTime>)>;
     static SEEN: Mutex<Seen> = Mutex::new(None);
-    let meta = std::fs::metadata(path).ok();
+    let meta = crate::files::metadata(path).ok();
     let stamp = stamp_of(meta.as_ref());
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((was, at, own)) = seen.as_ref()
@@ -135,7 +135,7 @@ pub fn set(path: &Path, uid: &str, own: Option<Own>) -> Result<bool, String> {
         }
         let text = toml::to_string(&all).map_err(|e| e.to_string())?;
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+            crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
         }
         let bytes = format!("# Your own time around meetings with others, by their UID (docs/client.md): kept here, never in the meeting.\n{text}");
         crate::filelock::replace(path, bytes.as_bytes()).map_err(|e| e.to_string())?;

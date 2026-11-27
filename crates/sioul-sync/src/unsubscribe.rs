@@ -171,7 +171,7 @@ impl<'a> Judge<'a> {
             .mail_sources()
             .into_iter()
             .map(|mut source| {
-                source.folder = source.folder.canonicalize().unwrap_or(source.folder);
+                source.folder = crate::files::canonicalize(&source.folder).unwrap_or(source.folder);
                 source
             })
             .collect();
@@ -187,7 +187,7 @@ impl<'a> Judge<'a> {
 
     /// The copies at `files`, each judged as the Reader judges it.
     fn copies(&self, files: &[PathBuf]) -> Vec<SaidCopy> {
-        let resolved: Vec<PathBuf> = files.iter().map(|file| file.canonicalize().unwrap_or_else(|_| file.clone())).collect();
+        let resolved: Vec<PathBuf> = files.iter().map(|file| crate::files::canonicalize(file).unwrap_or_else(|_| file.clone())).collect();
         let now = jiff::Timestamp::now().as_second();
         porch::judge(&resolved, &self.sources, self.store.as_ref(), &self.known, &porch::Senders::default(), now)
             .into_iter()

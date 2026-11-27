@@ -41,6 +41,8 @@
 //!   password kept or said (it comes from the keyring, as the calendars' sync
 //!   has it, for the requests only).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::SyncError;
 use crate::dav::{self, DAV};
 use serde::{Deserialize, Serialize};
@@ -331,7 +333,7 @@ pub struct Sent {
 
 impl State {
     pub fn load(memory: &Path) -> State {
-        std::fs::read_to_string(state_path(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(state_path(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     fn write(&self, memory: &Path) -> Result<(), String> {
@@ -462,7 +464,7 @@ type Stamp = [Option<(u64, SystemTime)>; 3];
 static ATTACHED: Mutex<BTreeMap<PathBuf, (Stamp, Option<PathBuf>)>> = Mutex::new(BTreeMap::new());
 
 fn stamp_of(path: &Path) -> Option<(u64, SystemTime)> {
-    std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
+    crate::files::metadata(path).ok().map(|m| (m.len(), m.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
 }
 
 /// The copy fetched for the sharing folder `folder`, read beside it from now
@@ -493,8 +495,8 @@ pub fn overlay(folder: &Path) -> Option<PathBuf> {
 /// The seal of a folder, its bytes: at most a small file's.
 fn seal_of(folder: &Path) -> Option<Vec<u8>> {
     let path = folder.join("seal.toml");
-    let size = std::fs::metadata(&path).ok()?.len();
-    (size <= crate::share::SMALL_FILE).then(|| std::fs::read(&path).ok()).flatten()
+    let size = crate::files::metadata(&path).ok()?.len();
+    (size <= crate::share::SMALL_FILE).then(|| crate::files::read(&path).ok()).flatten()
 }
 
 /// What was fetched for this folder may be read: fetched for it, under its seal.
@@ -505,11 +507,11 @@ fn usable(folder: &Path, memory: &Path) -> bool {
 
 /// Sharing stopped here: what was fetched and known goes, and nothing is read beside the folder.
 pub fn forget(memory: &Path, folder: &Path) {
-    let _ = std::fs::remove_dir_all(cache_of(memory));
-    let _ = std::fs::remove_file(state_path(memory));
-    let _ = std::fs::remove_file(crate::blobs::Wanted::path(memory));
-    let _ = std::fs::remove_file(Lane::Main.memory(memory));
-    let _ = std::fs::remove_file(Lane::Urgent.memory(memory));
+    let _ = crate::files::remove_dir_all(cache_of(memory));
+    let _ = crate::files::remove_file(state_path(memory));
+    let _ = crate::files::remove_file(crate::blobs::Wanted::path(memory));
+    let _ = crate::files::remove_file(Lane::Main.memory(memory));
+    let _ = crate::files::remove_file(Lane::Urgent.memory(memory));
     if let Ok(mut attached) = ATTACHED.lock() {
         attached.remove(folder);
     }
@@ -913,8 +915,8 @@ impl Server {
     /// none when it is not there, or larger.
     pub(crate) fn download(&self, url: &str, path: &Path, limit: u64) -> Result<Option<u64>, SyncError> {
         let Some((size, temporary)) = self.download_aside(url, path, limit)? else { return Ok(None) };
-        if let Err(e) = std::fs::rename(&temporary, path) {
-            let _ = std::fs::remove_file(&temporary);
+        if let Err(e) = crate::files::rename(&temporary, path) {
+            let _ = crate::files::remove_file(&temporary);
             return Err(SyncError::Disk(format!("{}: {e}", path.display())));
         }
         Ok(Some(size))
@@ -954,7 +956,7 @@ impl Server {
             Ok(copied)
         })();
         if written.is_err() {
-            let _ = std::fs::remove_file(&temporary);
+            let _ = crate::files::remove_file(&temporary);
         }
         written.map(|size| Some((size, temporary)))
     }
@@ -1231,7 +1233,7 @@ pub(crate) fn find_with(memory: &Path, folder: &Path, logins: &[Login], places: 
     }
     if state.folder != shown(folder) {
         // Another folder: what was fetched for the last one goes.
-        let _ = std::fs::remove_dir_all(cache_of(memory));
+        let _ = crate::files::remove_dir_all(cache_of(memory));
         state = State { on: state.on, given: state.given.clone(), asked: state.asked, send: state.send, folder: shown(folder), ..State::default() };
     }
     state.looked = now;
@@ -1311,7 +1313,7 @@ pub(crate) fn find_with(memory: &Path, folder: &Path, logins: &[Login], places: 
 fn confirm(state: &mut State, memory: &Path, login: &Login, url: &str, seal: &[u8], etag: Option<String>, now: i64) {
     let cache = cache_of(memory);
     if seal_of(&cache).as_deref() != Some(seal) {
-        let _ = std::fs::remove_dir_all(&cache);
+        let _ = crate::files::remove_dir_all(&cache);
         state.files.clear();
         state.folders.clear();
     }
@@ -1633,7 +1635,7 @@ pub(crate) fn pull_with(memory: &Path, folder: &Path, own: &str, login: &Login, 
     // This folder's seal changed here (sharing started again): what was
     // fetched belongs to another sharing, and the server's folder is looked at again.
     if !usable(folder, memory) {
-        let _ = std::fs::remove_dir_all(&cache);
+        let _ = crate::files::remove_dir_all(&cache);
         state = State { on: state.on, given: state.given.clone(), asked: state.asked, send: state.send, folder: state.folder.clone(), said: "no-seal".into(), ..State::default() };
         let _ = state.save(memory);
         pulled.problem = Some(state.said);
@@ -1697,7 +1699,7 @@ pub fn tidy(memory: &Path, folder: &Path, own: &str) {
 fn tidy_cache(state: &State, folder: &Path, memory: &Path, own: &str) {
     let cache = &cache_of(memory);
     // What a crash left half written, an hour later.
-    for dir in [cache.to_path_buf(), cache.join("devices"), cache.join("blobs")].into_iter().chain(std::fs::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).map(|e| e.path())) {
+    for dir in [cache.to_path_buf(), cache.join("devices"), cache.join("blobs")].into_iter().chain(crate::files::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).map(|e| e.path())) {
         crate::share::clean_leftovers(&dir);
     }
     for relative in cached_files(cache) {
@@ -1706,11 +1708,11 @@ fn tidy_cache(state: &State, folder: &Path, memory: &Path, own: &str) {
         let gone = match kind_of(&relative) {
             None => continue,
             Some((_, id)) if id == own => true,
-            Some((Kind::Round, _)) => std::fs::metadata(&here).is_ok_and(|h| std::fs::metadata(&fetched).is_ok_and(|f| h.len() >= f.len())),
-            Some(_) => !state.fetching() || std::fs::read(&here).ok().is_some_and(|h| std::fs::read(&fetched).ok().is_some_and(|f| f == h)),
+            Some((Kind::Round, _)) => crate::files::metadata(&here).is_ok_and(|h| crate::files::metadata(&fetched).is_ok_and(|f| h.len() >= f.len())),
+            Some(_) => !state.fetching() || crate::files::read(&here).ok().is_some_and(|h| crate::files::read(&fetched).ok().is_some_and(|f| f == h)),
         };
         if gone && !name.starts_with('.') {
-            let _ = std::fs::remove_file(&fetched);
+            let _ = crate::files::remove_file(&fetched);
         }
     }
     // Sealed files fetched because a note or a paper waited for them
@@ -1722,16 +1724,16 @@ fn tidy_cache(state: &State, folder: &Path, memory: &Path, own: &str) {
     // note nothing here writes (Android's leave to read them taken back).
     let wanted = crate::blobs::Wanted::load(memory);
     let mut aged: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(cache.join("blobs")).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(cache.join("blobs")).into_iter().flatten().filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
         let Ok(meta) = entry.metadata() else { continue };
-        if name.starts_with('.') || !meta.is_file() {
+        if name.starts_with('.') || !meta.present_file() {
             continue;
         }
-        let brought = std::fs::metadata(folder.join("blobs").join(&name)).is_ok_and(|here| here.len() == meta.len());
+        let brought = crate::files::metadata(folder.join("blobs").join(&name)).is_ok_and(|here| here.len() == meta.len());
         let old = meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() >= WANTED_KEPT_DAYS * 86_400);
         if !state.fetching() || brought || old || !wanted.blobs.contains_key(&name) {
-            let _ = std::fs::remove_file(entry.path());
+            let _ = crate::files::remove_file(entry.path());
             if old {
                 aged.push(name);
             }
@@ -1779,10 +1781,10 @@ pub(crate) fn kind_of(relative: &str) -> Option<(Kind, &str)> {
 
 /// The files of the cache, by their path in the folder: the folder's own, `devices/`, `leases/<part>/`.
 fn cached_files(cache: &Path) -> Vec<String> {
-    let names = |dir: &Path| -> Vec<String> { std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect() };
+    let names = |dir: &Path| -> Vec<String> { crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect() };
     let mut out: Vec<String> = names(cache);
     out.extend(names(&cache.join("devices")).into_iter().map(|n| format!("devices/{n}")));
-    for part in std::fs::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+    for part in crate::files::read_dir(cache.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_dir())) {
         let part = part.file_name().to_string_lossy().to_string();
         out.extend(names(&cache.join("leases").join(&part)).into_iter().map(|n| format!("leases/{part}/{n}")));
     }
@@ -1829,7 +1831,7 @@ pub fn fetch_wanted(memory: &Path, folder: &Path, login: &Login, key: &[u8; 32],
 /// Whether a sealed file waited for is due to be fetched (`fetch_wanted`):
 /// cheap, nothing of the network; none while nothing waits.
 pub fn wanted_due(memory: &Path, folder: &Path, now: i64) -> bool {
-    crate::blobs::Wanted::path(memory).exists() && !wanted_now(&crate::blobs::Wanted::load(memory), folder, &cache_of(memory).join("blobs"), now).is_empty()
+    crate::blobs::Wanted::path(memory).present() && !wanted_now(&crate::blobs::Wanted::load(memory), folder, &cache_of(memory).join("blobs"), now).is_empty()
 }
 
 /// The sealed files waited for that are neither in the folder nor fetched
@@ -1838,7 +1840,7 @@ pub fn wanted_due(memory: &Path, folder: &Path, now: i64) -> bool {
 /// lacking, a multimedia message's that its phone waits for), each asked
 /// `WANTED_KEPT_DAYS` at most.
 fn wanted_now<'a>(wanted: &'a crate::blobs::Wanted, folder: &Path, into: &Path, now: i64) -> Vec<(&'a String, &'a crate::blobs::Want)> {
-    let here = |dir: &Path, name: &str| std::fs::metadata(dir.join(name)).is_ok_and(|m| m.len() > 0);
+    let here = |dir: &Path, name: &str| crate::files::metadata(dir.join(name)).is_ok_and(|m| m.len() > 0);
     let fresh = |want: &&crate::blobs::Want| now - want.since < WANTED_KEPT_DAYS as i64 * 86_400;
     wanted.blobs.iter().chain(wanted.media.iter().filter(|(_, want)| fresh(want))).filter(|(name, want)| want.again <= now && !here(&folder.join("blobs"), name) && !here(into, name)).collect()
 }
@@ -1891,7 +1893,7 @@ pub(crate) fn fetch_wanted_with(memory: &Path, folder: &Path, login: &Login, key
                         }
                         // Not whole, or another content: never kept, asked again after a while.
                         Err(fault) => {
-                            let _ = std::fs::remove_file(&path);
+                            let _ = crate::files::remove_file(&path);
                             pulled.held += 1;
                             tried.insert(name.clone(), failed(!matches!(fault, crate::blobs::Fault::Broken)));
                         }
@@ -1998,7 +2000,7 @@ impl Puller<'_> {
             .into_iter()
             .filter(|name| matches!(kind_of(name), Some((Kind::Round | Kind::Seen, id)) if id == own))
             .filter_map(|name| {
-                let here = std::fs::metadata(self.folder.join(&name)).ok()?.len();
+                let here = crate::files::metadata(self.folder.join(&name)).ok()?.len();
                 let there = root.items.get(&name).filter(|item| !item.dir).map_or(0, |item| item.size);
                 (here > there).then_some(here - there)
             })
@@ -2024,7 +2026,7 @@ impl Puller<'_> {
         if self.unchanged("", &root.etag) {
             // What was left to the sync app and has come here since: no longer left.
             let (folder, into) = (self.folder, self.into);
-            let here = |name: &str| [folder.join(name), into.join(name)].iter().filter_map(|path| std::fs::metadata(path).ok()).map(|m| m.len()).max().unwrap_or(0);
+            let here = |name: &str| [folder.join(name), into.join(name)].iter().filter_map(|path| crate::files::metadata(path).ok()).map(|m| m.len()).max().unwrap_or(0);
             self.state.left.retain(|name, size| here(name) < *size);
             return Ok(());
         }
@@ -2173,7 +2175,7 @@ impl Puller<'_> {
     /// whose files you removed. Sioul keeping the folder itself, one gone
     /// here is taken out there at the end of the step (`push`).
     fn away(&mut self, relative: &str, item: &Item) {
-        if self.mirror() && !item.etag.is_empty() && !self.folder.join(relative).exists() {
+        if self.mirror() && !item.etag.is_empty() && !self.folder.join(relative).present() {
             self.departed_there.push((relative.to_string(), item.etag.clone()));
         }
     }
@@ -2231,7 +2233,7 @@ impl Puller<'_> {
             // itself, another device's records its writer let go (every device read past them).
             let round = matches!(kind_of(&path), Some((Kind::Round, _)));
             if path != "seal.toml" && (self.into != self.folder || round) {
-                let _ = std::fs::remove_file(self.into.join(&path));
+                let _ = crate::files::remove_file(self.into.join(&path));
             }
         }
     }
@@ -2242,7 +2244,7 @@ impl Puller<'_> {
     fn small(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
         let known = Fetched { etag: item.etag.clone(), size: item.size };
         // Sioul keeping the folder itself, one gone from its copy comes again.
-        if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) && (!self.mirror() || self.folder.join(relative).exists()) {
+        if !item.etag.is_empty() && self.state.files.get(relative) == Some(&known) && (!self.mirror() || self.folder.join(relative).present()) {
             return Ok(());
         }
         let cap = if matches!(kind_of(relative), Some((Kind::Urgent, _))) { TEXTS_LARGEST } else { crate::share::SMALL_FILE };
@@ -2255,10 +2257,10 @@ impl Puller<'_> {
         };
         self.pulled.bytes += bytes.len() as u64;
         let (here, into) = (self.folder.join(relative), self.into.join(relative));
-        if std::fs::read(&here).ok().as_deref() == Some(&bytes[..]) {
+        if crate::files::read(&here).ok().as_deref() == Some(&bytes[..]) {
             // The sync app brought it already: nothing kept twice.
             if into != here {
-                let _ = std::fs::remove_file(&into);
+                let _ = crate::files::remove_file(&into);
             }
         } else {
             crate::share::write_atomically(&into, &bytes).map_err(|e| Stop::Failed(SyncError::Disk(e)))?;
@@ -2274,7 +2276,7 @@ impl Puller<'_> {
     /// numbering them again over the others' reading.
     fn restore(&mut self, relative: &str, item: &Item) -> Result<(), Stop> {
         let here = self.folder.join(relative);
-        if here.exists() || (self.state.sent.contains_key(relative) && !self.lost) || item.size > LARGEST {
+        if here.present() || (self.state.sent.contains_key(relative) && !self.lost) || item.size > LARGEST {
             return Ok(());
         }
         // A round of its own below the readers' floor is past its time: never brought back (`take_out_own`).
@@ -2288,7 +2290,7 @@ impl Puller<'_> {
         // Records keep their whole lines only.
         let keep = if matches!(kind_of(relative), Some((Kind::Round, _))) { got.bytes.iter().rposition(|b| *b == b'\n').map_or(0, |at| at + 1) } else { got.bytes.len() };
         crate::share::write_atomically(&here, &got.bytes[..keep]).map_err(|e| Stop::Failed(SyncError::Disk(e)))?;
-        let modified = std::fs::metadata(&here).map(|m| crate::share::modified_ns(&m)).unwrap_or(0);
+        let modified = crate::files::metadata(&here).map(|m| crate::share::modified_ns(&m)).unwrap_or(0);
         let etag = if keep == got.bytes.len() { item.etag.clone() } else { String::new() };
         self.state.sent.insert(relative.to_string(), Sent { size: keep as u64, modified, etag });
         self.pulled.fetched += 1;
@@ -2308,13 +2310,13 @@ impl Puller<'_> {
         // A records file left locked there holds the next ones: records go in order.
         let mut records_left = false;
         let folder = self.folder;
-        self.state.locked.retain(|relative, _| folder.join(relative).is_file());
+        self.state.locked.retain(|relative, _| folder.join(relative).present_file());
         for relative in own_files(self.folder, self.own, self.state, &self.mine) {
             let records = matches!(kind_of(&relative), Some((Kind::Round, _)));
             if records && records_left {
                 continue;
             }
-            let Ok(meta) = std::fs::metadata(self.folder.join(&relative)) else { continue };
+            let Ok(meta) = crate::files::metadata(self.folder.join(&relative)) else { continue };
             let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
             let sent = self.state.sent.get(&relative).cloned();
             let covered = self.covered.contains(dir_of(&relative));
@@ -2383,7 +2385,7 @@ impl Puller<'_> {
             let gone: Vec<(String, String)> = self
                 .own_there
                 .iter()
-                .filter(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))) && !self.folder.join(relative).exists())
+                .filter(|(relative, _)| matches!(kind_of(relative), Some((Kind::Round, _))) && !self.folder.join(relative).present())
                 .filter(|(relative, _)| round_of(relative).is_some_and(|round| round < latest && (self.state.sent.contains_key(*relative) || past.is_some_and(|past| round < past))))
                 .map(|(relative, etag)| (relative.clone(), etag.clone()))
                 .collect();
@@ -2391,7 +2393,7 @@ impl Puller<'_> {
                 self.take_out(&relative, Some(etag))?;
             }
         }
-        let swept: Vec<(String, String)> = self.state.sent.iter().filter(|(relative, _)| relative.starts_with("blobs/") && !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.etag.clone())).collect();
+        let swept: Vec<(String, String)> = self.state.sent.iter().filter(|(relative, _)| relative.starts_with("blobs/") && !self.folder.join(relative).present()).map(|(relative, sent)| (relative.clone(), sent.etag.clone())).collect();
         for (relative, etag) in swept {
             self.take_out(&relative, Some(etag).filter(|e| !e.is_empty()))?;
         }
@@ -2420,7 +2422,7 @@ impl Puller<'_> {
         self.state.swept_at = self.now;
         for (name, (_, newest)) in self.departed.blobs.clone() {
             let relative = format!("blobs/{name}");
-            if !self.folder.join(&relative).exists() && take_out_swept(self.server, &self.url(&relative), newest) {
+            if !self.folder.join(&relative).present() && take_out_swept(self.server, &self.url(&relative), newest) {
                 self.pulled.taken_out += 1;
             }
         }
@@ -2434,7 +2436,7 @@ impl Puller<'_> {
     /// and again: left for the next step; nothing here is lost.
     fn send(&mut self, relative: &str, size: u64, modified: u64, seen: Option<String>) -> Result<(), Stop> {
         let blob = relative.starts_with("blobs/");
-        let bytes = std::fs::read(self.folder.join(relative)).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
+        let bytes = crate::files::read(self.folder.join(relative)).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
         let url = self.url(relative);
         let mut seen = if blob { None } else { seen };
         let sha1 = sha1_hex(&bytes);
@@ -2513,7 +2515,7 @@ impl Puller<'_> {
     /// whole lines are kept: a line half arrived comes again next time.
     fn round(&mut self, name: &str, item: &Item) -> Result<(), Stop> {
         let (here, into) = (self.folder.join(name), self.into.join(name));
-        let size = |path: &Path| std::fs::metadata(path).map_or(0, |m| m.len());
+        let size = |path: &Path| crate::files::metadata(path).map_or(0, |m| m.len());
         let longest = size(&here).max(size(&into));
         let known = Fetched { etag: item.etag.clone(), size: item.size };
         if item.size <= longest {
@@ -2559,14 +2561,14 @@ impl Puller<'_> {
                 }
                 let mut out = crate::share::new_private(&temporary)?;
                 if prefix > 0 {
-                    std::io::copy(&mut std::fs::File::open(&base)?.take(prefix), &mut out)?;
+                    std::io::copy(&mut crate::files::File::open(&base)?.take(prefix), &mut out)?;
                 }
                 out.write_all(&got.bytes[..whole])?;
                 out.sync_all()?;
-                std::fs::rename(&temporary, &into)
+                crate::files::rename(&temporary, &into)
             })();
             if let Err(e) = written {
-                let _ = std::fs::remove_file(&temporary);
+                let _ = crate::files::remove_file(&temporary);
                 return Err(Stop::Failed(SyncError::Disk(format!("{name}: {e}"))));
             }
             self.pulled.fetched += 1;
@@ -2583,7 +2585,7 @@ impl Puller<'_> {
 
 /// Where a file's last whole line ends, and where it starts: (0, 0) when it holds none.
 fn whole_end(path: &Path) -> (u64, u64) {
-    let Ok(mut file) = std::fs::File::open(path) else { return (0, 0) };
+    let Ok(mut file) = crate::files::File::open(path) else { return (0, 0) };
     let size = file.metadata().map_or(0, |m| m.len());
     let Some(end) = newline_before(&mut file, size).map(|at| at + 1) else { return (0, 0) };
     let last = newline_before(&mut file, end - 1).map_or(0, |at| at + 1);
@@ -2591,7 +2593,7 @@ fn whole_end(path: &Path) -> (u64, u64) {
 }
 
 /// Where the last line break before `before` is, read back a piece at a time.
-fn newline_before(file: &mut std::fs::File, before: u64) -> Option<u64> {
+fn newline_before(file: &mut crate::files::File, before: u64) -> Option<u64> {
     let mut end = before;
     while end > 0 {
         let from = end.saturating_sub(64 << 10);
@@ -2607,7 +2609,7 @@ fn newline_before(file: &mut std::fs::File, before: u64) -> Option<u64> {
 }
 
 fn read_range(path: &Path, from: u64, to: u64) -> Option<Vec<u8>> {
-    let mut file = std::fs::File::open(path).ok()?;
+    let mut file = crate::files::File::open(path).ok()?;
     file.seek(SeekFrom::Start(from)).ok()?;
     let mut bytes = vec![0u8; usize::try_from(to.saturating_sub(from)).ok()?];
     file.read_exact(&mut bytes).ok()?;
@@ -2701,7 +2703,7 @@ pub fn begin_signed_in(memory: &Path, folder: &Path, login: &Login, opened: &Ope
 }
 
 fn begin_as(memory: &Path, folder: &Path, login: &Login, opened: &Opened, now: i64, user: String) -> Result<(), String> {
-    let _ = std::fs::remove_dir_all(cache_of(memory));
+    let _ = crate::files::remove_dir_all(cache_of(memory));
     let state = State { mode: MIRROR.into(), place: opened.place.clone(), folder: shown(folder), account: login.account.clone(), url: opened.url.clone(), confirmed: now, sealed: now, user, ..State::default() };
     let path = state_path(memory);
     sioul_core::filelock::with_lock(&path, || state.write(memory))
@@ -2900,7 +2902,7 @@ fn listing_due(state: &State, now: i64) -> bool {
 /// (`Departed`).
 fn wanted_in_copy(wanted: &crate::blobs::Wanted, folder: &Path, departed: &Departed, now: i64) -> Vec<(String, crate::blobs::Want)> {
     let blobs = folder.join("blobs");
-    let here = |name: &str| std::fs::metadata(blobs.join(name)).is_ok_and(|m| m.len() > 0);
+    let here = |name: &str| crate::files::metadata(blobs.join(name)).is_ok_and(|m| m.len() > 0);
     // A text's medium asked for three days in vain is asked no more, until the
     // texts' page asks for it again (`blobs::Want::since` renewed there):
     // never every few minutes for good (review of 18 October 2026, L-8).
@@ -3010,8 +3012,8 @@ fn blobs_looked(state: &mut State, folder: &Path, listing: &Listing, keep: Optio
     for relative in gone {
         state.files.remove(&relative);
         let path = folder.join(&relative);
-        if let Ok(meta) = std::fs::metadata(&path)
-            && std::fs::remove_file(&path).is_ok()
+        if let Ok(meta) = crate::files::metadata(&path)
+            && crate::files::remove_file(&path).is_ok()
         {
             pulled.let_go += 1;
             pulled.freed += meta.len();
@@ -3045,7 +3047,7 @@ fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, a
                 pulled.fetched += 1;
                 pulled.bytes += size;
             }
-            let _ = std::fs::remove_file(temporary);
+            let _ = crate::files::remove_file(temporary);
         }
         ready.clear();
     };
@@ -3080,7 +3082,7 @@ fn fetch_wanted_into_copy(server: &Server, memory: &Path, folder: &Path, (own, a
                 }
                 // Not whole, or another content: never kept, asked again after a while.
                 Err(fault) => {
-                    let _ = std::fs::remove_file(&temporary);
+                    let _ = crate::files::remove_file(&temporary);
                     pulled.held += 1;
                     tried.insert(name, failed(!matches!(fault, crate::blobs::Fault::Broken)));
                 }
@@ -3131,7 +3133,7 @@ fn place_fetched(memory: &Path, folder: &Path, account: &str, ready: &[(String, 
         if state.mode != MIRROR || !state.confirmed_for(folder) || state.account != account {
             return vec![false; ready.len()];
         }
-        let free: Vec<bool> = ready.iter().map(|(relative, _, _)| !folder.join(relative).exists()).collect();
+        let free: Vec<bool> = ready.iter().map(|(relative, _, _)| !folder.join(relative).present()).collect();
         for ((relative, _, size), free) in ready.iter().zip(&free) {
             if *free {
                 state.files.insert(relative.clone(), Fetched { etag: String::new(), size: *size });
@@ -3140,7 +3142,7 @@ fn place_fetched(memory: &Path, folder: &Path, account: &str, ready: &[(String, 
         if state.save(memory).is_err() {
             return vec![false; ready.len()];
         }
-        let placed: Vec<bool> = ready.iter().zip(&free).map(|((relative, temporary, _), free)| *free && std::fs::rename(temporary, folder.join(relative)).is_ok()).collect();
+        let placed: Vec<bool> = ready.iter().zip(&free).map(|((relative, temporary, _), free)| *free && crate::files::rename(temporary, folder.join(relative)).is_ok()).collect();
         // One that could not be put there: the state says so again.
         if placed != free {
             for ((relative, _, _), (free, placed)) in ready.iter().zip(free.iter().zip(&placed)) {
@@ -3175,7 +3177,7 @@ fn own_files(folder: &Path, own: &str, state: &State, mine: &BTreeSet<String>) -
 
 /// The files of a folder, by name, hidden ones left out.
 fn file_names(dir: &Path) -> Vec<String> {
-    std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
+    crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_file())).map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect()
 }
 
 /// This device's own files in the folder but its sealed ones, in the order
@@ -3193,11 +3195,11 @@ fn own_plain(folder: &Path, own: &str) -> Vec<String> {
         .collect();
     records.sort();
     out.extend(records.into_iter().map(|(_, _, name)| name));
-    let mut parts: Vec<String> = std::fs::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    let mut parts: Vec<String> = crate::files::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_dir())).map(|e| e.file_name().to_string_lossy().to_string()).collect();
     parts.sort();
-    out.extend(parts.into_iter().map(|part| format!("leases/{part}/{own}.lease")).filter(|claim| folder.join(claim).is_file()));
+    out.extend(parts.into_iter().map(|part| format!("leases/{part}/{own}.lease")).filter(|claim| folder.join(claim).present_file()));
     let entry = format!("devices/{own}.device");
-    if folder.join(&entry).is_file() {
+    if folder.join(&entry).present_file() {
         out.push(entry);
     }
     out
@@ -3205,7 +3207,7 @@ fn own_plain(folder: &Path, own: &str) -> Vec<String> {
 
 /// The highest round of this device's records in the folder here; none when it holds none.
 fn own_latest(folder: &Path, own: &str) -> Option<u32> {
-    std::fs::read_dir(folder)
+    crate::files::read_dir(folder)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -3412,7 +3414,7 @@ impl Sending {
     }
 
     fn load_lane(memory: &Path, lane: Lane) -> Sending {
-        std::fs::read_to_string(lane.memory(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(lane.memory(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     fn save(&self, memory: &Path, lane: Lane) -> Result<(), String> {
@@ -3549,7 +3551,7 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
             Lane::Urgent => {
                 let mut names: Vec<&String> = sealed.keys().collect();
                 names.sort();
-                let mut files: Vec<String> = names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).is_file()).collect();
+                let mut files: Vec<String> = names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).present_file()).collect();
                 files.extend(own_urgent(folder, own));
                 files
             }
@@ -3557,7 +3559,7 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
                 let mut files = own_plain(folder, own);
                 let mut names: Vec<&String> = sealed.keys().collect();
                 names.sort();
-                files.extend(names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).is_file()));
+                files.extend(names.into_iter().map(|name| format!("blobs/{name}")).filter(|relative| folder.join(relative).present_file()));
                 files
             }
         };
@@ -3685,10 +3687,10 @@ pub fn place_asks(folder: &Path, own: &str, source: &Path) -> Result<bool, Strin
 /// An urgent small file put in the sharing folder (`target`) as its source holds it: none there when none here.
 fn place_urgent(target: &Path, source: &Path) -> Result<bool, String> {
     let target = target.to_path_buf();
-    let Ok(bytes) = std::fs::read(source) else {
-        return Ok(std::fs::remove_file(&target).is_ok());
+    let Ok(bytes) = crate::files::read(source) else {
+        return Ok(crate::files::remove_file(&target).is_ok());
     };
-    if std::fs::read(&target).ok().as_deref() == Some(&bytes[..]) {
+    if crate::files::read(&target).ok().as_deref() == Some(&bytes[..]) {
         return Ok(false);
     }
     if let Some(parent) = target.parent() {
@@ -3709,7 +3711,7 @@ pub fn asks_file(folder: &Path, device: &str) -> PathBuf {
 
 /// This device's urgent files in the folder: its texts and its replies to send.
 fn own_urgent(folder: &Path, own: &str) -> Vec<String> {
-    URGENT.iter().map(|(top, sub)| format!("{top}/{sub}/{own}.jsonl")).filter(|relative| folder.join(relative).is_file()).collect()
+    URGENT.iter().map(|(top, sub)| format!("{top}/{sub}/{own}.jsonl")).filter(|relative| folder.join(relative).present_file()).collect()
 }
 
 /// A file of the folder, by its kind, for what is said: never its name.
@@ -3789,7 +3791,7 @@ pub(crate) fn carried_beside(folder: &Path) -> bool {
         return found;
     }
     let journal = |name: &str| ((name.starts_with(".sync_") || name.starts_with("._sync_")) && name.ends_with(".db")) || name == ".csync_journal.db";
-    let found = folder.ancestors().take(16).any(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| journal(&e.file_name().to_string_lossy()) && e.file_type().is_ok_and(|t| t.is_file())));
+    let found = folder.ancestors().take(16).any(|dir| crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| journal(&e.file_name().to_string_lossy()) && e.file_type().is_ok_and(|t| t.present_file())));
     if let Ok(mut all) = FOUND.lock() {
         all.insert(folder.to_path_buf(), (found, std::time::Instant::now()));
     }
@@ -4059,7 +4061,7 @@ impl Sender<'_> {
     /// (review of 18 October 2026, L-7).
     fn one(&mut self, relative: &str, listed: Option<Option<Item>>, again: bool, look: bool) -> Result<Went, Stop> {
         let path = self.folder.join(relative);
-        let Ok(meta) = std::fs::metadata(&path) else { return Ok(Went::Left) };
+        let Ok(meta) = crate::files::metadata(&path) else { return Ok(Went::Left) };
         let (size, modified) = (meta.len(), crate::share::modified_ns(&meta));
         let blob = relative.strip_prefix("blobs/");
         // A sealed file goes whole, as this device sealed it, or not at all.
@@ -4124,7 +4126,7 @@ impl Sender<'_> {
             self.pulled.paced += 1;
             return Ok(if records { Went::Held } else { Went::Left });
         }
-        let bytes = std::fs::read(&path).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
+        let bytes = crate::files::read(&path).map_err(|e| Stop::Failed(SyncError::Disk(format!("{relative}: {e}"))))?;
         // Read while it grew: what was read is what goes, said as it is.
         let size = bytes.len() as u64;
         let sha1 = sha1_hex(&bytes);
@@ -4323,10 +4325,10 @@ impl Sender<'_> {
     /// claim of a part no longer kept) is forgotten, left there.
     fn take_out_gone(&mut self, check: bool) -> Result<(), Stop> {
         let latest = own_latest(self.folder, self.own);
-        let gone: Vec<(String, Sent)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).exists()).map(|(relative, sent)| (relative.clone(), sent.clone())).collect();
+        let gone: Vec<(String, Sent)> = self.sending.sent.iter().filter(|(relative, _)| !self.folder.join(relative).present()).map(|(relative, sent)| (relative.clone(), sent.clone())).collect();
         // Refused there, then here again (its content used again, or brought back): no longer waiting.
         let (folder, Sending { refused, sent, .. }) = (self.folder, &mut *self.sending);
-        refused.retain(|relative| sent.contains_key(relative) && !folder.join(relative).exists());
+        refused.retain(|relative| sent.contains_key(relative) && !folder.join(relative).present());
         // A round gone here is past its time only below the readers' floor
         // (`share::rounds_past`), as `remove_old_rounds` judged it: one gone
         // from a folder synced again in part, a backup put back or a file
@@ -4429,7 +4431,7 @@ impl Sender<'_> {
             .iter()
             .filter(|(relative, item)| !item.dir && !item.etag.is_empty() && matches!(kind_of(relative), Some((Kind::Round, id)) if id == self.own))
             .filter(|(relative, _)| relative.trim_end_matches(".jsonl").rsplit('-').next().and_then(|n| n.parse::<u32>().ok()).is_some_and(|round| round < past))
-            .filter(|(relative, _)| !self.folder.join(relative).exists())
+            .filter(|(relative, _)| !self.folder.join(relative).present())
             .map(|(relative, item)| (relative.clone(), item.etag.clone()))
             .collect();
         for (relative, etag) in old {
@@ -4455,7 +4457,7 @@ impl Sender<'_> {
             return;
         }
         let fetched = overlay(self.folder);
-        let here = |relative: &str| self.folder.join(relative).exists() || fetched.as_ref().is_some_and(|f| f.join(relative).exists());
+        let here = |relative: &str| self.folder.join(relative).present() || fetched.as_ref().is_some_and(|f| f.join(relative).present());
         let rounds: Vec<(String, String)> = listed.iter().filter(|(relative, item)| !item.dir && !item.etag.is_empty() && (self.departed.past_round(relative) || self.departed.removed_as_known(relative, item, self.known)) && !here(relative)).map(|(relative, item)| (relative.clone(), item.etag.clone())).collect();
         let blobs: Vec<(String, i64)> = self.departed.blobs.iter().map(|(name, (_, newest))| (format!("blobs/{name}"), *newest)).filter(|(relative, _)| !here(relative)).collect();
         for (relative, etag) in rounds {

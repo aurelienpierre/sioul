@@ -15,6 +15,8 @@
 //! sentence with Undo (`mail::offer_back`), which writes your word on each
 //! message back as it was. Nothing asks you to tag anything.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, config_path, load_config, say, set_status, tr};
 use serde::Serialize;
 use sioul_core::topics::labels::{self, Act, Rule, Said};
@@ -370,7 +372,7 @@ const KEPT_AT_ONCE: usize = 2000;
 pub(crate) fn judge_by_itself(qt: &QtThread, shared: &Arc<Shared>) {
     use std::sync::atomic::{AtomicBool, Ordering};
     static RUNNING: AtomicBool = AtomicBool::new(false);
-    if !topics::judging::table_path().exists() || RUNNING.swap(true, Ordering::Relaxed) {
+    if !topics::judging::table_path().present() || RUNNING.swap(true, Ordering::Relaxed) {
         return;
     }
     let (qt, shared) = (qt.clone(), Arc::clone(shared));
@@ -419,7 +421,7 @@ pub(crate) fn day_one_by_itself(qt: &QtThread, shared: &Arc<Shared>) {
             {
                 let card = DayOneCard { started: started.into_iter().map(|t| t.name).collect() };
                 if let Ok(text) = toml::to_string(&card) {
-                    let _ = std::fs::create_dir_all(labels::state());
+                    let _ = crate::files::create_dir_all(labels::state());
                     let _ = sioul_core::filelock::replace(&card_path(), text.as_bytes());
                 }
                 crate::mail::show_mail(&qt, &shared);
@@ -432,7 +434,7 @@ pub(crate) fn day_one_by_itself(qt: &QtThread, shared: &Arc<Shared>) {
 /// Day one's card, for the Porch: "Sioul sorted your mail into 3 topics…",
 /// "" once nothing was started or the card was put away (its view flag).
 pub(crate) fn card() -> String {
-    let card: DayOneCard = std::fs::read_to_string(card_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let card: DayOneCard = crate::files::read_to_string(card_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
     if card.started.is_empty() {
         return String::new();
     }

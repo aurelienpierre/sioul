@@ -212,14 +212,14 @@ fn handover_word(app: Option<&(String, String)>) -> String {
 fn handover(app: Option<&(String, String)>) {
     let word = handover_word(app);
     let path = handover_path();
-    if std::fs::read_to_string(&path).is_ok_and(|said| said.trim() == word) {
+    if crate::files::read_to_string(&path).is_ok_and(|said| said.trim() == word) {
         return;
     }
     let now = jiff::Timestamp::now().as_second();
     let Some(json) = handover_json(app, now) else { return };
     if crate::steps::java("notice", &json.to_string()) == true {
-        let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
-        if let Err(e) = std::fs::write(&path, &word) {
+        let _ = crate::files::create_dir_all(sioul_core::config::state_dir());
+        if let Err(e) = crate::files::write(&path, &word) {
             eprintln!("{}: {e}", path.display());
         }
     }

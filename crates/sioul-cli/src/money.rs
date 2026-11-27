@@ -8,6 +8,8 @@
 //! the agents (`movements::acts`), each said in one line. Nothing here moves
 //! money: these are records, never payments.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::Session;
 use clap::Subcommand;
 use jiff::civil::Date;
@@ -135,7 +137,7 @@ pub(crate) enum MovementCommand {
 }
 
 fn root(s: &Session) -> Result<PathBuf, String> {
-    s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))
+    s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).present_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))
 }
 
 fn day(text: &str) -> Result<Date, String> {

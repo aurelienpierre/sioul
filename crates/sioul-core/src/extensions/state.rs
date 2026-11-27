@@ -217,7 +217,7 @@ pub fn log_path(id: &str) -> PathBuf {
 /// file, a log and a keyring entry): one that fails is left out, as if never
 /// installed (M2: nothing signs this record).
 pub fn load(path: &Path) -> State {
-    let mut state: State = std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
+    let mut state: State = crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
     state.extensions.retain(|i| super::manifest::check(&i.offer).is_ok());
     for installed in &mut state.extensions {
         if installed.waiting.as_ref().is_some_and(|w| super::manifest::check(w).is_err() || w.id != installed.offer.id) {
@@ -235,7 +235,7 @@ pub fn change<T>(path: &Path, f: impl FnOnce(&mut State) -> T) -> Result<T, Stri
         let out = f(&mut state);
         let text = toml::to_string(&state).map_err(|e| e.to_string())?;
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         }
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(out)
@@ -316,7 +316,7 @@ pub fn scrub(text: &str) -> String {
 /// each read as the log keeps it (`log_line`: a log an older Sioul wrote is
 /// `scrub`bed here too); none when it cannot be read.
 pub fn log_tail(path: &Path, most: usize) -> Vec<String> {
-    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let text = crate::files::read_to_string(path).unwrap_or_default();
     text.lines().rev().filter(|l| !l.trim().is_empty()).take(most).map(log_line).collect()
 }
 
@@ -329,7 +329,7 @@ pub fn append_log(path: &Path, lines: &[String]) -> Result<(), String> {
         return Ok(());
     }
     crate::filelock::with_lock(path, || {
-        let before = std::fs::read_to_string(path).unwrap_or_default();
+        let before = crate::files::read_to_string(path).unwrap_or_default();
         let added: Vec<String> = lines.iter().map(|l| log_line(l)).collect();
         let mut all: Vec<&str> = before.lines().collect();
         all.extend(added.iter().map(String::as_str));
@@ -341,7 +341,7 @@ pub fn append_log(path: &Path, lines: &[String]) -> Result<(), String> {
         }
         let text = all[keep..].join("\n") + "\n";
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         }
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     })

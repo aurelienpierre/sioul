@@ -678,15 +678,15 @@ pub fn chosen_read_only(account: &str, id: &str) -> bool {
 pub fn carries_details(dir: &Path) -> bool {
     type Seen = BTreeMap<PathBuf, (Option<std::time::SystemTime>, usize, bool)>;
     static SEEN: Mutex<Seen> = Mutex::new(BTreeMap::new());
-    let items: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
-    let time = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+    let items: Vec<PathBuf> = crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
+    let time = crate::files::metadata(dir).and_then(|m| m.modified()).ok();
     if let Some((t, n, said)) = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(dir)
         && *t == time
         && *n == items.len()
     {
         return *said;
     }
-    let said = items_say_details(items.iter().filter_map(|p| std::fs::read_to_string(p).ok()));
+    let said = items_say_details(items.iter().filter_map(|p| crate::files::read_to_string(p).ok()));
     SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(dir.to_path_buf(), (time, items.len(), said));
     said
 }
@@ -736,8 +736,8 @@ pub fn read_config() -> Arc<Config> {
     type Kept = Option<(PathBuf, u64, Option<std::time::SystemTime>, Vec<u8>, Arc<Config>)>;
     static KEPT: Mutex<Kept> = Mutex::new(None);
     let path = crate::config::default_path();
-    let meta = std::fs::metadata(&path).ok();
-    let (size, time) = (meta.as_ref().map_or(0, std::fs::Metadata::len), meta.as_ref().and_then(|m| m.modified().ok()));
+    let meta = crate::files::metadata(&path).ok();
+    let (size, time) = (meta.as_ref().map_or(0, crate::files::Metadata::len), meta.as_ref().and_then(|m| m.modified().ok()));
     let settled = time.is_some_and(|t| t.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2)));
     let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((p, s, t, _, config)) = kept.as_ref()
@@ -748,7 +748,7 @@ pub fn read_config() -> Arc<Config> {
     {
         return Arc::clone(config);
     }
-    let bytes = std::fs::read(&path).unwrap_or_default();
+    let bytes = crate::files::read(&path).unwrap_or_default();
     if let Some((p, _, _, b, config)) = kept.as_ref()
         && *p == path
         && *b == bytes

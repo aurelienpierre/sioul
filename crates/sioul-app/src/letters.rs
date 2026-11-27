@@ -10,6 +10,8 @@
 //! folder they go to, opened, added to or linked from the page, and whether
 //! this computer reads them (`reader`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::Serialize;
 use sioul_core::letters::{Letter, Letters};
@@ -53,13 +55,13 @@ pub(crate) fn reader_hint() -> String {
 /// offered, filed as a letter, opens its letter once read (`downloads`).
 pub(crate) fn letter_id(path: &Path) -> (String, jiff::civil::Date) {
     let source = source_of(path);
-    let received = std::fs::metadata(path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|_| sioul_core::zone::now().date())).unwrap_or_else(|| sioul_core::zone::now().date());
+    let received = crate::files::metadata(path).and_then(|m| m.modified()).ok().map(|t| jiff::Timestamp::try_from(t).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|_| sioul_core::zone::now().date())).unwrap_or_else(|| sioul_core::zone::now().date());
     let id = format!("{received}-{:08x}", source.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
     (id, received)
 }
 
 fn source_of(path: &Path) -> String {
-    let meta = std::fs::metadata(path).ok();
+    let meta = crate::files::metadata(path).ok();
     let size = meta.as_ref().map_or(0, |m| m.len());
     let time = meta.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
     format!("{}|{size}|{time}", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
@@ -92,7 +94,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
         }
         // The arrival folder, and the old one in the notes folder while it is there (`letters_inboxes`).
         let Some(places) = config.places() else { return };
-        let read: Vec<std::fs::ReadDir> = config.letters_inboxes().iter().filter_map(|inbox| std::fs::read_dir(inbox).ok()).collect();
+        let read: Vec<crate::files::ReadDir> = config.letters_inboxes().iter().filter_map(|inbox| crate::files::read_dir(inbox).ok()).collect();
         if read.is_empty() {
             return;
         }
@@ -125,7 +127,7 @@ enum Known {
 
 /// Where a file is, as the system names it: two spellings of one place are one place.
 fn place_of(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    crate::files::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// What `letters` know of the scan at `scan` (its `source`, the day it came:
@@ -162,9 +164,9 @@ fn read_inbox(places: &Places, scans: &[PathBuf], looked: &sioul_core::words::Wo
     // Read first (seconds each), then added to the letters as the file holds them then.
     let mut found: Vec<(Letter, PathBuf)> = Vec::new();
     let mut traced: Vec<(String, PathBuf, jiff::civil::Date)> = Vec::new();
-    for path in scans.iter().filter(|p| p.is_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
+    for path in scans.iter().filter(|p| p.present_file() && p.extension().is_some_and(|e| SCANS.contains(&e.to_string_lossy().to_ascii_lowercase().as_str()))) {
         // A file still being written (a scanner, a sync) is read, or its trace taken, next time.
-        if std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
+        if crate::files::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20) {
             continue;
         }
         let source = source_of(path);
@@ -233,8 +235,8 @@ fn read_linked(places: &Places, looked: &sioul_core::words::Words, projects: &[s
     let mut done: Vec<Letter> = Vec::new();
     for letter in letters.list.iter().filter(|l| l.linked && l.source.is_empty()) {
         let path = letters.file_path(letter);
-        let young = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20);
-        if !path.is_file() || young {
+        let young = crate::files::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() < 20);
+        if !path.present_file() || young {
             continue;
         }
         let mut letter = letter.clone();
@@ -312,14 +314,14 @@ fn link_in(places: &Places, paths: &[PathBuf]) -> String {
             problems.push(say("letters-add-not-scan", &[("name", name)]));
             continue;
         }
-        if !path.is_file() {
+        if !path.present_file() {
             problems.push(say("letters-link-missing", &[("name", name)]));
             continue;
         }
         // Where it is, as the system names it: two ways to one file are one letter.
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+        let path = crate::files::canonicalize(path).unwrap_or_else(|_| path.clone());
         let file = path.display().to_string();
-        let received = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| jiff::Timestamp::try_from(t).ok()).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|| sioul_core::zone::now().date());
+        let received = crate::files::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| jiff::Timestamp::try_from(t).ok()).map(|t| t.to_zoned(sioul_core::zone::current()).date()).unwrap_or_else(|| sioul_core::zone::now().date());
         let id = format!("{received}-{:08x}", file.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)));
         chosen.push(Letter { id, file, received: Some(received), status: "new".into(), linked: true, ..Letter::default() });
     }
@@ -553,7 +555,7 @@ fn fill(view: &mut View, places: &Places, known: Option<Arc<sioul_core::links::L
             project: letter.project.clone(),
             problem: letter.problem.clone(),
             linked: letter.linked,
-            gone: !file.is_file(),
+            gone: !file.present_file(),
             waiting: letter.linked && letter.source.is_empty() && letter.problem.is_empty(),
             persons,
         };
@@ -714,7 +716,7 @@ pub(crate) fn done(id: &str, project: &str) -> String {
 /// (no folder chosen and no notes folder), or when it cannot be made.
 pub(crate) fn folder() -> String {
     let Some(inbox) = inbox() else { return String::new() };
-    if std::fs::create_dir_all(&inbox).is_err() {
+    if crate::files::create_dir_all(&inbox).is_err() {
         return String::new();
     }
     inbox.display().to_string()
@@ -750,7 +752,7 @@ pub(crate) fn add_one(source: &Path) -> Result<PathBuf, String> {
 pub(crate) fn add(files: &str) -> String {
     let Some(inbox) = inbox() else { return tr().text("letters-no-folder", None) };
     let chosen: Vec<String> = serde_json::from_str(files).unwrap_or_default();
-    if let Err(e) = std::fs::create_dir_all(&inbox) {
+    if let Err(e) = crate::files::create_dir_all(&inbox) {
         return say("letters-folder-failed", &[("folder", inbox.display().to_string()), ("detail", e.to_string())]);
     }
     let mut copied = 0usize;

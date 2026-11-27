@@ -155,3 +155,8 @@ insecure-test-tls = []
 # F11). Never enabled in Sioul's builds: `cargo tree -e features` shows it in
 # test builds alone.
 no-keyring = []
+# The sealed store's fixed test key: with SIOUL_TEST_STORE_KEY set, `storekey`
+# gives it and reaches no keyring. For tests and the demo only; never in
+# Sioul's builds (its mark, SIOUL_TEST_STORE_KEY, is refused by
+# tools/check-test-marks.sh).
+test-store-key = ["sioul-core/test-store-key"]

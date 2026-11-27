@@ -29,6 +29,9 @@ fn main() {
         "qml/SafeDialog.qml",
         "qml/SafePopup.qml",
         "qml/StorageMove.qml",
+        "qml/StoreGateWindow.qml",
+        "qml/WaysBack.qml",
+        "qml/StoreCard.qml",
         "qml/Icon.qml",
         "qml/ActionButton.qml",
         "qml/ActionFolds.qml",
@@ -310,7 +313,8 @@ fn main() {
     // On one line: tools/qml-test.sh reads it, to make the phone's set of files for the
     // tests that name "qml-test: android" (each file of qml/android/ in place of its
     // namesake, which must declare the same properties: tst_pdf.qml, tst_androidset.qml).
-    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SiteDownloads.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml", "qml/SignInWindow.qml", "qml/SignInSite.qml", "qml/ColourEffect.qml"];
+    // The screen before the window (storegate.rs): a phone keeps its files as they are (no sealed store there yet), so it never shows.
+    let desktop_only = ["qml/SitesPage.qml", "qml/SitesWeb.qml", "qml/SiteDownloads.qml", "qml/SitePopup.qml", "qml/WebAuthDialog.qml", "qml/PdfView.qml", "qml/SignInWindow.qml", "qml/SignInSite.qml", "qml/ColourEffect.qml", "qml/StoreGateWindow.qml"];
     // The system tray (qml-desktop/Tray.qml), on desktops only, in a folder of its own: the
     // phone's build reads qml/ for the modules to carry (android/CMakeLists.txt,
     // QT_QML_ROOT_PATH), and Qt.labs.platform would bring Qt Widgets along.
@@ -340,7 +344,7 @@ fn main() {
         cpp.push("cpp/pictures.cpp");
     }
     let builder = CxxQtBuilder::new_qml_module(QmlModule::new("com.aurelienpierre.sioul").depend("QtQuick").qml_files(pages))
-        .files(["src/backend.rs", "src/desktop.rs"])
+        .files(["src/backend.rs", "src/desktop.rs", "src/storegate.rs"])
         .cpp_files(cpp)
         .qt_module("Quick")
         // The sounds made as they play (cpp/livesound.cpp).

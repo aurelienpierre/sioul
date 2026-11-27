@@ -209,7 +209,7 @@ impl Contracts {
 
     pub fn load(root: &Path) -> Result<Contracts, String> {
         let path = root.join(MANIFEST);
-        let list = match std::fs::read_to_string(&path) {
+        let list = match crate::files::read_to_string(&path) {
             Ok(text) => toml::from_str::<File>(&text).map_err(|e| format!("{}: {e}", path.display()))?.list,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -276,7 +276,7 @@ impl Contracts {
         doc.insert("contract", toml_edit::Item::ArrayOfTables(list));
         let path = self.root.join(MANIFEST);
         let temporary = self.root.join(format!("{MANIFEST}.new"));
-        std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
+        crate::files::write(&temporary, doc.to_string()).and_then(|()| crate::files::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 

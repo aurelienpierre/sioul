@@ -111,7 +111,7 @@ fn round(why: &str) -> usize {
     let mut changed = 0;
     for collection in vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT") && c.account != vdir::SUBSCRIBED) {
         for item in collection.items() {
-            let Ok(text) = std::fs::read_to_string(&item) else { continue };
+            let Ok(text) = crate::files::read_to_string(&item) else { continue };
             if !text.contains("X-SIOUL-PAUSE") || sioul_core::agenda::with_others(&text) {
                 continue;
             }

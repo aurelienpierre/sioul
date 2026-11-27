@@ -28,6 +28,8 @@
 //! - **mail already here** when the route is set makes nothing by itself:
 //!   `already_here` finds it, for "Also for the 12 messages already here".
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::Card;
 use crate::config::Config;
 use crate::links::{self, Edge, LocalLinks};
@@ -337,7 +339,7 @@ pub fn make(card: &Card, takers: &[Taker], making: &Making, out: &mut Outcome) {
         let due = making.workdays.date_asked(arrived, taker.model.business_days.unwrap_or(UNSAID_DAYS));
         let path = list.dir.join(format!("{uid}.ics"));
         let tie = Edge { from: links::task_uri(&uid), to: address.clone(), how: MADE.to_string() };
-        if path.exists() {
+        if path.present() {
             out.ties.push(tie);
             continue;
         }

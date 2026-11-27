@@ -186,7 +186,7 @@ thread_local! {
 pub fn hash_file(path: &Path) -> std::io::Result<(String, u64)> {
     #[cfg(test)]
     HASHED.with(|n| n.set(n.get() + 1));
-    let mut reading = Hashing { inner: std::fs::File::open(path)?, hasher: Sha256::new(), size: 0 };
+    let mut reading = Hashing { inner: crate::files::File::open(path)?, hasher: Sha256::new(), size: 0 };
     std::io::copy(&mut reading, &mut std::io::sink())?;
     Ok((hex(&reading.hasher.finalize()), reading.size))
 }
@@ -194,11 +194,10 @@ pub fn hash_file(path: &Path) -> std::io::Result<(String, u64)> {
 /// What tells one copy of a file in the folder from another: its size, its
 /// time, and, where the system says, its place on the disk and when that
 /// changed (a copy brought again whole is another, even of the same size and time).
-pub fn fingerprint(meta: &std::fs::Metadata) -> (u64, u64, u64) {
+pub fn fingerprint(meta: &crate::files::Metadata) -> (u64, u64, u64) {
     let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64);
     #[cfg(unix)]
     let other = {
-        use std::os::unix::fs::MetadataExt;
         meta.ino().wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ (meta.ctime() as u64).wrapping_mul(1_000_000_000).wrapping_add(meta.ctime_nsec() as u64)
     };
     #[cfg(not(unix))]
@@ -263,12 +262,12 @@ fn fill(reader: &mut impl Read, buffer: &mut [u8]) -> std::io::Result<usize> {
 /// whose time changed), so that a copy taken out of the server comes back.
 pub fn put(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result<Option<u64>, String> {
     let target = path(folder, key, hash);
-    if let Ok(meta) = std::fs::metadata(&target)
+    if let Ok(meta) = crate::files::metadata(&target)
         && meta.len() > 0
     {
         let old = meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > FRESH_DAYS as u64 * 86_400);
         if old {
-            let _ = std::fs::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
+            let _ = crate::files::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
         }
         return Ok(None);
     }
@@ -282,7 +281,7 @@ pub fn put(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result<O
 /// finds it used since (`share::stands`). Nothing when it is not there.
 pub fn make_fresh(folder: &Path, key: &[u8; 32], hash: &str) {
     let target = path(folder, key, hash);
-    let _ = std::fs::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
+    let _ = crate::files::File::options().write(true).open(&target).and_then(|f| f.set_modified(std::time::SystemTime::now()));
 }
 
 /// A content sealed again over a copy in the folder that is damaged or cut
@@ -301,7 +300,7 @@ fn seal_into(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result
     let temporary = crate::share::temporary(&target);
     let sealed = (|| {
         let fail = |e: std::io::Error| format!("{}: {e}", temporary.display());
-        let mut reading = Hashing { inner: std::fs::File::open(source).map_err(|e| format!("{}: {e}", source.display()))?, hasher: Sha256::new(), size: 0 };
+        let mut reading = Hashing { inner: crate::files::File::open(source).map_err(|e| format!("{}: {e}", source.display()))?, hasher: Sha256::new(), size: 0 };
         let mut packed = flate2::read::GzEncoder::new(&mut reading, flate2::Compression::default());
         let mut out = BufWriter::new(crate::share::new_private(&temporary).map_err(fail)?);
         out.write_all(MAGIC).map_err(fail)?;
@@ -327,11 +326,11 @@ fn seal_into(folder: &Path, key: &[u8; 32], source: &Path, hash: &str) -> Result
         let file = out.into_inner().map_err(|e| fail(e.into_error()))?;
         file.sync_all().map_err(fail)?;
         let size = file.metadata().map_err(fail)?.len();
-        std::fs::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+        crate::files::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
         Ok(size)
     })();
     if sealed.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
     }
     sealed
 }
@@ -366,7 +365,7 @@ pub(crate) fn get_unless(folder: &Path, key: &[u8; 32], hash: &str, target: &Pat
     match get_from(&fetched, key, hash, target) {
         Ok(()) => Ok(()),
         Err(Fault::Broken) => {
-            let _ = std::fs::remove_file(path(&fetched, key, hash));
+            let _ = crate::files::remove_file(path(&fetched, key, hash));
             Err(fault)
         }
         Err(Fault::Missing) => Err(fault),
@@ -377,7 +376,7 @@ pub(crate) fn get_unless(folder: &Path, key: &[u8; 32], hash: &str, target: &Pat
 fn get_from(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<(), Fault> {
     let opened = open_into(folder, key, hash, target);
     if opened.is_err() {
-        let _ = std::fs::remove_file(target);
+        let _ = crate::files::remove_file(target);
     }
     opened
 }
@@ -425,8 +424,8 @@ pub fn check(path: &Path, key: &[u8; 32], hash: &str) -> Result<(), Fault> {
 
 /// A sealed file there, opened; none when it is not, or only its empty
 /// placeholder (files kept on demand), which is not a damaged one.
-fn present(path: &Path) -> Option<std::fs::File> {
-    let file = std::fs::File::open(path).ok()?;
+fn present(path: &Path) -> Option<crate::files::File> {
+    let file = crate::files::File::open(path).ok()?;
     (file.metadata().map_or(0, |m| m.len()) > 0).then_some(file)
 }
 
@@ -527,12 +526,12 @@ pub fn sweep_after(folder: &Path, mine: &mut BTreeMap<String, i64>, used: &BTree
             return true;
         }
         let path = folder.join("blobs").join(name);
-        let fresh = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+        let fresh = crate::files::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
         if fresh {
             *last = now_ms;
             return true;
         }
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
         false
     });
 }
@@ -586,7 +585,7 @@ impl Wanted {
     }
 
     pub fn load(memory: &Path) -> Wanted {
-        std::fs::read_to_string(Wanted::path(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(Wanted::path(memory)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// Changed under its lock (the exchange and the fetch, in two processes
@@ -601,7 +600,7 @@ impl Wanted {
                 return Ok(());
             }
             if wanted.blobs.is_empty() && wanted.media.is_empty() {
-                return match std::fs::remove_file(&path) {
+                return match crate::files::remove_file(&path) {
                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
                     _ => Ok(()),
                 };

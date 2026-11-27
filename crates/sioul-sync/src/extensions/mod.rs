@@ -280,11 +280,11 @@ fn local_path(address: &str) -> Option<PathBuf> {
 /// a minute).
 fn fetch(address: &str, most: usize) -> Result<Vec<u8>, String> {
     if let Some(path) = local_path(address) {
-        let size = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?.len();
+        let size = crate::files::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?.len();
         if size > most as u64 {
             return Err(format!("{}: larger than {most} bytes", path.display()));
         }
-        return std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()));
+        return crate::files::read(&path).map_err(|e| format!("{}: {e}", path.display()));
     }
     if !address.starts_with("https://") {
         return Err("not an https address".into());
@@ -336,7 +336,7 @@ pub fn install(manifest_address: &str, offer: &Offer) -> Result<PathBuf, String>
     }
     let path = state::file_path(offer);
     if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     }
     sioul_core::filelock::replace(&path, &bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
@@ -345,7 +345,7 @@ pub fn install(manifest_address: &str, offer: &Offer) -> Result<PathBuf, String>
 /// An extension's file as kept, when its SHA-256 is still the one accepted.
 pub fn checked_file(offer: &Offer) -> Result<Vec<u8>, String> {
     let path = state::file_path(offer);
-    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = crate::files::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     if bytes.len() > FILE_BYTES || sha256_hex(&bytes) != offer.sha256 {
         return Err(format!("{}: its file changed since it was checked", offer.id));
     }
@@ -354,7 +354,7 @@ pub fn checked_file(offer: &Offer) -> Result<Vec<u8>, String> {
 
 /// An extension's file taken out of Sioul's private data.
 pub fn discard_file(offer: &Offer) {
-    let _ = std::fs::remove_file(state::file_path(offer));
+    let _ = crate::files::remove_file(state::file_path(offer));
 }
 
 #[cfg(test)]

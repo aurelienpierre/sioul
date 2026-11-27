@@ -146,7 +146,7 @@ pub fn decide_once(config_path: &Path, config: &Config, found: &Found) -> Result
     }
     // Only when the file still says nothing of them: the window and the sharing write it too.
     let written = crate::filelock::with_lock(config_path, || {
-        let text = std::fs::read_to_string(config_path).unwrap_or_default();
+        let text = crate::files::read_to_string(config_path).unwrap_or_default();
         let doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{}: {e}", config_path.display()))?;
         if doc.get("words").and_then(|w| w.get("languages")).is_some() {
             return Ok(false);
@@ -170,7 +170,7 @@ struct Offered {
 
 /// The languages offered on this device before, taken or not.
 pub fn offered(path: &Path) -> Vec<String> {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str::<Offered>(&text).ok()).map(|o| o.offered).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str::<Offered>(&text).ok()).map(|o| o.offered).unwrap_or_default()
 }
 
 /// `language` offered: never again on this device.
@@ -182,7 +182,7 @@ pub fn mark_offered(path: &Path, language: &str) -> Result<(), String> {
     all.push(language.to_string());
     let text = format!("# Sioul: the languages found in your mail and offered on this device, each once (docs/words.md).\n{}", toml::to_string(&Offered { offered: all }).map_err(|e| e.to_string())?);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }

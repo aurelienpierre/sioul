@@ -50,7 +50,7 @@ pub struct Recorded {
 impl Recorded {
     /// The record as the dose path keeps it; none without one, or without a zone in it.
     pub fn read() -> Option<Recorded> {
-        let text = std::fs::read_to_string(crate::config::state_dir().join("zone.toml")).ok()?;
+        let text = crate::files::read_to_string(crate::config::state_dir().join("zone.toml")).ok()?;
         let table: toml::Table = toml::from_str(&text).ok()?;
         let zone = table.get("zone").and_then(toml::Value::as_str).map(str::trim).filter(|zone| !zone.is_empty())?.to_string();
         let said = table.get("said").and_then(toml::Value::as_integer).unwrap_or(0);
@@ -80,7 +80,7 @@ pub struct Sources {
 impl Sources {
     /// What names this device's zone now.
     pub fn read() -> Sources {
-        let localtime = if cfg!(all(unix, not(target_os = "android"))) { std::fs::read_link("/etc/localtime").ok().map(|p| p.display().to_string()) } else { None };
+        let localtime = if cfg!(all(unix, not(target_os = "android"))) { crate::files::read_link("/etc/localtime").ok().map(|p| p.display().to_string()) } else { None };
         let recorded = if cfg!(target_os = "android") { Recorded::read() } else { None };
         Sources { tz: std::env::var("TZ").ok(), localtime, recorded }
     }
@@ -177,7 +177,7 @@ const LOOK_AGAIN: Duration = Duration::from_secs(1);
 /// The setting as the configuration says it, and when the file last changed.
 fn setting_read(kept: Option<&Kept>) -> (Option<String>, Option<SystemTime>) {
     let path = crate::config::default_path();
-    let changed = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    let changed = crate::files::metadata(&path).and_then(|m| m.modified()).ok();
     // The file unchanged since it was last read: the setting it held.
     if let Some(k) = kept.filter(|k| changed.is_some() && k.config_changed == changed) {
         return (k.setting.clone(), changed);

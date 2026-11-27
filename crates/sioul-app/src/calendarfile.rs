@@ -12,6 +12,8 @@
 //! `<data>/sioul/handed/calendar/` until the window takes them, one at a
 //! time. Nothing in the file is followed, and no answer goes to its organizer.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::qobject::Sioul;
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use cxx_qt_lib::QString;
@@ -38,8 +40,8 @@ struct Shown {
 /// large: `agenda::calendar_file` says so); none read, nothing.
 fn read_at_most(path: &Path) -> Vec<u8> {
     let mut bytes = Vec::new();
-    if let Ok(file) = std::fs::File::open(path)
-        && file.metadata().is_ok_and(|m| m.is_file())
+    if let Ok(file) = crate::files::File::open(path)
+        && file.metadata().is_ok_and(|m| m.present_file())
     {
         let _ = file.take(FILE_MOST as u64 + 1).read_to_end(&mut bytes);
     }
@@ -58,7 +60,7 @@ pub(crate) fn files() -> Vec<PathBuf> {
         .filter_map(|a| {
             let path = if a.starts_with("file://") { crate::backend::local_path(&a) } else { PathBuf::from(&a) };
             let path = if path.is_absolute() { path } else { here.join(path) };
-            path.is_file().then_some(path)
+            path.present_file().then_some(path)
         })
         .collect()
 }
@@ -86,7 +88,7 @@ pub(crate) fn keep_all(paths: &[PathBuf]) {
 /// Bytes of a file kept for the window, under a name of their own (beside, then renamed).
 fn keep(bytes: &[u8]) -> std::io::Result<()> {
     let dir = folder();
-    std::fs::create_dir_all(&dir)?;
+    crate::files::create_dir_all(&dir)?;
     sioul_core::filelock::replace(&dir.join(format!("{}.ics", vdir::new_name())), bytes)
 }
 
@@ -96,11 +98,11 @@ pub(crate) fn take(mut sioul: Pin<&mut Sioul>) {
     if SHOWN.lock().map_or(true, |shown| shown.is_some()) {
         return;
     }
-    let mut waiting: Vec<PathBuf> = std::fs::read_dir(folder()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
+    let mut waiting: Vec<PathBuf> = crate::files::read_dir(folder()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
     waiting.sort();
     let Some(next) = waiting.into_iter().next() else { return };
     let bytes = read_at_most(&next);
-    let _ = std::fs::remove_file(&next);
+    let _ = crate::files::remove_file(&next);
     let file = agenda::calendar_file(&bytes, &sioul_core::zone::current());
     let shown = view(&file, &sioul.shared());
     if let Ok(mut kept) = SHOWN.lock() {

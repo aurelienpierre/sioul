@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 fn changed(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::files::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 /// The devices that count, as this device knows them now

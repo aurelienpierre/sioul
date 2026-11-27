@@ -51,6 +51,8 @@
 //! the same line at worst, and noting each would make a join's journal
 //! megabytes.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::*;
 
 /// The journal's format: 2, its changes marked done once written (`Landed::d`);
@@ -137,8 +139,8 @@ impl Journal {
     /// where the file holds exactly what they wrote (`theirs`, `own`).
     pub(super) fn read(memory_path: &Path, memory: &Memory) -> Journal {
         let path = journal_path(memory_path);
-        let on_disk: Vec<Landed> = match std::fs::metadata(&path) {
-            Ok(meta) if meta.len() <= JOURNAL_LARGEST => std::fs::read(&path)
+        let on_disk: Vec<Landed> = match crate::files::metadata(&path) {
+            Ok(meta) if meta.len() <= JOURNAL_LARGEST => crate::files::read(&path)
                 .map(|bytes| {
                     bytes
                         .split(|b| *b == b'\n')
@@ -185,7 +187,7 @@ impl Journal {
         self.clock = 0;
         self.on_disk.clear();
         self.known.clear();
-        let _ = std::fs::remove_file(&self.path);
+        let _ = crate::files::remove_file(&self.path);
     }
 
     /// The change of `key` that counts for a file holding `h` ("" taken
@@ -239,12 +241,12 @@ impl Journal {
         // A line left half written (the process ended while it wrote): cut back
         // to the last whole line, so that the next one is not glued to it.
         if let Some(whole) = unfinished(&self.path) {
-            std::fs::OpenOptions::new().write(true).open(&self.path).and_then(|file| file.set_len(whole)).map_err(fail)?;
+            crate::files::OpenOptions::new().write(true).open(&self.path).and_then(|file| file.set_len(whole)).map_err(fail)?;
         }
-        let mut options = std::fs::OpenOptions::new();
+        let mut options = crate::files::OpenOptions::new();
         options.create(true).append(true);
         #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        options.mode(0o600);
         let mut file = options.open(&self.path).map_err(fail)?;
         file.write_all(&text).map_err(fail)?;
         if synced {
@@ -267,8 +269,8 @@ impl Journal {
         let mut seen = std::collections::HashSet::new();
         let keep: Vec<Landed> = self.on_disk.iter().filter(|l| unsaved(memory, l) && seen.insert(*l)).cloned().collect();
         if keep.is_empty() {
-            if !self.on_disk.is_empty() || self.path.exists() {
-                let _ = std::fs::remove_file(&self.path);
+            if !self.on_disk.is_empty() || self.path.present() {
+                let _ = crate::files::remove_file(&self.path);
             }
             return;
         }

@@ -25,6 +25,8 @@
 //! Format-1 records, from before November 2026, have none: the window
 //! prints them as it always did.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::pdf::{self, Options};
 use super::record::Invoice;
 use crate::i18n::Translator;
@@ -61,7 +63,7 @@ pub fn sha256(bytes: &[u8]) -> String {
 pub fn sha256_of(path: &Path) -> Option<String> {
     type Seen = std::collections::HashMap<PathBuf, (u64, std::time::SystemTime, String)>;
     static SEEN: std::sync::Mutex<Option<Seen>> = std::sync::Mutex::new(None);
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     let (len, modified) = (meta.len(), meta.modified().ok()?);
     if let Ok(seen) = SEEN.lock()
         && let Some((l, m, sha)) = seen.as_ref().and_then(|s| s.get(path))
@@ -70,7 +72,7 @@ pub fn sha256_of(path: &Path) -> Option<String> {
     {
         return Some(sha.clone());
     }
-    let sha = sha256(&std::fs::read(path).ok()?);
+    let sha = sha256(&crate::files::read(path).ok()?);
     if let Ok(mut seen) = SEEN.lock() {
         seen.get_or_insert_with(Default::default).insert(path.to_path_buf(), (len, modified, sha.clone()));
     }
@@ -124,10 +126,10 @@ pub(crate) fn write(dir: &Path, invoice: &mut Invoice, options: &Options) -> Res
     let rendered = pdf::render(invoice, options)?;
     let name = file_name(&invoice.number);
     let kept = dir.join(&name);
-    if kept.exists() {
+    if kept.present() {
         return Err(format!("{}: kept already", kept.display()));
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     // Whole or not at all, through Sioul's shared writer (`filelock::replace`).
     let waiting = pending(dir, &invoice.number);
     crate::filelock::replace(&waiting, &rendered.pdf).map_err(|e| format!("{}: {e}", waiting.display()))?;
@@ -139,29 +141,29 @@ pub(crate) fn write(dir: &Path, invoice: &mut Invoice, options: &Options) -> Res
 /// The file given its own name, once its record is written.
 pub(crate) fn commit(dir: &Path, invoice: &Invoice) -> Result<(), String> {
     let kept = path(dir, invoice);
-    std::fs::rename(pending(dir, &invoice.number), &kept).map_err(|e| format!("{}: {e}", kept.display()))
+    crate::files::rename(pending(dir, &invoice.number), &kept).map_err(|e| format!("{}: {e}", kept.display()))
 }
 
 /// The file taken away, waiting or named: only to undo an issue that failed after writing it.
 pub(crate) fn remove(dir: &Path, invoice: &Invoice) {
-    let _ = std::fs::remove_file(pending(dir, &invoice.number));
+    let _ = crate::files::remove_file(pending(dir, &invoice.number));
     if !invoice.file.is_empty() {
-        let _ = std::fs::remove_file(path(dir, invoice));
+        let _ = crate::files::remove_file(path(dir, invoice));
     }
 }
 
 /// `file` moved into `dir/leftovers/` as `name`, or a free name beside it: never deleted.
 fn set_aside(dir: &Path, file: &Path, name: &str) -> Result<PathBuf, String> {
     let folder = dir.join(LEFTOVERS);
-    std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    crate::files::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let stem = name.strip_suffix(".pdf").unwrap_or(name);
     let mut target = folder.join(name);
     let mut n = 2;
-    while target.exists() {
+    while target.present() {
         target = folder.join(format!("{stem} ({n}).pdf"));
         n += 1;
     }
-    std::fs::rename(file, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+    crate::files::rename(file, &target).map_err(|e| format!("{}: {e}", target.display()))?;
     Ok(target)
 }
 
@@ -171,9 +173,9 @@ fn set_aside(dir: &Path, file: &Path, name: &str) -> Result<PathBuf, String> {
 /// takes its name; any other waiting file, and a kept file no record holds,
 /// is set aside in `leftovers/`. Returns what to say, once, in `tr`'s words.
 pub(crate) fn tidy(dir: &Path, tr: &Translator) -> Vec<String> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     let mut said = Vec::new();
-    let mut files: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file()).collect();
+    let mut files: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file()).collect();
     files.sort();
     for file in files {
         let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -183,11 +185,11 @@ pub(crate) fn tidy(dir: &Path, tr: &Translator) -> Vec<String> {
             None => continue,
         };
         let stem = kept_name.strip_suffix(".pdf").unwrap_or(&kept_name).to_string();
-        let record = std::fs::read_to_string(dir.join(format!("{stem}.toml"))).ok();
+        let record = crate::files::read_to_string(dir.join(format!("{stem}.toml"))).ok();
         if waiting {
-            let bytes = std::fs::read(&file).unwrap_or_default();
+            let bytes = crate::files::read(&file).unwrap_or_default();
             let named = record.as_deref().and_then(super::record::read).is_some_and(|r| r.file == kept_name && r.file_sha256.eq_ignore_ascii_case(&sha256(&bytes)));
-            if named && !dir.join(&kept_name).exists() && std::fs::rename(&file, dir.join(&kept_name)).is_ok() {
+            if named && !dir.join(&kept_name).present() && crate::files::rename(&file, dir.join(&kept_name)).is_ok() {
                 continue;
             }
         } else if record.is_some() {
@@ -228,11 +230,11 @@ pub enum NotGiven {
 pub fn issued(dir: &Path, invoice: &Invoice, tr: &Translator) -> Result<Vec<u8>, NotGiven> {
     let record = dir.join(super::file_name(&invoice.number)).display().to_string();
     match state(dir, invoice) {
-        State::Kept(path) => std::fs::read(&path).map_err(|e| NotGiven::Kept(format!("{}: {e}", path.display()))),
+        State::Kept(path) => crate::files::read(&path).map_err(|e| NotGiven::Kept(format!("{}: {e}", path.display()))),
         State::Misnamed(file) => Err(NotGiven::Kept(say(tr, "invoice-kept-misnamed", &[("number", invoice.number.clone()), ("file", file), ("record", record)]))),
         State::None => Err(NotGiven::Kept(say(tr, "invoice-kept-none", &[("number", invoice.number.clone())]))),
         State::Changed(path) | State::Missing(path) => {
-            let changed = path.exists();
+            let changed = path.present();
             let Some(bytes) = again(invoice) else {
                 let id = if changed { "invoice-kept-refused" } else { "invoice-kept-lost" };
                 return Err(NotGiven::Kept(say(tr, id, &[("number", invoice.number.clone()), ("record", record), ("file", path.display().to_string())])));
@@ -251,12 +253,12 @@ pub fn issued(dir: &Path, invoice: &Invoice, tr: &Translator) -> Result<Vec<u8>,
 /// as it is.
 pub fn copy_to(dir: &Path, invoice: &Invoice, destination: &Path, tr: &Translator) -> Result<(), NotGiven> {
     let bytes = issued(dir, invoice, tr)?;
-    if std::fs::read(destination).is_ok_and(|there| there == bytes) {
+    if crate::files::read(destination).is_ok_and(|there| there == bytes) {
         return Ok(());
     }
     let failed = |e: std::io::Error| NotGiven::Copy(destination.to_path_buf(), e.to_string());
     if let Some(parent) = destination.parent() {
-        std::fs::create_dir_all(parent).map_err(failed)?;
+        crate::files::create_dir_all(parent).map_err(failed)?;
     }
     crate::filelock::replace(destination, &bytes).map_err(failed)
 }

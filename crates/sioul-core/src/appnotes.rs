@@ -821,14 +821,14 @@ impl Choices {
 
     /// As kept; what does not read is no choice at all (everything as usual).
     pub fn load(path: &Path) -> Choices {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// As kept; none when missing; one that does not read is an error, never
     /// the usual choices: what acts on other apps' channels must not read a
     /// broken file as "off" and give every sound back.
     pub fn read(path: &Path) -> Result<Choices, String> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Choices::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),
@@ -879,11 +879,11 @@ impl Choices {
 fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let temporary = path.with_extension(format!("toml.{}", std::process::id()));
-    std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    crate::files::write(&temporary, text).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)
 }
 
 // ---------------------------------------------------------------- when
@@ -1776,7 +1776,7 @@ impl Ledger {
 
     /// As kept; empty when missing or unreadable (what was held comes back at its time all the same).
     pub fn load(path: &Path) -> Ledger {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
@@ -2008,7 +2008,7 @@ impl Silenced {
     /// As kept; none when missing. One that does not read is an error, never
     /// none: it holds what to give back, and nothing is written over it.
     pub fn load(path: &Path) -> Result<Silenced, String> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Silenced::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),

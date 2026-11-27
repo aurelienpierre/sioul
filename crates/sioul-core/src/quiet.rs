@@ -276,7 +276,7 @@ impl Overrides {
     }
 
     pub fn load(path: &Path) -> Overrides {
-        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let text = crate::files::read_to_string(path).unwrap_or_default();
         let mut overrides: Overrides = toml::from_str(&text).unwrap_or_default();
         overrides.read = crate::filelock::Read::of(&text);
         overrides

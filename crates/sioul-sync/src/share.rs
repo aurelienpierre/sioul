@@ -46,6 +46,8 @@
 //! device's change is written into a file here, the file as it was is kept on
 //! this device (`history`), to be put back.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use chacha20poly1305::aead::rand_core::RngCore;
@@ -1374,10 +1376,10 @@ pub fn shaped(stores: &[Store], format: u32) -> Vec<Store> {
 /// an exchange lists them, nothing read through, nothing removed.
 pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
     let (mut found, mut files, known, confirmed) = (Found::default(), Vec::new(), BTreeMap::new(), BTreeSet::new());
-    for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
+    for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.present_dir()) {
         Listing { store: &store.name, root: &store.path, skip: store.skip, never: &store.never, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false, listed: None, carried: &mut Vec::new(), clock: 0 }.list(&store.path);
     }
-    files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
+    files.iter().filter_map(|(_, path)| crate::files::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
 }
 
 /// The part a file of the records belongs to, whether this device shares it
@@ -1518,7 +1520,7 @@ fn entry_of(key: &str) -> &str {
     key.get(file_of(key).len() + 1..).unwrap_or("")
 }
 
-pub(crate) fn modified_ns(meta: &std::fs::Metadata) -> u64 {
+pub(crate) fn modified_ns(meta: &crate::files::Metadata) -> u64 {
     meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as u64)
 }
 
@@ -1665,7 +1667,7 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
             continue;
         }
         if store.folder {
-            if !store.path.is_dir() {
+            if !store.path.present_dir() {
                 // Notes or papers that held files and are gone (a disk not
                 // mounted, a folder moved): unknown, said. A folder that never
                 // held any is a new one, filled.
@@ -1708,7 +1710,7 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
             for (relative, path) in carried {
                 carry_file(store, &format!("{}{relative}", store.name), &path, known, look, &mut found);
             }
-        } else if store.path.is_file() {
+        } else if store.path.present_file() {
             read_file(store, &store.name, &store.path, known, look, &mut found);
         } else if !matches!(store.shape, Shape::Whole | Shape::Files) {
             // A settings file not there is not a file emptied; a file whole or
@@ -1721,21 +1723,21 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
     found.files.extend(carried);
     // The logs of lines kept (`LINES`) that are no longer there, forgotten.
     if let Ok(mut all) = LINES.lock() {
-        all.retain(|path, _| path.exists() || !stores.iter().any(|s| matches!(s.shape, Shape::Lines) && path.starts_with(&s.path)));
+        all.retain(|path, _| path.present() || !stores.iter().any(|s| matches!(s.shape, Shape::Lines) && path.starts_with(&s.path)));
     }
     found
 }
 
 /// Every file below a folder, by its path from it with `/`; temporary and hidden files left out.
 fn list_files(root: &Path, dir: &Path, skip: &[&str], out: &mut Vec<(String, PathBuf)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = crate::files::read_dir(dir) else { return };
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') || name.ends_with(".new") || name.ends_with(".tmp") || name.ends_with('~') || skip.contains(&name.as_str()) {
             continue;
         }
         let path = entry.path();
-        if path.is_dir() {
+        if path.present_dir() {
             list_files(root, &path, skip, out);
         } else if let Ok(relative) = path.strip_prefix(root) {
             out.push((relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"), path));
@@ -1785,7 +1787,7 @@ impl Listing<'_> {
         // A folder shared through (it holds a seal) is none of the notes, whichever way it is reached:
         // a folder taken as listed checks it too (review of wt/sync, R5: a sync app making the folder
         // first and its seal after, the folder was read as notes until the whole listing).
-        if dir != self.root && dir.join("seal.toml").is_file() {
+        if dir != self.root && dir.join("seal.toml").present_file() {
             if let Some(listed) = self.listed.as_deref_mut() {
                 listed.dirs.remove(dir);
                 if let Some(parent) = dir.parent() {
@@ -1812,7 +1814,7 @@ impl Listing<'_> {
             return 0;
         }
         // Its time before it is read: a change while it is read shows next time.
-        let modified = std::fs::metadata(dir).map_or(0, |m| modified_ns(&m));
+        let modified = crate::files::metadata(dir).map_or(0, |m| modified_ns(&m));
         // Unchanged since this process listed it (`Listed`): as listed then.
         let unchanged = self.listed.as_deref().and_then(|l| l.dirs.get(dir)).filter(|seen| modified > 0 && seen.modified == modified && seen.listed - (modified / 1_000_000) as i64 > RACY_MS).cloned();
         if let Some(seen) = unchanged {
@@ -1836,7 +1838,7 @@ impl Listing<'_> {
         // What this folder holds, for the next look (`Listed`), while it has nothing to say.
         let mut clean = true;
         let (mut own_files, mut own_dirs): (Vec<String>, Vec<String>) = (Vec::new(), Vec::new());
-        match std::fs::read_dir(dir) {
+        match crate::files::read_dir(dir) {
             Err(_) => whole = false,
             Ok(entries) => {
                 for entry in entries {
@@ -1884,12 +1886,12 @@ impl Listing<'_> {
                     if made_by_tools(name) || (dir == self.root && self.skip.iter().any(|skip| skip.eq_ignore_ascii_case(name))) {
                         continue;
                     }
-                    if kind.is_dir() {
-                        if !matches!(name, "node_modules" | "target") && !path.join("seal.toml").is_file() {
+                    if kind.present_dir() {
+                        if !matches!(name, "node_modules" | "target") && !path.join("seal.toml").present_file() {
                             count += self.list(&path);
                             own_dirs.push(name.to_string());
                         }
-                    } else if kind.is_file() {
+                    } else if kind.present_file() {
                         self.files.push((format!("{within}{name}"), path));
                         own_files.push(name.to_string());
                         count += 1;
@@ -1942,8 +1944,8 @@ fn clean_leftovers_below(dir: &Path, depth: usize) {
     if depth == 0 {
         return;
     }
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
-        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+    for entry in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        if entry.file_type().is_ok_and(|t| t.present_dir()) {
             clean_leftovers_below(&entry.path(), depth - 1);
         }
     }
@@ -1951,14 +1953,14 @@ fn clean_leftovers_below(dir: &Path, depth: usize) {
 
 /// A file left half written, removed once an hour old: never one still being written.
 fn remove_if_old(path: &Path) {
-    if std::fs::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 3600) {
-        let _ = std::fs::remove_file(path);
+    if crate::files::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 3600) {
+        let _ = crate::files::remove_file(path);
     }
 }
 
 /// What a crash left half written in a folder (the sealed files, the history), removed after an hour.
 pub(crate) fn clean_leftovers(dir: &Path) {
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
         if entry.file_name().to_str().is_some_and(is_leftover) {
             remove_if_old(&entry.path());
         }
@@ -2068,7 +2070,7 @@ fn note_stamp(path: &Path, stamp: FileStamp, clock: i64, seen: i64, fresh: bool)
 }
 
 fn read_file(store: &Store, file: &str, path: &Path, known: &BTreeMap<String, Stat>, look: &Look, found: &mut Found) {
-    let Ok(meta) = std::fs::metadata(path) else {
+    let Ok(meta) = crate::files::metadata(path) else {
         found.unknown.insert(file.to_string());
         return;
     };
@@ -2185,13 +2187,13 @@ static LINES: std::sync::Mutex<Lines> = std::sync::Mutex::new(BTreeMap::new());
 
 /// A log's lines, as `entries_of` reads them: from `LINES` while the file is
 /// the one read there, else read now (`clock`: this computer's, milliseconds) and kept.
-fn lines_of(path: &Path, meta: &std::fs::Metadata, clock: i64) -> Option<std::sync::Arc<Vec<String>>> {
+fn lines_of(path: &Path, meta: &crate::files::Metadata, clock: i64) -> Option<std::sync::Arc<Vec<String>>> {
     let stamp = file_stamp(path, meta);
     let settled = |read: i64| (stamp.modified.max(stamp.changed) / 1_000_000) as i64 + settling_ms() < read;
     if let Some((_, _, lines)) = keeping().then(|| LINES.lock().ok().and_then(|all| all.get(path).filter(|(was, read, _)| *was == stamp && settled(*read)).cloned())).flatten() {
         return Some(lines);
     }
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = crate::files::read(path).ok()?;
     #[cfg(test)]
     LINES_READ.with(|n| n.set(n.get() + 1));
     // Not text (a list kept by another tool in another encoding): unknown, left as it is.
@@ -2261,10 +2263,10 @@ fn known_here(memory: &Memory, file: &str) -> bool {
 
 /// A file there of no bytes, or of blanks alone (read only when small).
 fn blank(path: &Path) -> bool {
-    match std::fs::metadata(path) {
+    match crate::files::metadata(path) {
         Ok(meta) if meta.len() == 0 => true,
         Ok(meta) if meta.len() > 64 * 1024 => false,
-        Ok(_) => std::fs::read(path).is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace)),
+        Ok(_) => crate::files::read(path).is_ok_and(|bytes| bytes.iter().all(u8::is_ascii_whitespace)),
         Err(_) => false,
     }
 }
@@ -2277,14 +2279,14 @@ fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory)
         .iter()
         .filter_map(|file| {
             let (store, path) = locate(stores, file)?;
-            if !reads(store) || !known_here(memory, file) || !path.parent().is_some_and(Path::is_dir) {
+            if !reads(store) || !known_here(memory, file) || !path.parent().is_some_and(crate::files::Probe::present_dir) {
                 return None;
             }
-            let gone = std::fs::metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
+            let gone = crate::files::metadata(&path).is_err_and(|e| e.kind() == std::io::ErrorKind::NotFound);
             // A save in place caught between its truncation and its writing looks blank for an
             // instant: one written in the last seconds is looked at again at the next exchange,
             // never rebuilt over what its editor writes then (review S34).
-            let settling = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age < LIST_SETTLES);
+            let settling = crate::files::metadata(&path).and_then(|meta| meta.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age < LIST_SETTLES);
             (gone || (blank(&path) && !settling)).then(|| (*file).to_string())
         })
         .collect()
@@ -2302,7 +2304,7 @@ fn lists_lost(stores: &[Store], reads: &dyn Fn(&Store) -> bool, memory: &Memory)
 fn list_removals_held<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)], unknowing: &dyn Fn(&str) -> bool, before: &BTreeSet<String>) -> BTreeSet<&'a str> {
     let element = |entry: &str| entry.contains(&format!("{SEP}{MARK}"));
     let mut held: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && before.contains(*entry)).map(|(entry, _)| *entry).collect();
-    let here: BTreeSet<String> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default().into_iter().map(|(entry, _)| entry).filter(|entry| element(entry)).collect();
+    let here: BTreeSet<String> = crate::files::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default().into_iter().map(|(entry, _)| entry).filter(|entry| element(entry)).collect();
     let removals: BTreeSet<&str> = changes.iter().filter(|(entry, value)| value.is_none() && element(entry) && unknowing(entry) && here.contains(*entry)).map(|(entry, _)| *entry).collect();
     if here.len() >= 2 && !removals.is_empty() && here.iter().filter(|entry| !removals.contains(entry.as_str())).count() <= 1 {
         held.extend(removals);
@@ -2325,7 +2327,7 @@ fn medicines_in<'a>(entries: impl Iterator<Item = &'a str>) -> usize {
 /// The medicines whose removal was made in Sioul, by id: their marks
 /// (`removed<SEP><id>`) in the health file here or coming with `changes`.
 fn removal_marks(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -> BTreeSet<String> {
-    let here: Vec<(String, String)> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    let here: Vec<(String, String)> = crate::files::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
     let mut marked: BTreeSet<String> = here.iter().filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)).collect();
     marked.extend(changes.iter().filter(|(_, value)| value.is_some()).filter_map(|(entry, _)| entry.strip_prefix(&format!("removed{SEP}")).map(str::to_string)));
     marked
@@ -2338,7 +2340,7 @@ fn removal_marks(store: &Store, path: &Path, changes: &[(&str, Option<&str>)]) -
 /// them nor is here. None when the file keeps one, or each is marked.
 fn emptying_removals<'a>(store: &Store, path: &Path, changes: &[(&'a str, Option<&str>)]) -> BTreeSet<&'a str> {
     let mark = format!("medicine{SEP}{MARK}");
-    let here: Vec<(String, String)> = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    let here: Vec<(String, String)> = crate::files::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
     let mut medicines: BTreeSet<String> = here.iter().filter(|(entry, _)| entry.starts_with(&mark)).map(|(entry, _)| entry.clone()).collect();
     if medicines.len() < 2 {
         return BTreeSet::new();
@@ -2400,7 +2402,7 @@ pub fn release_medicines(memory: &Path, computer: &str, file: &str) -> Result<()
 /// is an empty one; one that cannot be read, or is not text, is an error, and
 /// what came for it waits (never the incoming entries alone written in its place).
 fn text_to_write(path: &Path) -> Result<String, String> {
-    match std::fs::read(path) {
+    match crate::files::read(path) {
         Ok(bytes) => String::from_utf8(bytes).map_err(|_| format!("share-unreadable:{}", path.display())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
         Err(e) => Err(format!("share-unreadable:{}: {e}", path.display())),
@@ -2412,7 +2414,7 @@ fn value_of(stores: &[Store], key: &str) -> Option<String> {
     let (file, entry) = (file_of(key), entry_of(key));
     let (store, path) = locate(stores, file)?;
     if matches!(store.shape, Shape::Files) {
-        let meta = std::fs::metadata(&path).ok()?;
+        let meta = crate::files::metadata(&path).ok()?;
         let (h, size) = crate::blobs::hash_file(&path).ok()?;
         return entry.is_empty().then(|| reference(&h, size, modified_ns(&meta)));
     }
@@ -2591,7 +2593,7 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], r
         let new = rewritten(store, path, changes)?;
         // What the file holds once written, entry by entry, by hash: what the next look compares with.
         let written: BTreeMap<String, String> = new.as_deref().and_then(|bytes| entries_of(store, bytes)).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
-        let old = std::fs::read(path).ok();
+        let old = crate::files::read(path).ok();
         if old == new {
             return Ok(written);
         }
@@ -2629,7 +2631,7 @@ fn write_entries(store: &Store, path: &Path, changes: &[(&str, Option<&str>)], r
             // 10 October 2026, R6).
             Some(bytes) if of_the_doses(store) || of_medicines(store) => sioul_core::health::write_witnessed(path, &bytes)?,
             Some(bytes) => write_atomically(path, &bytes)?,
-            None => match std::fs::remove_file(path) {
+            None => match crate::files::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(format!("{}: {e}", path.display())),
                 _ => {}
             },
@@ -2710,10 +2712,10 @@ fn write_then_rename(path: &Path, bytes: &[u8], synced: bool) -> Result<(), Stri
         if synced {
             file.sync_all()?;
         }
-        std::fs::rename(&temporary, path)
+        crate::files::rename(&temporary, path)
     })();
     if written.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
     }
     written.map_err(fail)
 }
@@ -2723,7 +2725,7 @@ fn write_then_rename(path: &Path, bytes: &[u8], synced: bool) -> Result<(), Stri
 pub(crate) fn read_small(path: &Path) -> Option<String> {
     use std::io::Read;
     let mut text = String::new();
-    std::fs::File::open(path).ok()?.take(SMALL_FILE + 1).read_to_string(&mut text).ok()?;
+    crate::files::File::open(path).ok()?.take(SMALL_FILE + 1).read_to_string(&mut text).ok()?;
     (text.len() as u64 <= SMALL_FILE).then_some(text)
 }
 
@@ -2769,12 +2771,12 @@ pub(crate) fn set_time(path: &Path, when: std::time::SystemTime) -> std::io::Res
         use std::os::windows::fs::OpenOptionsExt;
         const FILE_WRITE_ATTRIBUTES: u32 = 0x0100;
         const SYNCHRONIZE: u32 = 0x0010_0000;
-        std::fs::OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES | SYNCHRONIZE).open(path)?.set_modified(when)
+        crate::files::OpenOptions::new().access_mode(FILE_WRITE_ATTRIBUTES | SYNCHRONIZE).open(path)?.set_modified(when)
     }
     #[cfg(not(windows))]
     {
-        match std::fs::File::open(path)?.set_modified(when) {
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => std::fs::File::options().write(true).open(path)?.set_modified(when),
+        match crate::files::File::open(path)?.set_modified(when) {
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => crate::files::File::options().write(true).open(path)?.set_modified(when),
             done => done,
         }
     }
@@ -2793,19 +2795,19 @@ pub(crate) fn set_time(path: &Path, when: std::time::SystemTime) -> std::io::Res
 /// Windows), nothing is asked and nothing said. These folders made, with
 /// their parents, each 0700; folders there already keep their mode.
 pub fn private_dirs(dir: &Path) -> std::io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
+    let mut builder = crate::files::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.mode(0o700);
     builder.create(dir)
 }
 
 /// A new file to write, yours alone (0600 on Unix); an error when one is there (`create_new`).
-pub(crate) fn new_private(path: &Path) -> std::io::Result<std::fs::File> {
-    let mut options = std::fs::OpenOptions::new();
+pub(crate) fn new_private(path: &Path) -> std::io::Result<crate::files::File> {
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     options.open(path)
 }
 
@@ -2815,11 +2817,11 @@ pub(crate) fn make_private(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = std::fs::symlink_metadata(path)
-            && metadata.is_file()
+        if let Ok(metadata) = crate::files::symlink_metadata(path)
+            && metadata.present_file()
             && metadata.permissions().mode() & 0o077 != 0
         {
-            let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+            let _ = crate::files::set_permissions(path, crate::files::Permissions::from_mode(0o600));
         }
     }
     #[cfg(not(unix))]
@@ -2851,7 +2853,7 @@ const PAD_LIMIT: u64 = 4096;
 /// size with `pad` characters of padding.
 pub(crate) fn pad_for(path: &Path, size: impl Fn(usize) -> u64) -> usize {
     let base = size(0);
-    let Ok(before) = std::fs::metadata(path).map(|m| m.len()) else { return 0 };
+    let Ok(before) = crate::files::metadata(path).map(|m| m.len()) else { return 0 };
     if before < base + PAD_LIMIT {
         // One step past it: the padding grows a character at a time from about the right length.
         let mut pad = usize::try_from(before.saturating_sub(base) * 3 / 4).unwrap_or(0);
@@ -3172,7 +3174,7 @@ pub fn key_for(folder: &Path, passphrase: &str) -> Result<[u8; 32], Refused> {
 
 fn key_with(folder: &Path, passphrase: &str, memory_kib: u32, passes: u32) -> Result<[u8; 32], Refused> {
     let path = folder.join("seal.toml");
-    if path.exists() {
+    if path.present() {
         // Written by Sioul in a few lines: one larger is no seal of its.
         let text = read_small(&path).ok_or_else(|| Refused::Other(format!("{}: not a seal", path.display())))?;
         let seal: SealFile = toml::from_str(&text).map_err(|e| Refused::Other(format!("{}: {e}", path.display())))?;
@@ -3211,7 +3213,7 @@ fn key_with(folder: &Path, passphrase: &str, memory_kib: u32, passes: u32) -> Re
 /// `share-sealed-otherwise`): never under a key the others lack; sharing set
 /// up again with the passphrase the folder's seal holds mends it.
 fn sealed_for(folder: &Path, key: &[u8; 32]) -> Result<Option<(bool, String)>, ()> {
-    if !folder.is_dir() {
+    if !folder.present_dir() {
         return Err(());
     }
     let Some(seal) = read_small(&folder.join("seal.toml")).and_then(|text| toml::from_str::<SealFile>(&text).ok()) else { return Ok(None) };
@@ -3281,7 +3283,7 @@ impl Here {
     /// the name that lost would be another device's).
     pub fn load(state: &Path) -> Here {
         let path = Here::path(state);
-        let read = || -> Here { std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default() };
+        let read = || -> Here { crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default() };
         let machine = machine();
         let unnamed = |here: &Here| here.id.is_empty() || (!machine.is_empty() && here.machine != machine);
         let here = read();
@@ -3322,7 +3324,7 @@ impl Here {
 
 /// A hash of the machine's own id (`/etc/machine-id`), else of its name.
 fn machine() -> String {
-    let id = ["/etc/machine-id", "/var/lib/dbus/machine-id"].iter().find_map(|p| std::fs::read_to_string(p).ok()).or_else(|| std::env::var("COMPUTERNAME").ok()).or_else(|| std::fs::read_to_string("/etc/hostname").ok()).unwrap_or_default();
+    let id = ["/etc/machine-id", "/var/lib/dbus/machine-id"].iter().find_map(|p| crate::files::read_to_string(p).ok()).or_else(|| std::env::var("COMPUTERNAME").ok()).or_else(|| crate::files::read_to_string("/etc/hostname").ok()).unwrap_or_default();
     let id = id.trim();
     if id.is_empty() { String::new() } else { format!("{:016x}", fnv(id.as_bytes())) }
 }
@@ -3954,7 +3956,7 @@ fn prune_tables(folder: &Path, sealed: &mut Sealed, used: &BTreeSet<String>) {
         if used.contains(&old) {
             continue;
         }
-        let _ = std::fs::remove_file(folder.join("blobs").join(&old));
+        let _ = crate::files::remove_file(folder.join("blobs").join(&old));
         sealed.mine.remove(&old);
     }
 }
@@ -4122,7 +4124,7 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
     // content (`named_at`), and seals it again from its own file if it went
     // meanwhile (`look_after_sealed`, `fresh_again`).
     let made_fresh = |name: &str, since_wall: i64| {
-        let Some(modified) = std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) else { return false };
+        let Some(modified) = crate::files::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) else { return false };
         let (seconds, ms) = (modified.as_secs() as i64, modified.as_millis() as i64);
         match sealed.stamped.get(name).filter(|_| sealed.mine.contains_key(name)) {
             Some(stamp) => seconds != *stamp && ms > since_wall,
@@ -4274,7 +4276,7 @@ impl Leaving {
 fn leaving_of(sharing: &Sharing, memory: &Memory, counts: &[(String, Counted)], judged: &[(String, Stands)], current: &BTreeSet<String>, texts_waiting: &BTreeSet<String>, why: &str) -> Leaving {
     let departed: BTreeSet<&str> = counts.iter().filter(|(_, counted)| counted.departed()).map(|(id, _)| id.as_str()).collect();
     let blobs = sharing.folder.join("blobs");
-    let size = |name: &str| memory.sealed.mine.get(name).map(|(_, size)| *size).or_else(|| std::fs::metadata(blobs.join(name)).ok().map(|m| m.len()));
+    let size = |name: &str| memory.sealed.mine.get(name).map(|(_, size)| *size).or_else(|| crate::files::metadata(blobs.join(name)).ok().map(|m| m.len()));
     let ours = |name: &str| memory.sealed.mine.contains_key(name) || memory.sealed.theirs.get(name).is_some_and(|(writer, _)| departed.contains(writer.as_str()));
     let mut leaving = Leaving::default();
     let mut said: BTreeSet<&str> = BTreeSet::new();
@@ -4366,7 +4368,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
         .chain(memory.pending.iter().map(|(key, (value, ..))| (key, value)).chain(memory.waiting.iter().map(|(key, (value, ..))| (key, value))).filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))))
         .map(|h| crate::blobs::name(sharing.key, &h))
         .collect();
-    memory.taken.retain(|name, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY && !blobs.join(name).exists() && !named_here.contains(name));
+    memory.taken.retain(|name, at| now_ms - *at < crate::blobs::UNUSED_DAYS * DAY && !blobs.join(name).present() && !named_here.contains(name));
     let taken = &memory.taken;
     memory.taken_since.retain(|name, _| taken.contains_key(name));
     if memory.sealed.theirs.is_empty() {
@@ -4375,7 +4377,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     let days = unused_days(sharing, memory, now_ms);
     let departed: BTreeSet<&str> = counted.iter().filter(|(_, counted)| counted.departed()).map(|(id, _)| id.as_str()).collect();
     // A writer that counts sweeps its own: forgotten here once it left the folder.
-    memory.sealed.theirs.retain(|name, (writer, at)| departed.contains(writer.as_str()) || now_ms - *at < days * DAY || blobs.join(name).exists());
+    memory.sealed.theirs.retain(|name, (writer, at)| departed.contains(writer.as_str()) || now_ms - *at < days * DAY || blobs.join(name).present());
     let mut last: BTreeMap<String, i64> = memory.sealed.theirs.iter().filter(|(_, (writer, _))| departed.contains(writer.as_str())).map(|(name, (_, at))| (name.clone(), *at)).collect();
     if last.is_empty() {
         return;
@@ -4409,7 +4411,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     let early: Vec<String> = judged.iter().filter(|(name, stands)| *stands == Stands::Due && last.contains_key(name) && !memory.sealed.mine.contains_key(name)).map(|(name, _)| name.clone()).collect();
     for name in early {
         let path = blobs.join(&name);
-        if std::fs::remove_file(&path).is_ok() || !path.exists() {
+        if crate::files::remove_file(&path).is_ok() || !path.present() {
             let since = memory.sealed.removed_at.get(&name).map_or(now_ms, |(_, _, since_wall)| *since_wall);
             last.remove(&name);
             memory.sealed.theirs.remove(&name);
@@ -4418,7 +4420,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
         }
     }
     let unused = days * DAY;
-    let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+    let fresh = |name: &str| crate::files::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
     let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
     let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
     if due && every_part && quick(sharing) && texts_shared(stores) {
@@ -4524,13 +4526,13 @@ static TEXTS_SEEN: std::sync::Mutex<TextsSeen> = std::sync::Mutex::new(BTreeMap:
 /// device's own taken from another device wait (`Sealed::adopted`).
 fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[(String, Counted)]) -> Texts {
     if let Some(store) = stores.iter().find(|s| s.name == TEXTS_LOG) {
-        let mut logs: Vec<(PathBuf, u64, i64)> = std::fs::read_dir(&store.path)
+        let mut logs: Vec<(PathBuf, u64, i64)> = crate::files::read_dir(&store.path)
             .into_iter()
             .flatten()
             .filter_map(Result::ok)
             .filter(|entry| entry.path().extension().is_some_and(|e| e == "jsonl") && !entry.file_name().to_string_lossy().starts_with('.'))
             .filter_map(|entry| {
-                let meta = entry.metadata().ok().filter(|m| m.is_file())?;
+                let meta = entry.metadata().ok().filter(|m| m.present_file())?;
                 let at = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos() as i64);
                 Some((entry.path(), meta.len(), at))
             })
@@ -4557,7 +4559,7 @@ fn texts_media(sharing: &Sharing, stores: &[Store], memory: &Memory, counted: &[
         let mut out = BTreeSet::new();
         let mut whole = true;
         for (path, _, _) in &logs {
-            let Ok(text) = std::fs::read_to_string(path) else {
+            let Ok(text) = crate::files::read_to_string(path) else {
                 whole = false;
                 continue;
             };
@@ -4597,7 +4599,7 @@ struct Known {
 impl Memory {
     /// `memory.json` alone: what the doses and claims ask.
     fn load(path: &Path, computer: &str) -> Memory {
-        let memory: Memory = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let memory: Memory = crate::files::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         if memory.computer == computer { memory } else { Memory { computer: computer.to_string(), round: 1, ..Memory::default() } }
     }
 
@@ -4617,12 +4619,12 @@ impl Memory {
     /// where `load_all` would take it.
     fn read_all(path: &Path, computer: &str) -> Memory {
         // `memory.json`'s bytes kept with it (`saved`): the next save compares with them rather than reading it again.
-        let text = std::fs::read(path).ok();
+        let text = crate::files::read(path).ok();
         let mut memory = match text.as_deref().and_then(|t| std::str::from_utf8(t).ok()).and_then(|t| serde_json::from_str::<Memory>(t).ok()) {
             Some(memory) if memory.computer == computer => Memory { saved: text.unwrap_or_default(), ..memory },
             _ => Memory { computer: computer.to_string(), round: 1, ..Memory::default() },
         };
-        match std::fs::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
+        match crate::files::read_to_string(sealed_path(path)).ok().and_then(|t| serde_json::from_str::<Sealed>(&t).ok()).filter(|s| s.computer == computer) {
             Some(sealed) => {
                 // An older Sioul's times, kept in this file then.
                 memory.checked = memory.checked.max(sealed.checked);
@@ -4665,7 +4667,7 @@ impl Memory {
         // (`Memory::kept`, under the exchanges' lock, as this save is).
         // `files.json` gone from under it (taken away from outside): written again now.
         let digest = self.sealed_digest_now();
-        let sealed_same = self.sealed_digest == Some(digest) && sealed_path(path).exists();
+        let sealed_same = self.sealed_digest == Some(digest) && sealed_path(path).present();
         if !sealed_same {
             let (sealed, kept): (BTreeMap<_, _>, BTreeMap<_, _>) = std::mem::take(&mut self.entries).into_iter().partition(|(key, _)| apart(key));
             (self.sealed.entries, self.entries) = (sealed, kept);
@@ -4678,7 +4680,7 @@ impl Memory {
         // Each file written when its bytes differ from what it holds: `known`,
         // the bytes this memory knows it holds, else read from it.
         let mut write = |target: PathBuf, text: &[u8], known: Option<&[u8]>| -> Result<(), String> {
-            if known.map_or_else(|| std::fs::read(&target).is_ok_and(|old| old == text), |known| known == text) {
+            if known.map_or_else(|| crate::files::read(&target).is_ok_and(|old| old == text), |known| known == text) {
                 return Ok(());
             }
             let fail = |e: std::io::Error| format!("{}: {e}", target.display());
@@ -4692,7 +4694,7 @@ impl Memory {
                 file.sync_all()
             })();
             if let Err(e) = written {
-                let _ = std::fs::remove_file(&temporary);
+                let _ = crate::files::remove_file(&temporary);
                 return Err(fail(e));
             }
             slow_memory_write();
@@ -4771,7 +4773,7 @@ impl Memory {
             return None;
         }
         let kept = KEPT.lock().ok()?.remove(path)?;
-        let same = kept.memory.computer == computer && kept.own.is_some() && kept.sealed.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && std::fs::read(path).is_ok_and(|text| text == kept.text);
+        let same = kept.memory.computer == computer && kept.own.is_some() && kept.sealed.is_some() && stamp_at(path) == kept.own && stamp_at(&sealed_path(path)) == kept.sealed && crate::files::read(path).is_ok_and(|text| text == kept.text);
         // `memory.json`'s bytes, as on the disk: the next save compares with them rather than reading it.
         same.then(|| Memory { saved: kept.text, ..kept.memory })
     }
@@ -4800,13 +4802,13 @@ struct FileStamp {
     changed: u64,
 }
 
-fn file_stamp(path: &Path, meta: &std::fs::Metadata) -> FileStamp {
+fn file_stamp(path: &Path, meta: &crate::files::Metadata) -> FileStamp {
     let (ino, changed) = sioul_core::filelock::identity(path, meta);
     FileStamp { ino, size: meta.len(), modified: modified_ns(meta), changed: u64::try_from(changed).unwrap_or(0) }
 }
 
 fn stamp_at(path: &Path) -> Option<FileStamp> {
-    std::fs::metadata(path).ok().map(|meta| file_stamp(path, &meta))
+    crate::files::metadata(path).ok().map(|meta| file_stamp(path, &meta))
 }
 
 /// The memory as the last exchange in this process saved it (`Memory::keep`),
@@ -4851,8 +4853,8 @@ impl SavePrepared {
     /// the commit is made under (`Memory::written`).
     fn commit(mut self) -> Result<(Option<FileStamp>, Option<FileStamp>), String> {
         for (temporary, target) in std::mem::take(&mut self.renames) {
-            if let Err(e) = std::fs::rename(&temporary, &target) {
-                let _ = std::fs::remove_file(&temporary);
+            if let Err(e) = crate::files::rename(&temporary, &target) {
+                let _ = crate::files::remove_file(&temporary);
                 return Err(format!("{}: {e}", target.display()));
             }
         }
@@ -4863,7 +4865,7 @@ impl SavePrepared {
 impl Drop for SavePrepared {
     fn drop(&mut self) {
         for (temporary, _) in &self.renames {
-            let _ = std::fs::remove_file(temporary);
+            let _ = crate::files::remove_file(temporary);
         }
     }
 }
@@ -5167,7 +5169,7 @@ fn round_file(folder: &Path, computer: &str, round: u32) -> PathBuf {
 fn computers(folder: &Path) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = rounds_with(folder).into_keys().collect();
     for dir in std::iter::once(folder.to_path_buf()).chain(crate::remote::overlay(folder)) {
-        for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+        for entry in crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
             let name = entry.file_name().to_string_lossy().to_string();
             if let Some(id) = name.strip_suffix(".toml").filter(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok()) {
                 out.insert(id.to_string());
@@ -5196,21 +5198,21 @@ fn rounds_with(folder: &Path) -> BTreeMap<String, Vec<u32>> {
 /// and the one fetched from the server (`remote::overlay`). Records only
 /// grow: the longer holds all the shorter does, and where each line starts
 /// is the same in both.
-fn open_round(folder: &Path, computer: &str, round: u32) -> std::io::Result<std::fs::File> {
+fn open_round(folder: &Path, computer: &str, round: u32) -> std::io::Result<crate::files::File> {
     let here = round_file(folder, computer, round);
-    let Some(fetched) = crate::remote::overlay(folder).map(|f| round_file(&f, computer, round)) else { return std::fs::File::open(here) };
-    let size = |path: &Path| std::fs::metadata(path).map(|m| m.len()).ok();
+    let Some(fetched) = crate::remote::overlay(folder).map(|f| round_file(&f, computer, round)) else { return crate::files::File::open(here) };
+    let size = |path: &Path| crate::files::metadata(path).map(|m| m.len()).ok();
     match (size(&here), size(&fetched)) {
-        (Some(a), Some(b)) if b > a => std::fs::File::open(fetched),
-        (None, Some(_)) => std::fs::File::open(fetched),
-        _ => std::fs::File::open(here),
+        (Some(a), Some(b)) if b > a => crate::files::File::open(fetched),
+        (None, Some(_)) => crate::files::File::open(fetched),
+        _ => crate::files::File::open(here),
     }
 }
 
 /// The computers' files in the folder: computer → its rounds.
 fn rounds(folder: &Path) -> BTreeMap<String, Vec<u32>> {
     let mut out: BTreeMap<String, Vec<u32>> = BTreeMap::new();
-    for entry in std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(folder).into_iter().flatten().filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
         let Some(stem) = name.strip_suffix(".jsonl") else { continue };
         // "<uuid>-<round>": a UUID is 36 characters; a conflicted copy's name is longer.
@@ -5356,7 +5358,7 @@ fn note_whole_lists(stores: &[Store], memory: &mut Memory) {
     for (file, path, store) in divided(stores) {
         let Shape::Toml(rules) = store.shape else { continue };
         let next = rules.at(2);
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         if text.parse::<toml::Table>().is_err() {
             continue;
         }
@@ -5822,7 +5824,7 @@ pub fn holds(memory: &Path, part: &str) -> bool {
         #[serde(default)]
         newer: BTreeMap<String, serde::de::IgnoredAny>,
     }
-    std::fs::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<Held>(&t).ok()).is_some_and(|held| held.newer.contains_key(part))
+    crate::files::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<Held>(&t).ok()).is_some_and(|held| held.newer.contains_key(part))
 }
 
 /// The format this device writes (`FORMAT`): 1 until every device reads format 2 (`format_open`), then 2.
@@ -5832,7 +5834,7 @@ pub fn writes(memory: &Path) -> u32 {
 
 /// The format this device writes, as its memory says (`Memory::format`), whichever computer's it is.
 fn format_of(memory: &Path) -> u32 {
-    std::fs::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v.get("format").and_then(serde_json::Value::as_u64)).map_or(0, |f| f as u32)
+    crate::files::read_to_string(memory).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v.get("format").and_then(serde_json::Value::as_u64)).map_or(0, |f| f as u32)
 }
 
 /// Parts held for writers that no longer count (`present`: gone, forgotten,
@@ -6022,7 +6024,7 @@ fn translate(stores: &[Store], older: &BTreeMap<String, (Option<String>, u64, St
         if previous.as_ref().is_some_and(|f| (*c, w.as_str()) <= (f.c, f.w.as_str())) {
             continue;
         }
-        let elements = here.entry(file.to_string()).or_insert_with(|| aligned(&std::fs::read_to_string(&path).unwrap_or_default(), rules, next));
+        let elements = here.entry(file.to_string()).or_insert_with(|| aligned(&crate::files::read_to_string(&path).unwrap_or_default(), rules, next));
         match renaming {
             Renamed::Same => {}
             Renamed::Element(keyed) => {
@@ -6124,7 +6126,7 @@ fn divided<'s>(stores: &'s [Store]) -> Vec<(String, PathBuf, &'s Store)> {
             let mut files = Vec::new();
             list_files(&store.path, &store.path, store.skip, &mut files);
             out.extend(files.into_iter().map(|(relative, path)| (format!("{}{relative}", store.name), path, store)));
-        } else if store.path.is_file() {
+        } else if store.path.present_file() {
             out.push((store.name.clone(), store.path.clone(), store));
         }
     }
@@ -6153,7 +6155,7 @@ fn divided<'s>(stores: &'s [Store]) -> Vec<(String, PathBuf, &'s Store)> {
 fn switch_format(sharing: &Sharing, memory: &mut Memory, stores: &[Store], now_ms: i64, problems: &mut Vec<String>) -> Result<bool, String> {
     let files = divided(stores);
     for (name, path, _) in &files {
-        let text = std::fs::read_to_string(path);
+        let text = crate::files::read_to_string(path);
         let held = memory.entries.iter().any(|(key, known)| file_of(key) == name && !known.h.is_empty());
         let reads = match &text {
             Ok(text) if text.trim().is_empty() => !held,
@@ -6274,7 +6276,7 @@ fn give_ids(store: &Store, file: &str, path: &Path, memory: &Memory, history: &P
     let Shape::Toml(rules) = store.shape else { return Ok(Vec::new()) };
     let next = rules.at(2);
     sioul_core::filelock::with_lock(path, || {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| format!("{}: {e}", path.display()))?;
         let mut before: Vec<(Vec<String>, Vec<String>, Vec<(bool, bool)>)> = Vec::new();
         let mut presets: BTreeMap<String, String> = BTreeMap::new();
@@ -6412,7 +6414,7 @@ fn array_at<'t>(table: &'t toml::Table, path: &[String]) -> Option<&'t Vec<toml:
 fn whole_lists(store: &Store, file: &str, path: &Path, memory: &Memory) -> Vec<Placed> {
     let Shape::Toml(rules) = store.shape else { return Vec::new() };
     let next = rules.at(2);
-    let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
+    let Ok(text) = crate::files::read_to_string(path) else { return Vec::new() };
     let sent: BTreeMap<String, String> = toml_entries(&text, rules).unwrap_or_default().into_iter().map(|(entry, value)| (entry, hash(&value))).collect();
     aligned(&text, rules, next)
         .into_iter()
@@ -6573,7 +6575,7 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
     let Some(base) = memory.parent() else { return };
     let aside = base.join(format!("before-sharing-{today}"));
     let keep = |from: &Path, to: &Path| {
-        if to.exists() {
+        if to.present() {
             return;
         }
         let _ = to.parent().map(private_dirs);
@@ -6587,7 +6589,7 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
             for (relative, path) in files {
                 keep(&path, &target.join(relative));
             }
-        } else if store.path.is_file() {
+        } else if store.path.present_file() {
             keep(&store.path, &target);
         }
     }
@@ -6601,12 +6603,12 @@ fn keep_copies(stores: &[Store], memory: &Path, today: &str) {
 pub fn draft_copies_kept_before_sharing(memory: &Path) -> Vec<PathBuf> {
     let Some(base) = memory.parent() else { return Vec::new() };
     let mut out = Vec::new();
-    for aside in std::fs::read_dir(base).into_iter().flatten().filter_map(Result::ok) {
-        if !aside.file_name().to_string_lossy().starts_with("before-sharing-") || !aside.file_type().is_ok_and(|t| t.is_dir()) {
+    for aside in crate::files::read_dir(base).into_iter().flatten().filter_map(Result::ok) {
+        if !aside.file_name().to_string_lossy().starts_with("before-sharing-") || !aside.file_type().is_ok_and(|t| t.present_dir()) {
             continue;
         }
-        for copy in std::fs::read_dir(aside.path().join("data").join("drafts")).into_iter().flatten().filter_map(Result::ok) {
-            if copy.file_type().is_ok_and(|t| t.is_file()) && copy.path().extension().is_some_and(|e| e == "eml") {
+        for copy in crate::files::read_dir(aside.path().join("data").join("drafts")).into_iter().flatten().filter_map(Result::ok) {
+            if copy.file_type().is_ok_and(|t| t.present_file()) && copy.path().extension().is_some_and(|e| e == "eml") {
                 out.push(copy.path());
             }
         }
@@ -6623,7 +6625,7 @@ pub fn draft_copies_kept_before_sharing(memory: &Path) -> Vec<PathBuf> {
 /// `memory`) runs no exchange: a guard that holds nothing, no folder made.
 pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn sioul_core::draftcopies::Held>> + '_ {
     move || {
-        if !memory.parent().is_some_and(Path::exists) {
+        if !memory.parent().is_some_and(crate::files::Probe::present) {
             return sioul_core::draftcopies::unshared();
         }
         exchange_lock(memory, true).ok().flatten().map(|file| Box::new(HandedOff(memory.to_path_buf(), Some(file))) as Box<dyn sioul_core::draftcopies::Held>)
@@ -6633,7 +6635,7 @@ pub fn replacements_hold(memory: &Path) -> impl Fn() -> Option<Box<dyn sioul_cor
 /// The lock held for a batch of the copies beside drafts, handed to an
 /// exchange waiting in this process when let go (`hand_off`), let go at once
 /// when none waits here; it ends after its copy once one does (`waiting_here`).
-struct HandedOff(PathBuf, Option<std::fs::File>);
+struct HandedOff(PathBuf, Option<crate::files::File>);
 
 impl sioul_core::draftcopies::Held for HandedOff {
     fn wanted(&self) -> bool {
@@ -6977,7 +6979,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             if file.starts_with(FILES)
                 && let Some((_, path)) = locate(stores, &file)
             {
-                if !path.exists() {
+                if !path.present() {
                     let _ = sioul_core::filelock::replace(&path, b"");
                 }
                 if let Some(h) = content_hash(&path) {
@@ -7256,7 +7258,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         let held: BTreeSet<String> = memory.entries.iter().filter(|(_, k)| !k.h.is_empty()).map(|(key, _)| file_of(key).to_string()).filter(|file| settings(file).is_some()).collect();
         let mut waiting: BTreeSet<String> = BTreeSet::new();
         for file in held {
-            let nothing = settings(&file).is_some_and(|s| std::fs::metadata(&s.path).map_or(true, |m| m.len() == 0));
+            let nothing = settings(&file).is_some_and(|s| crate::files::metadata(&s.path).map_or(true, |m| m.len() == 0));
             if !nothing || found.hashes.keys().any(|k| file_of(k) == file) {
                 memory.emptied.remove(&file);
             } else if now_ms - *memory.emptied.entry(file.clone()).or_insert(now_ms) < EMPTIED_WAIT {
@@ -7385,7 +7387,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 continue;
             }
             let mut offset = if round == start { skip } else { 0 };
-            let opened = if own { std::fs::File::open(round_file(sharing.folder, computer, round)) } else { open_round(sharing.folder, computer, round) };
+            let opened = if own { crate::files::File::open(round_file(sharing.folder, computer, round)) } else { open_round(sharing.folder, computer, round) };
             let Ok(mut file) = opened else {
                 if !own {
                     memory.read.insert(computer.clone(), (round, offset));
@@ -7820,7 +7822,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     && let Some(reference) = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok())
                 {
                     let blob = crate::blobs::name(sharing.key, &reference.h);
-                    if std::fs::metadata(sharing.folder.join("blobs").join(&blob)).is_ok_and(|m| m.len() > 0) {
+                    if crate::files::metadata(sharing.folder.join("blobs").join(&blob)).is_ok_and(|m| m.len() > 0) {
                         there.insert(blob);
                     } else {
                         wanted.insert(blob, (reference.h.clone(), reference.s));
@@ -7919,7 +7921,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             }
             continue;
         }
-        if found.unknown.contains(file) && !matches!(store.shape, Shape::Whole) && path.exists() {
+        if found.unknown.contains(file) && !matches!(store.shape, Shape::Whole) && path.present() {
             // Half written, or written by hand and broken: left as it is.
             outcome.problems.push(format!("share-unreadable:{}", path.display()));
             continue;
@@ -7936,8 +7938,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // waiting meanwhile (the check of 1b6795e, M3).
         // One of Sioul's own lists (`LISTS`) gone since this exchange looked
         // (`lists_lost` took it before): the same, never written from what came alone.
-        let list_gone = is_list(file) && !path.exists() && known_here(&memory, file) && !rebuilt(file);
-        if (of_medicines(store) && !path.exists() && sioul_core::health::witnessed(&path) && !rebuilt(file)) || list_gone {
+        let list_gone = is_list(file) && !path.present() && known_here(&memory, file) && !rebuilt(file);
+        if (of_medicines(store) && !path.present() && sioul_core::health::witnessed(&path) && !rebuilt(file)) || list_gone {
             outcome.problems.push(format!("{}:{file}", if list_gone { "share-list-back" } else { "share-not-medicines" }));
             if !memory.rebuild.contains(file.as_str()) {
                 memory.entries.retain(|key, _| file_of(key) != file.as_str());
@@ -8168,7 +8170,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // (eDrive keeps a file's old content when only its version changed, and may
     // send it back). What it said past that point is lost for whoever had not
     // read it: a new file opens on every entry this computer has the last word on.
-    let own = |memory: &Memory| std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
+    let own = |memory: &Memory| crate::files::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
     // The host's room, where the server says it (`host_room`): no full round
     // is begun that it has no room for; what is behind, said with its numbers.
     let room = host_room(sharing, now_ms);
@@ -8314,7 +8316,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // another time, and it stayed on the server for good).
         for name in judged.iter().filter(|(_, stands)| *stands == Stands::Due).map(|(name, _)| name) {
             if last.remove(name).is_some() {
-                let _ = std::fs::remove_file(sharing.folder.join("blobs").join(name));
+                let _ = crate::files::remove_file(sharing.folder.join("blobs").join(name));
                 if let Some((_, _, since_wall)) = memory.sealed.removed_at.get(name) {
                     memory.taken.insert(name.clone(), now_ms);
                     memory.taken_since.insert(name.clone(), *since_wall);
@@ -8344,7 +8346,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // from its file (`look_after_sealed`).
         let unused = days * DAY;
         let blobs = sharing.folder.join("blobs");
-        let fresh = |name: &str| std::fs::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+        let fresh = |name: &str| crate::files::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
         let due: Vec<String> = last.iter().filter(|(name, at)| !used.contains(*name) && now_ms - **at >= unused && !fresh(name)).map(|(name, _)| name.clone()).collect();
         let mut used = used;
         let mut held: BTreeMap<String, i64> = BTreeMap::new();
@@ -8496,15 +8498,15 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         if let Some((entry, notes)) = judged.get(id) {
             (removed.entry, removed.notes) = (removed.entry || *entry, removed.notes || *notes);
         }
-        let last = std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).map(|dir| round_file(&dir, id, removed.last)).filter(|path| std::fs::metadata(path).is_ok_and(|m| removed.holds_round(removed.last, m.len())));
+        let last = std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).map(|dir| round_file(&dir, id, removed.last)).filter(|path| crate::files::metadata(path).is_ok_and(|m| removed.holds_round(removed.last, m.len())));
         // A small file only while it is as it was when its files went: a copy brought back, never one it wrote since.
         let as_it_went = |path: &Path, place: &str| match removed.small_seen.get(place) {
             Some(h) => content_hash(path).as_deref() == Some(h.as_str()),
-            None => removed.small.get(place).is_some_and(|size| std::fs::metadata(path).is_ok_and(|m| m.len() == *size)),
+            None => removed.small.get(place).is_some_and(|size| crate::files::metadata(path).is_ok_and(|m| m.len() == *size)),
         };
         let small = device_small_places(sharing.folder, id, removed.entry, removed.notes).into_iter().filter(|(path, place)| as_it_went(path, place)).map(|(path, _)| path);
         for path in small.chain(last).collect::<Vec<_>>() {
-            let _ = std::fs::remove_file(path);
+            let _ = crate::files::remove_file(path);
         }
     }
     remove_old_rounds(sharing, &memory, &reading);
@@ -8598,7 +8600,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     memory.keep(sharing.memory);
     drop(_running);
     if tidy {
-        crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.exists()));
+        crate::history::prune(&history, now_ms, crate::history::cap(&history), &|_, file| locate(stores, file).is_some_and(|(_, path)| path.present()));
     }
     Ok(outcome)
 }
@@ -8642,9 +8644,9 @@ impl Standing {
         }
         let overlay = crate::remote::overlay(sharing.folder);
         for dir in std::iter::once(sharing.folder.to_path_buf()).chain(overlay.clone()) {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+            for entry in crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
                 let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with('.') || entry.file_type().is_ok_and(|t| t.is_dir()) {
+                if name.starts_with('.') || entry.file_type().is_ok_and(|t| t.present_dir()) {
                     continue;
                 }
                 // This device's own files change only by its hand (their size checked apart, `quiet`).
@@ -8672,12 +8674,12 @@ impl Standing {
 
 /// Every file below `path` (or `path` itself), hidden ones left out, by its stamp.
 fn stamp_below(path: &Path, out: &mut BTreeMap<PathBuf, FileStamp>) {
-    let Ok(meta) = std::fs::metadata(path) else { return };
-    if meta.is_file() {
+    let Ok(meta) = crate::files::metadata(path) else { return };
+    if meta.present_file() {
         out.insert(path.to_path_buf(), file_stamp(path, &meta));
         return;
     }
-    for entry in std::fs::read_dir(path).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(path).into_iter().flatten().filter_map(Result::ok) {
         if entry.file_name().to_string_lossy().starts_with('.') {
             continue;
         }
@@ -8717,7 +8719,7 @@ static QUIET: std::sync::Mutex<BTreeMap<PathBuf, Quiet>> = std::sync::Mutex::new
 fn quiet(sharing: &Sharing, standing: &Standing, taken: i64, now_ms: i64) -> Option<Outcome> {
     let mut all = QUIET.lock().ok()?;
     let quiet = all.get(sharing.memory)?;
-    let own_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, quiet.round)).map_or(0, |m| m.len());
+    let own_size = crate::files::metadata(round_file(sharing.folder, sharing.computer, quiet.round)).map_or(0, |m| m.len());
     let still = quiet.standing == *standing
         && (quiet.at..quiet.until).contains(&now_ms)
         && (stamp_at(sharing.memory), stamp_at(&sealed_path(sharing.memory))) == quiet.own
@@ -8746,7 +8748,7 @@ thread_local! {
 /// broken line, and skipped to its end. A last line not ended yet is left for
 /// the next exchange.
 struct LineReader {
-    file: std::fs::File,
+    file: crate::files::File,
     held: Vec<u8>,
     start: usize,
     /// Inside a line too long: its bytes so far, skipped.
@@ -8755,7 +8757,7 @@ struct LineReader {
 }
 
 impl LineReader {
-    fn new(file: std::fs::File) -> LineReader {
+    fn new(file: crate::files::File) -> LineReader {
         LineReader { file, held: Vec::new(), start: 0, skipping: None, end: false }
     }
 
@@ -8887,7 +8889,7 @@ fn look_after_sealed(sharing: &Sharing, stores: &[Store], memory: &mut Memory, f
             return;
         }
         let name = crate::blobs::name(sharing.key, &h);
-        let there = std::fs::metadata(sharing.folder.join("blobs").join(&name)).map_or(0, |m| m.len());
+        let there = crate::files::metadata(sharing.folder.join("blobs").join(&name)).map_or(0, |m| m.len());
         if there > 0 && memory.sealed.mine.get(&name).is_none_or(|(_, size)| *size == there) {
             continue;
         }
@@ -8944,7 +8946,7 @@ fn folded(name: &str) -> String {
 /// did not look at (not read this time, hurried) stay. Nothing read nor
 /// written while nothing waits.
 fn note_wanted(sharing: &Sharing, memory: &Memory, missing: &BTreeMap<String, (String, u64)>, there: &BTreeSet<String>, now_ms: i64) {
-    if missing.is_empty() && !crate::blobs::Wanted::path(sharing.memory).exists() {
+    if missing.is_empty() && !crate::blobs::Wanted::path(sharing.memory).present() {
         return;
     }
     let waited: BTreeSet<String> = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| crate::blobs::name(sharing.key, &value_hash(key, v)))).collect();
@@ -9028,7 +9030,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     // What is here: as gathered, else (written since, or not read) read now.
     let current = match current {
         Some(here) => Some(here.to_string()),
-        None if path.is_file() => crate::blobs::hash_file(path).ok().map(|(h, _)| h),
+        None if path.present_file() => crate::blobs::hash_file(path).ok().map(|(h, _)| h),
         None => None,
     };
     match (&wanted, &current) {
@@ -9042,7 +9044,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         return Ok(Received::AlreadySo);
     }
     let local = |e: std::io::Error| Fault::Local(format!("{}: {e}", path.display()));
-    let size_here = std::fs::metadata(path).map_or(0, |m| m.len());
+    let size_here = crate::files::metadata(path).map_or(0, |m| m.len());
     // The version this device last received from another device, unchanged
     // here since (a change made here is this device's own word, `Known::w`,
     // sent before the others' records are read): an older version, never a
@@ -9058,7 +9060,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
     // its own last version, not a reference that no longer opens.
     let sealed_there = |h: &str| {
         let name = crate::blobs::name(sharing.key, h);
-        std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).any(|dir| std::fs::metadata(dir.join("blobs").join(&name)).is_ok_and(|m| m.len() > 0))
+        std::iter::once(sharing.folder.to_path_buf()).chain(crate::remote::overlay(sharing.folder)).any(|dir| crate::files::metadata(dir.join("blobs").join(&name)).is_ok_and(|m| m.len() > 0))
     };
     // Taken out by another device's change: the file moved among the earlier
     // versions as it is (`history::keep_moved`), never a reference to its
@@ -9078,7 +9080,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         // The folder's copy found damaged before, and the same copy still: not
         // opened again (the one fetched from the server beside it is, `blobs::get`).
         let blob = crate::blobs::name(sharing.key, &wanted.h);
-        let copy = std::fs::metadata(crate::blobs::path(sharing.folder, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
+        let copy = crate::files::metadata(crate::blobs::path(sharing.folder, sharing.key, &wanted.h)).ok().map(|m| crate::blobs::fingerprint(&m));
         let known_damaged = copy.is_some() && damaged.get(&blob) == copy.as_ref();
         if let Some(parent) = path.parent() {
             private_dirs(parent).map_err(local)?;
@@ -9103,7 +9105,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         });
         // Changed here since it was looked at (an editor, another program): not
         // written over; the next exchange sends that change first.
-        let same = match (std::fs::symlink_metadata(path).ok(), gathered) {
+        let same = match (crate::files::symlink_metadata(path).ok(), gathered) {
             (None, None) => true,
             (Some(now), Some(then)) => now.len() == then.size && modified_ns(&now) == then.modified,
             _ => false,
@@ -9117,7 +9119,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         };
         let mut kept = false;
         if let Some(here) = current.as_deref()
-            && path.exists()
+            && path.present()
         {
             let kept_now = if by_reference {
                 crate::history::keep_sealed(how.history, store.part, file, here, size_here, how.now_ms)
@@ -9135,21 +9137,21 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
                 if store.name == SPAM_TABLE {
                     sioul_core::spam::table::keep_previous(path);
                 }
-                std::fs::rename(&temporary, path).map_err(local)?;
+                crate::files::rename(&temporary, path).map_err(local)?;
                 // Its time as where it was made, never after this computer's clock (another's may be ahead).
                 let _ = set_time(path, std::time::UNIX_EPOCH + std::time::Duration::from_millis(wanted.t.min(how.clock).max(0) as u64));
-                let now = std::fs::metadata(path).map_err(local)?;
+                let now = crate::files::metadata(path).map_err(local)?;
                 Some(Stat { size: now.len(), modified: modified_ns(&now), entries: vec![(String::new(), wanted.h.clone())], seen: how.clock })
             }
             None => {
-                match std::fs::remove_file(path) {
+                match crate::files::remove_file(path) {
                     Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(local(e)),
                     _ => {}
                 }
                 // Its folders, left empty, go too.
                 let mut dir = path.parent();
                 while let Some(folder) = dir.filter(|d| *d != store.path && d.starts_with(&store.path)) {
-                    if std::fs::remove_dir(folder).is_err() {
+                    if crate::files::remove_dir(folder).is_err() {
                         break;
                     }
                     dir = folder.parent();
@@ -9160,7 +9162,7 @@ fn receive(how: &Receiving, store: &Store, file: &str, path: &Path, value: Optio
         Ok(Some((stat, copy, kept)))
     })();
     if !matches!(placed, Ok(Some(_))) {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
     }
     let in_store = |copy: PathBuf| copy.strip_prefix(&store.path).map_or_else(|_| copy.display().to_string(), |r| r.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"));
     Ok(match placed? {
@@ -9182,7 +9184,7 @@ pub fn conflict_name(stem: &str, at_ms: i64) -> String {
 /// was made, so that every device holding that version names it alike and one
 /// copy travels, not one each. Returns where it is.
 fn conflict_copy(path: &Path, here: &str, known: Option<&Known>, now_ms: i64) -> Result<PathBuf, String> {
-    let at = known.filter(|k| k.h == here).map(|k| (k.c >> 16) as i64).or_else(|| std::fs::metadata(path).ok().map(|m| (modified_ns(&m) / 1_000_000) as i64)).unwrap_or(now_ms);
+    let at = known.filter(|k| k.h == here).map(|k| (k.c >> 16) as i64).or_else(|| crate::files::metadata(path).ok().map(|m| (modified_ns(&m) / 1_000_000) as i64)).unwrap_or(now_ms);
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let (stem, extension) = match name.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() => (stem.to_string(), format!(".{extension}")),
@@ -9192,10 +9194,10 @@ fn conflict_copy(path: &Path, here: &str, known: Option<&Known>, now_ms: i64) ->
     let mut n = 1;
     loop {
         let copy = path.with_file_name(if n == 1 { format!("{named}{extension}") } else { format!("{named} {n}{extension}") });
-        if !copy.exists() {
+        if !copy.present() {
             let temporary = temporary(&copy);
-            return copy_private(path, &temporary).and_then(|()| std::fs::rename(&temporary, &copy)).map(|()| copy.clone()).map_err(|e| {
-                let _ = std::fs::remove_file(&temporary);
+            return copy_private(path, &temporary).and_then(|()| crate::files::rename(&temporary, &copy)).map(|()| copy.clone()).map_err(|e| {
+                let _ = crate::files::remove_file(&temporary);
                 format!("{}: {e}", copy.display())
             });
         }
@@ -9222,15 +9224,15 @@ fn writable_in(store: &Store, path: &Path, folder: Option<&Path>, memory: &Path)
     let mut at = store.path.clone();
     for part in relative.components() {
         at.push(part);
-        match std::fs::symlink_metadata(&at) {
+        match crate::files::symlink_metadata(&at) {
             Ok(meta) if meta.file_type().is_symlink() => return false,
             Ok(_) => {}
             Err(_) => break,
         }
     }
     // Where it would land: the deepest of its folders that is there.
-    let Some(there) = path.ancestors().skip(1).find(|p| p.exists()).and_then(|p| p.canonicalize().ok()) else { return true };
-    let inside = |root: &Path| root.canonicalize().is_ok_and(|root| there.starts_with(root));
+    let Some(there) = path.ancestors().skip(1).find(|p| p.present()).and_then(|p| crate::files::canonicalize(p).ok()) else { return true };
+    let inside = |root: &Path| crate::files::canonicalize(root).is_ok_and(|root| there.starts_with(root));
     let state = memory.parent().and_then(Path::parent);
     // A store of Sioul's own state writes in its own folder there (the path was
     // checked above: no link, nothing outside it); every other store, never in that state.
@@ -9305,8 +9307,8 @@ pub fn put_back_preview(memory: &Path, stores: &[Store], part: &str, file: &str,
 
 /// A file's entries in a version kept, and in the file now.
 fn entries_then_and_now(store: &Store, version: &Path, path: &Path) -> Result<(BTreeMap<String, String>, BTreeMap<String, String>), String> {
-    let old = std::fs::read(version).ok().and_then(|bytes| entries_of(store, &bytes)).ok_or_else(|| format!("{}: not readable", version.display()))?;
-    let now = std::fs::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
+    let old = crate::files::read(version).ok().and_then(|bytes| entries_of(store, &bytes)).ok_or_else(|| format!("{}: not readable", version.display()))?;
+    let now = crate::files::read(path).ok().and_then(|bytes| entries_of(store, &bytes)).unwrap_or_default();
     Ok((old.into_iter().collect(), now.into_iter().collect()))
 }
 
@@ -9370,10 +9372,10 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     // hour); the lock is taken only to keep the file as it is, date it and put it in
     // place (review of part 3, J2, as `put_back_withheld` does since L-a).
     let name = path.file_name().ok_or_else(not_there)?;
-    let there = path.ancestors().skip(1).find(|dir| dir.is_dir()).filter(|dir| path.parent() == Some(*dir) || dir.starts_with(&store.path)).ok_or_else(not_there)?;
+    let there = path.ancestors().skip(1).find(|dir| dir.present_dir()).filter(|dir| path.parent() == Some(*dir) || dir.starts_with(&store.path)).ok_or_else(not_there)?;
     let opened = temporary(&there.join(name));
     if let Err(e) = bring(&opened) {
-        let _ = std::fs::remove_file(&opened);
+        let _ = crate::files::remove_file(&opened);
         return Err(e);
     }
     let _ = set_time(&opened, std::time::SystemTime::now());
@@ -9386,21 +9388,21 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
     let written_through = match on_the_disk(&opened) {
         Ok(through) => through,
         Err(e) => {
-            let _ = std::fs::remove_file(&opened);
+            let _ = crate::files::remove_file(&opened);
             return Err(fail(e));
         }
     };
     // The file as it is now copied into its versions ahead of the lock too, closed there, so that
     // under the lock it is kept by a rename alone, while it is as it was copied (review of part 3, R-7).
     let prepare = || {
-        let prepared = if path.exists() { crate::history::prepare(&root, part, file, &path, now_ms).map(Some) } else { Ok(None) };
+        let prepared = if path.present() { crate::history::prepare(&root, part, file, &path, now_ms).map(Some) } else { Ok(None) };
         after_prepare();
         prepared
     };
     let mut prepared = match prepare() {
         Ok(prepared) => prepared,
         Err(e) => {
-            let _ = std::fs::remove_file(&opened);
+            let _ = crate::files::remove_file(&opened);
             return Err(e);
         }
     };
@@ -9443,11 +9445,11 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             opened.clone()
         } else {
             let beside = temporary(&path);
-            if std::fs::rename(&opened, &beside).is_err() {
-                let _ = std::fs::remove_file(&opened);
+            if crate::files::rename(&opened, &beside).is_err() {
+                let _ = crate::files::remove_file(&opened);
                 through = false;
                 if let Err(e) = bring(&beside) {
-                    let _ = std::fs::remove_file(&beside);
+                    let _ = crate::files::remove_file(&beside);
                     return Err(e);
                 }
             }
@@ -9460,7 +9462,7 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
                 None => "it came meanwhile".into(),
             };
             let kept_ahead = prepared.take().and_then(|prepared| prepared.keep(now_ms));
-            if path.exists() && kept_ahead.is_none() {
+            if path.present() && kept_ahead.is_none() {
                 crate::history::copied_under_lock(&why);
                 crate::history::keep(&root, part, file, &path, now_ms)?;
             }
@@ -9474,27 +9476,27 @@ pub fn put_back(memory: &Path, vault: Option<(&Path, &[u8; 32])>, stores: &[Stor
             // never inside the rename (the check of 36002ea, low 22). Windows
             // refuses to replace an open file, and flushes nothing on a rename.
             #[cfg(unix)]
-            let held = std::fs::File::open(&path).ok();
+            let held = crate::files::File::open(&path).ok();
             #[cfg(not(unix))]
-            let held: Option<std::fs::File> = None;
-            std::fs::rename(&beside, &path).map_err(fail)?;
+            let held: Option<crate::files::File> = None;
+            crate::files::rename(&beside, &path).map_err(fail)?;
             Ok((held, kept_ahead.unwrap_or_default()))
         };
         // A file sealed apart (a note) under its lock only when one of Sioul's own writers takes it (the letters' list).
         let done = if matches!(store.shape, Shape::Files) && !sioul_core::filelock::has_lock(&path) { put() } else { sioul_core::filelock::with_lock(&path, put) };
         if done.is_err() {
-            let _ = std::fs::remove_file(&beside);
+            let _ = crate::files::remove_file(&beside);
         }
         done
         })();
     };
-    let _ = std::fs::remove_file(&opened);
+    let _ = crate::files::remove_file(&opened);
     // The lock let go: the file replaced freed, and the versions too many taken out, now
     // (those its copy listed outside the lock; a copy made under it, by `tidy_file`).
     placed.map(|(held, gone)| {
         drop(held);
         for version in gone {
-            let _ = std::fs::remove_file(version);
+            let _ = crate::files::remove_file(version);
         }
         crate::history::tidy_file(&root, part, file, now_ms);
     })
@@ -9508,7 +9510,7 @@ const PREPARE_AGAIN: usize = 3;
 /// (Windows flushes no other): whether they are; false where the file system
 /// cannot do it (a kind of error that says so), an error otherwise.
 fn on_the_disk(path: &Path) -> std::io::Result<bool> {
-    match std::fs::OpenOptions::new().write(true).open(path)?.sync_all() {
+    match crate::files::OpenOptions::new().write(true).open(path)?.sync_all() {
         Ok(()) => Ok(true),
         Err(e) if matches!(e.kind(), std::io::ErrorKind::Unsupported | std::io::ErrorKind::InvalidInput) => Ok(false),
         Err(e) => Err(e),
@@ -9559,7 +9561,7 @@ fn fresh_again(sharing: &Sharing, key: &str, value: &str, sealed: &mut Sealed, n
 /// A sealed file of the folder taken as this device's own (`Sealed::mine`),
 /// with its size there and its time now (`stamped`); nothing when it is not there.
 fn take_as_own(folder: &Path, sealed: &mut Sealed, name: &str, now_ms: i64) {
-    let Ok(meta) = std::fs::metadata(folder.join("blobs").join(name)) else { return };
+    let Ok(meta) = crate::files::metadata(folder.join("blobs").join(name)) else { return };
     if meta.len() > 0 {
         sealed.mine.insert(name.to_string(), (now_ms, meta.len()));
         sealed.adopted.insert(name.to_string());
@@ -9570,7 +9572,7 @@ fn take_as_own(folder: &Path, sealed: &mut Sealed, name: &str, now_ms: i64) {
 /// When this device wrote one of its own sealed files into the folder
 /// (`Sealed::stamped`): its file's time now, in whole seconds.
 fn stamp(folder: &Path, sealed: &mut Sealed, name: &str) {
-    if let Some(at) = std::fs::metadata(folder.join("blobs").join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) {
+    if let Some(at) = crate::files::metadata(folder.join("blobs").join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()) {
         sealed.stamped.insert(name.to_string(), at.as_secs() as i64);
     }
 }
@@ -9644,7 +9646,7 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     let mut from = 0;
     while from < changes.len() {
         let path = round_file(sharing.folder, sharing.computer, memory.round);
-        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        let size = crate::files::metadata(&path).map_or(0, |m| m.len());
         let mut text = String::new();
         let mut taken = 0;
         for (at, (key, value, clock, base)) in changes.iter().enumerate().skip(from) {
@@ -9711,13 +9713,13 @@ fn write_piece(sharing: &Sharing, memory: &Memory, path: &Path, text: &str) -> R
     // A line left half written (Sioul stopped, a full disk): cut back to the
     // last whole line, so that the next record is not glued to it and lost.
     if let Some(whole) = unfinished(path) {
-        let file = std::fs::OpenOptions::new().write(true).open(path).map_err(fail)?;
+        let file = crate::files::OpenOptions::new().write(true).open(path).map_err(fail)?;
         file.set_len(whole).map_err(fail)?;
     }
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     let mut file = options.open(path).map_err(fail)?;
     // A round begun before its files were yours alone: made so at this write.
     make_private(path);
@@ -9746,7 +9748,7 @@ fn appended(memory: &Path, computer: &str) -> Option<(u32, u64)> {
 /// line, or is empty or not there.
 fn unfinished(path: &Path) -> Option<u64> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut file = std::fs::File::open(path).ok()?;
+    let mut file = crate::files::File::open(path).ok()?;
     let size = file.metadata().ok()?.len();
     let mut last = [0u8];
     file.seek(SeekFrom::Start(size.checked_sub(1)?)).ok()?;
@@ -9783,7 +9785,7 @@ fn last_line(folder: &Path, computer: &str, round: u32) -> Option<u64> {
 /// A round file's last line's number (0 for none) and its size.
 fn last_of(path: &Path) -> Option<(u64, u64)> {
     use std::io::{Read, Seek};
-    let mut file = std::fs::File::open(path).ok()?;
+    let mut file = crate::files::File::open(path).ok()?;
     let size = file.metadata().ok()?.len();
     // The tail is enough: lines are short; a line longer than that was a whole round's opening.
     let from = size.saturating_sub(64 * 1024);
@@ -9918,7 +9920,7 @@ fn host_room(sharing: &Sharing, now_ms: i64) -> Option<(u64, u64)> {
 fn full_round_after(sharing: &Sharing, memory: &mut Memory) -> u64 {
     if memory.full_size == 0 {
         let full = if memory.full_round == 0 { memory.round } else { memory.full_round };
-        memory.full_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, full)).map_or(0, |m| m.len());
+        memory.full_size = crate::files::metadata(round_file(sharing.folder, sharing.computer, full)).map_or(0, |m| m.len());
     }
     ROUND_SIZE.max(memory.full_size)
 }
@@ -9943,7 +9945,7 @@ pub fn own_sealed(memory: &Path, computer: &str) -> BTreeMap<String, u64> {
         #[serde(default)]
         mine: BTreeMap<String, (i64, u64)>,
     }
-    let Some(read) = std::fs::read(&path).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()) else { return BTreeMap::new() };
+    let Some(read) = crate::files::read(&path).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()) else { return BTreeMap::new() };
     let mine: BTreeMap<String, u64> = read.mine.into_iter().map(|(name, (_, size))| (name, size)).collect();
     if let Ok(mut all) = MINE.lock() {
         all.insert(memory.to_path_buf(), (stamp, read.computer.clone(), mine.clone()));
@@ -10149,7 +10151,7 @@ pub fn withheld(memory: &Path, computer: &str) -> Vec<Withheld> {
         #[serde(default)]
         withheld: Vec<Withheld>,
     }
-    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.withheld).unwrap_or_default()
+    crate::files::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.withheld).unwrap_or_default()
 }
 
 /// The notes or papers gone many at once from a folder of the records
@@ -10216,14 +10218,14 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             }
             done += 1;
             let Some((store, path)) = locate(stores, file) else { continue };
-            if std::fs::symlink_metadata(&path).is_ok() || !writable_in(store, &path, Some(folder), memory) {
+            if crate::files::symlink_metadata(&path).is_ok() || !writable_in(store, &path, Some(folder), memory) {
                 continue;
             }
             // Opened in the deepest of its folders that is there, never in one made now (L-1).
             let Some(name) = path.file_name() else { continue };
-            let Some(there) = path.ancestors().skip(1).find(|dir| dir.is_dir()).filter(|dir| dir.starts_with(&store.path)) else { continue };
+            let Some(there) = path.ancestors().skip(1).find(|dir| dir.present_dir()).filter(|dir| dir.starts_with(&store.path)) else { continue };
             // Its size as last seen here; else four times its sealed size (compressed).
-            let size = size.unwrap_or_else(|| std::fs::metadata(crate::blobs::path(folder, key, h)).map_or(0, |m| m.len()).saturating_mul(4));
+            let size = size.unwrap_or_else(|| crate::files::metadata(crate::blobs::path(folder, key, h)).map_or(0, |m| m.len()).saturating_mul(4));
             if !crate::disk::fits(there, size) {
                 stop = Some(format!("share-no-room:{file}"));
                 break;
@@ -10231,7 +10233,7 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
             // Dated now while it waits: the exchanges' sweep leaves a leftover alone its first hour.
             let opened = temporary(&there.join(name));
             if crate::blobs::get(folder, key, h, &opened).is_err() {
-                let _ = std::fs::remove_file(&opened);
+                let _ = crate::files::remove_file(&opened);
                 continue;
             }
             ready.push((opened, path, store, *when, h));
@@ -10250,7 +10252,7 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
         });
         if let Err((e, left)) = placed {
             for (opened, ..) in left {
-                let _ = std::fs::remove_file(opened);
+                let _ = crate::files::remove_file(opened);
             }
             return Err(e);
         }
@@ -10273,17 +10275,17 @@ pub fn put_back_withheld(folder: &Path, key: &[u8; 32], memory: &Path, computer:
 #[allow(clippy::too_many_arguments)]
 fn place_put_back(folder: &Path, key: &[u8; 32], memory: &Path, opened: &Path, path: &Path, store: &Store, when: std::time::SystemTime, h: &str, stop: &mut Option<String>) -> bool {
     slow_under_lock();
-    if std::fs::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
-        let _ = std::fs::remove_file(opened);
+    if crate::files::symlink_metadata(path).is_ok() || !writable_in(store, path, Some(folder), memory) {
+        let _ = crate::files::remove_file(opened);
         return false;
     }
     // Its own folders made only now, its note placed in them before any exchange lists them (L-1).
     let Some(parent) = path.parent() else {
-        let _ = std::fs::remove_file(opened);
+        let _ = crate::files::remove_file(opened);
         return false;
     };
     if let Err(e) = private_dirs(parent) {
-        let _ = std::fs::remove_file(opened);
+        let _ = crate::files::remove_file(opened);
         stop.get_or_insert_with(|| format!("{}: {e}", parent.display()));
         return false;
     }
@@ -10293,10 +10295,10 @@ fn place_put_back(folder: &Path, key: &[u8; 32], memory: &Path, opened: &Path, p
         opened.to_path_buf()
     } else {
         let beside = temporary(path);
-        if std::fs::rename(opened, &beside).is_err() {
-            let _ = std::fs::remove_file(opened);
+        if crate::files::rename(opened, &beside).is_err() {
+            let _ = crate::files::remove_file(opened);
             if crate::blobs::get(folder, key, h, &beside).is_err() {
-                let _ = std::fs::remove_file(&beside);
+                let _ = crate::files::remove_file(&beside);
                 return false;
             }
         }
@@ -10428,12 +10430,12 @@ const PUT_BACK_FREE: std::time::Duration = std::time::Duration::from_millis(25);
 /// last look, then a rename). Whether it took the place; the file beside
 /// goes in any case.
 fn place_new(temporary: &Path, path: &Path) -> bool {
-    let placed = match std::fs::hard_link(temporary, path) {
+    let placed = match crate::files::hard_link(temporary, path) {
         Ok(()) => true,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => false,
-        Err(_) => std::fs::symlink_metadata(path).is_err() && std::fs::rename(temporary, path).is_ok(),
+        Err(_) => crate::files::symlink_metadata(path).is_err() && crate::files::rename(temporary, path).is_ok(),
     };
-    let _ = std::fs::remove_file(temporary);
+    let _ = crate::files::remove_file(temporary);
     placed
 }
 
@@ -10472,13 +10474,13 @@ pub fn confirm_withheld(memory: &Path, computer: &str, store: &str) -> Result<us
 /// started, the command line): a lock on `<state>/share/exchange.lock`, held
 /// while it runs, let go when the file returned is. `wait`: until the
 /// running one ends; else none while another holds it a second on.
-pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>, String> {
+pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<crate::files::File>, String> {
     let path = memory.with_file_name("exchange.lock");
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
         private_dirs(parent).map_err(fail)?;
     }
-    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path).map_err(fail)?;
+    let file = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(&path).map_err(fail)?;
     // Counted while it waits, and once it holds, for a holder letting go in short holds (`hand_off`).
     let _waiting = Waiting::start(&path);
     if wait {
@@ -10495,8 +10497,8 @@ pub fn exchange_lock(memory: &Path, wait: bool) -> Result<Option<std::fs::File>,
                 _waiting.taken();
                 return Ok(Some(file));
             }
-            Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(20)),
-            Err(std::fs::TryLockError::Error(e)) => return Err(fail(e)),
+            Err(crate::files::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(20)),
+            Err(crate::files::TryLockError::Error(e)) => return Err(fail(e)),
         }
     }
     Ok(None)
@@ -10558,7 +10560,7 @@ const HAND_OFF_MOST: std::time::Duration = std::time::Duration::from_secs(1);
 /// their batches and nothing after the last, D-1b): a waiter in another
 /// process (the command line, a phone's background service) gets that moment
 /// alone, as before, since a file's lock keeps no queue.
-pub(crate) fn hand_off(memory: &Path, running: Option<std::fs::File>, free: std::time::Duration) {
+pub(crate) fn hand_off(memory: &Path, running: Option<crate::files::File>, free: std::time::Duration) {
     let path = memory.with_file_name("exchange.lock");
     let (waiting, taken) = WAITERS.lock().ok().and_then(|all| all.get(&path).copied()).unwrap_or((0, 0));
     drop(running);
@@ -10591,7 +10593,7 @@ static RELEASED: std::sync::Mutex<BTreeMap<PathBuf, std::time::Instant>> = std::
 
 /// The lock taken, waiting for it: the system's wait (as slow to wake as a
 /// test asks, `SLOW_WAKE`).
-fn lock_waiting(#[cfg_attr(not(test), allow(unused_variables))] path: &Path, file: &std::fs::File) -> std::io::Result<()> {
+fn lock_waiting(#[cfg_attr(not(test), allow(unused_variables))] path: &Path, file: &crate::files::File) -> std::io::Result<()> {
     #[cfg(test)]
     {
         let slow = SLOW_WAKE.with(std::cell::Cell::get);
@@ -10605,8 +10607,8 @@ fn lock_waiting(#[cfg_attr(not(test), allow(unused_variables))] path: &Path, fil
                 }
                 match file.try_lock() {
                     Ok(()) => return Ok(()),
-                    Err(std::fs::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(1)),
-                    Err(std::fs::TryLockError::Error(e)) => return Err(e),
+                    Err(crate::files::TryLockError::WouldBlock) => std::thread::sleep(std::time::Duration::from_millis(1)),
+                    Err(crate::files::TryLockError::Error(e)) => return Err(e),
                 }
             }
         }
@@ -10641,7 +10643,7 @@ fn is_zero_u32(n: &u32) -> bool {
 /// device's files. Returns how many went.
 fn sweep_old_tables(sharing: &Sharing, memory: &Memory) -> usize {
     let blobs = sharing.folder.join("blobs");
-    let Ok(names) = std::fs::read_dir(&blobs) else { return 0 };
+    let Ok(names) = crate::files::read_dir(&blobs) else { return 0 };
     let named = |key: &String, value: &str| -> Option<String> { key.starts_with(FILES).then(|| value_hash(key, value)).filter(|h| !h.is_empty()) };
     let used: BTreeSet<String> = memory
         .entries
@@ -10660,16 +10662,16 @@ fn sweep_old_tables(sharing: &Sharing, memory: &Memory) -> usize {
         .chain(memory.sealed.named_at.keys().cloned())
         .collect();
     // Its age here by the file's own time, as the sweeps judge it (`blobs::sweep_after`).
-    let old = |meta: &std::fs::Metadata| meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_millis() as i64 >= crate::blobs::UNUSED_DAYS * DAY);
+    let old = |meta: &crate::files::Metadata| meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_millis() as i64 >= crate::blobs::UNUSED_DAYS * DAY);
     let mut swept = 0;
     for item in names.filter_map(Result::ok) {
         let name = item.file_name().to_string_lossy().to_string();
         let path = item.path();
         let Ok(meta) = item.metadata() else { continue };
-        if !meta.is_file() || meta.len() < OLD_TABLE_SMALLEST || name.starts_with('.') || used.contains(&name) || !old(&meta) {
+        if !meta.present_file() || meta.len() < OLD_TABLE_SMALLEST || name.starts_with('.') || used.contains(&name) || !old(&meta) {
             continue;
         }
-        if crate::blobs::begins_with(&path, sharing.key, &sioul_core::spam::table::MAGIC) && std::fs::remove_file(&path).is_ok() {
+        if crate::blobs::begins_with(&path, sharing.key, &sioul_core::spam::table::MAGIC) && crate::files::remove_file(&path).is_ok() {
             swept += 1;
         }
     }
@@ -10795,7 +10797,7 @@ fn remove_old_rounds(sharing: &Sharing, memory: &Memory, readers: &BTreeSet<Stri
     let all = rounds(sharing.folder);
     let below = past_below(sharing.folder, sharing.computer, memory.round, memory.full_round, readers);
     for round in all.get(sharing.computer).into_iter().flatten().filter(|r| **r < below) {
-        let _ = std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round));
+        let _ = crate::files::remove_file(round_file(sharing.folder, sharing.computer, *round));
     }
     if memory.departed.is_empty() {
         return;
@@ -10804,7 +10806,7 @@ fn remove_old_rounds(sharing: &Sharing, memory: &Memory, readers: &BTreeSet<Stri
         let theirs = if dir == sharing.folder { all.clone() } else { rounds(&dir) };
         for (id, floor) in &memory.departed {
             for round in theirs.get(id).into_iter().flatten().filter(|r| **r < *floor) {
-                let _ = std::fs::remove_file(round_file(&dir, id, *round));
+                let _ = crate::files::remove_file(round_file(&dir, id, *round));
             }
         }
     }
@@ -10860,9 +10862,9 @@ fn own_copy(name: &str, computer: &str, canonical: &[String]) -> Option<CopyOf> 
 /// app carried to the others is taken out there too by that app.
 fn take_out_own_copies(folder: &Path, computer: &str, round: u32, full_round: u32) -> usize {
     let full = if full_round == 0 { round } else { full_round };
-    let names = |dir: &Path| -> Vec<String> { std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect() };
+    let names = |dir: &Path| -> Vec<String> { crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_file())).map(|e| e.file_name().to_string_lossy().to_string()).collect() };
     let mut dirs: Vec<(PathBuf, Vec<String>)> = vec![(folder.to_path_buf(), vec![format!("{computer}.toml")]), (folder.join("devices"), vec![format!("{computer}.device")])];
-    for part in std::fs::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+    for part in crate::files::read_dir(folder.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_dir())) {
         dirs.push((part.path(), vec![format!("{computer}.lease")]));
     }
     for (top, sub) in [("texts", "send"), ("phone-messages", "ask")] {
@@ -10884,11 +10886,11 @@ fn take_out_own_copies(folder: &Path, computer: &str, round: u32, full_round: u3
                 CopyOf::Round(n) if n < full => true,
                 CopyOf::Round(n) => {
                     // Nothing past the round's file here: the same bytes, or fewer.
-                    let (copy, file) = (std::fs::read(dir.join(&name)), std::fs::read(folder.join(round_name(n))));
+                    let (copy, file) = (crate::files::read(dir.join(&name)), crate::files::read(folder.join(round_name(n))));
                     matches!((copy, file), (Ok(copy), Ok(file)) if file.starts_with(&copy))
                 }
             };
-            if known && std::fs::remove_file(dir.join(&name)).is_ok() {
+            if known && crate::files::remove_file(dir.join(&name)).is_ok() {
                 went += 1;
             }
         }
@@ -10942,7 +10944,7 @@ pub fn rounds_past(folder: &Path, memory: &Path, computer: &str, now_ms: i64) ->
         #[serde(default)]
         uncounted: BTreeSet<String>,
     }
-    let part = std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok())?;
+    let part = crate::files::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok())?;
     if part.computer != computer || part.round == 0 {
         return None;
     }
@@ -10996,7 +10998,7 @@ pub fn departed_past(memory: &Path, computer: &str) -> BTreeMap<String, u32> {
         #[serde(default)]
         departed: BTreeMap<String, u32>,
     }
-    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.departed).unwrap_or_default()
+    crate::files::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.departed).unwrap_or_default()
 }
 
 /// The sealed files this device swept as written by a device that no longer
@@ -11017,7 +11019,7 @@ pub fn swept_theirs(memory: &Path, computer: &str) -> BTreeMap<String, (i64, i64
         #[serde(default)]
         taken_since: BTreeMap<String, i64>,
     }
-    let Some(part) = std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer) else { return BTreeMap::new() };
+    let Some(part) = crate::files::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer) else { return BTreeMap::new() };
     part.taken.into_iter().map(|(name, at)| {
         let newest = part.taken_since.get(&name).copied().unwrap_or(at - crate::blobs::UNUSED_DAYS * DAY);
         (name, (at, newest))
@@ -11098,7 +11100,7 @@ fn device_small_files(folder: &Path, id: &str, entry: bool, notes: bool) -> Vec<
 /// same bytes; one written since never is, whatever its size.
 fn content_hash(path: &Path) -> Option<String> {
     use sha2::Digest;
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = crate::files::read(path).ok()?;
     Some(sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect())
 }
 
@@ -11113,10 +11115,10 @@ fn device_small_places(folder: &Path, id: &str, entry: bool, notes: bool) -> Vec
         if notes {
             names.push(format!("{id}.toml"));
         }
-        for part in std::fs::read_dir(dir.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+        for part in crate::files::read_dir(dir.join("leases")).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_dir())) {
             names.push(format!("leases/{}/{id}.lease", part.file_name().to_string_lossy()));
         }
-        out.extend(names.into_iter().map(|place| (dir.join(&place), place)).filter(|(path, _)| path.is_file()));
+        out.extend(names.into_iter().map(|place| (dir.join(&place), place)).filter(|(path, _)| path.present_file()));
     }
     out
 }
@@ -11189,7 +11191,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
         for round in rounds(&dir).get(device).into_iter().flatten() {
             let path = round_file(&dir, device, *round);
             let size = sizes.entry(*round).or_default();
-            *size = (*size).max(std::fs::metadata(&path).map_or(0, |m| m.len()));
+            *size = (*size).max(crate::files::metadata(&path).map_or(0, |m| m.len()));
             paths.push(path);
         }
     }
@@ -11201,11 +11203,11 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
     files.heard = last_heard(entry_seen.as_ref(), memory, device);
     let (entry, notes) = if departed { small_go(&standing, files.heard, now_ms) } else { (false, false) };
     (files.entry_goes, files.notes_go) = (entry, notes);
-    files.notes_stay = !notes && seen_path(sharing.folder, device).is_file();
-    files.entry_stays = !entry && sharing.folder.join("devices").join(format!("{device}.device")).is_file();
+    files.notes_stay = !notes && seen_path(sharing.folder, device).present_file();
+    files.entry_stays = !entry && sharing.folder.join("devices").join(format!("{device}.device")).present_file();
     for path in device_small_files(sharing.folder, device, entry, notes) {
         files.small += usize::from(path.starts_with(sharing.folder));
-        files.small_bytes += std::fs::metadata(&path).map_or(0, |m| m.len()) * u64::from(path.starts_with(sharing.folder));
+        files.small_bytes += crate::files::metadata(&path).map_or(0, |m| m.len()) * u64::from(path.starts_with(sharing.folder));
         paths.push(path);
     }
     // Every device that counts, one silent for weeks too: its rounds no
@@ -11247,7 +11249,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
         let keeps = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().filter(|(id, _, _)| id != device).all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.keeping >= crate::blobs::KEEPING_TWO_WEEKS));
         let unused = if keeps { crate::blobs::UNUSED_DAYS } else { crate::blobs::UNUSED_DAYS_BEFORE } * DAY;
         files.later_days = unused / DAY;
-        let fresh = |path: &Path| std::fs::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
+        let fresh = |path: &Path| crate::files::metadata(path).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
         let theirs: BTreeSet<String> = memory.entries.iter().filter(|(key, known)| key.starts_with(FILES) && !known.h.is_empty() && known.w == device).map(|(_, known)| crate::blobs::name(sharing.key, &known.h)).collect();
         // Not the names its own records gave lately (`Sealed::named_at` says
         // not whose): another device's content replaced lately, which a
@@ -11269,7 +11271,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
             .collect();
         for name in theirs.difference(&used) {
             let path = sharing.folder.join("blobs").join(name);
-            let Ok(meta) = std::fs::metadata(&path) else { continue };
+            let Ok(meta) = crate::files::metadata(&path) else { continue };
             if fresh(&path) {
                 files.sealed_later += 1;
                 later.push(name.clone());
@@ -11363,7 +11365,7 @@ pub fn remove_device_files(folder: &Path, key: &[u8; 32], memory: &Path, compute
     // its sealed files are taken (`Memory::taken`).
     in_short_holds(memory, going.into_iter(), |path| {
         slow_under_lock();
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
     })
     .map_err(|(e, _)| e)?;
     Ok(files)
@@ -11383,7 +11385,7 @@ pub fn needed_sealed(memory: &Path, computer: &str) -> Option<BTreeSet<String>> 
         #[serde(default)]
         needed: Option<BTreeSet<String>>,
     }
-    std::fs::read(sealed_path(memory)).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).and_then(|part| part.needed)
+    crate::files::read(sealed_path(memory)).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).and_then(|part| part.needed)
 }
 
 /// The devices whose files you removed here (`remove_device_files`), and
@@ -11398,7 +11400,7 @@ pub fn removed_devices(memory: &Path, computer: &str) -> BTreeMap<String, Remove
         #[serde(default)]
         removed_devices: BTreeMap<String, RemovedDevice>,
     }
-    std::fs::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.removed_devices).unwrap_or_default()
+    crate::files::read(memory).ok().and_then(|bytes| serde_json::from_slice::<Part>(&bytes).ok()).filter(|part| part.computer == computer).map(|part| part.removed_devices).unwrap_or_default()
 }
 
 /// A device that no longer counts here and still has files in the folder
@@ -11429,11 +11431,11 @@ pub fn departed_devices(folder: &Path, key: &[u8; 32], memory: &Path, computer: 
                 Counted::Replaced => "replaced",
                 _ => return None,
             };
-            let bytes: u64 = all.get(&id).into_iter().flatten().map(|round| std::fs::metadata(round_file(folder, &id, *round)).map_or(0, |m| m.len())).sum();
+            let bytes: u64 = all.get(&id).into_iter().flatten().map(|round| crate::files::metadata(round_file(folder, &id, *round)).map_or(0, |m| m.len())).sum();
             let entry = state.seen.get(&id);
             let (entry_goes, notes_go) = small_go(&counted, last_heard(entry, &state, &id), now_ms);
             let small = device_small_files(folder, &id, entry_goes, notes_go);
-            let bytes = bytes + small.iter().filter(|path| path.starts_with(folder)).map(|path| std::fs::metadata(path).map_or(0, |m| m.len())).sum::<u64>();
+            let bytes = bytes + small.iter().filter(|path| path.starts_with(folder)).map(|path| crate::files::metadata(path).map_or(0, |m| m.len())).sum::<u64>();
             (bytes > 0 || !small.is_empty()).then(|| GoneDevice { why, bytes, name: entry.map(|e| e.name.clone()).unwrap_or_default(), kind: entry.map(|e| e.kind.clone()).unwrap_or_default(), id })
         })
         .collect()
@@ -11509,7 +11511,7 @@ pub fn others_heard(folder: &Path, key: &[u8; 32], computer: &str) -> Vec<Other>
 
 /// Whether the folder already holds a seal: another computer shares through it.
 pub fn sealed(folder: &Path) -> bool {
-    folder.join("seal.toml").is_file()
+    folder.join("seal.toml").present_file()
 }
 
 #[cfg(test)]
@@ -15172,6 +15174,10 @@ mod tests {
 #[cfg(test)]
 #[path = "share_format_tests.rs"]
 mod format_tests;
+
+#[cfg(test)]
+#[path = "share_sealed_tests.rs"]
+mod sealed_tests;
 
 #[cfg(test)]
 #[path = "share_back_tests.rs"]

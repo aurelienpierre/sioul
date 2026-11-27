@@ -136,7 +136,7 @@ impl Keeper {
 pub fn host_name() -> String {
     static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     NAME.get_or_init(|| {
-        let named = std::env::var("COMPUTERNAME").ok().or_else(|| std::fs::read_to_string("/etc/hostname").ok()).or_else(|| crate::command("hostname").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()));
+        let named = std::env::var("COMPUTERNAME").ok().or_else(|| crate::files::read_to_string("/etc/hostname").ok()).or_else(|| crate::command("hostname").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string()));
         named.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "?".into())
     })
     .clone()
@@ -173,7 +173,7 @@ fn read(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
 }
 
 fn read_in(folder: &Path, key: &[u8; 32], part: &str) -> Vec<Claim> {
-    let Ok(entries) = std::fs::read_dir(folder_of(folder, part)) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(folder_of(folder, part)) else { return Vec::new() };
     entries
         .filter_map(Result::ok)
         .map(|e| e.path())

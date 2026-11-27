@@ -24,6 +24,8 @@
 //!
 //! Recordings of your own are your files, in the notes' `sounds` folder.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -1378,10 +1380,10 @@ fn older_recipe(name: &str) -> bool {
 /// The files made here for where a sound cannot be made as it plays, each
 /// minutes of sound, taken away: a sound made as it plays needs none.
 pub fn clear_files(folder: &Path) {
-    if let Ok(entries) = std::fs::read_dir(folder) {
+    if let Ok(entries) = crate::files::read_dir(folder) {
         for entry in entries.flatten() {
             if made_here(&entry.file_name().to_string_lossy()).is_some() {
-                let _ = std::fs::remove_file(entry.path());
+                let _ = crate::files::remove_file(entry.path());
             }
         }
     }
@@ -1420,20 +1422,20 @@ pub fn noise_file(folder: &Path, kind: &str) -> Result<PathBuf, String> {
         return Err(format!("{kind}: no such sound"));
     };
     let path = folder.join(name);
-    if !path.exists() {
+    if !path.present() {
         // The files of older recipes go: each is minutes of sound.
-        if let Ok(entries) = std::fs::read_dir(folder) {
+        if let Ok(entries) = crate::files::read_dir(folder) {
             for entry in entries.flatten() {
                 if older_recipe(&entry.file_name().to_string_lossy()) {
-                    let _ = std::fs::remove_file(entry.path());
+                    let _ = crate::files::remove_file(entry.path());
                 }
             }
         }
         let (samples, rate) = looped(kind, seconds).ok_or_else(|| format!("{kind}: no such sound"))?;
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         let temporary = path.with_extension("wav.new");
-        std::fs::write(&temporary, wav_of(&samples, 2, rate)).map_err(|e| format!("{}: {e}", temporary.display()))?;
-        std::fs::rename(&temporary, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::files::write(&temporary, wav_of(&samples, 2, rate)).map_err(|e| format!("{}: {e}", temporary.display()))?;
+        crate::files::rename(&temporary, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(path)
 }

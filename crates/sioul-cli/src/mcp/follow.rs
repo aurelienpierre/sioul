@@ -95,7 +95,7 @@ mod unix {
         /// The file at `path`, its links followed; None when there is none, or no file.
         fn of(path: &Path) -> Option<Stat> {
             use std::os::unix::fs::MetadataExt;
-            let m = std::fs::metadata(path).ok().filter(std::fs::Metadata::is_file)?;
+            let m = crate::files::metadata(path).ok().filter(crate::files::Metadata::is_file)?;
             Some(Stat {
                 device: m.dev(),
                 inode: m.ino(),
@@ -215,7 +215,7 @@ mod unix {
     /// The program that runs: its path, links resolved, and its file, even deleted.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn own_program() -> Option<(PathBuf, Stat)> {
-        let link = std::fs::read_link("/proc/self/exe").ok()?;
+        let link = crate::files::read_link("/proc/self/exe").ok()?;
         let name = link.as_os_str().as_bytes();
         let path = PathBuf::from(std::ffi::OsStr::from_bytes(name.strip_suffix(DELETED).unwrap_or(name)));
         Some((path, Stat::of(Path::new("/proc/self/exe"))?))
@@ -224,7 +224,7 @@ mod unix {
     /// Whether /proc/self/exe reads "(deleted)": the program's file is gone from its folder.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     fn deleted() -> bool {
-        std::fs::read_link("/proc/self/exe").is_ok_and(|link| link.as_os_str().as_bytes().ends_with(DELETED))
+        crate::files::read_link("/proc/self/exe").is_ok_and(|link| link.as_os_str().as_bytes().ends_with(DELETED))
     }
 
     /// No /proc to ask: the path's file and time tell it.
@@ -261,17 +261,16 @@ mod unix {
     /// wt/mail, F8). A folder others may write is accepted when it keeps
     /// what each one put there (the sticky bit, as /tmp).
     pub(super) fn yours_alone(path: &Path) -> Result<(), String> {
-        use std::os::unix::fs::MetadataExt;
         // SAFETY: getuid cannot fail.
         let me = unsafe { libc::getuid() };
-        let owned = |m: &std::fs::Metadata| m.uid() == me || m.uid() == 0;
-        let real = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
-        let file = std::fs::metadata(&real).map_err(|e| e.to_string())?;
+        let owned = |m: &crate::files::Metadata| m.uid() == me || m.uid() == 0;
+        let real = crate::files::canonicalize(path).map_err(|e| e.to_string())?;
+        let file = crate::files::metadata(&real).map_err(|e| e.to_string())?;
         if !owned(&file) || file.mode() & 0o022 != 0 {
             return Err(format!("{} belongs to another account, or another account may change it", real.display()));
         }
         for folder in [path.parent(), real.parent()].into_iter().flatten() {
-            let held = std::fs::metadata(folder).map_err(|e| e.to_string())?;
+            let held = crate::files::metadata(folder).map_err(|e| e.to_string())?;
             if !owned(&held) || (held.mode() & 0o022 != 0 && held.mode() & 0o1000 == 0) {
                 return Err(format!("{} belongs to another account, or another account may write in it", folder.display()));
             }

@@ -180,6 +180,12 @@ ColumnLayout {
         font.pixelSize: 13
         color: panel.theme.muted
     }
+    // What Sioul keeps here: sealed or not, its earlier versions, the ways back to it (StoreCard.qml).
+    StoreCard {
+        Layout.fillWidth: true
+        sioul: panel.sioul
+        theme: panel.theme
+    }
     // The notes folder, where notes and papers travel from: said here, set on the Notes page alone.
     Label {
         objectName: "shareNotesFolder"

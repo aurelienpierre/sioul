@@ -98,27 +98,27 @@ fn addresses(text: &str) -> Vec<String> {
 
 /// The log's folder, made for you alone where the system has owners (Unix).
 fn private_folder(folder: &Path) -> std::io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
+    let mut builder = crate::files::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.mode(0o700);
     builder.create(folder)
 }
 
 /// This month's file, to add to; readable and writable by you alone on Unix
 /// (on Windows, your profile's folders are yours already).
-fn open(path: &Path) -> std::io::Result<std::fs::File> {
-    let mut options = std::fs::OpenOptions::new();
+fn open(path: &Path) -> std::io::Result<crate::files::File> {
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     let file = options.open(path)?;
     // A file made before, by a version that left it readable to others: closed now.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         if file.metadata()?.permissions().mode() & 0o077 != 0 {
-            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            file.set_permissions(crate::files::Permissions::from_mode(0o600))?;
         }
     }
     Ok(file)

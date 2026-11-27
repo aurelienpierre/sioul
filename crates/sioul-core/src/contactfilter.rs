@@ -77,7 +77,7 @@ impl Filter {
 
     /// As kept on this device; nothing kept, or unreadable: no filter.
     pub fn load(path: &Path) -> Filter {
-        let mut kept: Filter = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let mut kept: Filter = crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         kept.name.clear();
         kept
     }
@@ -88,7 +88,7 @@ impl Filter {
             return Ok(());
         }
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))

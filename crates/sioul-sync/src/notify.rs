@@ -1346,7 +1346,7 @@ impl Teller {
 
 /// What a previous run left (`Teller::restart`): nothing for a file of another format.
 fn read_saved(path: &std::path::Path) -> SavedFile {
-    std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<SavedFile>(&text).ok()).filter(|file| file.format == SAVED_FORMAT).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| serde_json::from_str::<SavedFile>(&text).ok()).filter(|file| file.format == SAVED_FORMAT).unwrap_or_default()
 }
 
 /// What shows, written to `path` (`Teller::restart`).
@@ -1354,7 +1354,7 @@ fn read_saved(path: &std::path::Path) -> SavedFile {
 fn write_saved(path: &std::path::Path, file: &SavedFile) {
     let Ok(text) = serde_json::to_string(file) else { return };
     if let Some(folder) = path.parent() {
-        let _ = std::fs::create_dir_all(folder);
+        let _ = crate::files::create_dir_all(folder);
     }
     if let Err(e) = sioul_core::filelock::replace(path, text.as_bytes()) {
         eprintln!("sioul: notices: {}: {e}", path.display());

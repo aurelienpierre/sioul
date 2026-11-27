@@ -13,6 +13,8 @@
 //! shielded address by "someone at" its domain, without its subject; mail
 //! from a sender you blocked not at all, only counted. Never its text.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::jobs;
 use crate::mcp::mask;
 use crate::{Session, one_line};
@@ -242,7 +244,7 @@ pub(crate) fn status(s: &Session, dirs: &Dirs) -> Result<Report, String> {
             lines.push(s.say("spam-table", &[("date", day(s, table.meta.trained_at)), ("ham", table.meta.ham.to_string()), ("spam", table.meta.spam.to_string())]));
             to_data(&table.meta)
         }
-        Err(why) if dirs.table().exists() => {
+        Err(why) if dirs.table().present() => {
             lines.push(s.say("spam-table-refused", &[("detail", one_line(&why))]));
             json!({ "refused": why })
         }
@@ -878,8 +880,8 @@ pub(crate) struct DryAsk {
 fn inbox_files(folder: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = ["new", "cur"]
         .iter()
-        .flat_map(|sub| std::fs::read_dir(folder.join(sub)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
-        .filter(|p| p.is_file())
+        .flat_map(|sub| crate::files::read_dir(folder.join(sub)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
+        .filter(|p| p.present_file())
         .collect();
     files.sort();
     files
@@ -1029,7 +1031,7 @@ pub(crate) fn dry_run(s: &Session, ask: &DryAsk) -> Result<Report, String> {
 fn judged_listed(s: &Session, hiding: &Hiding, account: &str, t: &Triaged, class: Class, p: f64) -> Option<Listed> {
     let envelope = hiding.envelope(s, account, &t.card)?;
     let key = t.card.path.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
-    let date = t.card.date.or_else(|| t.card.path.as_deref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok())).unwrap_or(0);
+    let date = t.card.date.or_else(|| t.card.path.as_deref().and_then(|p| crate::files::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok())).unwrap_or(0);
     let folder = folder_of(s, account, t.card.path.as_deref());
     let mut data = Map::new();
     data.insert("class".into(), json!(class.as_str()));

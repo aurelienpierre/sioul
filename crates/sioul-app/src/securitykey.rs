@@ -687,7 +687,7 @@ pub(crate) fn open_message(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed
 
 fn open_now(qt: &QtThread, shared: &Arc<Shared>, key: &str, typed: Option<Password>) {
     working(qt, key, "seckey-reading");
-    let Some(raw) = crate::mail::locate(key).and_then(|(_, file)| std::fs::read(file).ok()) else {
+    let Some(raw) = crate::mail::locate(key).and_then(|(_, file)| crate::files::read(file).ok()) else {
         return problem_line(qt, key, tr().text("mail-message-gone", None), "");
     };
     // Which key it waits for; opened already from its session key, it is done.
@@ -1053,7 +1053,7 @@ pub(crate) fn import_certificate(qt: &QtThread, ident: &str, url: &str) {
         Ok(chosen) => chosen,
         Err(e) => return problem_line(qt, SETUP_BAND, e, ""),
     };
-    let read = std::fs::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()));
+    let read = crate::files::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()));
     drop(chosen);
     match read {
         Ok(bytes) => match securitykey::certificate_in(&bytes, &info) {

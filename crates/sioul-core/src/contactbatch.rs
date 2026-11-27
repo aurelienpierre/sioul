@@ -32,6 +32,8 @@
 //! points at a card (the sender lists' `contact:<UID>`, tasks, ties, persons)
 //! still does. Who may reach you follows its groups, never its book.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::contacts::{self, Contact, TitleMove};
 use crate::i18n::Translator;
 use crate::vdir::{self, Collection};
@@ -155,7 +157,7 @@ fn is_id(id: &str) -> bool {
 
 /// Each card as its file holds it now; one gone said as such.
 fn read(contact: &Contact, tr: &Translator) -> Result<String, Cannot> {
-    std::fs::read_to_string(&contact.key).map_err(|_| Cannot { name: contact.name.clone(), why: tr.text("batch-why-gone", None) })
+    crate::files::read_to_string(&contact.key).map_err(|_| Cannot { name: contact.name.clone(), why: tr.text("batch-why-gone", None) })
 }
 
 fn cannot(contact: &Contact, why: String) -> Cannot {
@@ -179,7 +181,7 @@ pub fn plan_move(contacts: &[&Contact], target: &Collection, provider: crate::ca
         return plan;
     }
     // The target's UIDs, and those of the cards planned before (review F8: two cards of one UID moved together).
-    let mut held: Vec<String> = target.items().iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| uid_of(&t)).collect();
+    let mut held: Vec<String> = target.items().iter().filter_map(|p| crate::files::read_to_string(p).ok()).filter_map(|t| uid_of(&t)).collect();
     let mut taken: Vec<PathBuf> = Vec::new();
     for contact in contacts {
         if contact.read_only {
@@ -335,23 +337,23 @@ fn why(tr: &Translator, key: &str) -> String {
 /// written: the batch then stops before that step.
 fn note(dir: &Path, id: &str, n: usize, word: &str) -> bool {
     use std::io::Write;
-    std::fs::OpenOptions::new().create(true).append(true).open(dir.join(format!("{id}.log"))).and_then(|mut log| writeln!(log, "{n} {word}").and_then(|()| log.sync_data())).is_ok()
+    crate::files::OpenOptions::new().create(true).append(true).open(dir.join(format!("{id}.log"))).and_then(|mut log| writeln!(log, "{n} {word}").and_then(|()| log.sync_data())).is_ok()
 }
 
 /// Whether a step's effect shows on the files: its card written as it says,
 /// taken out, or moved.
 fn shows_done(step: &Step) -> bool {
     match step {
-        Step::Write { path, after, .. } => std::fs::read_to_string(path).is_ok_and(|now| now == *after),
-        Step::Remove { path, .. } => !path.exists(),
-        Step::Move { from, to } => to.exists() && !from.exists(),
+        Step::Write { path, after, .. } => crate::files::read_to_string(path).is_ok_and(|now| now == *after),
+        Step::Remove { path, .. } => !path.present(),
+        Step::Move { from, to } => to.present() && !from.present(),
     }
 }
 
 /// The steps a batch did, by their place in its plan: those noted done, and
 /// one begun and never noted after (Sioul stopped in it) whose effect shows.
 fn steps_done(dir: &Path, record: &Record) -> std::collections::BTreeSet<usize> {
-    let log = std::fs::read_to_string(dir.join(format!("{}.log", record.id))).unwrap_or_default();
+    let log = crate::files::read_to_string(dir.join(format!("{}.log", record.id))).unwrap_or_default();
     let words: Vec<(usize, &str)> = log.lines().filter_map(|l| l.split_once(' ').and_then(|(n, w)| Some((n.parse().ok()?, w)))).collect();
     let ended = |n: usize| words.iter().any(|(m, w)| *m == n && (*w == "done" || *w == "left"));
     words
@@ -363,18 +365,18 @@ fn steps_done(dir: &Path, record: &Record) -> std::collections::BTreeSet<usize> 
 
 /// Whether a step's card is still as the plan read it, else why it is left.
 fn as_planned(step: &Step, tr: &Translator) -> Result<(), String> {
-    let now = |path: &Path| std::fs::read_to_string(path).ok();
+    let now = |path: &Path| crate::files::read_to_string(path).ok();
     match step {
         Step::Write { path, before: Some(before), .. } | Step::Remove { path, before } => match now(path) {
             Some(text) if &text == before => Ok(()),
             Some(_) => Err(why(tr, "batch-why-changed-since")),
             None => Err(why(tr, "batch-why-gone")),
         },
-        Step::Write { path, before: None, .. } => if path.exists() { Err(why(tr, "batch-why-taken")) } else { Ok(()) },
+        Step::Write { path, before: None, .. } => if path.present() { Err(why(tr, "batch-why-taken")) } else { Ok(()) },
         Step::Move { from, to } => {
-            if !from.exists() {
+            if !from.present() {
                 Err(why(tr, "batch-why-gone"))
-            } else if to.exists() {
+            } else if to.present() {
                 Err(why(tr, "batch-why-taken"))
             } else {
                 Ok(())
@@ -394,8 +396,8 @@ pub fn run(dir: &Path, kind: &str, steps: Vec<(String, Step)>, removed: Option<R
         return Ok(Outcome::default());
     }
     let fail = |e: std::io::Error| format!("{}: {e}", dir.display());
-    std::fs::create_dir_all(dir).map_err(fail)?;
-    let id = std::iter::once(format!("{now}-{kind}")).chain((2..1000).map(|n| format!("{now}-{kind}-{n}"))).find(|id| !dir.join(format!("{id}.json")).exists()).ok_or_else(|| format!("{}: full", dir.display()))?;
+    crate::files::create_dir_all(dir).map_err(fail)?;
+    let id = std::iter::once(format!("{now}-{kind}")).chain((2..1000).map(|n| format!("{now}-{kind}-{n}"))).find(|id| !dir.join(format!("{id}.json")).present()).ok_or_else(|| format!("{}: full", dir.display()))?;
     let record = Record { id: id.clone(), at: now, kind: kind.to_string(), steps, removed };
     let text = serde_json::to_string(&record).map_err(|e| e.to_string())?;
     crate::filelock::replace(&dir.join(format!("{id}.json")), text.as_bytes()).map_err(fail)?;
@@ -432,14 +434,14 @@ pub fn record(dir: &Path, id: &str) -> Option<Record> {
     if !is_id(id) {
         return None;
     }
-    let mut record: Record = std::fs::read_to_string(dir.join(format!("{id}.json"))).ok().and_then(|t| serde_json::from_str(&t).ok())?;
+    let mut record: Record = crate::files::read_to_string(dir.join(format!("{id}.json"))).ok().and_then(|t| serde_json::from_str(&t).ok())?;
     record.id = id.to_string();
     Some(record)
 }
 
 /// Whether a card of this UID is in an address book here now.
 pub(crate) fn uid_here(uid: &str) -> bool {
-    vdir::collections(vdir::Kind::Contacts).iter().flat_map(|c| c.items()).any(|p| std::fs::read_to_string(p).ok().and_then(|t| uid_of(&t)).as_deref() == Some(uid))
+    vdir::collections(vdir::Kind::Contacts).iter().flat_map(|c| c.items()).any(|p| crate::files::read_to_string(p).ok().and_then(|t| uid_of(&t)).as_deref() == Some(uid))
 }
 
 /// The book a merge removed, made again when its folder went (on this device
@@ -447,7 +449,7 @@ pub(crate) fn uid_here(uid: &str) -> bool {
 /// deletion there. A server's book whose folder went is gone from its server.
 fn restore(removed: &Removed, tr: &Translator) -> Result<(), String> {
     let Some((account, id)) = removed.place.split_once('/') else { return Err(why(tr, "batch-why-book-gone")) };
-    if vdir::Kind::Contacts.root().join(account).join(id).is_dir() {
+    if vdir::Kind::Contacts.root().join(account).join(id).present_dir() {
         return vdir::undelete_collection(vdir::Kind::Contacts, account, id).map_err(|_| why(tr, "batch-why-book-gone"));
     }
     if !removed.here_only {
@@ -480,7 +482,7 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translato
         let left = |key: &str| Err::<bool, String>(why(tr, key));
         let back: Result<bool, String> = match step {
             Step::Write { path, before, after } if inside(path) => {
-                let now = std::fs::read_to_string(path).ok();
+                let now = crate::files::read_to_string(path).ok();
                 if now.as_deref() == Some(after.as_str()) {
                     match before {
                         Some(before) => vdir::write_item(path, before).map(|()| true),
@@ -495,9 +497,9 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translato
                 }
             }
             Step::Remove { path, before } if inside(path) => {
-                if path.exists() || !done.contains(&n) {
+                if path.present() || !done.contains(&n) {
                     Ok(false)
-                } else if path.parent().is_some_and(|p| !p.is_dir()) {
+                } else if path.parent().is_some_and(|p| !p.present_dir()) {
                     left("batch-why-book-gone")
                 } else if uid_of(before).is_some_and(|uid| uid_here(&uid)) {
                     left("batch-why-elsewhere-now")
@@ -506,9 +508,9 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translato
                 }
             }
             Step::Move { from, to } if inside(from) && inside(to) => {
-                if to.exists() && !from.exists() {
-                    if from.parent().is_some_and(|p| !p.is_dir()) { left("batch-why-book-gone") } else { vdir::move_item(to, from).map(|()| true) }
-                } else if done.contains(&n) && !from.exists() {
+                if to.present() && !from.present() {
+                    if from.parent().is_some_and(|p| !p.present_dir()) { left("batch-why-book-gone") } else { vdir::move_item(to, from).map(|()| true) }
+                } else if done.contains(&n) && !from.present() {
                     left("batch-why-gone-since")
                 } else {
                     Ok(false)
@@ -524,8 +526,8 @@ pub fn undo(dir: &Path, id: &str, root: &Path, stop: &AtomicBool, tr: &Translato
         progress(total - n, total);
     }
     if !stop.load(Ordering::Relaxed) {
-        let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
-        let _ = std::fs::remove_file(dir.join(format!("{id}.log")));
+        let _ = crate::files::remove_file(dir.join(format!("{id}.json")));
+        let _ = crate::files::remove_file(dir.join(format!("{id}.log")));
     }
     Ok(undone)
 }
@@ -547,7 +549,7 @@ pub struct Listed {
 /// The batches of the last thirty days, the newest first.
 pub fn list(dir: &Path, now: i64, tr: &Translator) -> Vec<Listed> {
     forget_old(dir, now);
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     let mut found: Vec<Listed> = entries
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".json")).map(str::to_string))
@@ -555,7 +557,7 @@ pub fn list(dir: &Path, now: i64, tr: &Translator) -> Vec<Listed> {
         .map(|r| {
             let done = steps_done(dir, &r).len();
             let why_not = match &r.removed {
-                Some(removed) if !removed.here_only && removed.place.split_once('/').is_none_or(|(a, i)| !vdir::Kind::Contacts.root().join(a).join(i).is_dir()) => why(tr, "batch-why-book-gone"),
+                Some(removed) if !removed.here_only && removed.place.split_once('/').is_none_or(|(a, i)| !vdir::Kind::Contacts.root().join(a).join(i).present_dir()) => why(tr, "batch-why-book-gone"),
                 _ if done == 0 => why(tr, "batch-why-nothing-done"),
                 _ => String::new(),
             };
@@ -568,11 +570,11 @@ pub fn list(dir: &Path, now: i64, tr: &Translator) -> Vec<Listed> {
 
 /// Records older than thirty days go, with their notes.
 pub fn forget_old(dir: &Path, now: i64) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = crate::files::read_dir(dir) else { return };
     for path in entries.filter_map(Result::ok).map(|e| e.path()) {
-        let old = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).is_some_and(|t| now - t.as_secs() as i64 > KEPT_DAYS * 86_400);
+        let old = crate::files::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).is_some_and(|t| now - t.as_secs() as i64 > KEPT_DAYS * 86_400);
         if old {
-            let _ = std::fs::remove_file(&path);
+            let _ = crate::files::remove_file(&path);
         }
     }
 }

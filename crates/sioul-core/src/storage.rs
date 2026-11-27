@@ -27,6 +27,8 @@
 //! before each file takes its name, so that running it again finishes it
 //! or makes it again, never twice, and never over a file it did not make.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -97,7 +99,7 @@ impl Storage {
     /// "moved" either.
     pub fn read(state: &Path) -> Storage {
         let lost = |what: &'static str| Storage { lost: Some(what), ..Storage::default() };
-        match std::fs::read_to_string(state.join(STATE_FILE)) {
+        match crate::files::read_to_string(state.join(STATE_FILE)) {
             Ok(text) => toml::from_str(&text).unwrap_or_else(|_| lost("state-unreadable")),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => match Journal::load(state) {
                 Ok(Some(journal)) if journal.switched > 0 => {
@@ -134,7 +136,7 @@ impl Storage {
     /// Written whole, its bytes on the disk before it takes its name: the
     /// switch is this one write.
     pub fn write(&self, state: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(state).map_err(|e| format!("{}: {e}", state.display()))?;
+        crate::files::create_dir_all(state).map_err(|e| format!("{}: {e}", state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::health::write_synced(&state.join(STATE_FILE), text.as_bytes())
     }
@@ -169,12 +171,12 @@ impl Docs {
             return path.to_path_buf();
         }
         let literal = join(&self.base, file);
-        if literal.exists() {
+        if literal.present() {
             return literal;
         }
         let moved = self.base == self.folder;
         let other = if moved { file.strip_prefix(&format!("{}/", self.old)).map(|rest| join(&self.folder, rest)) } else { Some(join(&self.folder, file)) };
-        other.filter(|p| p.exists()).or_else(|| self.notes.as_ref().map(|notes| join(notes, file)).filter(|p| p.exists())).unwrap_or(literal)
+        other.filter(|p| p.present()).or_else(|| self.notes.as_ref().map(|notes| join(notes, file)).filter(|p| p.present())).unwrap_or(literal)
     }
 
     /// How a record names a file Sioul put in `folder`: from `base`, with `/`.
@@ -387,7 +389,7 @@ impl Journal {
     /// As written; none when there is none; one there that does not read: a
     /// fault, never "none" (it may say the move was made).
     pub fn load(state: &Path) -> Result<Option<Journal>, Fault> {
-        match std::fs::read_to_string(Journal::path(state)) {
+        match crate::files::read_to_string(Journal::path(state)) {
             Ok(text) => toml::from_str(&text).map(Some).map_err(|e| Fault::new("journal", format!("{}: {e}", Journal::path(state).display()))),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(Fault::new("journal", format!("{}: {e}", Journal::path(state).display()))),
@@ -397,7 +399,7 @@ impl Journal {
     /// Every copy it names at its place, a plain file: what a closed journal
     /// must show before its move is taken as made without the state file.
     fn copies_there(&self) -> bool {
-        self.files.iter().all(|entry| std::fs::symlink_metadata(&entry.to).is_ok_and(|meta| meta.is_file()))
+        self.files.iter().all(|entry| crate::files::symlink_metadata(&entry.to).is_ok_and(|meta| meta.present_file()))
     }
 
     /// Whether a copy this move put in one of its folders (records, papers,
@@ -410,7 +412,7 @@ impl Journal {
     }
 
     fn write(&self, state: &Path) -> Result<(), String> {
-        std::fs::create_dir_all(state).map_err(|e| format!("{}: {e}", state.display()))?;
+        crate::files::create_dir_all(state).map_err(|e| format!("{}: {e}", state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::health::write_synced(&Journal::path(state), text.as_bytes())
     }
@@ -515,20 +517,20 @@ pub fn survey(folders: &Folders) -> Result<Survey, Fault> {
     // A notes folder set and not there now (a drive not plugged in, a vault not
     // opened, a network folder offline) is never "nothing to move" (rule 3), nor
     // one that holds nothing at all, as a drive's mount point looks unmounted.
-    let mut listing = std::fs::read_dir(notes).map_err(|e| Fault::new("notes-unreadable", format!("{}: {e}", notes.display())))?;
+    let mut listing = crate::files::read_dir(notes).map_err(|e| Fault::new("notes-unreadable", format!("{}: {e}", notes.display())))?;
     if listing.next().is_none() {
         return Err(Fault::new("notes-empty", notes.display()));
     }
     let regular = |relative: &str| plain_below(notes, relative);
     let mut names: Vec<String> = list_names().into_iter().map(str::to_string).collect();
     // The copies `projects::rename_file` kept: `sioul-cases.toml.before-rename`, `-2`…
-    if let Ok(dir) = std::fs::read_dir(notes) {
+    if let Ok(dir) = crate::files::read_dir(notes) {
         let mut kept: Vec<String> = dir.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.starts_with(crate::projects::BEFORE_RENAME)).collect();
         kept.sort();
         names.extend(kept);
     }
     // The supplies' movements, each device's file in their folder beside the list (`supplies::MOVES`).
-    if let Ok(dir) = std::fs::read_dir(notes.join(crate::supplies::MOVES)) {
+    if let Ok(dir) = crate::files::read_dir(notes.join(crate::supplies::MOVES)) {
         let mut moves: Vec<String> = dir.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".toml") && !n.starts_with('.')).map(|n| format!("{}/{n}", crate::supplies::MOVES)).collect();
         moves.sort();
         names.extend(moves);
@@ -579,7 +581,7 @@ pub fn survey(folders: &Folders) -> Result<Survey, Fault> {
     let mut left = Vec::new();
     for old in [OLD_PAPERS, OLD_LETTERS] {
         let root = notes.join(old);
-        if !std::fs::symlink_metadata(&root).is_ok_and(|meta| meta.is_dir()) {
+        if !crate::files::symlink_metadata(&root).is_ok_and(|meta| meta.present_dir()) {
             continue;
         }
         let mut found = Vec::new();
@@ -593,7 +595,7 @@ pub fn survey(folders: &Folders) -> Result<Survey, Fault> {
 /// as plain TOML; a list that does not read refuses the move: what it names
 /// cannot be told.
 fn items_of(path: &Path, table: &str) -> Result<Vec<toml::Table>, Fault> {
-    let text = std::fs::read_to_string(path).map_err(|e| Fault::new("unreadable", format!("{}: {e}", path.display())))?;
+    let text = crate::files::read_to_string(path).map_err(|e| Fault::new("unreadable", format!("{}: {e}", path.display())))?;
     let parsed: toml::Table = toml::from_str(&text).map_err(|e| Fault::new("list-unreadable", format!("{}: {e}", path.display())))?;
     Ok(parsed.get(table).and_then(toml::Value::as_array).map(|items| items.iter().filter_map(toml::Value::as_table).cloned().collect()).unwrap_or_default())
 }
@@ -610,7 +612,7 @@ fn old_place(file: &str, notes: &Path, old: &str) -> Option<String> {
         inside(notes).or_else(|| inside(&resolved(notes)))?
     } else if let Some(rest) = file.strip_prefix(&format!("{old}/")) {
         rest.to_string()
-    } else if !join(notes, file).exists() && join(&notes.join(old), file).exists() {
+    } else if !join(notes, file).present() && join(&notes.join(old), file).present() {
         file.to_string()
     } else {
         return None;
@@ -623,16 +625,16 @@ fn old_place(file: &str, notes: &Path, old: &str) -> Option<String> {
 /// followed), by its path from `root` with `/`: what stays. A folder that
 /// does not list is never taken for an empty one.
 fn below(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
-    let read = std::fs::read_dir(dir).map_err(|e| Fault::new("unreadable", format!("{}: {e}", dir.display())))?;
+    let read = crate::files::read_dir(dir).map_err(|e| Fault::new("unreadable", format!("{}: {e}", dir.display())))?;
     let mut entries: Vec<_> = read.flatten().collect();
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    entries.sort_by_key(crate::files::DirEntry::file_name);
     for entry in entries {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
         }
         let path = entry.path();
-        if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+        if entry.file_type().is_ok_and(|kind| kind.present_dir()) {
             below(root, &path, out)?;
         } else {
             out.push(path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"));
@@ -646,13 +648,13 @@ fn below(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
 /// link refused (`plan`). A folder that is not there holds nothing; one
 /// there that does not list is never taken for an empty one.
 fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
-    let read = match std::fs::read_dir(dir) {
+    let read = match crate::files::read_dir(dir) {
         Ok(read) => read,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(Fault::new("unreadable", format!("{}: {e}", dir.display()))),
     };
     let mut entries: Vec<_> = read.flatten().collect();
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    entries.sort_by_key(crate::files::DirEntry::file_name);
     for entry in entries {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
@@ -663,9 +665,9 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), Fault> {
         if kind.is_symlink() {
             return Err(Fault::new("link", path.display()));
         }
-        if kind.is_dir() {
+        if kind.present_dir() {
             walk(root, &path, out)?;
-        } else if kind.is_file() {
+        } else if kind.present_file() {
             out.push(path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/"));
         }
     }
@@ -711,7 +713,7 @@ pub fn resolved(path: &Path) -> PathBuf {
     let mut existing = path.to_path_buf();
     let mut rest: Vec<std::ffi::OsString> = Vec::new();
     loop {
-        if let Ok(real) = std::fs::canonicalize(&existing) {
+        if let Ok(real) = crate::files::canonicalize(&existing) {
             return rest.iter().rev().fold(real, |path, part| path.join(part));
         }
         match (existing.file_name().map(std::ffi::OsStr::to_os_string), existing.parent().map(Path::to_path_buf)) {
@@ -730,12 +732,11 @@ pub fn resolved(path: &Path) -> PathBuf {
 pub fn same_file(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::MetadataExt;
-        matches!((std::fs::metadata(a), std::fs::metadata(b)), (Ok(x), Ok(y)) if x.dev() == y.dev() && x.ino() == y.ino())
+        matches!((crate::files::metadata(a), crate::files::metadata(b)), (Ok(x), Ok(y)) if x.dev() == y.dev() && x.ino() == y.ino())
     }
     #[cfg(not(unix))]
     {
-        matches!((std::fs::canonicalize(a), std::fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+        matches!((crate::files::canonicalize(a), crate::files::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
     }
 }
 
@@ -759,7 +760,7 @@ pub fn clash(folders: &Folders, own: &[(&'static str, PathBuf)]) -> Option<(&'st
 /// A file's bytes' SHA-256, read a piece at a time.
 pub fn sha_of(path: &Path) -> std::io::Result<String> {
     use std::io::Read;
-    let mut file = std::fs::File::open(path)?;
+    let mut file = crate::files::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0u8; 256 * 1024];
     loop {
@@ -779,7 +780,7 @@ fn hex(bytes: &[u8]) -> String {
 /// Whether two files hold the same bytes, read side by side.
 pub fn same_bytes(a: &Path, b: &Path) -> std::io::Result<bool> {
     use std::io::Read;
-    let (mut x, mut y) = (std::fs::File::open(a)?, std::fs::File::open(b)?);
+    let (mut x, mut y) = (crate::files::File::open(a)?, crate::files::File::open(b)?);
     if x.metadata()?.len() != y.metadata()?.len() {
         return Ok(false);
     }
@@ -794,7 +795,7 @@ pub fn same_bytes(a: &Path, b: &Path) -> std::io::Result<bool> {
             return Ok(true);
         }
     }
-    fn read_full(file: &mut std::fs::File, buffer: &mut [u8]) -> std::io::Result<usize> {
+    fn read_full(file: &mut crate::files::File, buffer: &mut [u8]) -> std::io::Result<usize> {
         let mut filled = 0;
         while filled < buffer.len() {
             let n = file.read(&mut buffer[filled..])?;
@@ -809,7 +810,7 @@ pub fn same_bytes(a: &Path, b: &Path) -> std::io::Result<bool> {
 
 /// A file's size and time (nanoseconds since 1970), as a move notes its source.
 fn stamp(path: &Path) -> Option<(u64, i64)> {
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     let time = i64::try_from(meta.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_nanos()).ok()?;
     Some((meta.len(), time))
 }
@@ -848,8 +849,8 @@ fn passing(to: &Path) -> PathBuf {
 /// parent, up to the first one that was there (a power cut after the switch
 /// must not lose a folder the copies are in).
 fn made_dirs(dir: &Path) -> std::io::Result<()> {
-    let missing: Vec<PathBuf> = dir.ancestors().take_while(|d| !d.as_os_str().is_empty() && !d.exists()).map(Path::to_path_buf).collect();
-    std::fs::create_dir_all(dir)?;
+    let missing: Vec<PathBuf> = dir.ancestors().take_while(|d| !d.as_os_str().is_empty() && !d.present()).map(Path::to_path_buf).collect();
+    crate::files::create_dir_all(dir)?;
     for made in missing.iter().rev() {
         if let Some(parent) = made.parent() {
             sync_dir(parent);
@@ -862,7 +863,7 @@ fn made_dirs(dir: &Path) -> std::io::Result<()> {
 /// whose bytes a crash lost); nothing to do where folders cannot be opened.
 fn sync_dir(dir: &Path) {
     #[cfg(unix)]
-    if let Ok(folder) = std::fs::File::open(dir) {
+    if let Ok(folder) = crate::files::File::open(dir) {
         let _ = folder.sync_all();
     }
     #[cfg(not(unix))]
@@ -880,18 +881,18 @@ fn copy_into(from: &Path, to: &Path, note: &mut dyn FnMut() -> Result<(), Fault>
     let temporary = passing(to);
     // A full disk leaves no half copy behind (review S6).
     let copied = crate::filelock::copy_whole(from, &temporary).map_err(|e| {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
         fail(e)
     })?;
     let written = (|| -> std::io::Result<bool> {
-        let file = std::fs::File::options().write(true).open(&temporary)?;
+        let file = crate::files::File::options().write(true).open(&temporary)?;
         // The source's own mode, not the private one a copy starts with: a papers' folder
         // may be read by other programs, a family's shared folder by other people (review S10).
-        if let Ok(meta) = std::fs::metadata(from) {
+        if let Ok(meta) = crate::files::metadata(from) {
             let _ = file.set_permissions(meta.permissions());
         }
         file.sync_all()?;
-        if let Ok(time) = std::fs::metadata(from).and_then(|m| m.modified()) {
+        if let Ok(time) = crate::files::metadata(from).and_then(|m| m.modified()) {
             let _ = file.set_modified(time);
         }
         same_bytes(from, &temporary)
@@ -899,20 +900,20 @@ fn copy_into(from: &Path, to: &Path, note: &mut dyn FnMut() -> Result<(), Fault>
     match written {
         Ok(true) => point("copied-aside")?,
         Ok(false) => {
-            let _ = std::fs::remove_file(&temporary);
+            let _ = crate::files::remove_file(&temporary);
             return Err(Fault::new("changed", from.display()));
         }
         Err(e) => {
-            let _ = std::fs::remove_file(&temporary);
+            let _ = crate::files::remove_file(&temporary);
             return Err(fail(e));
         }
     }
     if let Err(fault) = note() {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
         return Err(fault);
     }
     point("noted")?;
-    std::fs::rename(&temporary, to).map_err(fail)?;
+    crate::files::rename(&temporary, to).map_err(fail)?;
     sync_dir(parent);
     point("renamed")?;
     Ok(copied)
@@ -941,7 +942,7 @@ fn open(folders: &Folders, now: i64) -> Result<Journal, Fault> {
             if !journal.for_folders(folders) {
                 let places = [&folders.records, &folders.papers, &folders.letters];
                 let (stay, left): (Vec<Entry>, Vec<Entry>) = journal.files.drain(..).partition(|e| places.iter().any(|place| Path::new(&e.to).starts_with(place)));
-                journal.earlier.extend(left.into_iter().filter(|e| e.made && Path::new(&e.to).exists()).map(|e| e.to));
+                journal.earlier.extend(left.into_iter().filter(|e| e.made && Path::new(&e.to).present()).map(|e| e.to));
                 journal.files = stay;
                 (journal.notes, journal.records, journal.papers, journal.letters) = Journal::of(folders);
                 journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
@@ -980,15 +981,15 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
         let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
         let source = sha_of(&from).map_err(|e| Fault::new("unreadable", format!("{}: {e}", from.display())))?;
         let to = PathBuf::from(&entry.to);
-        let _ = std::fs::remove_file(passing(&to));
+        let _ = crate::files::remove_file(passing(&to));
         // The place it goes is the file itself under another name (a link above it, a
         // folder that folds case): never copied over itself, never cleaned as its own copy.
-        if to.exists() && same_file(&from, &to) {
+        if to.present() && same_file(&from, &to) {
             return Err(Fault::new("folder-in-notes", to.display()));
         }
         // What is at its place: this move's, as it wrote it or named it (the journal of this
         // move says so), or the person's, whatever its bytes: never adopted on a guess.
-        let there = if to.exists() { Some(sha_of(&to).map_err(|e| Fault::new("unreadable", format!("{}: {e}", to.display())))?) } else { None };
+        let there = if to.present() { Some(sha_of(&to).map_err(|e| Fault::new("unreadable", format!("{}: {e}", to.display())))?) } else { None };
         let (made, copied, named) = (entry.made, entry.sha.clone(), entry.rewritten.clone());
         let ours = |sha: &str| made && (sha == copied || (!named.is_empty() && sha == named));
         match there.as_deref() {
@@ -998,7 +999,7 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
             Some(_) => return Err(Fault::new("records-taken", to.display())),
             None => {}
         }
-        let needs_copy = !to.exists() || there.as_deref().is_some_and(|sha| sha != source && ours(sha));
+        let needs_copy = !to.present() || there.as_deref().is_some_and(|sha| sha != source && ours(sha));
         entry.to = to.display().to_string();
         entry.kind = entry.kind.or(Some(Kind::Letter));
         entry.alone = false;
@@ -1035,7 +1036,7 @@ fn fill(folders: &Folders, journal: &mut Journal) -> Result<Moved, Fault> {
             moved.alone.push(entry.to.clone());
         }
     }
-    journal.files.retain(|e| !e.alone || Path::new(&e.to).exists());
+    journal.files.retain(|e| !e.alone || Path::new(&e.to).present());
     moved.earlier.clone_from(&journal.earlier);
     journal.write(&folders.state).map_err(|e| Fault::new("journal", e))?;
     point("copied")?;
@@ -1102,20 +1103,20 @@ fn keep(folders: &Folders, journal: &mut Journal) -> Result<(), Fault> {
     for entry in journal.files.iter_mut().filter(|e| !e.alone) {
         let from = join(&folders.notes, &entry.from);
         let to = join(&day, &entry.from);
-        if to.exists() && !same_file(&from, &to) && same_bytes(&from, &to).unwrap_or(false) {
+        if to.present() && !same_file(&from, &to) && same_bytes(&from, &to).unwrap_or(false) {
             entry.kept = to.display().to_string();
             continue;
         }
         let fail = |e: std::io::Error| Fault::new("keep", format!("{}: {e}", to.display()));
         let parent = to.parent().unwrap_or(&day).to_path_buf();
         made_dirs(&parent).map_err(fail)?;
-        let _ = std::fs::remove_file(&to);
-        std::fs::copy(&from, &to).map_err(fail)?;
+        let _ = crate::files::remove_file(&to);
+        crate::files::copy(&from, &to).map_err(fail)?;
         // Flushed through a handle that may write: Windows refuses to flush a file opened
         // for reading alone ("Access is denied"), and the dated copy then failed there
         // at every move. A copy that only reads (its source did) is opened as it can be;
         // where that cannot flush, its bytes are still compared with the source just below.
-        let flushed = std::fs::OpenOptions::new().write(true).open(&to).or_else(|_| std::fs::File::open(&to)).and_then(|file| file.sync_all());
+        let flushed = crate::files::OpenOptions::new().write(true).open(&to).or_else(|_| crate::files::File::open(&to)).and_then(|file| file.sync_all());
         #[cfg(unix)]
         flushed.map_err(fail)?;
         #[cfg(not(unix))]
@@ -1148,7 +1149,7 @@ fn name_paths(folders: &Folders, journal: &mut Journal) -> Result<usize, Fault> 
         if !journal.files[i].rewritten.is_empty() && sha_of(&to).is_ok_and(|sha| sha == journal.files[i].rewritten) {
             continue;
         }
-        let text = std::fs::read_to_string(&to).map_err(unreadable)?;
+        let text = crate::files::read_to_string(&to).map_err(unreadable)?;
         let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| Fault::new("list-unreadable", format!("{}: {e}", to.display())))?;
         let mut count = 0;
         if let Some(items) = doc.get_mut(table).and_then(toml_edit::Item::as_array_of_tables_mut) {
@@ -1227,7 +1228,7 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
         for entry in came {
             let from = join(&folders.notes, &entry.from);
             let to = PathBuf::from(&entry.to);
-            if to.exists() {
+            if to.present() {
                 return Err(Fault::new("records-taken", to.display()));
             }
             let (size, time) = stamp(&from).ok_or_else(|| Fault::new("unreadable", from.display()))?;
@@ -1260,7 +1261,7 @@ pub fn switch(folders: &Folders, journal: &mut Journal, now: i64) -> Result<(), 
             let to = PathBuf::from(&entry.to);
             // Only over this move's own copy, as it wrote or named it (review S7).
             let ours = entry.made && sha_of(&to).is_ok_and(|now| now == entry.sha || (!entry.rewritten.is_empty() && now == entry.rewritten));
-            if to.exists() && !ours {
+            if to.present() && !ours {
                 return Err(Fault::new("records-taken", to.display()));
             }
             let mut fresh = Entry { size, time, sha, made: true, this_run: true, rewritten: String::new(), ..entry };
@@ -1341,11 +1342,11 @@ pub fn move_now<G>(folders: &Folders, now: i64, hold: impl FnOnce() -> Result<G,
 /// nothing. Whether it was.
 pub fn start_moved(folders: &Folders, now: i64) -> Result<bool, Fault> {
     crate::filelock::with_lock(&Journal::path(&folders.state), || {
-        if std::fs::symlink_metadata(folders.state.join(STATE_FILE)).is_ok() || std::fs::symlink_metadata(Journal::path(&folders.state)).is_ok() {
+        if crate::files::symlink_metadata(folders.state.join(STATE_FILE)).is_ok() || crate::files::symlink_metadata(Journal::path(&folders.state)).is_ok() {
             return Ok(false);
         }
         let Ok(survey) = survey(folders) else { return Ok(false) };
-        let old = |name: &str| !folders.notes.as_os_str().is_empty() && std::fs::symlink_metadata(folders.notes.join(name)).is_ok();
+        let old = |name: &str| !folders.notes.as_os_str().is_empty() && crate::files::symlink_metadata(folders.notes.join(name)).is_ok();
         if !survey.entries.is_empty() || !survey.left.is_empty() || old(OLD_PAPERS) || old(OLD_LETTERS) {
             return Ok(false);
         }
@@ -1369,33 +1370,33 @@ fn undo_run(folders: &Folders, journal: &mut Journal) {
     let mut stays = Vec::new();
     for entry in journal.files.drain(..) {
         let to = PathBuf::from(&entry.to);
-        let _ = std::fs::remove_file(passing(&to));
+        let _ = crate::files::remove_file(passing(&to));
         if entry.kept_this_run && !entry.kept.is_empty() {
             let kept = PathBuf::from(&entry.kept);
             if kept.starts_with(&journal.kept) {
-                let _ = std::fs::remove_file(&kept);
+                let _ = crate::files::remove_file(&kept);
             }
         }
         let source_there = sha_of(&join(&folders.notes, &entry.from)).is_ok_and(|sha| sha == entry.sha);
         let as_written = sha_of(&to).is_ok_and(|sha| sha == entry.sha || (!entry.rewritten.is_empty() && sha == entry.rewritten));
-        if entry.this_run && entry.made && source_there && as_written && std::fs::remove_file(&to).is_ok() {
+        if entry.this_run && entry.made && source_there && as_written && crate::files::remove_file(&to).is_ok() {
             if let Some(root) = roots.iter().find(|root| to.starts_with(root)) {
                 for dir in to.ancestors().skip(1).take_while(|dir| *dir != root.as_path() && dir.starts_with(root)) {
-                    if std::fs::remove_dir(dir).is_err() {
+                    if crate::files::remove_dir(dir).is_err() {
                         break;
                     }
                 }
             }
             continue;
         }
-        if to.exists() {
+        if to.present() {
             stays.push(Entry { kept: if entry.kept_this_run { String::new() } else { entry.kept.clone() }, ..entry });
         }
     }
     journal.files = stays;
     remove_empty(Path::new(&journal.kept));
     if journal.files.is_empty() && journal.earlier.is_empty() {
-        let _ = std::fs::remove_file(Journal::path(&folders.state));
+        let _ = crate::files::remove_file(Journal::path(&folders.state));
     } else {
         let _ = journal.write(&folders.state);
     }
@@ -1431,7 +1432,7 @@ pub fn move_documents(from: &Path, to: &Path, list: &Path, table: &str, switch: 
         for relative in &found {
             let (source, target) = (join(from, relative), join(to, relative));
             // Another file at its place: never written over, never taken for the copy (review S3, S23).
-            if target.exists() {
+            if target.present() {
                 return Err(Fault::new("records-taken", target.display()));
             }
             moved.bytes += copy_into(&source, &target, &mut || Ok(()))?;
@@ -1447,13 +1448,13 @@ pub fn move_documents(from: &Path, to: &Path, list: &Path, table: &str, switch: 
     })();
     if let Err(fault) = copied {
         for path in made {
-            let _ = std::fs::remove_file(path);
+            let _ = crate::files::remove_file(path);
         }
         return Err(fault);
     }
     // Paths written whole into the old folder, named from the new one.
     crate::filelock::with_lock(list, || -> Result<(), Fault> {
-        let Ok(text) = std::fs::read_to_string(list) else { return Ok(()) };
+        let Ok(text) = crate::files::read_to_string(list) else { return Ok(()) };
         let mut doc: toml_edit::DocumentMut = text.parse().map_err(|e| Fault::new("list-unreadable", format!("{}: {e}", list.display())))?;
         let mut count = 0;
         if let Some(items) = doc.get_mut(table).and_then(toml_edit::Item::as_array_of_tables_mut) {
@@ -1509,10 +1510,10 @@ pub fn plain_below(root: &Path, relative: &str) -> Result<bool, Fault> {
             return Err(Fault::new("link", join(root, relative).display()));
         }
         path.push(part);
-        match std::fs::symlink_metadata(&path) {
+        match crate::files::symlink_metadata(&path) {
             Ok(meta) if meta.file_type().is_symlink() => return Err(Fault::new("link", path.display())),
-            Ok(meta) if i + 1 == parts.len() => return Ok(meta.is_file()),
-            Ok(meta) if meta.is_dir() => {}
+            Ok(meta) if i + 1 == parts.len() => return Ok(meta.present_file()),
+            Ok(meta) if meta.present_dir() => {}
             Ok(_) => return Ok(false),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
             Err(e) => return Err(Fault::new("unreadable", format!("{}: {e}", path.display()))),
@@ -1538,7 +1539,7 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
     let journal = Journal::read(state).ok_or("no journal")?;
     // A notes folder not there now (a drive not plugged in, a permission taken back) is no
     // folder whose old files are gone: nothing is taken out, nothing said done (rule 3).
-    std::fs::read_dir(&notes).map_err(|e| format!("{}: {e}", notes.display()))?;
+    crate::files::read_dir(&notes).map_err(|e| format!("{}: {e}", notes.display()))?;
     let mut cleaned = Cleaned::default();
     for entry in journal.files.iter().filter(|e| !e.alone) {
         let from = join(&notes, &entry.from);
@@ -1547,9 +1548,9 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
         match plain_below(&notes, &entry.from) {
             Ok(true) => {}
             // Gone already (taken out by hand): its lock file, Sioul's own and hidden, goes too.
-            Ok(false) if std::fs::symlink_metadata(&from).is_err() => {
+            Ok(false) if crate::files::symlink_metadata(&from).is_err() => {
                 let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                let _ = std::fs::remove_file(from.with_file_name(format!(".{name}.lock")));
+                let _ = crate::files::remove_file(from.with_file_name(format!(".{name}.lock")));
                 continue;
             }
             Ok(false) => {
@@ -1594,7 +1595,7 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
         // Sioul's writers change by use since the move (and whose paths were named anew), its
         // dated copy, a copy of its own in Sioul's folder, as the copy of what it held then.
         let against = if matches!(entry.kind, Some(Kind::List | Kind::LetterRecord)) { PathBuf::from(&entry.kept) } else { copy };
-        let dated_plain = against.starts_with(&journal.kept) && std::fs::symlink_metadata(&against).is_ok_and(|meta| meta.is_file());
+        let dated_plain = against.starts_with(&journal.kept) && crate::files::symlink_metadata(&against).is_ok_and(|meta| meta.present_file());
         if (against != PathBuf::from(&entry.to) && !dated_plain) || against.as_os_str().is_empty() {
             cleaned.kept.push((entry.from.clone(), "copy-missing"));
             continue;
@@ -1603,7 +1604,7 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
             cleaned.kept.push((entry.from.clone(), "copy-differs"));
             continue;
         }
-        let removed = std::fs::remove_file(&from).is_ok();
+        let removed = crate::files::remove_file(&from).is_ok();
         if removed {
             cleaned.removed += 1;
         } else {
@@ -1612,7 +1613,7 @@ fn clean_held(state: &Path, now: i64) -> Result<Cleaned, String> {
         // Its lock, beside it, once it is gone: Sioul's own, hidden.
         if removed {
             let name = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let _ = std::fs::remove_file(from.with_file_name(format!(".{name}.lock")));
+            let _ = crate::files::remove_file(from.with_file_name(format!(".{name}.lock")));
         }
     }
     for old in [OLD_PAPERS, OLD_LETTERS, crate::supplies::MOVES] {
@@ -1669,7 +1670,7 @@ pub fn moved_to(state: &Path, old: &Path) -> Option<PathBuf> {
     let relative = relative.to_string_lossy().replace('\\', "/");
     let entry = journal.files.iter().find(|e| e.from == relative && matches!(e.kind, Some(Kind::Paper | Kind::Letter)))?;
     let to = PathBuf::from(&entry.to);
-    std::fs::symlink_metadata(&to).is_ok_and(|meta| meta.is_file()).then_some(to)
+    crate::files::symlink_metadata(&to).is_ok_and(|meta| meta.present_file()).then_some(to)
 }
 
 /// How many old files of Sioul's this device's notes folder still holds, by
@@ -1678,22 +1679,22 @@ pub fn moved_to(state: &Path, old: &Path) -> Option<PathBuf> {
 pub fn old_files(state: &Path) -> usize {
     let storage = Storage::read(state);
     let (Some(notes), Ok(Some(journal))) = (storage.from_path(), Journal::load(state)) else { return 0 };
-    journal.files.iter().filter(|e| !e.alone).filter(|e| std::fs::symlink_metadata(join(&notes, &e.from)).is_ok()).count()
+    journal.files.iter().filter(|e| !e.alone).filter(|e| crate::files::symlink_metadata(join(&notes, &e.from)).is_ok()).count()
 }
 
 /// A folder and those below it, each taken out once empty; never a file,
 /// never through a link (a link put at `papers/` leads to the papers' folder).
 fn remove_empty(dir: &Path) {
-    if !std::fs::symlink_metadata(dir).is_ok_and(|meta| meta.is_dir()) {
+    if !crate::files::symlink_metadata(dir).is_ok_and(|meta| meta.present_dir()) {
         return;
     }
-    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let Ok(read) = crate::files::read_dir(dir) else { return };
     for entry in read.flatten() {
-        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+        if entry.file_type().is_ok_and(|t| t.present_dir()) {
             remove_empty(&entry.path());
         }
     }
-    let _ = std::fs::remove_dir(dir);
+    let _ = crate::files::remove_dir(dir);
 }
 
 /// The dated copies taken out of `kept` `KEEP_DAYS` after the old files
@@ -1705,11 +1706,11 @@ pub fn sweep_kept(kept: &Path, cleaned: i64, now: i64) {
     if cleaned <= 0 || now - cleaned <= KEEP_DAYS * 86_400 {
         return;
     }
-    let Ok(read) = std::fs::read_dir(kept) else { return };
+    let Ok(read) = crate::files::read_dir(kept) else { return };
     for entry in read.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.parse::<jiff::civil::Date>().is_ok() && entry.file_type().is_ok_and(|t| t.is_dir()) {
-            let _ = std::fs::remove_dir_all(entry.path());
+        if name.parse::<jiff::civil::Date>().is_ok() && entry.file_type().is_ok_and(|t| t.present_dir()) {
+            let _ = crate::files::remove_dir_all(entry.path());
         }
     }
 }

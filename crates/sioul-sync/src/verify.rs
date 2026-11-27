@@ -28,6 +28,8 @@
 //! `report_safe` 1 or 2): the original, attached whole, is checked instead,
 //! and the stamp says so after its id.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use mail_auth::common::headers::HeaderWriter;
 use mail_auth::spf::verify::SpfParameters;
 use mail_auth::dmarc::verify::DmarcParameters;
@@ -311,9 +313,9 @@ pub fn verify_folder(root: &Path, again: bool) -> usize {
     runtime.block_on(async {
         let mut checked = 0;
         for sub in ["new", "cur"] {
-            let Ok(entries) = std::fs::read_dir(root.join(sub)) else { continue };
-            for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file()) {
-                let Ok(raw) = std::fs::read(&path) else { continue };
+            let Ok(entries) = crate::files::read_dir(root.join(sub)) else { continue };
+            for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file()) {
+                let Ok(raw) = crate::files::read(&path) else { continue };
                 let raw = if again { verifier.unstamp(&raw) } else { raw };
                 if verifier.stamped(&raw) {
                     continue;
@@ -324,10 +326,10 @@ pub fn verify_folder(root: &Path, again: bool) -> usize {
                 }
                 // Written beside, then moved over: the file keeps its name, so its flags and origin stay.
                 let temporary = root.join("tmp").join(path.file_name().unwrap_or_default());
-                let written = std::fs::create_dir_all(root.join("tmp")).and_then(|()| write_private(&temporary, &stamped));
-                let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
-                if written.is_ok() && std::fs::rename(&temporary, &path).is_ok() {
-                    if let (Some(time), Ok(file)) = (modified, std::fs::File::options().write(true).open(&path)) {
+                let written = crate::files::create_dir_all(root.join("tmp")).and_then(|()| write_private(&temporary, &stamped));
+                let modified = crate::files::metadata(&path).and_then(|m| m.modified()).ok();
+                if written.is_ok() && crate::files::rename(&temporary, &path).is_ok() {
+                    if let (Some(time), Ok(file)) = (modified, crate::files::File::options().write(true).open(&path)) {
                         let _ = file.set_modified(time);
                     }
                     checked += 1;
@@ -363,9 +365,9 @@ pub fn recheck_tagged(root: &Path) -> (Vec<PathBuf>, bool) {
         let mut written = Vec::new();
         let mut asked = false;
         for sub in ["new", "cur"] {
-            let Ok(entries) = std::fs::read_dir(root.join(sub)) else { continue };
-            for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file()) {
-                let Ok(raw) = std::fs::read(&path) else { continue };
+            let Ok(entries) = crate::files::read_dir(root.join(sub)) else { continue };
+            for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file()) {
+                let Ok(raw) = crate::files::read(&path) else { continue };
                 if !verifier.stamped(&raw) || !tagged_and_failed(&raw, &verifier.id) {
                     continue;
                 }
@@ -404,7 +406,7 @@ pub fn recheck_tagged_once(folders: &[(String, PathBuf)]) -> Vec<(String, PathBu
         folders: Vec<String>,
     }
     let path = sioul_core::config::state_dir().join("verify").join("subject-tags.toml");
-    let mut done: Done = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let mut done: Done = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
     let mut written = Vec::new();
     let mut changed = false;
     let waiting: Vec<&(String, PathBuf)> = folders.iter().filter(|(key, _)| !done.folders.contains(key)).collect();
@@ -417,7 +419,7 @@ pub fn recheck_tagged_once(folders: &[(String, PathBuf)]) -> Vec<(String, PathBu
         }
     }
     if changed && let Ok(text) = toml::to_string(&done) {
-        let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).and_then(|()| sioul_core::filelock::replace(&path, text.as_bytes()));
+        let _ = crate::files::create_dir_all(path.parent().unwrap_or(Path::new("."))).and_then(|()| sioul_core::filelock::replace(&path, text.as_bytes()));
     }
     written
 }
@@ -428,15 +430,15 @@ pub fn recheck_tagged_once(folders: &[(String, PathBuf)]) -> Vec<(String, PathBu
 /// flag changed, the message moved) is left as it is now: never a second copy.
 fn write_in_place(root: &Path, path: &Path, bytes: &[u8]) -> bool {
     let temporary = root.join("tmp").join(path.file_name().unwrap_or_default());
-    let written = std::fs::create_dir_all(root.join("tmp")).and_then(|()| write_private(&temporary, bytes));
-    let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok();
-    if written.is_ok() && modified.is_some() && std::fs::rename(&temporary, path).is_ok() {
-        if let (Some(time), Ok(file)) = (modified, std::fs::File::options().write(true).open(path)) {
+    let written = crate::files::create_dir_all(root.join("tmp")).and_then(|()| write_private(&temporary, bytes));
+    let modified = crate::files::metadata(path).and_then(|m| m.modified()).ok();
+    if written.is_ok() && modified.is_some() && crate::files::rename(&temporary, path).is_ok() {
+        if let (Some(time), Ok(file)) = (modified, crate::files::File::options().write(true).open(path)) {
             let _ = file.set_modified(time);
         }
         return true;
     }
-    let _ = std::fs::remove_file(&temporary);
+    let _ = crate::files::remove_file(&temporary);
     false
 }
 
@@ -444,11 +446,10 @@ fn write_in_place(root: &Path, path: &Path, bytes: &[u8]) -> bool {
 /// readable by the other accounts of a shared computer, whatever the umask.
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let mut file = options.open(path)?;

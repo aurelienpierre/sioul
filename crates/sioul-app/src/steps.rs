@@ -62,6 +62,8 @@
 //!
 //! On a computer nothing here runs: the window does all of it each minute.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{load_config, tr};
 use sioul_core::config::Config;
 use std::path::Path;
@@ -516,8 +518,8 @@ fn brought_already(folder: &Path, names: &str) -> bool {
     let names: Vec<&str> = names.split('/').filter(|n| !n.is_empty() && *n != "." && *n != "..").collect();
     let same = |name: &str| {
         let (here, there) = (folder.join(name), fetched.join(name));
-        match (std::fs::metadata(&here), std::fs::metadata(&there)) {
-            (Ok(a), Ok(b)) if a.is_file() && b.is_file() && a.len() == b.len() => a.len() > SMALL || std::fs::read(&here).ok() == std::fs::read(&there).ok(),
+        match (crate::files::metadata(&here), crate::files::metadata(&there)) {
+            (Ok(a), Ok(b)) if a.present_file() && b.present_file() && a.len() == b.len() => a.len() > SMALL || crate::files::read(&here).ok() == crate::files::read(&there).ok(),
             _ => false,
         }
     };

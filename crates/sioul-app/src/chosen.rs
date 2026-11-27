@@ -28,6 +28,8 @@
 //! - **`at_start`**: what a stopped Sioul left in the cache's folder goes,
 //!   once this is known to be the profile's Sioul.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::{Value, json};
@@ -138,11 +140,11 @@ fn root() -> PathBuf {
 fn new_hold(root: &Path) -> std::io::Result<PathBuf> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let hold = root.join(format!("{}-{}-{}", jiff::Timestamp::now().as_millisecond(), std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-    std::fs::create_dir_all(&hold)?;
+    crate::files::create_dir_all(&hold)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&hold, std::fs::Permissions::from_mode(0o700))?;
+        crate::files::set_permissions(&hold, crate::files::Permissions::from_mode(0o700))?;
     }
     Ok(hold)
 }
@@ -150,10 +152,10 @@ fn new_hold(root: &Path) -> std::io::Result<PathBuf> {
 /// A held folder taken away: its files overwritten first (a key, a bank's
 /// export), then the folder.
 fn gone(hold: &Path) {
-    for entry in std::fs::read_dir(hold).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(hold).into_iter().flatten().filter_map(Result::ok) {
         let _ = sioul_core::filelock::remove_wiping(&entry.path());
     }
-    let _ = std::fs::remove_dir_all(hold);
+    let _ = crate::files::remove_dir_all(hold);
 }
 
 /// A file chosen, to read at `path`: the file itself, or Sioul's copy of
@@ -180,7 +182,7 @@ impl Chosen {
         }
         let name = self.path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let names = |n: u32| sioul_core::downloads::numbered(&name, n, sioul_core::downloads::Numbering::Paren);
-        std::fs::create_dir_all(folder)
+        crate::files::create_dir_all(folder)
             .and_then(|()| sioul_core::filelock::place_new(&self.path, folder, &names, true))
             .map_err(|e| say("chosen-unreadable", &[("name", name.clone()), ("detail", e.to_string())]))
     }
@@ -226,7 +228,7 @@ fn copied(answer: &Value, hold: &Path, uri: &str) -> Result<PathBuf, String> {
     let name = answer["name"].as_str().map(str::trim).filter(|n| !n.is_empty()).map_or_else(|| last_part(uri), str::to_string);
     if let Some(path) = answer["path"].as_str() {
         let path = PathBuf::from(path);
-        if plain(&name) && path == hold.join(&name) && path.is_file() {
+        if plain(&name) && path == hold.join(&name) && path.present_file() {
             return Ok(path);
         }
         return Err(say("chosen-unreadable", &[("name", name), ("detail", "not copied where asked".to_string())]));
@@ -247,7 +249,7 @@ fn copied(answer: &Value, hold: &Path, uri: &str) -> Result<PathBuf, String> {
 pub(crate) fn linkable(url: &str) -> Option<PathBuf> {
     match address(url) {
         Address::Path(path) => Some(path),
-        Address::Storage { path, .. } if std::fs::File::open(&path).is_ok() => Some(path),
+        Address::Storage { path, .. } if crate::files::File::open(&path).is_ok() => Some(path),
         Address::Storage { .. } | Address::Content(_) => None,
     }
 }
@@ -273,7 +275,7 @@ fn save_in(root: &Path, url: &str, name: &str, bytes: &[u8], local: impl FnOnce(
     let not_saved = |detail: String| say("chosen-not-saved", &[("name", name.to_string()), ("detail", detail)]);
     let hold = new_hold(root).map_err(|e| not_saved(e.to_string()))?;
     let file = hold.join(if plain(name) { name } else { "file" });
-    let said = match std::fs::write(&file, bytes) {
+    let said = match crate::files::write(&file, bytes) {
         Ok(()) => {
             let answer = write(&file, &uri);
             if answer["saved"] == true {
@@ -303,14 +305,14 @@ pub(crate) fn at_start() {
 /// the sweep's: its new name; none when there was nothing to set aside.
 fn set_aside(root: &Path) -> Option<PathBuf> {
     let aside = root.with_file_name(format!("chosen-gone-{}", std::process::id()));
-    std::fs::rename(root, &aside).is_ok().then_some(aside)
+    crate::files::rename(root, &aside).is_ok().then_some(aside)
 }
 
 /// The folder set aside taken away, each copy overwritten first, and those
 /// an earlier start left while removing.
 fn sweep(root: &Path, aside: Option<&Path>) {
     let Some(parent) = root.parent() else { return };
-    let mut left: Vec<PathBuf> = std::fs::read_dir(parent)
+    let mut left: Vec<PathBuf> = crate::files::read_dir(parent)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -321,10 +323,10 @@ fn sweep(root: &Path, aside: Option<&Path>) {
     left.sort();
     left.dedup();
     for folder in left {
-        for hold in std::fs::read_dir(&folder).into_iter().flatten().filter_map(Result::ok) {
+        for hold in crate::files::read_dir(&folder).into_iter().flatten().filter_map(Result::ok) {
             gone(&hold.path());
         }
-        let _ = std::fs::remove_dir_all(&folder);
+        let _ = crate::files::remove_dir_all(&folder);
     }
 }
 

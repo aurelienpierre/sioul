@@ -1205,7 +1205,7 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
         // The record's own SHA-256, of its bytes as written: it is never
         // written again, so bytes that differ later were changed outside
         // Sioul (`invoice::outside`). Kept in this device's journal, with its number.
-        let record_sha = std::fs::read(&written).map(|bytes| super::kept::sha256(&bytes)).unwrap_or_default();
+        let record_sha = crate::files::read(&written).map(|bytes| super::kept::sha256(&bytes)).unwrap_or_default();
         let mut own = Journal::own(dir, &numbering.device).unwrap_or_default();
         let before = own.series.get(&invoice.series).cloned();
         own.series.insert(invoice.series.clone(), series::Last { last: n, number: number.clone(), day: day.to_string() });

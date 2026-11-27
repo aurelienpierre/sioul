@@ -49,7 +49,7 @@ pub fn judged_dir() -> PathBuf {
 /// view of topics told (`changes`).
 pub fn write_table(path: &Path, table: &Table) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(path, &table.to_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
     crate::changes::said(crate::changes::Kind::Topics);
@@ -66,7 +66,7 @@ static TABLE: Mutex<Option<Loaded>> = Mutex::new(None);
 
 /// The table at `path` and its name, read again only when its file changed; none without one, or one this Sioul cannot read.
 pub fn cached(path: &Path) -> Option<(Arc<Table>, u64)> {
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     let (modified, len) = (meta.modified().ok()?, meta.len());
     let mut kept = TABLE.lock().ok()?;
     if let Some((p, m, l, table, id)) = kept.as_ref()
@@ -76,7 +76,7 @@ pub fn cached(path: &Path) -> Option<(Arc<Table>, u64)> {
     {
         return Some((Arc::clone(table), *id));
     }
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = crate::files::read(path).ok()?;
     let table = Arc::new(Table::from_bytes(&bytes).ok()?);
     let id = table_id(&bytes);
     *kept = Some((path.to_path_buf(), modified, len, Arc::clone(&table), id));
@@ -130,7 +130,7 @@ impl Judgments {
 
     fn read(dir: &Path, table: u64) -> Judgments {
         let mut out = Judgments { table, ..Judgments::default() };
-        let text = std::fs::read_to_string(file_of(dir, table)).unwrap_or_default();
+        let text = crate::files::read_to_string(file_of(dir, table)).unwrap_or_default();
         for line in text.lines().filter_map(|l| serde_json::from_str::<Line>(l).ok()) {
             match (line.topic, line.band) {
                 (Some(topic), Some(band)) => {
@@ -161,11 +161,11 @@ fn keep(dir: &Path, table: u64, judged: &[(String, Option<(String, Band)>)]) -> 
     if judged.is_empty() {
         return Ok(());
     }
-    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let own = file_of(dir, table);
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
         if entry.path() != own && entry.path().extension().is_some_and(|e| e == "jsonl") {
-            let _ = std::fs::remove_file(entry.path());
+            let _ = crate::files::remove_file(entry.path());
         }
     }
     let mut text = String::new();
@@ -175,7 +175,7 @@ fn keep(dir: &Path, table: u64, judged: &[(String, Option<(String, Band)>)]) -> 
         text.push('\n');
     }
     crate::filelock::with_lock(&own, || {
-        std::fs::OpenOptions::new().create(true).append(true).open(&own).and_then(|mut file| file.write_all(text.as_bytes())).map_err(|e| format!("{}: {e}", own.display()))
+        crate::files::OpenOptions::new().create(true).append(true).open(&own).and_then(|mut file| file.write_all(text.as_bytes())).map_err(|e| format!("{}: {e}", own.display()))
     })?;
     crate::changes::said(crate::changes::Kind::Topics);
     Ok(())
@@ -190,7 +190,7 @@ fn key_of(account: &str, card: &Card, digest: &str) -> String {
 fn card_of(path: &Path) -> Option<Card> {
     use std::io::Read as _;
     let mut bytes = Vec::new();
-    std::fs::File::open(path).ok()?.take(START).read_to_end(&mut bytes).ok()?;
+    crate::files::File::open(path).ok()?.take(START).read_to_end(&mut bytes).ok()?;
     Card::from_bytes(&bytes)
 }
 
@@ -245,7 +245,7 @@ struct MailStamp {
 }
 
 fn stamped(path: PathBuf) -> Stamped {
-    let meta = std::fs::metadata(&path).ok();
+    let meta = crate::files::metadata(&path).ok();
     let (time, len) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.map_or(0, |m| m.len()));
     (path, time, len)
 }

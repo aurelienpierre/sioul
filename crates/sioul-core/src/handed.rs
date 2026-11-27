@@ -17,6 +17,8 @@
 //! (`Draft::discard`). Neither travels to your other devices: the sharing
 //! carries the drafts, not this folder, and a request is this device's.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::compose::{Draft, split_addresses};
 use crate::config::data_dir;
 use crate::config::{Account, Config};
@@ -164,15 +166,15 @@ impl Incoming {
     /// The requests waiting, oldest first. One that does not read (cut, or
     /// from a newer Sioul) is set aside as `.unread`, read no more.
     pub fn waiting(&self) -> Vec<Handed> {
-        let Ok(entries) = std::fs::read_dir(self.requests()) else { return Vec::new() };
+        let Ok(entries) = crate::files::read_dir(self.requests()) else { return Vec::new() };
         let mut found: Vec<Handed> = Vec::new();
         for path in entries.filter_map(Result::ok).map(|e| e.path()) {
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
             let Some(id) = name.strip_suffix(".json").filter(|id| valid_id(id)) else { continue };
-            match std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Handed>(&text).ok()).filter(|h| h.id == id) {
+            match crate::files::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Handed>(&text).ok()).filter(|h| h.id == id) {
                 Some(handed) => found.push(handed),
                 None => {
-                    let _ = std::fs::rename(&path, path.with_extension("unread"));
+                    let _ = crate::files::rename(&path, path.with_extension("unread"));
                 }
             }
         }
@@ -182,7 +184,7 @@ impl Incoming {
 
     /// The files copied for request `id`, once they all are; none before.
     pub fn arrived(&self, id: &str) -> Option<Arrived> {
-        serde_json::from_str(&std::fs::read_to_string(self.named(id, ".done.json")).ok()?).ok()
+        serde_json::from_str(&crate::files::read_to_string(self.named(id, ".done.json")).ok()?).ok()
     }
 
     /// Request `id` taken, made into draft `draft`, `files` still coming from
@@ -190,18 +192,18 @@ impl Incoming {
     pub fn mark(&self, id: &str, draft: &str, copier: u32, files: u32) -> Result<(), String> {
         let mark = Mark { id: id.to_string(), draft: draft.to_string(), copier, files };
         write_whole(&self.named(id, ".draft"), &serde_json::to_string(&mark).map_err(|e| e.to_string())?)?;
-        let _ = std::fs::remove_file(self.named(id, ".json"));
+        let _ = crate::files::remove_file(self.named(id, ".json"));
         Ok(())
     }
 
     /// The requests taken whose files were still coming.
     pub fn marks(&self) -> Vec<Mark> {
-        let Ok(entries) = std::fs::read_dir(self.requests()) else { return Vec::new() };
+        let Ok(entries) = crate::files::read_dir(self.requests()) else { return Vec::new() };
         let mut found: Vec<Mark> = entries
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|p| p.extension().is_some_and(|x| x == "draft"))
-            .filter_map(|p| serde_json::from_str::<Mark>(&std::fs::read_to_string(&p).ok()?).ok())
+            .filter_map(|p| serde_json::from_str::<Mark>(&crate::files::read_to_string(&p).ok()?).ok())
             .filter(|m| valid_id(&m.id))
             .collect();
         found.sort_by(|a, b| a.id.cmp(&b.id));
@@ -211,7 +213,7 @@ impl Incoming {
     /// Request `id` done with: its request, its mark, its arrival.
     pub fn done(&self, id: &str) {
         for suffix in [".json", ".draft", ".done.json"] {
-            let _ = std::fs::remove_file(self.named(id, suffix));
+            let _ = crate::files::remove_file(self.named(id, suffix));
         }
     }
 
@@ -219,7 +221,7 @@ impl Incoming {
     pub fn drop_request(&self, id: &str) {
         self.done(id);
         if valid_id(id) {
-            let _ = std::fs::remove_dir_all(self.files_of(id));
+            let _ = crate::files::remove_dir_all(self.files_of(id));
         }
     }
 
@@ -228,15 +230,15 @@ impl Incoming {
     /// removed and said, as those never begun.
     pub fn salvage(&self, id: &str, expected: u32) -> Arrived {
         let mut arrived = Arrived::default();
-        if let Ok(entries) = std::fs::read_dir(self.files_of(id)) {
+        if let Ok(entries) = crate::files::read_dir(self.files_of(id)) {
             let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
             paths.sort();
             for path in paths {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 if let Some(cut) = name.strip_suffix(".part") {
-                    let _ = std::fs::remove_file(&path);
+                    let _ = crate::files::remove_file(&path);
                     arrived.files.push(ArrivedFile { name: cut.to_string(), stopped: true, ..ArrivedFile::default() });
-                } else if path.is_file() {
+                } else if path.present_file() {
                     arrived.files.push(ArrivedFile { name, path: path.to_string_lossy().to_string(), ..ArrivedFile::default() });
                 }
             }
@@ -250,13 +252,13 @@ impl Incoming {
     /// left them, a Sioul stopped while copying), removed once a day old.
     /// `held` are the files the drafts hold.
     pub fn tidy(&self, held: &[PathBuf], now: SystemTime) {
-        let Ok(entries) = std::fs::read_dir(self.files()) else { return };
+        let Ok(entries) = crate::files::read_dir(self.files()) else { return };
         for folder in entries.filter_map(Result::ok).map(|e| e.path()) {
             let Some(id) = folder.file_name().and_then(|n| n.to_str()).filter(|id| valid_id(id)).map(str::to_string) else { continue };
-            let waiting = [".json", ".draft", ".done.json"].iter().any(|suffix| self.named(&id, suffix).exists());
-            let old = std::fs::metadata(&folder).and_then(|m| m.modified()).is_ok_and(|at| now.duration_since(at).unwrap_or_default() > Duration::from_secs(24 * 3600));
+            let waiting = [".json", ".draft", ".done.json"].iter().any(|suffix| self.named(&id, suffix).present());
+            let old = crate::files::metadata(&folder).and_then(|m| m.modified()).is_ok_and(|at| now.duration_since(at).unwrap_or_default() > Duration::from_secs(24 * 3600));
             if !waiting && old && !held.iter().any(|path| path.starts_with(&folder)) {
-                let _ = std::fs::remove_dir_all(&folder);
+                let _ = crate::files::remove_dir_all(&folder);
             }
         }
     }
@@ -266,11 +268,11 @@ impl Incoming {
 fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let temporary = path.with_extension("new");
-    std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    crate::files::write(&temporary, text).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)
 }
 
 /// The account a message handed to Sioul goes out from: the one asked (by
@@ -323,7 +325,7 @@ pub fn attach(draft: &mut Draft, folder: &Path, arrived: &Arrived) -> Vec<Arrive
     for file in &arrived.files {
         let path = PathBuf::from(&file.path);
         let inside = !file.path.is_empty() && path.starts_with(folder) && path.components().all(|c| !matches!(c, Component::ParentDir | Component::CurDir));
-        if inside && path.is_file() {
+        if inside && path.present_file() {
             if !draft.attachments.contains(&path) {
                 draft.attachments.push(path);
             }

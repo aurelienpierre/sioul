@@ -1619,7 +1619,7 @@ pub fn lists() -> Vec<Collection> {
 
 /// One task from its file; None when the file holds an event.
 pub fn read(path: &Path, list: &Collection, zone: &TimeZone) -> Option<Task> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     of_file(path, &text, list, zone)
 }
 

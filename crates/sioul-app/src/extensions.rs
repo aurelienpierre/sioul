@@ -735,7 +735,7 @@ fn apart(choices: &mut [Value], folders: &BTreeMap<String, std::path::PathBuf>) 
     let same = twice(choices);
     for choice in choices.iter_mut().filter(|c| same.contains(&line(c))) {
         let Some(folder) = choice["choice"].as_str().and_then(|c| folders.get(c)) else { continue };
-        let events = std::fs::read_dir(folder).map(|all| all.filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count()).unwrap_or(0);
+        let events = crate::files::read_dir(folder).map(|all| all.filter_map(Result::ok).filter(|e| e.path().extension().is_some_and(|x| x == "ics")).count()).unwrap_or(0);
         let label = format!("{} · {}", choice["label"].as_str().unwrap_or_default(), say("extension-calendar-count", &[("count", events.to_string())]));
         choice["label"] = Value::String(label);
     }
@@ -1244,8 +1244,8 @@ fn forget(id: &str) -> bool {
         return false;
     }
     let gone = state::change(&state::path(), |s| s.extensions.retain(|i| !(i.offer.id == id && i.leaving)));
-    let _ = std::fs::remove_file(state::log_path(id));
-    let _ = std::fs::remove_file(run_lock_path(id));
+    let _ = crate::files::remove_file(state::log_path(id));
+    let _ = crate::files::remove_file(run_lock_path(id));
     gone.is_ok()
 }
 
@@ -1627,15 +1627,15 @@ fn run_lock_path(id: &str) -> std::path::PathBuf {
 /// when another process holds it. A lock that cannot be taken here at all (a
 /// file system without locks) lets the call run: `RUNNING` still holds within the process.
 #[must_use]
-fn run_lock(id: &str) -> Option<Option<std::fs::File>> {
+fn run_lock(id: &str) -> Option<Option<crate::files::File>> {
     let path = run_lock_path(id);
     if let Some(folder) = path.parent() {
-        let _ = std::fs::create_dir_all(folder);
+        let _ = crate::files::create_dir_all(folder);
     }
-    let Ok(file) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&path) else { return Some(None) };
+    let Ok(file) = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(&path) else { return Some(None) };
     match file.try_lock() {
         Ok(()) => Some(Some(file)),
-        Err(std::fs::TryLockError::WouldBlock) => None,
+        Err(crate::files::TryLockError::WouldBlock) => None,
         Err(_) => Some(None),
     }
 }

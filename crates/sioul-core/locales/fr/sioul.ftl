@@ -9505,6 +9505,42 @@ cli-pgp-import = Importe les clés d’un fichier ; la phrase de passe d’une
 cli-pgp-export = Écrit une clé publique, en ASCII armuré, dans le terminal
 cli-pgp-lookup = Cherche la clé de quelqu’un : le Web Key Directory de son domaine, puis keys.openpgp.org
 cli-pgp-cards = Ce que dit chaque clé de sécurité branchée, sans son code PIN : ses clés, leur toucher, les essais restants. Rien n’est signé ni ouvert, aucun code PIN n’est donné
+cli-store = Ce que Sioul garde sur cet appareil, scellé : ses fichiers lus et écrits à travers le sceau
+cli-store-ls = Les dossiers des fichiers scellés, ou les fichiers d’un dossier : tailles, versions, copies
+cli-store-ls--path = Un dossier (config, data/mail/…) ou un fichier ; tous les dossiers sans rien
+cli-store-ls--any = La santé et vos propres clés nommées aussi
+cli-store-ls--clients = Les fichiers des clients nommés aussi
+cli-store-cat = Un fichier de configuration descellé vers la sortie standard
+cli-store-cat--any = N’importe quel fichier de Sioul, pas seulement sa configuration
+cli-store-cat--clients = Un fichier d’un dossier client
+cli-store-cat--version = Une version précédente (son numéro dans « sioul store versions »)
+cli-store-put = Un fichier de configuration scellé depuis l’entrée standard ; la version qu’il remplace est gardée
+cli-store-edit = Un fichier de configuration ouvert dans $EDITOR par le dossier en mémoire (Linux), scellé de nouveau à sa fermeture
+cli-store-versions = Les versions précédentes d’un fichier, la plus récente d’abord
+cli-store-restore = Remet une version précédente ; celle qu’elle remplace devient la version 1, et la même commande l’annule
+cli-store-restore--version = Son numéro dans « sioul store versions »
+cli-store-check = Ouvre chaque copie de chaque fichier et la compare à la liste de son dossier
+cli-store-check--repair = Répare ce qui peut l’être (les écritures attendent pendant ce temps)
+cli-store-check--any = La santé et vos propres clés nommées aussi
+cli-store-check--clients = Les fichiers des clients nommés aussi
+cli-store-export = Écrit en clair chaque fichier que Sioul garde, chacun dans son format standard, pour tout autre programme
+cli-store-export--to = Un dossier vide à vous, hors des dossiers de Sioul
+cli-store-export--clients = Les dossiers clients aussi
+cli-store-bring-in = Un fichier mis de côté à un démarrage (écrit à côté de ce que Sioul garde par un autre programme ou une version plus ancienne de Sioul) repris exprès : scellé à son propre chemin, ce qu’il remplace gardé comme version précédente
+cli-store-bring-in--path = Son chemin sous data/set-aside/ (`sioul store ls data/set-aside --any` les liste)
+cli-store-bring-in--any = N’importe quel fichier de Sioul, pas seulement sa configuration
+cli-store-bring-in--clients = Un dossier client
+cli-store-reopen = Ce que « Repartir » a mis de côté, rouvert avec un de ses moyens de retour et remis comme ce que Sioul garde ici (ce qu’il gardait jusque-là mis de côté à son tour, jamais effacé) ; sans nom, ceux mis de côté. Fermez d’abord la fenêtre de Sioul
+cli-store-reopen--when = Son nom (`sioul store reopen` les liste)
+cli-store-reopen--code = Avec son code de récupération (demandé)
+cli-store-reopen--card = Avec votre clé de sécurité (son code PIN demandé)
+cli-store-unseal = Écrit en clair les fichiers scellés, rangés comme aujourd’hui, pour un Sioul plus ancien
+cli-store-unseal--to = Un dossier vide à vous, hors des dossiers de Sioul
+cli-store-unseal--any = La santé et vos propres clés aussi
+cli-store-unseal--clients = Les dossiers clients aussi
+cli-settings = Un réglage de Sioul, lu ou changé comme la fenêtre le fait
+cli-settings-get = La valeur d’un réglage, par son nom dans la configuration (mail.history_weeks)
+cli-settings-set = Change un réglage comme la fenêtre le change, sa valeur en JSON : true, 3, "texte", [1, 2]
 cli-dav = Les contacts et les agendas sur un serveur CardDAV et CalDAV : ajouter un compte, synchroniser
 cli-dav-add = Trouve où sont vos contacts et vos agendas, demande le mot de passe, le teste et ajoute le compte
 cli-dav-add--url = L’adresse du serveur, quand elle ne peut pas être trouvée à partir de la vôtre
@@ -10630,6 +10666,7 @@ storage-move-scans-stop = Les numérisations de vos courriers voyageaient avec v
 storage-move-scans-start = Après le déplacement, les numérisations de vos courriers ({ $count }) voyagent scellées dans Papiers jusqu’à vos autres appareils, ce qu’elles ne faisaient pas avant.
 storage-trial-own = Le dossier donné avec { $flag } est, contient ou se trouve dans le propre dossier { $own } de cet appareil : un essai du déplacement ne se fait que sur des copies.
 storage-move-carried = Un programme de synchronisation emporte { $carrier } : les fichiers de ce dossier y voyageraient aussi, lisibles sur le serveur de ce programme, sans le scellé de Sioul.
+storage-sealed-tradeoff = Ce dossier est dans les dossiers de Sioul : ce qu’il contient est donc scellé avec le reste. Ce qui est gagné : sur le disque, il est illisible sans votre session, sur un appareil perdu ou volé aussi, et il voyage scellé. Ce qui est perdu : Obsidian, Nextcloud Notes, votre gestionnaire de fichiers, la recherche et les aperçus du système ne le lisent plus ; pour en sortir les fichiers, il faut Sioul, ou sioul store export.
 storage-folder-empty = Choisissez un dossier : une ligne vide laisserait les fichiers où ils sont et les chercherait ailleurs.
 storage-move-left = Ceux-ci restent dans votre dossier de notes, puisqu’aucune liste de Sioul ne les nomme : { $files }.
 storage-folder-not-empty = { $what } contient déjà des fichiers : choisissez un dossier vide, ou un nouveau. Tout ce qui est dans ce dossier est partagé par Sioul avec vos autres appareils.
@@ -11948,3 +11985,165 @@ reach-remove-phone-keep = La garder
 reach-by-free-nothing = Décidé par « Rien du tout » du temps libre : seules vos personnes qui passent toujours viennent alors.
 except-circle-groups = Conversations de groupe
 except-circle-hidden = Numéros masqués
+
+## sioul store et sioul settings : les fichiers scellés de Sioul par la ligne de commande (crates/sioul-cli/src/store.rs, docs/store.md)
+store-not-created = Sioul ne garde encore rien de scellé sur cet appareil.
+store-exists = Ce que Sioul garde sur cet appareil est déjà scellé.
+store-wrong-key = Cette clé n’ouvre pas ce que Sioul garde sur cet appareil : rien n’a été lu ni changé.
+store-key-locked = Sioul attend que votre trousseau s’ouvre.
+store-key-no-service = Ce système n’a pas de trousseau : la phrase de passe de Sioul ouvre ce qu’il garde.
+store-key-missing = Votre trousseau ne garde aucune clé pour ce que Sioul garde ici : il faut un moyen de la retrouver.
+store-wrong-passphrase = Ce n’est pas la phrase de passe avec laquelle la clé de Sioul est gardée.
+store-passphrase = Phrase de passe de Sioul :{" "}
+store-absent = { $path } : aucun fichier de ce nom parmi ce que Sioul garde ici.
+store-damaged = { $path } est abîmé et aucune de ses copies ne s’ouvre.
+store-changed = { $path } a changé entre-temps : rien n’a été écrit. Relisez-le.
+store-locked = Un verrou des fichiers scellés n’a pas pu être pris : { $why }
+store-no-room = Le disque est trop plein pour écrire ceci : le fichier est resté tel quel.
+store-synced = { $folder } est porté par une application de synchronisation : Sioul n’y garde rien de scellé.
+store-refused = { $why }
+store-not-text = { $path } n’est pas du texte.
+store-not-config = { $path } n’est pas un fichier de configuration de Sioul : ajoutez --any pour l’atteindre.
+store-client-file = { $path } fait partie d’un dossier client : ajoutez --clients pour l’atteindre.
+store-not-parsed = { $path } ne se lit pas comme un fichier de son type : rien n’a été écrit. { $why }
+store-written = { $path } est scellé (version { $version }). La version qu’il remplace est gardée : sioul store versions { $path }
+store-unchanged = { $path } n’a pas changé : rien n’a été écrit.
+store-edit-elsewhere = Modifier sur place demande un dossier en mémoire, que seul Linux a : utilisez sioul store cat puis sioul store put.
+store-edit-cancelled = L’éditeur s’est arrêté sur une erreur : rien n’a été écrit.
+store-version-current = maintenant
+store-no-such-version = { $path } n’a pas de version { $version } : sioul store versions { $path } les donne.
+store-restored = { $path } : la version { $version } est remise. Pour l’annuler : sioul store restore { $path } --version 1
+store-ls-files = { $count ->
+    [one] 1 fichier
+   *[other] { $count } fichiers
+}
+store-ls-copies = { $count ->
+    [one] 1 copie
+   *[other] { $count } copies
+}
+store-ls-damaged = abîmé
+store-unseal-inside = Le dossier donné est dans les dossiers de Sioul, ou les contient : choisissez-en un autre.
+store-unseal-not-empty = { $folder } n’est pas vide : donnez un dossier vide.
+store-unsealed = { $count ->
+    [one] 1 fichier écrit en clair dans { $folder }.
+   *[other] { $count } fichiers écrits en clair dans { $folder }.
+}
+store-exported = { $count ->
+    [one] 1 fichier écrit en clair dans { $folder }, dans son format standard.
+   *[other] { $count } fichiers écrits en clair dans { $folder }, chacun dans son format standard (TOML, iCalendar, vCard, Maildir, JSON).
+}
+store-export-clients-left = { $count ->
+    [one] 1 fichier d’un client a été laissé de côté : ajoutez --clients pour l’écrire aussi.
+   *[other] { $count } fichiers de clients ont été laissés de côté : ajoutez --clients pour les écrire aussi.
+}
+store-export-damaged = { $count ->
+    [one] 1 fichier ne s’ouvre pas et n’a pas été écrit : sioul store check dit lequel.
+   *[other] { $count } fichiers ne s’ouvrent pas et n’ont pas été écrits : sioul store check dit lesquels.
+}
+store-set-aside = { $count ->
+    [one] Un fichier écrit à côté de ce que Sioul garde ici, par un autre programme ou une version plus ancienne de Sioul (ou une copie remise à la main), a été mis de côté, scellé, dans { $folder } : Sioul ne l’a pas lu comme le vôtre. Pour le reprendre exprès : sioul store bring-in, avec son chemin là.
+   *[other] { $count } fichiers écrits à côté de ce que Sioul garde ici, par un autre programme ou une version plus ancienne de Sioul (ou des copies remises à la main), ont été mis de côté, scellés, dans { $folder } : Sioul ne les a pas lus comme les vôtres. Pour en reprendre un exprès : sioul store bring-in, avec son chemin là.
+}
+store-check-copies = { $files } avec { $good }
+store-check-folder = { $folder } : { $files } fichiers, { $whole } entiers (copies bonnes : { $copies }).
+store-check-list-damaged = Sa liste ne s’ouvre pas : --repair la refait à partir des fichiers.
+store-check-thin = { $name } : { $good } copies sur { $kept } s’ouvrent.
+store-check-mended = { $name } : réparé à partir de { $from }.
+store-check-lost-file = { $name } : aucune copie ne s’ouvre ici ; son serveur ou un autre de vos appareils peut le rapporter.
+store-check-lines = { $count ->
+    [one] 1 ligne ne s’ouvre pas dans les fichiers qui ne font que grandir ; les autres se lisent.
+   *[other] { $count } lignes ne s’ouvrent pas dans les fichiers qui ne font que grandir ; les autres se lisent.
+}
+store-check-newer = { $name } : une copie plus récente que ce que dit sa liste est là (--repair la prend).
+store-check-newer-taken = { $name } : une copie plus récente que ce que dit sa liste était là, et elle a été prise.
+store-check-unlisted = { $count } fichiers scellés qu’aucune liste ne nomme (--repair les retire).
+store-check-unlisted-taken = { $count } fichiers scellés qu’aucune liste ne nommait ont été retirés.
+store-check-lost = Des fichiers ne s’ouvrent plus ici : voir ci-dessus.
+settings-unset = { $key } n’est pas dans la configuration.
+settings-set = { $key } = { $value } : changé comme la fenêtre le change.
+store-bad-path = { $path } n’est pas un chemin des fichiers de Sioul : config/…, data/…, state/… ou cache/…, sans partie vide, « . » ni « .. ».
+store-cat-earlier = { $path } : sa copie actuelle ne s’ouvre pas ; voici sa version précédente du { $when }.
+store-cat-lines-lost = { $path } : { $count } lignes ne s’ouvrent pas ou manquent ; les autres suivent.
+store-ls-hidden = { $count } fichiers de clients, de santé ou de vos propres clés ne sont pas nommés : ajoutez --clients ou --any.
+store-edit-kept = Ce que vous avez modifié est gardé dans { $file } : rien de ce que vous avez tapé n’est perdu.
+store-check-private = un fichier non nommé (--clients ou --any le nomme)
+store-check-from-twin = sa seconde copie
+store-check-from-earlier = sa version précédente du { $when }
+settings-in-window = { $key } se change dans la fenêtre de Sioul, qui fait plus que l’écrire.
+settings-not-json = { $value } n’est pas une valeur en JSON : écrivez true, 3, "texte" ou [1, 2].
+settings-broke = { $key } n’a pas été changé : avec ce changement, la configuration ne se lit plus ({ $why }).
+store-unseal-left = { $count ->
+    [one] 1 fichier de client, de santé ou de vos propres clés est laissé de côté : ajoutez --clients ou --any pour l’écrire aussi.
+   *[other] { $count } fichiers de clients, de santé ou de vos propres clés sont laissés de côté : ajoutez --clients ou --any pour les écrire aussi.
+}
+
+## The screen before the window, the ways back and the card "What Sioul keeps here" (storegate.rs, StoreGateWindow.qml, WaysBack.qml, StoreCard.qml; docs/store.md, "Ways back")
+store-gate-title = Ce que Sioul garde sur cet appareil
+store-gate-missing = Votre trousseau ne garde plus de clé pour ce que Sioul garde ici. Un moyen de retour que vous avez gardé l’ouvre de nouveau ; sans aucun, Sioul peut repartir de vos serveurs et de vos autres appareils.
+store-gate-waiting-help = Ouvrez votre trousseau comme votre système le demande, souvent avec le mot de passe de votre session : Sioul continue de lui-même une fois qu’il est ouvert.
+store-gate-use-way = Utiliser un moyen de retour…
+store-gate-passphrase = La phrase de passe que vous avez gardée
+store-gate-code = Votre code de récupération
+store-gate-card-pin = Le code PIN de votre clé de sécurité
+store-gate-use = Ouvrir
+store-gate-use-card = Utiliser ma clé de sécurité
+store-gate-start-again = Repartir de vos serveurs et de vos autres appareils
+store-gate-start-again-help = Sans moyen de retour : ce qui est scellé ici est mis de côté, jamais effacé, pour qu’un moyen de retour retrouvé plus tard l’ouvre encore. Vos courriels, vos agendas et vos contacts reviennent de leurs serveurs ; ce que votre partage transporte revient de vos autres appareils une fois que celui-ci le rejoint de nouveau avec sa phrase de passe. Ce que seul cet appareil gardait reste scellé, de côté.
+store-gate-moving = { $count ->
+    [one] Sioul scelle ce qu’il garde sur cet appareil : 1 fichier.
+   *[other] Sioul scelle ce qu’il garde sur cet appareil, un fichier après l’autre : { $count } fichiers.
+}
+store-gate-moving-help = Chaque fichier est scellé, relu et comparé avant que sa copie en clair ne parte. Si c’est interrompu, Sioul reprend là où il s’était arrêté à son prochain démarrage.
+store-gate-sealed = Ce que Sioul garde sur cet appareil est scellé : votre session l’ouvre, comme pour toute application.
+store-gate-open = Ouvrir Sioul
+store-gate-move-stopped = Le scellement s’est arrêté : ce qui a été scellé le reste, le reste demeure en clair et se lit comme avant, et il reprend au prochain démarrage.
+store-gate-start-again-confirm = Ceci met de côté ce que Sioul garde ici, scellé et entier, dans des dossiers nommés sealed-unopened à côté de ceux de Sioul : rien n’est effacé. Un moyen de retour retrouvé plus tard l’ouvre de nouveau (sioul store reopen), et de là il peut être exporté. Puis Sioul repart à vide : vos courriels, vos agendas et vos contacts reviennent de leurs serveurs, et ce que votre partage transporte, de vos autres appareils.
+store-gate-start-again-yes = Le mettre de côté et repartir
+store-gate-start-again-no = Pas maintenant
+store-gate-start-again-not-now = Votre trousseau est là mais pas ouvert : ouvrez-le, et Sioul continue de lui-même. Repartir n’est que pour une clé que votre trousseau ne garde plus.
+store-gate-passphrase-kept-on = La phrase de passe que vous avez gardée le { $date }.
+store-gate-passphrase-sharing-then = La phrase de passe que vous avez gardée le { $date } : celle de votre partage, telle qu’elle était ce jour-là.
+store-way-card-stale = Une de vos clés de sécurité a été réinitialisée, ou a reçu une nouvelle clé de chiffrement, depuis que son moyen de retour a été gardé : ce moyen n’ouvre plus rien. Gardez de nouveau ce moyen de retour ci-dessous.
+store-reopen-none = Rien n’a été mis de côté ici en repartant de vos serveurs et de vos autres appareils.
+store-reopen-list = Mis de côté le { $when }, avec ces moyens de retour : { $ways }
+store-reopen-which = Nommez celui à rouvrir : sioul store reopen { $when }
+store-reopen-no-way = Ce qui a été mis de côté là ne garde aucun moyen de retour : rien ne peut le rouvrir.
+store-reopen-done = Ce qui avait été mis de côté le { $when } est de nouveau ce que Sioul garde ici. Ce que Sioul gardait jusqu’ici est mis de côté à son tour{ $then }, jamais effacé.
+store-bring-in-not-aside = { $path } n’est pas un fichier mis de côté : donnez son chemin sous data/set-aside/ (sioul store ls data/set-aside --any les liste).
+store-bring-in-done = { $path } est repris comme { $target } ; ce qu’il remplace est gardé comme sa version précédente (sioul store versions { $target } --any).
+store-reopen-pin = Le code PIN de votre clé de sécurité :{" "}
+store-reopen-code = Votre code de récupération :{" "}
+store-wrong-code = Ce code n’ouvre rien de ce que Sioul garde ici.
+store-no-card = Aucune clé de sécurité présente ne l’a ouvert : branchez celle que vous avez choisie, et vérifiez son code PIN.
+store-ways-not-open = Ce que Sioul garde ici n’est pas ouvert dans cette fenêtre : un moyen de retour se garde depuis la fenêtre qui l’a ouvert.
+store-ways-help = Votre trousseau garde la clé qui ouvre ce que Sioul garde ici. S’il la perdait un jour, un moyen de retour l’ouvre de nouveau. Chacun est à votre choix, et aucun n’est nécessaire.
+store-ways-none = Aucun moyen de retour n’est gardé. Si votre trousseau perdait sa clé, ce que seul cet appareil garde serait perdu ; vos courriels, vos agendas et vos contacts reviendraient de leurs serveurs, et ce que votre partage transporte, de vos autres appareils.
+store-ways-none-alone = Aucun moyen de retour n’est gardé, et cet appareil ne partage rien. Si votre trousseau perdait sa clé, ce que Sioul garde ici serait perdu, sauf vos courriels, vos agendas et vos contacts, qui reviennent de leurs serveurs.
+store-way-passphrase = Une phrase de passe
+store-way-passphrase-help = Tapée quand le trousseau a perdu la clé. Elle protège d’un trousseau perdu ou remis à zéro. Qui la connaît et détient ce disque peut ouvrir ce que Sioul garde ici : choisissez-la longue. Ce peut être celle de votre partage.
+store-way-passphrase-sharing = C’est la phrase de passe de mon partage
+store-way-passphrase-short = { $count ->
+    [one] Une phrase de passe d’au moins 1 caractère.
+   *[other] Une phrase de passe d’au moins { $count } caractères : quelques mots suffisent.
+}
+store-way-code = Un code de récupération
+store-way-code-help = Un code à noter et à garder loin de cet appareil. Il protège d’un trousseau perdu. Qui le détient avec ce disque peut ouvrir ce que Sioul garde ici. Un nouveau code remplace le précédent.
+store-way-code-make = Créer un code de récupération
+store-way-code-shown = Notez ce code maintenant et gardez-le loin de cet appareil : il n’est montré qu’une fois.
+store-way-card = Votre clé de sécurité
+store-way-card-help = Votre clé de sécurité l’ouvre, avec son code PIN. Elle protège d’un trousseau perdu, tant que la clé et son code PIN restent.
+store-way-card-none = Aucune clé de sécurité à vous qui déchiffre n’est encore connue sur cet appareil : ajoutez-la d’abord dans Comptes ▸ Clé de sécurité.
+store-way-kept = gardé
+store-way-keep = Garder ce moyen de retour
+store-way-forget = Retirer
+store-way-done = Un moyen de retour est gardé.
+store-versions = Versions précédentes de chaque fichier
+store-versions-help = Combien de versions précédentes de chaque fichier Sioul garde, pour réparer un fichier abîmé ou revenir en arrière : 2 tant que vous n’y touchez pas, 0 pour aucune.
+store-card-title = Ce que Sioul garde ici
+store-card-sealed = Scellé sur cet appareil : votre session l’ouvre.
+store-card-plain = En clair sur cet appareil : non scellé.
+store-left-plain = { $count ->
+    [one] Un fichier n’a pas pu être scellé et reste en clair là où il est, lu comme avant : le prochain démarrage réessaie.
+   *[other] { $count } fichiers n’ont pas pu être scellés et restent en clair là où ils sont, lus comme avant : le prochain démarrage réessaie.
+}
+store-lists-clear = Les propres listes de Sioul (projets, budgets, santé, argent) sont encore dans votre dossier de notes, en clair, comme avant : elles sont scellées une fois déplacées dans le propre dossier de Sioul (Réglages ▸ Votre dossier et le partage ▸ Où Sioul garde ses listes).

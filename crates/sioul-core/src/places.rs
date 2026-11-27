@@ -41,17 +41,17 @@ impl Places {
     }
 
     pub fn load(path: &Path) -> Places {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 
     /// The place of an address, when found.

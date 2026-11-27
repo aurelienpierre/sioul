@@ -82,7 +82,7 @@ fn check() -> Result<(), String> {
         let (mut failed, mut changed, mut grouped, mut versions) = (Vec::new(), Vec::new(), 0, std::collections::BTreeMap::<String, usize>::new());
         let items = collection.items();
         for path in &items {
-            let text = std::fs::read_to_string(path).unwrap_or_default();
+            let text = crate::files::read_to_string(path).unwrap_or_default();
             let Some(contact) = contacts::read(path, &collection) else {
                 failed.push(path.file_name().unwrap_or_default().to_string_lossy().to_string());
                 continue;
@@ -140,7 +140,7 @@ fn check() -> Result<(), String> {
         let (mut failed, mut components, mut recurring, mut rewritten) = (Vec::new(), std::collections::BTreeMap::<String, usize>::new(), 0, Vec::new());
         let items = collection.items();
         for path in &items {
-            let text = std::fs::read_to_string(path).unwrap_or_default();
+            let text = crate::files::read_to_string(path).unwrap_or_default();
             let Some(ical) = agenda::parse(&text) else {
                 failed.push(path.file_name().unwrap_or_default().to_string_lossy().to_string());
                 continue;

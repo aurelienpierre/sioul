@@ -310,7 +310,7 @@ Item {
                                     visible: filed.modelData.gone !== true
                                     flat: true
                                     text: page.sioul.text("letters-scan")
-                                    onClicked: Qt.openUrlExternally(page.theme.fileUrl(filed.modelData.file))
+                                    onClicked: Qt.openUrlExternally(typeof page.sioul.openableUrl === "function" ? page.sioul.openableUrl(filed.modelData.file) : page.theme.fileUrl(filed.modelData.file))
                                 }
                             }
                             Label {

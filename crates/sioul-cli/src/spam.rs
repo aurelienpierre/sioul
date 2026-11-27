@@ -430,11 +430,11 @@ fn outside_pairs(s: &Session, source: &str, counts: &external::Counts) -> [(&'st
 }
 
 fn why(s: &Session, dirs: &Dirs, file: &std::path::Path) -> Result<(), String> {
-    let raw = std::fs::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let raw = crate::files::read(file).map_err(|e| format!("{}: {e}", file.display()))?;
     // Its account's trusted checks, as the Porch reads them; the file's time is when the server received it.
     let sources = s.config.mail_sources();
     let trusted = s.config.account_of(file).and_then(|a| sources.iter().find(|src| src.account.as_deref() == Some(a.id.as_str()))).map(|src| src.trusted_ids.clone()).unwrap_or_default();
-    let received = std::fs::metadata(file).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64);
+    let received = crate::files::metadata(file).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64);
     let why = train::why(dirs, &raw, &trusted, received).map_err(|detail| s.say("spam-why-none", &[("detail", detail)]))?;
     println!("{}", s.say("spam-why-score", &[("p", report::decimal(s, why.p, 3)), ("f", report::decimal(s, why.f, 3))]));
     println!("{}", s.tr.text("spam-why-words", None));

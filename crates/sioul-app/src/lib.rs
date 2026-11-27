@@ -121,8 +121,11 @@
 // (`cargo doc --document-private-items`), so the links resolve.
 #![allow(rustdoc::private_intra_doc_links)]
 
+/// Every file call goes through the sealed store's door through paths (docs/store.md, "Paths").
+pub(crate) use sioul_core::sealed::files;
 // What Android withholds from Sioul on a phone, said in the join's result and on the Porch (docs/android.md).
 mod access;
+mod storegate;
 mod addressbooks;
 mod agenda;
 mod agents;
@@ -353,7 +356,7 @@ fn process_age() -> Option<std::time::Duration> {
     }
     // CLOCK_BOOTTIME: since the system started, its sleep included, as /proc counts.
     const BOOT_TIME: i32 = 7;
-    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let stat = crate::files::read_to_string("/proc/self/stat").ok()?;
     // The fields after the program's name, which ends at the last ")": the
     // 22nd, when the process started, in hundredths of a second since boot.
     let started: f64 = stat.rsplit_once(')')?.1.split_whitespace().nth(19)?.parse().ok()?;
@@ -371,8 +374,148 @@ fn process_age() -> Option<std::time::Duration> {
     None
 }
 
+/// How many files the move left in clear where they are at this start (usize::MAX: it stopped), said once by the window.
+pub(crate) static LEFT_PLAIN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// How many plain files written beside what Sioul keeps (an older Sioul,
+/// another program, a backup put back by hand) were set aside at this start,
+/// never read as current (said once by the window, with `ASIDE_FOLDER`).
+pub(crate) static SET_ASIDE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Where they were set aside (`data/set-aside/<day>`).
+pub(crate) static ASIDE_FOLDER: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// The screen before the window, as a process of its own (`sioul-app
+/// --store-gate [--first]`): its window until the store is open (0) or it is
+/// closed before (1). Two top-level windows one after the other in one
+/// application left the second undrawn on some platforms (the sandbox's).
+#[cfg(not(target_os = "android"))]
+fn run_gate() -> i32 {
+    // Its standard output is the window's pipe for the word it hands at its end (the key, never on the disk).
+    storegate::keep_hand_over();
+    // SAFETY: CXX-Qt's own initializer, which does its work once (std::call_once).
+    unsafe { cxx_qt_init_crate_sioul_app() };
+    sioul_core::config::make_private_dirs();
+    let first = std::env::args().any(|a| a == "--first");
+    storegate::set(match sioul_sync::storekey::begin("window") {
+        sioul_sync::storekey::Begin::Move { made } => sioul_sync::storekey::Begin::Move { made: made || first },
+        other => other,
+    });
+    if std::env::var_os("QT_QUICK_CONTROLS_STYLE").is_none() {
+        // SAFETY: no other thread reads the environment yet.
+        unsafe { std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic") };
+    }
+    let mut app = QGuiApplication::new();
+    let mut engine = QQmlApplicationEngine::new();
+    // SAFETY: the engine exists and outlives the call.
+    unsafe { sioul_style_overrides(engine.as_mut_ptr().cast()) };
+    if let Some(engine) = engine.as_mut() {
+        engine.load(&QUrl::from("qrc:/qt/qml/com/aurelienpierre/sioul/qml/StoreGateWindow.qml"));
+    }
+    if let Some(app) = app.as_mut() {
+        app.exec();
+    }
+    drop(engine);
+    storegate::leave_word();
+    if storegate::opened() { 0 } else { 1 }
+}
+
+/// The screen before the window run as a process of its own, waited for:
+/// whether the store is open in this process now, with the key the screen
+/// handed on its pipe (none when the window may not open: the screen closed
+/// before, or the key not had).
+#[cfg(not(target_os = "android"))]
+fn gate(made: bool) -> bool {
+    let mut gate = std::process::Command::new(std::env::current_exe().unwrap_or_else(|_| "sioul-app".into()));
+    gate.arg("--store-gate");
+    if made {
+        gate.arg("--first");
+    }
+    // The screen's word (the store's key among it) comes back on a pipe of this
+    // process's own, whose end the screen gets as its descriptor 3: never its
+    // standard output, which a terminal or a log may show (third check).
+    #[cfg(target_os = "linux")]
+    let pipe = {
+        let mut fds = [-1i32; 2];
+        // SAFETY: a new pipe, both ends this process's, closed on exec in any program it starts.
+        (unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } == 0).then_some(fds)
+    };
+    #[cfg(target_os = "linux")]
+    if let Some([_, write]) = pipe {
+        use std::os::unix::process::CommandExt;
+        gate.env(storegate::HAND_OVER_VAR, "3");
+        // SAFETY: between fork and exec, only dup2 and fcntl, which are async-signal-safe.
+        unsafe {
+            gate.pre_exec(move || {
+                if write == 3 {
+                    if libc::fcntl(3, libc::F_SETFD, 0) < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                } else if libc::dup2(write, 3) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+    let mut child = match gate.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            eprintln!("Sioul: the screen before the window could not start: {e}");
+            return false;
+        }
+    };
+    #[allow(unused_mut)]
+    let mut word = zeroize::Zeroizing::new(Vec::new());
+    #[cfg(target_os = "linux")]
+    if let Some([read, write]) = pipe {
+        // SAFETY: this process's own descriptors: its writing end goes, so that the end of the screen ends the reading.
+        unsafe { libc::close(write) };
+        let mut buffer = [0u8; 512];
+        loop {
+            // SAFETY: `read` is this process's own descriptor; the buffer is alive for the call.
+            let n = unsafe { libc::read(read, buffer.as_mut_ptr().cast(), buffer.len()) };
+            if n < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            if n <= 0 {
+                break;
+            }
+            word.extend_from_slice(&buffer[..n as usize]);
+        }
+        zeroize::Zeroize::zeroize(&mut buffer);
+        // SAFETY: as above.
+        unsafe { libc::close(read) };
+    }
+    match child.wait() {
+        Ok(status) if status.success() => {}
+        _ => return false,
+    }
+    let folders = sioul_core::sealed::Folders::of_profile();
+    let handed = storegate::told_from_gate(&String::from_utf8_lossy(&word));
+    let opened = match handed {
+        Some(key) => sioul_sync::storekey::opened_with(&folders, &key, "window").map(|_| ()),
+        // No key handed (an older screen, a profile left in clear): what the keyring gives.
+        None => match sioul_sync::storekey::begin("window") {
+            sioul_sync::storekey::Begin::NeedsKey(e) => Err(e),
+            _ => Ok(()),
+        },
+    };
+    match opened {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("Sioul: what Sioul keeps here is still not open: {e}");
+            false
+        }
+    }
+}
+
 /// The window, until it is closed; returns what the program returns.
 pub fn run() -> i32 {
+    #[cfg(not(target_os = "android"))]
+    if std::env::args().any(|a| a == "--store-gate") {
+        return run_gate();
+    }
     // Before anything else: no crate logs above "info", a security key's PIN never (securitykey.rs).
     sioul_sync::securitykey::cap_logging();
     // Nor a core file of a crash, which would hold them (SIOUL_CORE_DUMP=1 to debug one).
@@ -391,15 +534,14 @@ pub fn run() -> i32 {
     unsafe { cxx_qt_init_crate_sioul_app() };
     // Mail, keys, drafts and caches are kept in folders that are yours alone.
     sioul_core::config::make_private_dirs();
+    // What Sioul keeps on this device, sealed (docs/store.md), opened before
+    // any other file is read: at once when the keyring gives its key; else,
+    // and for the move of a profile's plain files, by the screen shown before
+    // the window (storegate.rs), once the application exists. A sealed profile
+    // whose key is not had never starts as an empty one beside it.
     // The window's acts are yours: the meetings you organize are written
     // through their own door here alone (`sioul` and `sioul mcp` never open it).
     sioul_core::agenda::open_organizer_door();
-    // A configuration from before the words Sioul looks for keeps reading
-    // French, English and France's names, said once in it; one made later is
-    // left to its interface's language (docs/words.md).
-    if let Err(e) = sioul_core::words::keep_first_once(&backend::config_path(), &sioul_core::config::data_dir().join("words-first-start")) {
-        eprintln!("Sioul: the words' first start: {e}");
-    }
     // A mail link clicked (`sioul-app mailto:…`), or Sioul started again:
     // handed to the Sioul of this profile already open, if one is, which
     // opens the draft or comes forward; else this one opens, and listens for
@@ -417,24 +559,43 @@ pub fn run() -> i32 {
         }
         _ => {}
     }
-    outside::listen();
+    // This Sioul listens at once, before what Sioul keeps is opened: a start
+    // made while the screen before the window shows (the icon clicked again, a
+    // mail link) hands over to this one, never a second screen, a second store
+    // made or a second window (review-finish G7). What it hands waits in
+    // memory until the store is open. Two starts at the same instant: the one
+    // that finds the other listening hands over to it.
+    outside::hold();
+    if !outside::listen() && outside::hand_over(&addresses, &calendar_files) == outside::HandOver::Taken {
+        return 0;
+    }
+    // After the hand-over: a window already open takes the request, and nothing
+    // is sealed by a start that leaves at once (review-finish F2).
+    let begin = sioul_sync::storekey::begin("window");
+    if let sioul_sync::storekey::Begin::Plain(why) = &begin {
+        eprintln!("Sioul: what Sioul keeps here stays in clear this time: {why}");
+    }
+    // The screen before the window, when the keyring has not given the key yet
+    // or plain files wait to be sealed: a process of its own (`--store-gate`),
+    // whose window waits, offers the ways back and shows the move's progress;
+    // this window starts once it ended with the store open, with the key it
+    // hands on its pipe (storegate.rs): a way back opens Sioul whatever the
+    // keyring does (G5), and the window opens whatever the move left in clear,
+    // said once (G1).
+    #[cfg(not(target_os = "android"))]
+    if matches!(begin, sioul_sync::storekey::Begin::NeedsKey(_) | sioul_sync::storekey::Begin::Move { .. }) {
+        let made = matches!(begin, sioul_sync::storekey::Begin::Move { made: true });
+        if !gate(made) {
+            return 1;
+        }
+    }
+    outside::release();
     if !addresses.is_empty() {
         outside::hand(&addresses);
     }
     if !calendar_files.is_empty() {
         calendarfile::hand(&calendar_files);
     }
-    // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
-    #[cfg(not(target_os = "android"))]
-    texts::at_start();
-    // What files from sites left in Sioul's cache, and the hidden files a
-    // stopped placing left in the papers' folder and where scans arrive
-    // (docs/sites.md, "Downloads"): no download can be under way yet.
-    #[cfg(not(target_os = "android"))]
-    downloads::at_start();
-    // What a Sioul stopped while it copied a file chosen in a dialog left in
-    // the cache (docs/android.md, "Files chosen in a dialog"): no dialog is open yet.
-    chosen::at_start();
     // Qt's QML engine looks, for each file it loads, for variants of it in
     // folders named after the language, the system and the style ("+fr_FR/",
     // "+android/", "+Material/"). Sioul has none, and on a phone the looking
@@ -450,15 +611,6 @@ pub fn run() -> i32 {
         // SAFETY: as above.
         unsafe { std::env::set_var("QT_QUICK_CONTROLS_STYLE", "Basic") };
     }
-    // Copies beside drafts that hold an encrypted message's text in clear
-    // (until 19 October 2026) encrypted again, off the window's start; after
-    // the environment is set, which that thread reads (review of 19 October
-    // 2026, F10).
-    std::thread::spawn(crypto::seal_clear_drafts);
-    // The meetings you organize that an older Sioul wrote its own lines into,
-    // written without them once, through the door opened above (review of
-    // 1e8551e, F5).
-    std::thread::spawn(pim::tidy_meetings);
     // Where the system puts a window's buttons, read meanwhile for Sioul's own
     // title bar (desktop.rs); after the environment is set, which it reads.
     #[cfg(not(target_os = "android"))]
@@ -497,6 +649,7 @@ pub fn run() -> i32 {
         sioul_quit_on_signals()
     };
     desktop::icons();
+    after_store();
     let mut engine = QQmlApplicationEngine::new();
     // SAFETY: the engine exists and outlives the call, which gives it an interceptor that lives as long as the program.
     unsafe { sioul_style_overrides(engine.as_mut_ptr().cast()) };
@@ -660,4 +813,48 @@ pub unsafe extern "C" fn sioul_android_init(vm: *mut std::ffi::c_void, context: 
             false
         }
     }
+}
+
+/// What reads and writes Sioul's files at the start, once what Sioul keeps is open.
+fn after_store() {
+    // Copies in clear of sealed files opened at an earlier start, taken away
+    // (review-finish G8); a memo recorded when Sioul stopped, sealed into its
+    // place; files the move left in clear, tried again away from the window.
+    #[cfg(not(target_os = "android"))]
+    storegate::forget_opened();
+    std::thread::spawn(work::settle_memos_left);
+    std::thread::spawn(|| {
+        if let Ok(store) = sioul_core::sealed::opened()
+            && let Ok(left) = store.retry_left()
+            && left > 0
+        {
+            eprintln!("Sioul: {left} files stay in clear where they are, read as before; tried again at the next start");
+        }
+    });
+    // A configuration from before the words Sioul looks for keeps reading
+    // French, English and France's names, said once in it; one made later is
+    // left to its interface's language (docs/words.md).
+    if let Err(e) = sioul_core::words::keep_first_once(&backend::config_path(), &sioul_core::config::data_dir().join("words-first-start")) {
+        eprintln!("Sioul: the words' first start: {e}");
+    }
+    // What an earlier run left attached on the Texts page goes, now that this is the profile's Sioul.
+    #[cfg(not(target_os = "android"))]
+    texts::at_start();
+    // What files from sites left in Sioul's cache, and the hidden files a
+    // stopped placing left in the papers' folder and where scans arrive
+    // (docs/sites.md, "Downloads"): no download can be under way yet.
+    #[cfg(not(target_os = "android"))]
+    downloads::at_start();
+    // What a Sioul stopped while it copied a file chosen in a dialog left in
+    // the cache (docs/android.md, "Files chosen in a dialog"): no dialog is open yet.
+    chosen::at_start();
+    // Copies beside drafts that hold an encrypted message's text in clear
+    // (until 19 October 2026) encrypted again, off the window's start; after
+    // the environment is set, which that thread reads (review of 19 October
+    // 2026, F10).
+    std::thread::spawn(crypto::seal_clear_drafts);
+    // The meetings you organize that an older Sioul wrote its own lines into,
+    // written without them once, through the door opened above (review of
+    // 1e8551e, F5).
+    std::thread::spawn(pim::tidy_meetings);
 }

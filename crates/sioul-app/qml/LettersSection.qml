@@ -145,7 +145,7 @@ ColumnLayout {
                     Button {
                         text: section.sioul.text("letters-scan")
                         // Its path made an address: a "#" or "%" in a scan's name stays in it; Windows' paths too.
-                        onClicked: Qt.openUrlExternally(section.theme.fileUrl(card.modelData.file))
+                        onClicked: Qt.openUrlExternally(typeof section.sioul.openableUrl === "function" ? section.sioul.openableUrl(card.modelData.file) : section.theme.fileUrl(card.modelData.file))
                     }
                     Button {
                         visible: card.modelData.deadline !== "" && card.modelData.task === ""

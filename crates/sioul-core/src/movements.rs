@@ -820,7 +820,7 @@ impl Store {
     /// The store of a notes folder; none yet is an empty one (format 0).
     pub fn load(root: &Path) -> Result<Store, String> {
         let path = Store::path(root);
-        match std::fs::read_to_string(&path) {
+        match crate::files::read_to_string(&path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Store::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),
@@ -835,7 +835,7 @@ impl Store {
         let path = Store::path(root);
         crate::filelock::with_lock(&path, || {
             let fail = |e: String| format!("{}: {e}", path.display());
-            let text = match std::fs::read_to_string(&path) {
+            let text = match crate::files::read_to_string(&path) {
                 Ok(text) => text,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
                 Err(e) => return Err(fail(e.to_string())),
@@ -856,8 +856,8 @@ impl Store {
             let written = edit.doc.to_string();
             if written != text {
                 let temporary = path.with_extension("toml.new");
-                std::fs::write(&temporary, written).map_err(|e| fail(e.to_string()))?;
-                std::fs::rename(&temporary, &path).map_err(|e| fail(e.to_string()))?;
+                crate::files::write(&temporary, written).map_err(|e| fail(e.to_string()))?;
+                crate::files::rename(&temporary, &path).map_err(|e| fail(e.to_string()))?;
                 crate::changes::said(crate::changes::Kind::Money);
             }
             Ok(out)
@@ -2317,7 +2317,7 @@ struct Stamp {
 
 fn stamp(root: &Path, today: Date) -> Stamp {
     let paths = [root.join(crate::budget::LEDGER), root.join(bank::MANIFEST), root.join(crate::contracts::MANIFEST), crate::letters::Letters::folder(root).join(crate::letters::MANIFEST), Store::path(root)];
-    let files = paths.iter().map(|p| std::fs::metadata(p).ok().and_then(|m| Some((m.modified().ok()?, m.len())))).collect();
+    let files = paths.iter().map(|p| crate::files::metadata(p).ok().and_then(|m| Some((m.modified().ok()?, m.len())))).collect();
     Stamp { root: root.to_path_buf(), files, today }
 }
 
@@ -2357,7 +2357,7 @@ fn words_digest(words: &crate::words::Words) -> u64 {
 
 /// The kept movements, when they were made from what the files are now.
 fn kept(stamp: &Stamp, words: u64) -> Option<(Vec<Movement>, Vec<Movement>)> {
-    let kept: Kept = serde_json::from_slice(&std::fs::read(kept_path()).ok()?).ok()?;
+    let kept: Kept = serde_json::from_slice(&crate::files::read(kept_path()).ok()?).ok()?;
     (kept.format == KEPT && kept.version == env!("CARGO_PKG_VERSION") && kept.stamp == *stamp && kept.words == words).then_some((kept.movements, kept.gone))
 }
 
@@ -2366,7 +2366,7 @@ fn keep(stamp: &Stamp, words: u64, movements: &[Movement], gone: &[Movement]) {
     let kept = Kept { format: KEPT, version: env!("CARGO_PKG_VERSION").to_string(), stamp: stamp.clone(), words, movements: movements.to_vec(), gone: gone.to_vec() };
     let path = kept_path();
     if let (Some(dir), Ok(text)) = (path.parent(), serde_json::to_vec(&kept)) {
-        let _ = std::fs::create_dir_all(dir);
+        let _ = crate::files::create_dir_all(dir);
         let _ = crate::filelock::replace(&path, &text);
     }
 }

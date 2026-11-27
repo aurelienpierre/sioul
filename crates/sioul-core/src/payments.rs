@@ -158,7 +158,7 @@ pub fn invoice_of(card: &Card) -> Option<crate::einvoice::EInvoice> {
     if let Some(known) = read.lock().ok().and_then(|r| r.get(path).cloned()) {
         return known;
     }
-    let found = std::fs::read(path).ok().filter(|raw| raw.len() <= 4 * INVOICE_LARGEST).and_then(|raw| {
+    let found = crate::files::read(path).ok().filter(|raw| raw.len() <= 4 * INVOICE_LARGEST).and_then(|raw| {
         let message = mail_parser::MessageParser::default().parse(&raw)?;
         message.attachments().filter(|part| part.contents().len() <= INVOICE_LARGEST).find_map(|part| {
             let name = part.attachment_name().unwrap_or("").to_ascii_lowercase();

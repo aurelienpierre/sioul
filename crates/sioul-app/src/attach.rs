@@ -482,7 +482,7 @@ impl Drop for Picture {
 /// A file's first bytes, enough for `sniff` and `sniff_medium`; none when it cannot be read.
 pub(crate) fn head_of(path: &Path) -> Option<Vec<u8>> {
     let mut head = Vec::with_capacity(HEAD);
-    std::fs::File::open(path).ok()?.take(HEAD as u64).read_to_end(&mut head).ok()?;
+    crate::files::File::open(path).ok()?.take(HEAD as u64).read_to_end(&mut head).ok()?;
     Some(head)
 }
 
@@ -512,7 +512,7 @@ fn reduce_picture(picture: &Picture, share: u64, advised: u32, out: &Path) -> Op
     let first = first_side(picture, advised);
     let trying = out.with_extension("trying.jpg");
     let found = fit(first, share, &mut |side, quality| picture.jpeg(side, quality, &trying));
-    let _ = std::fs::remove_file(&trying);
+    let _ = crate::files::remove_file(&trying);
     let (side, quality) = found?;
     let size = picture.jpeg(side, quality, out)?;
     (size <= share).then_some((side, quality, size))
@@ -593,7 +593,7 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
             left.push(refused(source, "too-many", 0, ""));
             continue;
         }
-        let Some(size) = std::fs::metadata(source).ok().filter(std::fs::Metadata::is_file).map(|m| m.len()).filter(|&size| size > 0) else {
+        let Some(size) = crate::files::metadata(source).ok().filter(crate::files::Metadata::is_file).map(|m| m.len()).filter(|&size| size > 0) else {
             left.push(refused(source, "unreadable", 0, ""));
             continue;
         };
@@ -640,9 +640,9 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
     }
     let each = share(room(&keep), fixed, pictures(&keep)).unwrap_or(0);
     // Yours alone, as Sioul's cache around it.
-    let _ = std::fs::create_dir_all(folder);
+    let _ = crate::files::create_dir_all(folder);
     #[cfg(unix)]
-    let _ = std::fs::set_permissions(folder, std::os::unix::fs::PermissionsExt::from_mode(0o700));
+    let _ = crate::files::set_permissions(folder, std::os::unix::fs::PermissionsExt::from_mode(0o700));
     let stamp = jiff::Timestamp::now().as_millisecond();
     let out_of = |i: usize, extension: &str| folder.join(format!("{stamp}-{i}.{extension}"));
     // The pictures made for their equal shares (decision 10); then what those
@@ -664,11 +664,11 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
         for &i in &smaller {
             let again = out_of(i, "again.jpg");
             if let Some(better) = chosen[i].3.as_ref().and_then(|picture| reduce_picture(picture, more, advised, &again))
-                && std::fs::rename(&again, out_of(i, "jpg")).is_ok()
+                && crate::files::rename(&again, out_of(i, "jpg")).is_ok()
             {
                 reduced[i] = Some(better);
             }
-            let _ = std::fs::remove_file(&again);
+            let _ = crate::files::remove_file(&again);
         }
     }
     let mut made = Vec::new();
@@ -681,7 +681,7 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
             Kind::Picture => match reduced[i] {
                 Some((_, _, written)) => made.push(Attached { source: shown, kind: "picture".into(), ct: "image/jpeg".into(), path: out_of(i, "jpg").display().to_string(), size: written }),
                 None => {
-                    let _ = std::fs::remove_file(out_of(i, "jpg"));
+                    let _ = crate::files::remove_file(out_of(i, "jpg"));
                     left.push(refused(source, "picture-too-large", *size, ""));
                 }
             },
@@ -690,14 +690,14 @@ pub(crate) fn make(sources: &[PathBuf], limit: u64, advised: u32, folder: &Path)
                 let out = out_of(i, extension_of(ct));
                 // As much as was weighed, no more: a file grown since is refused, not cut.
                 let mut bytes = Vec::new();
-                let read = std::fs::File::open(source).and_then(|from| from.take(size + 1).read_to_end(&mut bytes));
+                let read = crate::files::File::open(source).and_then(|from| from.take(size + 1).read_to_end(&mut bytes));
                 // An animated GIF's frames alone: its comments and other programs' blocks left out.
                 let bytes = if *kind == Kind::Animated { gif_pictures_alone(&bytes) } else { Some(bytes) };
                 match (read, bytes) {
                     (Ok(length), _) if length as u64 != *size => left.push(refused(source, "too-large", *size, "")),
-                    (Ok(_), Some(bytes)) if std::fs::write(&out, &bytes).is_ok() => made.push(Attached { source: shown, kind: if *kind == Kind::Animated { "picture".into() } else { kind_word(ct).into() }, ct: ct.into(), path: out.display().to_string(), size: bytes.len() as u64 }),
+                    (Ok(_), Some(bytes)) if crate::files::write(&out, &bytes).is_ok() => made.push(Attached { source: shown, kind: if *kind == Kind::Animated { "picture".into() } else { kind_word(ct).into() }, ct: ct.into(), path: out.display().to_string(), size: bytes.len() as u64 }),
                     _ => {
-                        let _ = std::fs::remove_file(&out);
+                        let _ = crate::files::remove_file(&out);
                         left.push(refused(source, "unreadable", *size, ""));
                     }
                 }

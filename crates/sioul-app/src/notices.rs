@@ -462,7 +462,7 @@ fn invoices_twice(now: &jiff::Zoned) -> Vec<(Value, Vec<String>)> {
     numbers.sort();
     numbers.dedup();
     let id = rules::money_id(&format!("invoices-twice/{}", numbers.join(",")));
-    let at = twice.iter().filter_map(|t| std::fs::metadata(&t.copy).and_then(|m| m.modified()).ok()).filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64).max().unwrap_or_else(|| now.timestamp().as_millisecond());
+    let at = twice.iter().filter_map(|t| crate::files::metadata(&t.copy).and_then(|m| m.modified()).ok()).filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as i64).max().unwrap_or_else(|| now.timestamp().as_millisecond());
     let day = jiff::Timestamp::from_millisecond(at).map(|t| t.to_zoned(now.time_zone().clone()).date()).unwrap_or(now.date());
     let note = say("porch-invoices-twice-note", &[("numbers", numbers.join(", "))]);
     let notice = Notice { address: format!("sioul:invoice/{}", numbers[0]), at, when: tr.day_short(day), who: tr.text("porch-invoices-twice-who", None), what: tr.text("porch-invoices-twice-what", None), ..Notice::new(Kind::Money, id.clone(), "money").with_area(Some(sioul_core::areas::Area::WORK)) };

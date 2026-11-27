@@ -43,7 +43,7 @@ impl DoseBacks {
     /// The file; none yet, nothing to put back. One gone though written here
     /// before, or that does not read: not known, said so (`Unsound`).
     pub fn read(path: &Path) -> Result<DoseBacks, Unsound> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() && crate::health::witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

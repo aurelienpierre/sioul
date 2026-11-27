@@ -504,7 +504,7 @@ pub fn all(folder: &Path, key: &[u8; 32]) -> (Vec<Entry>, Vec<String>) {
     let (mut entries, mut unread) = (Vec::new(), Vec::new());
     let fetched = crate::remote::overlay(folder);
     let ids = |dir: &Path| -> Vec<String> {
-        let listing = std::fs::read_dir(folder_of(dir)).into_iter().flatten().filter_map(Result::ok);
+        let listing = crate::files::read_dir(folder_of(dir)).into_iter().flatten().filter_map(Result::ok);
         listing.filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".device")).map(str::to_string)).filter(|id| id.len() == 36 && uuid::Uuid::parse_str(id).is_ok()).collect()
     };
     let mut all: std::collections::BTreeSet<String> = ids(folder).into_iter().collect();
@@ -574,7 +574,7 @@ pub fn own_path(state: &Path) -> PathBuf {
 
 /// This device's own entry as kept here; a new one when none reads.
 pub fn own(path: &Path) -> Entry {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// Whether this device is in use, as its own entry says (`Entry::working`):
@@ -682,7 +682,7 @@ pub(crate) fn steady(entry: &Entry) -> String {
 
 /// The size and time of the folder's copy of an entry, when there is one.
 fn stamp_of(path: &Path) -> Option<(u64, u64)> {
-    std::fs::metadata(path).ok().map(|meta| (meta.len(), crate::share::modified_ns(&meta)))
+    crate::files::metadata(path).ok().map(|meta| (meta.len(), crate::share::modified_ns(&meta)))
 }
 
 /// This device's own entry changed by `change`, under its lock, read just
@@ -712,7 +712,7 @@ pub(crate) fn change_at(path: &Path, vault: Option<(&Path, &[u8; 32])>, now: i64
             let file = file_of(folder, &entry.id);
             let said = steady(&entry);
             let there = folder.display().to_string();
-            let last: Option<Published> = std::fs::read_to_string(published_path(path)).ok().and_then(|t| toml::from_str(&t).ok());
+            let last: Option<Published> = crate::files::read_to_string(published_path(path)).ok().and_then(|t| toml::from_str(&t).ok());
             // As the others last read it: the same words, the folder's copy the one written, within the hour.
             let mark = sealed_with(key);
             let current = last.is_some_and(|last| last.said == said && last.folder == there && last.key == mark && stamp_of(&file) == Some((last.size, last.modified)) && (0..RESTATED).contains(&(now - last.at)));

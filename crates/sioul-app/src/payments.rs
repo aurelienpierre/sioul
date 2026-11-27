@@ -29,7 +29,7 @@ pub(crate) fn from(kind: &str, key: &str, trust: &str) -> String {
     let made = match kind {
         "letter" => sioul_core::letters::Letters::load(&root).ok().and_then(|letters| letters.get(key).cloned()).map(|letter| (acts::Payment::from_letter(&letter), letter.reading.sender.clone())),
         _ => sioul_core::maildir::locate(std::path::Path::new(key)).and_then(|path| {
-            let mut card = sioul_core::card::Card::from_bytes(&std::fs::read(&path).ok()?)?;
+            let mut card = sioul_core::card::Card::from_bytes(&crate::files::read(&path).ok()?)?;
             card.path = Some(path);
             let address = crate::work::uri_of("mail", key);
             let doubtful = !matches!(trust, "verified" | "own");
@@ -254,7 +254,7 @@ fn view_path() -> std::path::PathBuf {
 }
 
 fn kept_view(path: &std::path::Path) -> BudgetsView {
-    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn write_view(path: &std::path::Path, view: &BudgetsView) {
@@ -262,7 +262,7 @@ fn write_view(path: &std::path::Path, view: &BudgetsView) {
         && let Ok(text) = toml::to_string(view)
     {
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         let _ = sioul_core::filelock::replace(path, text.as_bytes());
     }

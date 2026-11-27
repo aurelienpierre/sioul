@@ -44,7 +44,7 @@ impl Consent {
     /// The consent kept on this computer; none (nothing consented) when
     /// Train now was never pressed, or its file cannot be read.
     pub fn load(dirs: &Dirs) -> Consent {
-        std::fs::read_to_string(dirs.consent()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(dirs.consent()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Train now pressed, these addresses named under it (`named`): kept in
@@ -52,11 +52,11 @@ impl Consent {
     pub fn given(dirs: &Dirs, named: impl IntoIterator<Item = String>) -> Result<Consent, LearnError> {
         let consent = Consent { pressed: now(), addresses: named.into_iter().map(|a| a.trim().to_lowercase()).filter(|a| !a.is_empty()).collect() };
         let path = dirs.consent();
-        std::fs::create_dir_all(&dirs.data).map_err(|e| io_error(&dirs.data, e))?;
+        crate::files::create_dir_all(&dirs.data).map_err(|e| io_error(&dirs.data, e))?;
         let text = toml::to_string(&consent).map_err(|e| io_error(&path, e))?;
         let beside = path.with_extension("toml.new");
-        std::fs::write(&beside, text).map_err(|e| io_error(&beside, e))?;
-        std::fs::rename(&beside, &path).map_err(|e| io_error(&path, e))?;
+        crate::files::write(&beside, text).map_err(|e| io_error(&beside, e))?;
+        crate::files::rename(&beside, &path).map_err(|e| io_error(&path, e))?;
         Ok(consent)
     }
 

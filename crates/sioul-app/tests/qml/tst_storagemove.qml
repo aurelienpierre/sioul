@@ -55,6 +55,10 @@ Item {
         function folderCarrier(folder) {
             return folder.indexOf("/Nextcloud/") >= 0 ? "storage-move-carried " + folder : ""
         }
+        // Inside Sioul's own folders (made-up): the trade-off said.
+        function folderSealed(folder) {
+            return folder.indexOf("/.local/share/sioul/") >= 0 ? "storage-sealed-tradeoff" : ""
+        }
         function moveLists(papers, letters, carry) {
             mock.asked = mock.asked.concat([[papers, letters, carry]])
         }
@@ -146,6 +150,20 @@ Item {
             verify(named("storageMoveCarried:papers").visible)
             compare(named("storageMoveCarried:papers").text, "storage-move-carried /stand-in/Nextcloud/Papers")
             verify(!named("storageMoveCarried:letters").visible)
+        }
+
+        function test_a_folder_inside_sioul_s_says_its_trade_off() {
+            mock.storageMove = root.view({})
+            move.show()
+            tryVerify(() => move.opened)
+            verify(!named("storageMoveSealed:papers").visible && !named("storageMoveSealed:letters").visible, "outside Sioul's folders: nothing to say")
+            const letters = named("storageMoveFolder:letters")
+            letters.text = "/stand-in/.local/share/sioul/Letters"
+            letters.editingFinished()
+            verify(named("storageMoveSealed:letters").visible)
+            compare(named("storageMoveSealed:letters").text, "storage-sealed-tradeoff")
+            verify(!named("storageMoveSealed:papers").visible)
+            verify(named("storageMoveNow").enabled, "allowed: a trade-off, not a refusal")
         }
 
         function test_the_scans_changing_part_is_said() {

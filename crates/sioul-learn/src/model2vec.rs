@@ -112,7 +112,7 @@ impl StaticModel {
     /// two-dimensional one, in F32, F16 or BF16).
     pub fn load(folder: &Path) -> Result<StaticModel, String> {
         let tokenizer_path = folder.join("tokenizer.json");
-        let file = std::fs::File::open(&tokenizer_path).map_err(|e| format!("{}: {e}", tokenizer_path.display()))?;
+        let file = crate::files::File::open(&tokenizer_path).map_err(|e| format!("{}: {e}", tokenizer_path.display()))?;
         let tokenizer_bytes = file.metadata().map_or(0, |m| m.len());
         let parsed: TokenizerFile = serde_json::from_reader(BufReader::new(file)).map_err(|e| format!("{}: {e}", tokenizer_path.display()))?;
         if parsed.model.kind != "Unigram" {
@@ -226,7 +226,7 @@ impl StaticModel {
 /// A safetensors file's embeddings: their dimension, row count and values.
 fn read_embeddings(path: &Path) -> Result<(usize, usize, Vec<f32>), String> {
     let fail = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-    let mut file = BufReader::new(std::fs::File::open(path).map_err(|e| fail(&e))?);
+    let mut file = BufReader::new(crate::files::File::open(path).map_err(|e| fail(&e))?);
     let mut length = [0u8; 8];
     file.read_exact(&mut length).map_err(|e| fail(&e))?;
     let length = u64::from_le_bytes(length);
@@ -272,21 +272,21 @@ fn read_embeddings(path: &Path) -> Result<(usize, usize, Vec<f32>), String> {
 /// probabilities) and their rows, F32.
 #[cfg(test)]
 pub(crate) fn write_stand_in(folder: &Path, pieces: &[(&str, f64)], rows: &[Vec<f32>], unk_id: u32) -> std::io::Result<()> {
-    std::fs::create_dir_all(folder)?;
+    crate::files::create_dir_all(folder)?;
     let tokenizer = serde_json::json!({
         "version": "1.0",
         "normalizer": null,
         "pre_tokenizer": { "type": "Metaspace", "replacement": "\u{2581}", "prepend_scheme": "always", "split": true },
         "model": { "type": "Unigram", "unk_id": unk_id, "vocab": pieces.iter().map(|(p, s)| serde_json::json!([p, s])).collect::<Vec<_>>() },
     });
-    std::fs::write(folder.join("tokenizer.json"), serde_json::to_vec(&tokenizer)?)?;
+    crate::files::write(folder.join("tokenizer.json"), serde_json::to_vec(&tokenizer)?)?;
     let dim = rows.first().map_or(0, Vec::len);
     let data: Vec<u8> = rows.iter().flatten().flat_map(|x| x.to_le_bytes()).collect();
     let header = serde_json::to_vec(&serde_json::json!({ "embeddings": { "dtype": "F32", "shape": [rows.len(), dim], "data_offsets": [0, data.len()] } }))?;
     let mut bytes = (header.len() as u64).to_le_bytes().to_vec();
     bytes.extend(header);
     bytes.extend(data);
-    std::fs::write(folder.join("model.safetensors"), bytes)
+    crate::files::write(folder.join("model.safetensors"), bytes)
 }
 
 #[cfg(test)]

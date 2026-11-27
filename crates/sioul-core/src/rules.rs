@@ -540,7 +540,7 @@ pub struct Facts {
 impl Facts {
     /// What its file says: its size, when it arrived; its sender not judged.
     pub fn of(card: &Card) -> Facts {
-        let size = card.path.as_ref().and_then(|path| std::fs::metadata(path).ok()).map(|m| m.len());
+        let size = card.path.as_ref().and_then(|path| crate::files::metadata(path).ok()).map(|m| m.len());
         Facts { who: None, unproven: false, size, arrived: crate::porch::sent(card), zone: crate::zone::current() }
     }
 }

@@ -21,6 +21,8 @@
 //!   payment was paid, and its receipts register, saved as CSV here and as
 //!   a PDF by the window, which prints its HTML as invoices are printed.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, load_config, say, show, tr};
 use serde::Deserialize;
 use serde_json::{Value, json as j};
@@ -266,7 +268,7 @@ fn money_files(root: &Path) -> Vec<PathBuf> {
 /// Returns {said} or {problem}.
 fn with_undo(qt: &QtThread, shared: &Arc<Shared>, files: Vec<PathBuf>, act: impl FnOnce() -> Result<String, String>) -> String {
     let before: Vec<(PathBuf, Option<String>)> = files.into_iter().map(|path| {
-        let text = std::fs::read_to_string(&path).ok();
+        let text = crate::files::read_to_string(&path).ok();
         (path, text)
     }).collect();
     let said = match act() {
@@ -702,7 +704,7 @@ pub(crate) fn save_receipts(_budget: &str, anchor: &str, folder_chosen: &str) ->
     let (from, to, _) = books_days(&loaded, day_of(anchor).unwrap_or(today));
     let book = sioul_core::books::book(&loaded.input(), from, to, tr());
     let dir = PathBuf::from(folder_chosen);
-    if !dir.is_dir() {
+    if !dir.present_dir() {
         return refused(say("invoice-not-written", &[("path", folder_chosen.to_string())]));
     }
     let name = say("books-file-name", &[("from", from.to_string()), ("to", to.to_string())]);
@@ -723,7 +725,7 @@ pub(crate) fn save_receipts(_budget: &str, anchor: &str, folder_chosen: &str) ->
 
 /// The register's spreadsheet, where you chose: no item of any calendar.
 fn save_csv(path: &Path, csv: &str) -> std::io::Result<()> {
-    std::fs::write(path, csv)
+    crate::files::write(path, csv)
 }
 
 // ---------------------------------------------------------------- the phone's background step

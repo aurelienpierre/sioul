@@ -39,6 +39,8 @@
 //! kept beside the last training's summary ([`Run`], `auto.toml`). Never a
 //! notification.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::Dirs;
 use serde::{Deserialize, Serialize};
 use sioul_sync::power::Power;
@@ -114,12 +116,12 @@ impl Run {
 
     /// The last run by itself, if one was.
     pub fn load(dirs: &Dirs) -> Option<Run> {
-        toml::from_str(&std::fs::read_to_string(Run::path(dirs)).ok()?).ok()
+        toml::from_str(&crate::files::read_to_string(Run::path(dirs)).ok()?).ok()
     }
 
     /// Kept, written whole.
     pub fn save(&self, dirs: &Dirs) -> Result<(), String> {
-        std::fs::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
+        crate::files::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::corpus::write_whole(&Run::path(dirs), text.as_bytes()).map_err(|e| e.to_string())
     }
@@ -321,19 +323,19 @@ impl Guard {
 
     /// The mark, if the guard stopped a training here.
     pub fn load(dirs: &Dirs) -> Option<Guard> {
-        toml::from_str(&std::fs::read_to_string(Guard::path(dirs)).ok()?).ok()
+        toml::from_str(&crate::files::read_to_string(Guard::path(dirs)).ok()?).ok()
     }
 
     /// Kept, in place of the one before.
     pub fn save(&self, dirs: &Dirs) -> Result<(), String> {
-        std::fs::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
+        crate::files::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::corpus::write_whole(&Guard::path(dirs), text.as_bytes()).map_err(|e| e.to_string())
     }
 
     /// Gone: you asked, or the mail changed a lot. The training comes back.
     pub fn clear(dirs: &Dirs) {
-        let _ = std::fs::remove_file(Guard::path(dirs));
+        let _ = crate::files::remove_file(Guard::path(dirs));
     }
 }
 
@@ -404,12 +406,12 @@ impl Notice {
 
     /// The notice kept, if any.
     pub fn load(dirs: &Dirs) -> Option<Notice> {
-        toml::from_str(&std::fs::read_to_string(Notice::path(dirs)).ok()?).ok()
+        toml::from_str(&crate::files::read_to_string(Notice::path(dirs)).ok()?).ok()
     }
 
     /// Kept, in place of the one before.
     pub fn save(&self, dirs: &Dirs) -> Result<(), String> {
-        std::fs::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
+        crate::files::create_dir_all(&dirs.state).map_err(|e| format!("{}: {e}", dirs.state.display()))?;
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::corpus::write_whole(&Notice::path(dirs), text.as_bytes()).map_err(|e| e.to_string())
     }
@@ -445,7 +447,7 @@ pub fn end(dirs: &Dirs, made: bool, seconds: u64, now: i64) {
         Guard::clear(dirs);
     }
     if let Some(notice) = Notice::load(dirs).filter(|n| n.kind == NoticeKind::FirstRunning) {
-        let _ = if made { Notice { kind: NoticeKind::FirstDone, at: now, seconds, put_away: notice.put_away }.save(dirs) } else { std::fs::remove_file(Notice::path(dirs)).map_err(|e| e.to_string()) };
+        let _ = if made { Notice { kind: NoticeKind::FirstDone, at: now, seconds, put_away: notice.put_away }.save(dirs) } else { crate::files::remove_file(Notice::path(dirs)).map_err(|e| e.to_string()) };
     }
 }
 
@@ -464,8 +466,8 @@ pub fn guard(dirs: &Dirs, halt: Halt, now: i64) -> Result<(), String> {
 /// process holds its lock (`$XDG_STATE_HOME/sioul/spam/jobs/<id>.lock`).
 pub fn a_job_runs(dirs: &Dirs) -> bool {
     let jobs = dirs.state.join("jobs");
-    std::fs::read_dir(&jobs).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "lock")).any(|path| {
-        let Ok(lock) = std::fs::OpenOptions::new().read(true).open(&path) else { return false };
+    crate::files::read_dir(&jobs).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "lock")).any(|path| {
+        let Ok(lock) = crate::files::OpenOptions::new().read(true).open(&path) else { return false };
         match lock.try_lock() {
             Ok(()) => {
                 let _ = lock.unlock();
@@ -484,18 +486,18 @@ pub fn a_job_runs(dirs: &Dirs) -> bool {
 pub fn ask_stop(dirs: &Dirs) -> bool {
     let Some(run) = Run::load(dirs).filter(|r| r.ended.is_none()) else { return false };
     let jobs = dirs.state.join("jobs");
-    let _ = std::fs::create_dir_all(&jobs);
-    std::fs::write(jobs.join(format!("{}.stop", run.job)), b"").is_ok()
+    let _ = crate::files::create_dir_all(&jobs);
+    crate::files::write(jobs.join(format!("{}.stop", run.job)), b"").is_ok()
 }
 
 /// Whether the run of `job` was asked to stop (`ask_stop`).
 pub fn stop_asked(dirs: &Dirs, job: &str) -> bool {
-    dirs.state.join("jobs").join(format!("{job}.stop")).exists()
+    dirs.state.join("jobs").join(format!("{job}.stop")).present()
 }
 
 /// The stop file of `job` gone (its run ended, or a new one starts under its name).
 pub fn stop_forgotten(dirs: &Dirs, job: &str) {
-    let _ = std::fs::remove_file(dirs.state.join("jobs").join(format!("{job}.stop")));
+    let _ = crate::files::remove_file(dirs.state.join("jobs").join(format!("{job}.stop")));
 }
 
 /// fastText's threads for a run by itself: half the cores, one at least.

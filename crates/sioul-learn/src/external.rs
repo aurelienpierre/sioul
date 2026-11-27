@@ -44,6 +44,8 @@
 //! held out); the held-out part gives "the baseline", the same numbers as
 //! for your own mail, said apart.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::corpus::{HEADER_BYTES, HTML_BYTES, Leaf, Node, Text};
 use crate::labels::Label;
 use crate::{Dirs, LearnError, io_error, now};
@@ -270,7 +272,7 @@ fn key_of(message: &Message) -> u64 {
 /// source it names replaces what was kept before under that name. A line's
 /// own `source` first, else `source`, else the file's name.
 pub fn import(dirs: &Dirs, path: &Path, source: Option<&str>) -> Result<Imported, LearnError> {
-    let file = std::fs::File::open(path).map_err(|e| io_error(path, e))?;
+    let file = crate::files::File::open(path).map_err(|e| io_error(path, e))?;
     let mut reader = BufReader::new(file);
     let gzipped = reader.fill_buf().map_err(|e| io_error(path, e))?.starts_with(&[0x1f, 0x8b]);
     let stem = path.file_name().and_then(|n| n.to_str()).map(|n| n.split('.').next().unwrap_or(n)).unwrap_or(UNNAMED);
@@ -285,7 +287,7 @@ pub fn import(dirs: &Dirs, path: &Path, source: Option<&str>) -> Result<Imported
 /// A source being written: its file beside its place, its counts, what it holds already.
 struct Writing {
     temporary: PathBuf,
-    out: flate2::write::GzEncoder<std::fs::File>,
+    out: flate2::write::GzEncoder<crate::files::File>,
     counts: Counts,
     seen: HashSet<u64>,
 }
@@ -331,12 +333,12 @@ pub fn import_from(dirs: &Dirs, reader: impl BufRead, default_source: &str) -> R
         file.sync_all().map_err(|e| io_error(&temporary, e))?;
         drop(file);
         counts.imported = now();
-        std::fs::rename(&temporary, file_of(dirs, &source)).map_err(|e| io_error(&temporary, e))?;
+        crate::files::rename(&temporary, file_of(dirs, &source)).map_err(|e| io_error(&temporary, e))?;
         // Its counts beside it, written whole, yours alone as it is.
         let text = toml::to_string(&counts).map_err(|e| io_error(&folder, e))?;
         let beside = folder.join(format!(".{source}.toml.{}", std::process::id()));
         private_file(&beside)?.write_all(text.as_bytes()).map_err(|e| io_error(&beside, e))?;
-        std::fs::rename(&beside, counts_of(dirs, &source)).map_err(|e| io_error(&beside, e))?;
+        crate::files::rename(&beside, counts_of(dirs, &source)).map_err(|e| io_error(&beside, e))?;
         imported.sources.insert(source, counts);
     }
     Ok(imported)
@@ -344,19 +346,19 @@ pub fn import_from(dirs: &Dirs, reader: impl BufRead, default_source: &str) -> R
 
 /// The folder made, yours alone (Unix).
 fn make_private(folder: &Path) -> Result<(), LearnError> {
-    let mut builder = std::fs::DirBuilder::new();
+    let mut builder = crate::files::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.mode(0o700);
     builder.create(folder).map_err(|e| io_error(folder, e))
 }
 
 /// A new file, yours alone (Unix).
-fn private_file(path: &Path) -> Result<std::fs::File, LearnError> {
-    let mut options = std::fs::OpenOptions::new();
+fn private_file(path: &Path) -> Result<crate::files::File, LearnError> {
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     options.open(path).map_err(|e| io_error(path, e))
 }
 
@@ -364,9 +366,9 @@ fn private_file(path: &Path) -> Result<std::fs::File, LearnError> {
 pub fn remove(dirs: &Dirs, source: &str) -> Result<bool, LearnError> {
     let source = source_name(source);
     let file = file_of(dirs, &source);
-    let found = file.exists();
+    let found = file.present();
     for path in [file, counts_of(dirs, &source)] {
-        match std::fs::remove_file(&path) {
+        match crate::files::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(io_error(&path, e)),
             _ => {}
         }
@@ -376,7 +378,7 @@ pub fn remove(dirs: &Dirs, source: &str) -> Result<bool, LearnError> {
 
 /// The sources kept, by name: what each holds, from the counts written at its import.
 pub fn sources(dirs: &Dirs) -> Vec<Source> {
-    let mut found: Vec<Source> = std::fs::read_dir(dirs.external())
+    let mut found: Vec<Source> = crate::files::read_dir(dirs.external())
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -385,8 +387,8 @@ pub fn sources(dirs: &Dirs) -> Vec<Source> {
             (!name.starts_with('.')).then_some(name)
         })
         .map(|name| {
-            let counts = std::fs::read_to_string(counts_of(dirs, &name)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-            let bytes = std::fs::metadata(file_of(dirs, &name)).map_or(0, |m| m.len());
+            let counts = crate::files::read_to_string(counts_of(dirs, &name)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+            let bytes = crate::files::metadata(file_of(dirs, &name)).map_or(0, |m| m.len());
             Source { name, counts, bytes }
         })
         .collect();
@@ -398,7 +400,7 @@ pub fn sources(dirs: &Dirs) -> Vec<Source> {
 pub fn read_all(dirs: &Dirs, mut each: impl FnMut(&str, Message)) -> Result<(), LearnError> {
     for source in sources(dirs) {
         let path = file_of(dirs, &source.name);
-        let file = std::fs::File::open(&path).map_err(|e| io_error(&path, e))?;
+        let file = crate::files::File::open(&path).map_err(|e| io_error(&path, e))?;
         let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file)));
         for line in reader.split(b'\n') {
             let Ok(line) = line else { break };
@@ -415,7 +417,7 @@ pub fn read_all(dirs: &Dirs, mut each: impl FnMut(&str, Message)) -> Result<(), 
 fn read_source(dirs: &Dirs, source: &str) -> Vec<Message> {
     use std::io::Read;
     let mut text = String::new();
-    let file = std::fs::File::open(file_of(dirs, source)).unwrap();
+    let file = crate::files::File::open(file_of(dirs, source)).unwrap();
     flate2::read::MultiGzDecoder::new(file).read_to_string(&mut text).unwrap();
     text.lines().map(|l| serde_json::from_str(l).unwrap()).collect()
 }

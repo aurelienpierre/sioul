@@ -10,6 +10,8 @@
 //! (docs/client.md, "Calm first", rules 3 and 4). Reading and flagging happen
 //! at once and show at once: undoing them is doing them again.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, config_path, json, load_config, say, set_status, show, tell, tr};
 use cxx_qt_lib::QString;
 use sioul_core::card::Card;
@@ -142,7 +144,7 @@ fn mailbox_view_in(path: &Path) -> String {
 
 /// What this device keeps of the mailbox's view; nothing kept, or unreadable: the defaults.
 fn kept_view(path: &Path) -> MailboxView {
-    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// The view written back, only when it changed.
@@ -152,7 +154,7 @@ fn write_view(path: &Path, view: &MailboxView) {
     {
         // Its folder made first: on a new device nothing else may have made it yet.
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         let _ = sioul_core::filelock::replace(path, text.as_bytes());
     }
@@ -739,7 +741,7 @@ struct DraftRow {
 }
 
 fn draft_row(draft: &Draft) -> DraftRow {
-    let saved = std::fs::metadata(draft.path())
+    let saved = crate::files::metadata(draft.path())
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -1071,7 +1073,7 @@ impl Bringing {
         if !in_junk(account, file) {
             return None;
         }
-        let arrived = std::fs::metadata(file).ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
+        let arrived = crate::files::metadata(file).ok()?.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_secs() as i64;
         let keywords = maildir::keywords_of(file);
         if arrived < self.since || keywords.junk || keywords.not_junk {
             return None;
@@ -1617,10 +1619,10 @@ fn mark_read_here(file: &Path) {
     let now = jiff::Timestamp::now().as_second();
     let path = read_here_path();
     let _ = sioul_core::filelock::with_lock(&path, || {
-        let kept: Vec<String> = std::fs::read_to_string(&path).unwrap_or_default().lines().filter(|line| line.rsplit_once('\t').is_some_and(|(one, at)| one != unique && at.parse::<i64>().is_ok_and(|at| now - at < READ_HERE_KEPT))).map(str::to_string).collect();
+        let kept: Vec<String> = crate::files::read_to_string(&path).unwrap_or_default().lines().filter(|line| line.rsplit_once('\t').is_some_and(|(one, at)| one != unique && at.parse::<i64>().is_ok_and(|at| now - at < READ_HERE_KEPT))).map(str::to_string).collect();
         let text = kept.into_iter().chain([format!("{unique}\t{now}")]).collect::<Vec<_>>().join("\n") + "\n";
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| e.to_string())
     });
@@ -1629,7 +1631,7 @@ fn mark_read_here(file: &Path) {
 
 /// This device's list of the messages read here only, given to the mail's rows (`view::set_read_here`).
 fn load_read_here() {
-    let text = std::fs::read_to_string(read_here_path()).unwrap_or_default();
+    let text = crate::files::read_to_string(read_here_path()).unwrap_or_default();
     sioul_core::view::set_read_here(text.lines().filter_map(|line| line.split_once('\t').map(|(one, _)| one.to_string())).collect());
 }
 
@@ -1851,7 +1853,7 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
         Work::Remove { account, file } => {
             // A task taken out: the letters it stood for are free again (review of e5bd27b, later 6),
             // by the task's own UID (`letters::untie_removed`), read before the file goes.
-            let before = std::fs::read_to_string(file).ok();
+            let before = crate::files::read_to_string(file).ok();
             match sioul_core::vdir::remove_item(file) {
                 Ok(()) => {
                     crate::pim::nudge(shared, account);
@@ -1869,7 +1871,7 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             }
             // The file as it is now, read again: still the meeting its organizer
             // cancelled whole, or nothing is taken out (the check of ef8c0ca, low 27).
-            let now = match std::fs::read_to_string(file) {
+            let now = match crate::files::read_to_string(file) {
                 Ok(now) => now,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
                 Err(e) => return Some(format!("{}: {e}", file.display())),
@@ -1877,7 +1879,7 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             if !matches!(sioul_core::agenda::cancellation(&now, cancel, &sioul_core::agenda::own_addresses()), sioul_core::agenda::Cancellation::Whole) {
                 return Some(tr().text("invitation-cancel-changed", None));
             }
-            match std::fs::remove_file(file) {
+            match crate::files::remove_file(file) {
                 Ok(()) => {
                     crate::pim::nudge(shared, account);
                     None
@@ -1901,7 +1903,7 @@ fn perform_moving(work: &Work, shared: &Shared, moved: &mut Vec<(PathBuf, PathBu
             if let Err(refusal) = sioul_core::agenda::guard(file, change) {
                 return Some(tr().text(refusal.word(&change), None));
             }
-            let skipped = std::fs::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
+            let skipped = crate::files::read_to_string(file).ok().and_then(|text| sioul_core::agenda::skip_occurrence(&text, *start));
             match skipped.map(|text| sioul_core::vdir::write_item(file, &text)) {
                 Some(Ok(())) => {
                     crate::pim::nudge(shared, account);
@@ -2336,7 +2338,7 @@ pub(crate) fn draft(id: &str) -> Option<String> {
             .map(|(index, path)| AttachedView {
                 index,
                 name: path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().to_string()),
-                size: std::fs::metadata(path).map(|m| size(m.len())).unwrap_or_default(),
+                size: crate::files::metadata(path).map(|m| size(m.len())).unwrap_or_default(),
             })
             .collect(),
         forwarded: forwarded.into_iter().map(|(index, name)| AttachedView { index: index as usize, name, size: String::new() }).collect(),
@@ -2389,7 +2391,7 @@ pub(crate) fn save_draft(text: &str) -> Result<String, String> {
 pub(crate) fn attach(id: &str, url: &str) -> Result<(), String> {
     let mut draft = Draft::by_id(id).ok_or_else(|| tr().text("mail-draft-gone", None))?;
     let chosen = crate::chosen::take(url)?;
-    if !chosen.path().is_file() {
+    if !chosen.path().present_file() {
         return Err(say("compose-not-a-file", &[("path", chosen.path().display().to_string())]));
     }
     let path = chosen.keep_in(&sioul_core::handed::Incoming::here().files_of(&dialog_copies()))?;
@@ -2482,7 +2484,7 @@ pub(crate) fn place(key: &str) -> String {
 /// The message as it came, headers and all, for "Show the source"; cut after 512 KB.
 pub(crate) fn source(key: &str) -> String {
     let Some((_, file)) = locate(key) else { return String::new() };
-    let raw = std::fs::read(&file).unwrap_or_default();
+    let raw = crate::files::read(&file).unwrap_or_default();
     let cut = raw.len().min(512 * 1024);
     String::from_utf8_lossy(&raw[..cut]).into_owned()
 }

@@ -35,6 +35,8 @@
 //! the listener's words copied into its outcomes. On a computer: a reply
 //! written there (`ask`), or taken back while it waits (`take_back`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::load_config;
 use serde_json::{Value, json};
 use sioul_core::appnotes::Posted;
@@ -452,7 +454,7 @@ fn decide(here: &str, asked: &(Vec<Ask>, std::collections::BTreeSet<(String, Str
 /// that could not be written at its step), said now (`replies::ends_of`).
 /// Whether an outcome was written.
 fn settle(private: &Path, own: &Path, now: i64) -> bool {
-    if !private.join(sioul_core::texts::LEDGER).is_file() {
+    if !private.join(sioul_core::texts::LEDGER).present_file() {
         return false;
     }
     let Ok(ledger) = rules::open_ledger(private, now) else { return false };

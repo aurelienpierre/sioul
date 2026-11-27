@@ -322,14 +322,14 @@ impl LocalLinks {
     }
 
     pub fn load(path: &Path) -> LocalLinks {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         // A file there that does not read as ties (half written, edited by hand) is
         // left alone: `load` gave it as empty, and written over, every tie kept here would go.
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => {
                 toml::from_str::<LocalLinks>(&text).map_err(|e| format!("{}: {e}", path.display()))?;
             }
@@ -337,11 +337,11 @@ impl LocalLinks {
             Err(e) => return Err(fail(e)),
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)?;
+        crate::files::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)?;
         // Every view of a tie reads it again (what is related, a project, a site's person).
         crate::changes::said(crate::changes::Kind::Links);
         Ok(())
@@ -813,7 +813,7 @@ impl World<'_> {
         let zone = crate::zone::current();
         if want(Kind::Event) {
             for event in self.events.iter().filter(|e| matches(&e.summary, "")) {
-                let coming = if event.recurring { std::fs::read_to_string(&event.key).ok().map(|text| crate::agenda::next_turns(&text, now, turns.unwrap_or(1).max(1), &zone)).unwrap_or_default() } else { Vec::new() };
+                let coming = if event.recurring { crate::files::read_to_string(&event.key).ok().map(|text| crate::agenda::next_turns(&text, now, turns.unwrap_or(1).max(1), &zone)).unwrap_or_default() } else { Vec::new() };
                 let one = |when: i64, rid: String, title: String| Found { kind: Kind::Event, starts: starts(&event.summary), when, uri: event_uri(&event.uid), rid, key: Some(event.key.clone()), title: Some(if title.trim().is_empty() { event.summary.clone() } else { title }) };
                 if coming.is_empty() {
                     found.push(one(event.start, String::new(), String::new()));
@@ -875,7 +875,7 @@ impl World<'_> {
                 if let Some(event) = self.events.iter().find(|e| e.uid == id) {
                     out.title = event.summary.clone();
                     // A repeating event by its next time, as long as it has one: its first is long past.
-                    let next = event.recurring.then(|| std::fs::read_to_string(&event.key).ok()).flatten().and_then(|text| crate::agenda::next_turns(&text, crate::zone::now().timestamp().as_second(), 1, &crate::zone::current()).first().map(|t| t.start));
+                    let next = event.recurring.then(|| crate::files::read_to_string(&event.key).ok()).flatten().and_then(|text| crate::agenda::next_turns(&text, crate::zone::now().timestamp().as_second(), 1, &crate::zone::current()).first().map(|t| t.start));
                     out.when = next.or((event.start > 0).then_some(event.start));
                     out.key = event.key.clone();
                     out.found = true;
@@ -1082,7 +1082,7 @@ impl Loaded {
     fn event_file(&self, uid: &str) -> Option<(PathBuf, String, bool)> {
         let event = self.events.iter().find(|e| e.uid == uid)?;
         let path = PathBuf::from(&event.key);
-        let text = std::fs::read_to_string(&path).ok()?;
+        let text = crate::files::read_to_string(&path).ok()?;
         let writable = crate::vdir::collections(crate::vdir::Kind::Calendars).into_iter().find(|c| path.starts_with(&c.dir)).is_some_and(|c| !c.read_only);
         Some((path, text, writable))
     }
@@ -1121,7 +1121,7 @@ impl Loaded {
         match kind_of(holder) {
             Kind::Task => {
                 let task = self.tasks.iter().find(|t| t.uid == id).filter(|t| !t.read_only)?;
-                let text = std::fs::read_to_string(&task.key).ok()?;
+                let text = crate::files::read_to_string(&task.key).ok()?;
                 let mut lines = vec![self.tie_line(other, true)];
                 // A call or an outing given an office whose card has hours needs it open: ticked by
                 // itself, once, which an untick corrects (`opening::ticks`).
@@ -1136,14 +1136,14 @@ impl Loaded {
             }
             Kind::Event => {
                 let path = self.writable_event(&id)?;
-                let text = std::fs::read_to_string(&path).ok()?;
+                let text = crate::files::read_to_string(&path).ok()?;
                 let text = crate::agenda::add_lines(&text, &[self.tie_line(other, false)])?;
                 Some(Rewrite { kind: Kind::Event, path, text })
             }
             Kind::Note => {
                 let vault = self.vault.as_ref()?;
                 let path = vault.file(&notes::path_of(holder)?)?;
-                let text = std::fs::read_to_string(&path).ok()?;
+                let text = crate::files::read_to_string(&path).ok()?;
                 Some(Rewrite { kind: Kind::Note, path, text: notes::add_front_link(&text, other) })
             }
             _ => None,
@@ -1210,7 +1210,7 @@ impl Loaded {
             match kind_of(holder) {
                 Kind::Task => {
                     if let Some(task) = self.tasks.iter().find(|t| t.uid == id).filter(|t| !t.read_only)
-                        && let Ok(text) = std::fs::read_to_string(&task.key)
+                        && let Ok(text) = crate::files::read_to_string(&task.key)
                     {
                         let path = PathBuf::from(&task.key);
                         let base = paired.remove(&path).unwrap_or_else(|| text.clone());
@@ -1222,7 +1222,7 @@ impl Loaded {
                 }
                 Kind::Event => {
                     if let Some(path) = self.writable_event(&id)
-                        && let Ok(text) = std::fs::read_to_string(&path)
+                        && let Ok(text) = crate::files::read_to_string(&path)
                     {
                         let base = paired.remove(&path).unwrap_or_else(|| text.clone());
                         let less = crate::agenda::remove_lines(&base, |l| points_at(l, other)).unwrap_or(base);
@@ -1234,7 +1234,7 @@ impl Loaded {
                 Kind::Note => {
                     if let Some(vault) = self.vault.as_ref()
                         && let Some(path) = notes::path_of(holder).and_then(|p| vault.file(&p))
-                        && let Ok(text) = std::fs::read_to_string(&path)
+                        && let Ok(text) = crate::files::read_to_string(&path)
                     {
                         let (less, removed) = notes::remove_front_link(&text, |v| world.canonical(v) == **other);
                         if removed {

@@ -133,7 +133,7 @@ impl Consent {
         let dirs = |places: &BTreeSet<String>| -> BTreeSet<std::path::PathBuf> { collections.iter().filter(|c| places.contains(&crate::agendas::place(c))).map(|c| c.dir.clone()).collect() };
         let (closed, children) = (dirs(closed), dirs(children));
         let folder = |key: &str| std::path::Path::new(key).parent().map(std::path::Path::to_path_buf);
-        let health_kind = |key: &str| std::fs::read_to_string(key).ok().and_then(|text| crate::holders::kind_of(&text)).is_some_and(|k| matches!(k, crate::holders::Kind::Health | crate::holders::Kind::Dentist));
+        let health_kind = |key: &str| crate::files::read_to_string(key).ok().and_then(|text| crate::holders::kind_of(&text)).is_some_and(|k| matches!(k, crate::holders::Kind::Health | crate::holders::Kind::Dentist));
         let mut health_uids: BTreeSet<String> = BTreeSet::new();
         for event in &loaded.events {
             let Some(dir) = folder(&event.key) else { continue };

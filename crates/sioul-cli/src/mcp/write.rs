@@ -16,6 +16,8 @@
 //! while those are closed (`access`); a thing kept from agents is not tied to,
 //! nor answered: each refusal says so plainly.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::access;
 use super::read::{self, Desk};
 use super::tools::{Answer, Args};
@@ -113,7 +115,7 @@ fn target_list(s: &Session, named: Option<&str>) -> Result<Collection, String> {
 
 /// A new item's file, under a name no other file has: never over another one.
 fn free_item(mut path: PathBuf, again: impl Fn() -> PathBuf) -> PathBuf {
-    while path.exists() {
+    while path.present() {
         path = again();
     }
     path
@@ -200,7 +202,7 @@ pub fn complete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     if task.status == Status::Completed && task.repeat.is_empty() {
         return Ok(Answer { text: format!("{said} {}  [{}]", one_line(&task.title), task.uid), data: json!({ "uid": task.uid, "changed": false }) });
     }
-    let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, Status::Completed, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md,
     // "Composed tasks"): only for a step done for good (a repeating one's turn comes back open),
@@ -329,7 +331,7 @@ fn add_leg(s: &Session, args: &Args) -> Result<Answer, String> {
         if !step.start.is_empty() || step.links.iter().any(sioul_core::blocks::is_block_link) {
             return Err("That step has a time of its own already.".into());
         }
-        let step_text = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
+        let step_text = crate::files::read_to_string(&step.key).map_err(|e| e.to_string())?;
         let (as_time, pinned) = sioul_core::anchors::leg_for_step(&text, step, &step_text, &sioul_core::zone::now()).map_err(|e| s.tr.text(&e, None))?;
         text = as_time;
         written.push((std::path::PathBuf::from(&step.key), pinned));
@@ -380,7 +382,7 @@ fn inside_notes(root: &Path, folder: &str) -> bool {
     let mut at = root.to_path_buf();
     for part in folder.split('/') {
         at.push(part);
-        match std::fs::symlink_metadata(&at) {
+        match crate::files::symlink_metadata(&at) {
             Ok(meta) if meta.file_type().is_symlink() => return false,
             Ok(_) => {}
             // Not made yet: `notes::write` makes it, inside.
@@ -561,7 +563,7 @@ fn draft_saved(s: &Session, draft: &Draft, excerpt: &str) -> Result<Answer, Stri
 
 /// A new draft's own name, one no draft has yet.
 fn free_draft(draft: &mut Draft) {
-    while draft.path().exists() {
+    while draft.path().present() {
         draft.id = Draft::new(&draft.account).id;
     }
 }

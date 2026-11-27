@@ -27,6 +27,8 @@
 //!   the inboxes only), short enough that a message moved again elsewhere is
 //!   not said on its way for long. Readers write nothing.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::state_dir;
 use crate::mailfind::Address;
 use serde::{Deserialize, Serialize};
@@ -71,33 +73,33 @@ fn canonical(address: &str) -> Option<String> {
 }
 
 fn load(path: &Path) -> Notes {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// Written beside, readable by you alone, then renamed over it; none left, the file goes.
 fn save(path: &Path, notes: &Notes) -> std::io::Result<()> {
     if notes.moved.is_empty() {
-        return match std::fs::remove_file(path) {
+        return match crate::files::remove_file(path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
             _ => Ok(()),
         };
     }
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::files::create_dir_all(parent)?;
     }
     let text = toml::to_string(notes).map_err(std::io::Error::other)?;
     let beside = path.with_extension("toml.new");
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     {
         use std::io::Write;
         let mut file = options.open(&beside)?;
         file.write_all(text.as_bytes())?;
         file.sync_all()?;
     }
-    std::fs::rename(&beside, path)
+    crate::files::rename(&beside, path)
 }
 
 /// The notes changed by `change` under the file's lock; those past their time dropped too.
@@ -137,7 +139,7 @@ pub fn forget(addresses: &[String]) -> std::io::Result<()> {
 
 pub fn forget_in(path: &Path, addresses: &[String], now: i64) -> std::io::Result<()> {
     let addresses: Vec<String> = addresses.iter().filter_map(|a| canonical(a)).collect();
-    if addresses.is_empty() || !path.exists() {
+    if addresses.is_empty() || !path.present() {
         return Ok(());
     }
     change(path, now, |moved| moved.retain(|m| !addresses.contains(&m.address)))
@@ -160,7 +162,7 @@ pub fn arrived(account: &str, folder: &str, addresses: &[String]) -> std::io::Re
 
 pub fn arrived_in(path: &Path, account: &str, folder: &str, addresses: &[String], now: i64) -> std::io::Result<()> {
     let addresses: Vec<String> = addresses.iter().filter_map(|a| canonical(a)).collect();
-    if addresses.is_empty() || !path.exists() {
+    if addresses.is_empty() || !path.present() {
         return Ok(());
     }
     change(path, now, |moved| moved.retain(|m| !(m.account == account && m.folder == folder && addresses.contains(&m.address))))
@@ -170,7 +172,7 @@ pub fn arrived_in(path: &Path, account: &str, folder: &str, addresses: &[String]
 /// folders (`folder`: kept on the server only now): their notes go.
 pub fn forget_account(account: &str, folder: Option<&str>) -> std::io::Result<()> {
     let path = path();
-    if !path.exists() {
+    if !path.present() {
         return Ok(());
     }
     change(&path, now(), |moved| moved.retain(|m| !(m.account == account && folder.is_none_or(|f| m.folder == f))))

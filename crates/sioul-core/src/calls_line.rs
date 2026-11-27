@@ -691,7 +691,7 @@ pub fn view(said: Option<&Said>, card: &Card, tr: &crate::i18n::Translator) -> s
 
 /// The value as written for the phone `id` (for Undo); none when there is none.
 pub fn raw(path: &Path, id: &str) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     let table: toml::Table = text.parse().ok()?;
     table.get("device")?.get(id.trim())?.get(KEY)?.as_str().map(str::to_string)
 }

@@ -442,7 +442,7 @@ impl Table {
 
     /// Reads the table's file.
     pub fn read(path: &Path) -> Result<Table, String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = crate::files::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         Table::from_bytes(&bytes).map_err(|e| format!("{}: {e}", path.display()))
     }
 
@@ -453,24 +453,24 @@ impl Table {
         use std::io::Write;
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let temporary = path.with_extension("bin.new");
-        let mut file = std::fs::File::create(&temporary).map_err(fail)?;
+        let mut file = crate::files::File::create(&temporary).map_err(fail)?;
         file.write_all(&self.to_bytes()).and_then(|()| file.sync_all()).map_err(fail)?;
         drop(file);
         // `cached` sees a new table by its size and time. A clock that ticks
         // coarsely (Windows: every 15.6 ms) can give the new file the time of the
         // one it replaces, and a new table often has the same size: the new one is
         // made a millisecond younger than the one it replaces, at least.
-        let modified = |at: &Path| std::fs::metadata(at).ok().and_then(|m| m.modified().ok());
+        let modified = |at: &Path| crate::files::metadata(at).ok().and_then(|m| m.modified().ok());
         if let Some(old) = modified(path)
             && modified(&temporary).is_none_or(|new| new <= old)
         {
-            let _ = std::fs::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(old + std::time::Duration::from_millis(1)));
+            let _ = crate::files::File::options().write(true).open(&temporary).and_then(|f| f.set_modified(old + std::time::Duration::from_millis(1)));
         }
         keep_previous(path);
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 
     /// The table at `path`, read once per process and again only when its
@@ -481,7 +481,7 @@ impl Table {
     pub fn cached(path: &Path) -> Option<Arc<Table>> {
         type Kept = Option<(PathBuf, Option<(u64, u128)>, Option<Arc<Table>>)>;
         static KEPT: Mutex<Kept> = Mutex::new(None);
-        let seal = std::fs::metadata(path).ok().map(|m| (m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())));
+        let seal = crate::files::metadata(path).ok().map(|m| (m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())));
         let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((at, known, table)) = kept.as_ref()
             && at == path
@@ -521,8 +521,8 @@ pub fn keep_previous(path: &Path) {
     }
     let kept = previous(path);
     let temporary = kept.with_extension("bin.new");
-    if std::fs::copy(path, &temporary).and_then(|_| std::fs::rename(&temporary, &kept)).is_err() {
-        let _ = std::fs::remove_file(&temporary);
+    if crate::files::copy(path, &temporary).and_then(|_| crate::files::rename(&temporary, &kept)).is_err() {
+        let _ = crate::files::remove_file(&temporary);
     }
 }
 

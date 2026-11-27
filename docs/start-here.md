@@ -143,6 +143,7 @@ Sioul has its own names for its parts. The design notes use them without explain
 | **sites** (older: **portals**) | Web-only mailboxes, chats and other sites, kept logged in on a computer, each in its own browser profile; on a phone, opened in the browser. | [sites.md](sites.md) |
 | **the sharing** | Your devices exchanging what only Sioul keeps, through a folder your sync app carries, sealed with your passphrase (`sioul_sync::share`). | [database.md](database.md) |
 | **parts** | What the sharing carries, switched on part by part: settings, senders, health, time… | [database.md](database.md) |
+| **the sealed store** | The one door through which Sioul's files on a device are to be read and written, sealed with a key in the system's keyring: opaque names, a sealed list per folder, earlier versions, a check (`sioul_core::sealed`). No store has moved onto it yet. | [store.md](store.md) |
 | **leases** | One device at a time for some work (reminding medicines, numbering invoices), claimed through the sharing folder (`sioul_sync::lease`). | [database.md](database.md) |
 | **links**, **ties** | Links between everything: mail, tasks, events, contacts, notes, drafts, budget lines (`sioul_core::links`). | [tasks.md](tasks.md) |
 | **movements** | Each sum of money in or out, once, with every source that tells of it: the preset and its contract, the mail or letter, the bank's line; planned, announced, not final yet, done or not seen (`sioul_core::movements`). | [accounting.md](accounting.md#movements) |

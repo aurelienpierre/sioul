@@ -38,6 +38,8 @@
 //! (`still_on`). A switch "on" taken from this device's own system adds no
 //! mode of Sioul's over it (`Ask::stack`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::tr;
 use serde::{Deserialize, Serialize};
 use sioul_core::i18n::{self, Translator};
@@ -668,19 +670,19 @@ impl<P: Platform> Layer<P> {
     fn save(&self) {
         let Some(path) = &self.path else { return };
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         let text = toml::to_string(&self.kept).unwrap_or_default();
         // Written whole beside it, then put in place: never half a file.
         let fresh = path.with_extension("toml.new");
-        if std::fs::write(&fresh, text).is_ok() {
-            let _ = std::fs::rename(&fresh, path);
+        if crate::files::write(&fresh, text).is_ok() {
+            let _ = crate::files::rename(&fresh, path);
         }
     }
 }
 
 fn read_kept(path: &Path) -> Kept {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// Where what Sioul turned on is kept.
@@ -1436,7 +1438,7 @@ mod desktop {
 
         /// A value of Plasma's notification settings, from the first file that sets it.
         fn plasma(&self, group: &str, key: &str) -> Option<String> {
-            self.plasma_files().iter().filter_map(|file| std::fs::read_to_string(file).ok()).find_map(|text| kconfig(&text, group, key).map(str::to_string))
+            self.plasma_files().iter().filter_map(|file| crate::files::read_to_string(file).ok()).find_map(|text| kconfig(&text, group, key).map(str::to_string))
         }
     }
 
@@ -1482,7 +1484,7 @@ mod desktop {
         }
 
         fn sandboxed(&self) -> bool {
-            std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").exists()
+            std::env::var_os("FLATPAK_ID").is_some() || Path::new("/.flatpak-info").present()
         }
 
         fn inhibited(&self) -> Option<bool> {

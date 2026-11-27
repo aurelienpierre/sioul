@@ -22,6 +22,8 @@
 //! {"act":"sender","at":1791360060,"address":"news@choir.example","topic":"choir","rule":"always"}
 //! ```
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -91,17 +93,17 @@ pub fn append(path: &Path, acts: &[Act]) -> Result<(), String> {
         text.push('\n');
     }
     if let Some(folder) = path.parent() {
-        let mut builder = std::fs::DirBuilder::new();
+        let mut builder = crate::files::DirBuilder::new();
         builder.recursive(true);
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.mode(0o700);
         builder.create(folder).map_err(fail)?;
     }
     crate::filelock::with_lock(path, || {
-        let mut options = std::fs::OpenOptions::new();
+        let mut options = crate::files::OpenOptions::new();
         options.create(true).append(true);
         #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        options.mode(0o600);
         options.open(path).and_then(|mut file| file.write_all(text.as_bytes())).map_err(fail)
     })?;
     // Every view of mail's topics told (`changes`).
@@ -113,12 +115,12 @@ pub fn append(path: &Path, acts: &[Act]) -> Result<(), String> {
 /// said it, then in the order read); a line that does not read (cut by a
 /// crash, written by a later Sioul) is left out.
 pub fn read_all_in(root: &Path) -> Vec<Act> {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(root.join(FOLDER))
+    let mut files: Vec<PathBuf> = crate::files::read_dir(root.join(FOLDER))
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.is_file())
+        .filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.present_file())
         .collect();
     files.sort();
     let mut acts: Vec<Act> = files.iter().flat_map(|p| crate::spam::labels::read_from::<Act>(p)).collect();

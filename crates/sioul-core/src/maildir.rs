@@ -13,6 +13,8 @@
 //! `dovecot-keywords` file. They say what you, or a mail client, said of a
 //! message: junk (`$Junk`), or not junk (`$NotJunk`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::{Card, ImapOrigin};
 
 /// `$Junk`'s letter.
@@ -47,9 +49,9 @@ pub fn keywords_of(path: &Path) -> Keywords {
 /// once, when a letter is first kept there: Dovecot reads the same folder alike.
 fn name_keywords(folder: &Path, flags: &str) {
     let file = folder.join("dovecot-keywords");
-    if KEYWORDS.iter().any(|(letter, _)| flags.contains(*letter)) && !file.exists() {
+    if KEYWORDS.iter().any(|(letter, _)| flags.contains(*letter)) && !file.present() {
         let names: String = KEYWORDS.iter().enumerate().map(|(n, (_, name))| format!("{n} {name}\n")).collect();
-        let _ = std::fs::write(file, names);
+        let _ = crate::files::write(file, names);
     }
 }
 
@@ -79,8 +81,8 @@ pub fn read_messages(dir: &Path) -> Vec<Card> {
 /// The messages whose server origin passes `keep`, oldest first; the others are not even read.
 pub fn read_messages_where(dir: &Path, keep: impl Fn(Option<ImapOrigin>) -> bool) -> Vec<Card> {
     let maildir = [dir.join("new"), dir.join("cur")];
-    let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) {
-        maildir.into_iter().filter(|d| d.is_dir()).collect()
+    let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.present_dir()) {
+        maildir.into_iter().filter(|d| d.present_dir()).collect()
     } else {
         vec![dir.to_path_buf()]
     };
@@ -90,11 +92,11 @@ pub fn read_messages_where(dir: &Path, keep: impl Fn(Option<ImapOrigin>) -> bool
 }
 
 fn read_folder(folder: &Path, keep: &impl Fn(Option<ImapOrigin>) -> bool) -> Vec<Card> {
-    let Ok(entries) = std::fs::read_dir(folder) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(folder) else { return Vec::new() };
     entries
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file() && !is_hidden(p) && keep(origin_of(p)))
+        .filter(|p| p.present_file() && !is_hidden(p) && keep(origin_of(p)))
         .filter_map(|p| read_one(&p))
         .collect()
 }
@@ -110,7 +112,7 @@ pub fn read_one(path: &Path) -> Option<Card> {
         card.origin = origin_of(path);
         return Some(card);
     }
-    let raw = std::fs::read(path).ok()?;
+    let raw = crate::files::read(path).ok()?;
     parsed_once();
     let mut card = Card::from_bytes(&raw)?;
     card.path = Some(path.to_path_buf());
@@ -161,7 +163,7 @@ fn kept_key(path: &Path) -> Option<(String, u64, u64, u64)> {
     if KEPT.with(|kept| kept.borrow().is_none()) {
         return None;
     }
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     let modified = meta.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_nanos() as u64;
     // Its inode too: a message rewritten through `tmp/` and put in its place,
     // at the same size, its time set back (`sioul verify --again`), is another file.
@@ -227,18 +229,17 @@ pub struct Fetched<'a> {
 /// Maildir convention says, so that none is lost until the next sync.
 pub fn store(root: &Path, message: &Fetched) -> std::io::Result<PathBuf> {
     for sub in ["tmp", "new", "cur"] {
-        std::fs::create_dir_all(root.join(sub))?;
+        crate::files::create_dir_all(root.join(sub))?;
     }
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
     let unique = format!("{now}.U{}-{}.sioul", message.origin.validity, message.origin.uid);
     let temporary = root.join("tmp").join(&unique);
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     // Mail is yours alone, as mail servers keep it: not readable by the other
     // accounts of a shared computer, whatever the umask.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let mut file = options.open(&temporary)?;
@@ -251,7 +252,7 @@ pub fn store(root: &Path, message: &Fetched) -> std::io::Result<PathBuf> {
     drop(file);
     let target = if message.flags.is_empty() { root.join("new").join(unique) } else { root.join("cur").join(format!("{unique}{INFO}2,{}", sorted(&message.flags))) };
     name_keywords(root, &message.flags);
-    std::fs::rename(&temporary, &target)?;
+    crate::files::rename(&temporary, &target)?;
     Ok(target)
 }
 
@@ -270,9 +271,9 @@ pub fn set_flags(path: &Path, flags: &str) -> std::io::Result<PathBuf> {
     let folder = path.parent().and_then(Path::parent).ok_or_else(|| std::io::Error::other("not in a Maildir"))?;
     let target = folder.join("cur").join(format!("{unique}{INFO}2,{}", sorted(flags)));
     if target != path {
-        std::fs::create_dir_all(folder.join("cur"))?;
+        crate::files::create_dir_all(folder.join("cur"))?;
         name_keywords(folder, flags);
-        std::fs::rename(path, &target)?;
+        crate::files::rename(path, &target)?;
     }
     Ok(target)
 }
@@ -280,14 +281,14 @@ pub fn set_flags(path: &Path, flags: &str) -> std::io::Result<PathBuf> {
 /// Where a stored message is now: its flags rename it, and a first reading
 /// moves it from `new/` to `cur/`. The part of the name before ":2," never changes.
 pub fn locate(path: &Path) -> Option<PathBuf> {
-    if path.is_file() {
+    if path.present_file() {
         return Some(path.to_path_buf());
     }
     let name = path.file_name()?.to_str()?;
     let unique = unique_part(name);
     let folder = path.parent()?.parent()?;
     ["cur", "new"].iter().find_map(|sub| {
-        std::fs::read_dir(folder.join(sub))
+        crate::files::read_dir(folder.join(sub))
             .ok()?
             .filter_map(Result::ok)
             .map(|e| e.path())
@@ -298,7 +299,7 @@ pub fn locate(path: &Path) -> Option<PathBuf> {
 /// Whether a Maildir holds a message not read yet: one in `new/`, or one in
 /// `cur/` without the S flag. Only names are read.
 pub fn has_unread(dir: &Path) -> bool {
-    let names = |sub: &str| std::fs::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok());
+    let names = |sub: &str| crate::files::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok());
     names("new").any(|n| !n.starts_with('.')) || names("cur").any(|n| !n.starts_with('.') && !flags_part(&n).is_some_and(|f| f.contains('S')))
 }
 
@@ -315,8 +316,8 @@ pub fn message_ids(dir: &Path) -> std::collections::BTreeSet<String> {
 pub fn forget_account(account: &crate::config::Account) -> Result<Vec<PathBuf>, String> {
     let mut gone = forget_account_under(account, &crate::config::data_dir().join("mail"), &crate::shield::AiCache::path(&account.id))?;
     // What each message said, kept per folder (`mailcache`): a cache of that mail.
-    if let Some(index) = crate::mailcache::account_dir(&account.id).filter(|dir| dir.is_dir()) {
-        std::fs::remove_dir_all(&index).map_err(|e| format!("{}: {e}", index.display()))?;
+    if let Some(index) = crate::mailcache::account_dir(&account.id).filter(|dir| dir.present_dir()) {
+        crate::files::remove_dir_all(&index).map_err(|e| format!("{}: {e}", index.display()))?;
         gone.push(index);
     }
     // What each reader of every message found in it (`mailpass`): a cache of that mail too.
@@ -332,13 +333,13 @@ fn forget_account_under(account: &crate::config::Account, mail_root: &Path, ai_c
     let plain = matches!(Path::new(&account.id).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
     if plain && account.maildir.is_none() {
         let folder = mail_root.join(&account.id);
-        if folder.is_dir() && folder.parent() == Some(mail_root) {
-            std::fs::remove_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        if folder.present_dir() && folder.parent() == Some(mail_root) {
+            crate::files::remove_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
             gone.push(folder);
         }
     }
-    if plain && ai_cache.is_file() {
-        std::fs::remove_file(ai_cache).map_err(|e| format!("{}: {e}", ai_cache.display()))?;
+    if plain && ai_cache.present_file() {
+        crate::files::remove_file(ai_cache).map_err(|e| format!("{}: {e}", ai_cache.display()))?;
         gone.push(ai_cache.to_path_buf());
     }
     Ok(gone)
@@ -348,7 +349,7 @@ fn forget_account_under(account: &crate::config::Account, mail_root: &Path, ai_c
 pub fn holding(dir: &Path, origin: ImapOrigin) -> Option<PathBuf> {
     ["cur", "new"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(dir.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(dir.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -388,22 +389,22 @@ pub fn move_into(file: &Path, dir: &Path, to: ImapOrigin, flags: &str) -> std::i
     let name = file.file_name().and_then(|n| n.to_str()).ok_or_else(|| std::io::Error::other("not a message's file"))?;
     let unique = unique_for(name, to).ok_or_else(|| std::io::Error::other("not a file Sioul numbered"))?;
     for sub in ["tmp", "new", "cur"] {
-        std::fs::create_dir_all(dir.join(sub))?;
+        crate::files::create_dir_all(dir.join(sub))?;
     }
     let target = if flags.is_empty() { dir.join("new").join(&unique) } else { dir.join("cur").join(format!("{unique}{INFO}2,{}", sorted(flags))) };
-    if origin_of(&target) != Some(to) || target.exists() {
+    if origin_of(&target) != Some(to) || target.present() {
         return Err(std::io::Error::other("the new name does not say its place"));
     }
     name_keywords(dir, flags);
-    match std::fs::rename(file, &target) {
+    match crate::files::rename(file, &target) {
         Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
             let temporary = dir.join("tmp").join(&unique);
-            std::fs::copy(file, &temporary)?;
-            if let Ok(time) = std::fs::metadata(file).and_then(|m| m.modified()) {
-                std::fs::File::options().write(true).open(&temporary)?.set_modified(time)?;
+            crate::files::copy(file, &temporary)?;
+            if let Ok(time) = crate::files::metadata(file).and_then(|m| m.modified()) {
+                crate::files::File::options().write(true).open(&temporary)?.set_modified(time)?;
             }
-            std::fs::rename(&temporary, &target)?;
-            std::fs::remove_file(file)?;
+            crate::files::rename(&temporary, &target)?;
+            crate::files::remove_file(file)?;
         }
         done => done?,
     }

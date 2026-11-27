@@ -26,6 +26,8 @@
 //! outbox once the change's Undo is over (`outbox`), never a draft to find.
 //! Never both for one guest and one change.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{say, tr};
 use sioul_core::agenda;
 use sioul_core::agentwrites::FileChange;
@@ -100,7 +102,7 @@ pub(crate) fn server_for(calendar: &Collection, organizer: &str) -> Teller {
 /// read right before (an item has no lock of its own): a save of yours or
 /// a pull meanwhile is never written over.
 pub(crate) fn leave_to_you(path: &Path, was: &str, marked: &str) -> Result<(), String> {
-    if std::fs::read_to_string(path).ok().as_deref() != Some(was) {
+    if crate::files::read_to_string(path).ok().as_deref() != Some(was) {
         return Err(tr().text("undo-too-late", None));
     }
     vdir::write_organized(path, marked)
@@ -665,7 +667,7 @@ fn restored(written: &Written, path: &Path) {
             eprintln!("Sioul: a cancellation withdrawn could not come back to Drafts: {e}");
         }
     }
-    if let Ok(text) = std::fs::read_to_string(path) {
+    if let Ok(text) = crate::files::read_to_string(path) {
         organizer::cancellations_settled(&text);
     }
 }
@@ -687,7 +689,7 @@ fn restored(written: &Written, path: &Path) {
 pub(crate) fn put_back(written: &Written) -> Result<(), String> {
     let too_late = || tr().text("undo-too-late", None);
     let Some(file) = &written.file else { return Err(too_late()) };
-    let current = std::fs::read_to_string(&file.path).ok();
+    let current = crate::files::read_to_string(&file.path).ok();
     if current != file.after {
         // Its server took it: its copy came back, the same for its guests, the sync's last word on it.
         if let (Some(now), Some(after)) = (current.as_deref(), file.after.as_deref())
@@ -820,7 +822,7 @@ pub(crate) fn deletion_asked(before: &str, calendar: &Collection) -> Result<Stri
 /// while nobody knows yet whether its server tells those not left to you
 /// (`Teller::Unknown`). What Undo needs to put it back.
 pub(crate) fn delete(path: &Path) -> Result<Written, String> {
-    let before = std::fs::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
+    let before = crate::files::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
     let calendar = crate::pim::collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
     let own = agenda::own_addresses();
     if !agenda::organized_meeting(&before, &own) {
@@ -868,7 +870,7 @@ pub(crate) fn delete(path: &Path) -> Result<Written, String> {
 /// as a later version.
 pub(crate) fn undelete(written: &Written) -> Option<String> {
     let Some(FileChange { path, before: Some(before), .. }) = &written.file else { return None };
-    if path.exists() {
+    if path.present() {
         return None;
     }
     let sent = written.drafts.iter().any(|id| Draft::by_id(id).is_none());
@@ -929,7 +931,7 @@ pub(crate) fn replied(reply: &str, message: &sioul_core::card::Card, trusted_ids
     let uid = lines.iter().find(|l| sioul_core::lines::name(l) == "UID").map(|l| sioul_core::lines::value(l).trim().to_string())?;
     let own = agenda::own_addresses();
     let path = meeting_of(&uid, &own)?;
-    let text = std::fs::read_to_string(&path).ok()?;
+    let text = crate::files::read_to_string(&path).ok()?;
     let (title, _) = crate::children::named(&text);
     let got = organizer::replied(&text, reply)?;
     if !message.from_address.as_deref().is_some_and(|from| got.guest.address.eq_ignore_ascii_case(from.trim())) {
@@ -1008,7 +1010,7 @@ pub(crate) fn adopt(path: &Path, invitation: &str, message: &sioul_core::card::C
 pub(crate) fn tidy_once() -> usize {
     const VERSION: &str = "2";
     let mark = sioul_core::config::state_dir().join("organized-tidied");
-    let was = std::fs::read_to_string(&mark).map(|v| v.trim().to_string()).unwrap_or_default();
+    let was = crate::files::read_to_string(&mark).map(|v| v.trim().to_string()).unwrap_or_default();
     if was == VERSION {
         return 0;
     }
@@ -1020,7 +1022,7 @@ pub(crate) fn tidy_once() -> usize {
     let mut written = 0;
     for calendar in vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only && c.holds("VEVENT")) {
         for path in calendar.items() {
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(text) = crate::files::read_to_string(&path) else { continue };
             if !agenda::organized_meeting(&text, &own) {
                 continue;
             }
@@ -1046,9 +1048,9 @@ pub(crate) fn tidy_once() -> usize {
         }
     }
     if let Some(folder) = mark.parent() {
-        let _ = std::fs::create_dir_all(folder);
+        let _ = crate::files::create_dir_all(folder);
     }
-    let _ = std::fs::write(&mark, VERSION);
+    let _ = crate::files::write(&mark, VERSION);
     written
 }
 
@@ -1069,7 +1071,7 @@ fn recovered(path: &Path) -> Vec<(String, String)> {
         }
     }
     versions.sort_by(|a, b| b.0.cmp(&a.0));
-    versions.into_iter().filter_map(|(_, copy)| std::fs::read_to_string(copy).ok()).map(|text| organizer::aside_of(&text).lines).find(|lines| !lines.is_empty()).unwrap_or_default()
+    versions.into_iter().filter_map(|(_, copy)| crate::files::read_to_string(copy).ok()).map(|text| organizer::aside_of(&text).lines).find(|lines| !lines.is_empty()).unwrap_or_default()
 }
 
 /// The file of the meeting you organize with this UID, in a calendar you may write.
@@ -1078,7 +1080,7 @@ fn meeting_of(uid: &str, own: &[String]) -> Option<PathBuf> {
         return None;
     }
     vdir::collections(Kind::Calendars).into_iter().filter(|c| !c.read_only).flat_map(|c| c.items()).find(|path| {
-        std::fs::read_to_string(path).is_ok_and(|text| agenda::organized_meeting(&text, own) && sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
+        crate::files::read_to_string(path).is_ok_and(|text| agenda::organized_meeting(&text, own) && sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
     })
 }
 

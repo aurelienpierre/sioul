@@ -733,6 +733,9 @@ ColumnLayout {
         Layout.fillWidth: true
 
         sourceComponent: Component {
+            ColumnLayout {
+            spacing: 6
+
             RowLayout {
                 id: folderRow
 
@@ -743,6 +746,7 @@ ColumnLayout {
                     browser.item.begin(folderField.text)
                 }
 
+                Layout.fillWidth: true
                 spacing: 6
 
                 TextField {
@@ -787,6 +791,21 @@ ColumnLayout {
                         }
                     }
                 }
+            }
+            // A folder of yours inside Sioul's own: sealed with the rest, which other programs
+            // no longer read; what is gained and what is lost (docs/store.md, "Your folders inside Sioul's").
+            Label {
+                objectName: "settingFolderSealed"
+                readonly property string said: field.setting.kind === "folder" && typeof field.sioul.folderSealed === "function" ? field.sioul.folderSealed(field.setting.value) : ""
+
+                visible: said !== ""
+                Layout.fillWidth: true
+                text: said
+                textFormat: Text.PlainText
+                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                lineHeight: 1.25
+                color: field.theme.text
+            }
             }
         }
     }

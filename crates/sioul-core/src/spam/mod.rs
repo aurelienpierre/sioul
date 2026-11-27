@@ -235,7 +235,7 @@ pub fn score(table: &Table, card: &Card, trusted_ids: &[String]) -> Verdict {
     let received = card
         .path
         .as_deref()
-        .and_then(|p| std::fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|p| crate::files::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok())
         .and_then(|d| i64::try_from(d.as_secs()).ok());
     let auth = features::auth_results(&card.headers, trusted_ids);
     let x = features::features(card, auth.as_ref(), received, &tokens.links);

@@ -187,7 +187,7 @@ impl Steps {
     }
 
     pub(crate) fn load() -> Steps {
-        std::fs::read_to_string(Steps::path()).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(Steps::path()).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
     }
 
     fn save(&self) {

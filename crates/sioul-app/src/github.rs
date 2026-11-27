@@ -99,7 +99,7 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
     for issue in &open {
         let path = list.dir.join(github::file_name(&issue.repo, issue.number));
         seen.insert(path.clone());
-        let text = match std::fs::read_to_string(&path) {
+        let text = match crate::files::read_to_string(&path) {
             Ok(before) => github::updated(&before, issue, project_of(issue).as_deref(), &now),
             Err(_) => Some(github::new_task(issue, project_of(issue).as_deref(), &now)),
         };
@@ -109,7 +109,7 @@ fn bring(config: &Config) -> Result<usize, SyncError> {
         }
     }
     for path in list.items().into_iter().filter(|p| !seen.contains(p)) {
-        let Ok(before) = std::fs::read_to_string(&path) else { continue };
+        let Ok(before) = crate::files::read_to_string(&path) else { continue };
         if github::state_of(&before).as_deref() != Some("open") {
             continue;
         }
@@ -141,7 +141,7 @@ pub(crate) fn tie_mail(config: &Config, files: &[PathBuf], ties: &mut LocalLinks
     let judged = porch::judge(files, &config.mail_sources(), None, &porch::KnownSenders::default(), &senders, sioul_core::zone::now().timestamp().as_second());
     for card in judged.into_iter().filter(|t| t.trust == Trust::Verified).map(|t| t.card) {
         let (Some((repo, number)), Some(mid)) = (github::thread_of(&card), card.message_id.as_deref()) else { continue };
-        let Ok(text) = std::fs::read_to_string(list.dir.join(github::file_name(&repo, number))) else { continue };
+        let Ok(text) = crate::files::read_to_string(list.dir.join(github::file_name(&repo, number))) else { continue };
         let Some(task) = tasks::task_of_text(&text, &sioul_core::zone::current()) else { continue };
         ties.add(&links::mail_uri(mid), &links::task_uri(&task.uid), "link");
         if let Some(project) = task.projects.first() {

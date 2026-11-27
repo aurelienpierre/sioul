@@ -217,7 +217,7 @@ fn targets(config: &Config, sent: &BTreeMap<String, usize>) -> Vec<Target> {
 /// used" means for the share sheet. Read from the folders' listings only.
 #[cfg(target_os = "android")]
 fn sent(config: &Config) -> BTreeMap<String, usize> {
-    let count = |dir: std::path::PathBuf| std::fs::read_dir(dir).map(|entries| entries.count()).unwrap_or(0);
+    let count = |dir: std::path::PathBuf| crate::files::read_dir(dir).map(|entries| entries.count()).unwrap_or(0);
     config
         .accounts
         .iter()
@@ -445,50 +445,88 @@ fn hand_over_at(path: &std::path::Path, addresses: &[String], calendars: &[std::
     }
 }
 
-/// The first Sioul of this profile listens for those started after it: their
-/// `mailto:` addresses become drafts here, a plain start brings this window
-/// forward. A socket left by a Sioul that ended is replaced.
-#[cfg(all(unix, not(target_os = "android")))]
-pub(crate) fn listen() {
-    if alone() {
+/// What other starts handed while this one's store was not open yet (the
+/// screen before the window): kept in memory, handed once it is (`release`).
+type Heard = (Vec<String>, Vec<std::path::PathBuf>, Option<String>);
+static HELD: Mutex<Option<Vec<Heard>>> = Mutex::new(None);
+
+/// From now until `release`, what other starts hand waits in memory.
+pub(crate) fn hold() {
+    if let Ok(mut held) = HELD.lock() {
+        *held = Some(Vec::new());
+    }
+}
+
+/// What other starts handed meanwhile, handed now that the store is open.
+pub(crate) fn release() {
+    let held = HELD.lock().ok().and_then(|mut held| held.take()).unwrap_or_default();
+    for (addresses, calendars, token) in held {
+        heard(addresses, calendars, token);
+    }
+}
+
+/// What a start after this one handed: its addresses become drafts, its
+/// calendar files are read, a plain start brings this window forward.
+fn heard(addresses: Vec<String>, calendars: Vec<std::path::PathBuf>, token: Option<String>) {
+    if let Ok(mut held) = HELD.lock()
+        && let Some(waiting) = held.as_mut()
+    {
+        waiting.push((addresses, calendars, token));
         return;
     }
-    let Some(path) = socket() else { return };
-    let heard = |addresses: Vec<String>, calendars: Vec<std::path::PathBuf>, token: Option<String>| {
-        if let (Some(token), Ok(mut waiting)) = (token, TOKEN.lock()) {
-            *waiting = Some(token);
-        }
-        if !calendars.is_empty() {
-            crate::calendarfile::hand(&calendars);
-            if addresses.is_empty() {
-                return;
-            }
-        }
+    if let (Some(token), Ok(mut waiting)) = (token, TOKEN.lock()) {
+        *waiting = Some(token);
+    }
+    if !calendars.is_empty() {
+        crate::calendarfile::hand(&calendars);
         if addresses.is_empty() {
-            let window = WINDOW.lock().ok().and_then(|w| w.clone());
-            if let Some(qt) = window {
-                // A reminder's "Open" with nothing to open: the window brought forward.
-                let _ = qt.queue(|mut sioul| {
-                    activate_with_token();
-                    sioul.as_mut().reminder_opened(QString::default(), QString::default(), QString::default());
-                });
-            }
-        } else {
-            hand(&addresses);
+            return;
         }
-    };
+    }
+    if addresses.is_empty() {
+        let window = WINDOW.lock().ok().and_then(|w| w.clone());
+        if let Some(qt) = window {
+            // A reminder's "Open" with nothing to open: the window brought forward.
+            let _ = qt.queue(|mut sioul| {
+                activate_with_token();
+                sioul.as_mut().reminder_opened(QString::default(), QString::default(), QString::default());
+            });
+        }
+    } else {
+        hand(&addresses);
+    }
+}
+
+/// The first Sioul of this profile listens for those started after it: their
+/// `mailto:` addresses become drafts here, a plain start brings this window
+/// forward. A socket left by a Sioul that ended is replaced. False when
+/// another Sioul of this profile listens there already (started at the same
+/// instant): this one hands over to it.
+#[cfg(all(unix, not(target_os = "android")))]
+pub(crate) fn listen() -> bool {
+    if alone() {
+        return true;
+    }
+    let Some(path) = socket() else { return true };
     match listen_at(&path, heard) {
         Ok(()) => {
             if let Ok(mut listening) = LISTENING.lock() {
                 *listening = Some(path);
             }
+            true
         }
-        Err(e) => eprintln!("Sioul: {}: {e}; another Sioul started now would open beside this one.", path.display()),
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => false,
+        Err(e) => {
+            eprintln!("Sioul: {}: {e}; another Sioul started now would open beside this one.", path.display());
+            true
+        }
     }
 }
 
 #[cfg(not(all(unix, not(target_os = "android"))))]
-pub(crate) fn listen() {}
+pub(crate) fn listen() -> bool {
+    true
+}
 
 /// The socket this Sioul listens on, if it does.
 #[cfg(all(unix, not(target_os = "android")))]
@@ -498,7 +536,7 @@ static LISTENING: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 pub(crate) fn stop_listening() {
     #[cfg(all(unix, not(target_os = "android")))]
     if let Some(path) = LISTENING.lock().ok().and_then(|mut listening| listening.take()) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
     }
 }
 
@@ -507,13 +545,13 @@ fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Vec<std::path::
     use std::io::{BufRead, BufReader, Read, Write};
     use std::os::unix::net::{UnixListener, UnixStream};
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::files::create_dir_all(parent)?;
     }
     let listener = match UnixListener::bind(path) {
         Ok(listener) => listener,
         // Left by a Sioul that ended: nobody answers there.
         Err(e) if e.kind() == std::io::ErrorKind::AddrInUse && UnixStream::connect(path).is_err() => {
-            std::fs::remove_file(path)?;
+            crate::files::remove_file(path)?;
             UnixListener::bind(path)?
         }
         Err(e) => return Err(e),
@@ -546,6 +584,21 @@ fn listen_at(path: &std::path::Path, heard: impl Fn(Vec<String>, Vec<std::path::
 mod tests {
     use super::*;
     use sioul_core::config::{Priority, Security};
+
+    /// A start made while the screen before the window shows hands over to
+    /// this Sioul (which listens before its store is opened), and what it
+    /// handed waits in memory until the store is open: never written beside a
+    /// store not open yet, never a second screen or window (review-finish G7).
+    #[test]
+    fn what_a_second_start_hands_during_the_screen_waits_in_memory() {
+        hold();
+        heard(vec!["mailto:someone@example.org".into()], Vec::new(), Some("token".into()));
+        let waiting = HELD.lock().unwrap().as_ref().map(|held| held.iter().map(|(a, _, t)| (a.clone(), t.clone())).collect::<Vec<_>>());
+        // Taken back out here rather than handed: the test writes no draft.
+        *HELD.lock().unwrap() = None;
+        assert_eq!(waiting, Some(vec![(vec!["mailto:someone@example.org".to_string()], Some("token".to_string()))]));
+        assert!(TOKEN.lock().unwrap().is_none(), "nothing handed on before the store is open");
+    }
 
     #[test]
     fn the_share_sheet_lists_the_most_used_addresses_first() {

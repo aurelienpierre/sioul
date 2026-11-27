@@ -8,6 +8,8 @@
 //! your other devices marked: taken, nothing; not known, the doubt said first.
 //! Elsewhere, nothing here: the window's minute reminds.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::ffi::{CStr, CString, c_char};
 
 #[cfg(target_os = "android")]
@@ -102,7 +104,7 @@ pub(crate) fn zone_said() -> ZoneSaid {
 }
 
 fn read_zone(path: &std::path::Path) -> ZoneSaid {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// The system's zone as this process reads it ("" when it has no name).
@@ -148,11 +150,11 @@ fn note_zone_with(path: &std::path::Path, zone: &str, now: i64, system: &str) ->
 /// process reads already changed (the A6 check, M1: at the first change
 /// after the update, the false ring of a replacement came back).
 fn seed_zone(path: &std::path::Path, system: &str) {
-    if path.exists() || system.is_empty() {
+    if path.present() || system.is_empty() {
         return;
     }
     sioul_core::filelock::with_lock(path, || {
-        if !path.exists() {
+        if !path.present() {
             write_zone(path, &ZoneSaid { zone: system.to_string(), ..ZoneSaid::default() });
         }
     });

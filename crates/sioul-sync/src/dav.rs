@@ -31,6 +31,8 @@
 //! (google.rs). A small client on `ureq`, written for this: the protocol
 //! needed is a handful of requests.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::SyncError;
 use crate::fetch::{Control, Parked};
 use sioul_core::config::{Account, state_dir};
@@ -479,16 +481,16 @@ fn homes_path(account: &str) -> PathBuf {
 
 impl Homes {
     pub fn load(account: &str) -> Homes {
-        std::fs::read_to_string(homes_path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(homes_path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, account: &str) -> Result<(), SyncError> {
         let path = homes_path(account);
         let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
-        std::fs::write(&path, toml::to_string(self).map_err(|e| SyncError::Disk(e.to_string()))?).map_err(fail)
+        crate::files::write(&path, toml::to_string(self).map_err(|e| SyncError::Disk(e.to_string()))?).map_err(fail)
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1106,7 +1108,7 @@ fn keep_stars(client: &Client, account: &str, listed: &Listed, now: i64) -> Resu
     let mut memory = sioul_core::stars::Memory::load(&memory_path);
     let list = sioul_core::everywhere::People::default_path();
     let state_path = vdir::state_path(account, Kind::Contacts, &listed.id);
-    let changed = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
+    let changed = |path: &Path| crate::files::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0));
     if memory.looked > 0 && now - memory.looked < STARS_EVERY && changed(&list) < memory.looked && changed(&state_path) < memory.looked {
         return Ok(false);
     }
@@ -1303,7 +1305,7 @@ fn register(account: &str, listed: &[Listed]) -> Result<usize, SyncError> {
     let mut changed = 0;
     for collection in listed {
         let dir = collection.kind.root().join(account).join(&collection.id);
-        let read = |name: &str| std::fs::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string());
+        let read = |name: &str| crate::files::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string());
         if read("displayname").as_deref() != Some(collection.name.trim()) || read("color") != collection.color.as_ref().map(|c| c.trim().to_string()) {
             changed += 1;
         }
@@ -1395,8 +1397,8 @@ fn forget_gone(account: &str, kind: Kind, listed: &[Listed]) {
         if state.pending || unsent || crate::google_tasks::is_tasks_list(&state.url) {
             continue;
         }
-        let _ = std::fs::remove_dir_all(&collection.dir);
-        let _ = std::fs::remove_file(collection.state_path());
+        let _ = crate::files::remove_dir_all(&collection.dir);
+        let _ = crate::files::remove_file(collection.state_path());
     }
 }
 
@@ -1451,8 +1453,8 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
             }
             let answer = client.send("DELETE", &state.url, &[], None)?;
             if (200..300).contains(&answer.status) || answer.status == 404 {
-                let _ = std::fs::remove_dir_all(&collection.dir);
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_dir_all(&collection.dir);
+                let _ = crate::files::remove_file(&path);
             } else if !state.leave {
                 refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
             }
@@ -1505,8 +1507,8 @@ fn send_changes(client: &Client, account: &str, kind: Kind) -> Result<(), SyncEr
                     refused.get_or_insert(SyncError::Server(format!("DELETE {}: {}", state.url, answer.status)));
                     continue;
                 }
-                let _ = std::fs::remove_dir_all(&collection.dir);
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_dir_all(&collection.dir);
+                let _ = crate::files::remove_file(&path);
                 continue;
             }
             go_on(&mut refused, state.save(&path).map_err(SyncError::Disk))?;
@@ -1643,8 +1645,8 @@ pub(crate) fn google_changes(api: &crate::calendars::GoogleApi, account: &str) -
             } else if state.removed || state.deleted {
                 let gone = if state.leave { api.leave(&id) } else { api.delete(&id) };
                 gone.map(|()| {
-                    let _ = std::fs::remove_dir_all(&collection.dir);
-                    let _ = std::fs::remove_file(&path);
+                    let _ = crate::files::remove_dir_all(&collection.dir);
+                    let _ = crate::files::remove_file(&path);
                 })
             } else if state.renamed || state.recoloured {
                 (|| {
@@ -1772,7 +1774,7 @@ fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
     let mut moved = 0;
     for (old, new) in vdir::moves_waiting() {
         let (Some((from_id, old_file)), Some((to_id, new_file))) = (card_place(account, &old), card_place(account, &new)) else { continue };
-        if from_id == to_id || old.exists() || !new.exists() {
+        if from_id == to_id || old.present() || !new.present() {
             continue;
         }
         let (from_path, to_path) = (vdir::state_path(account, Kind::Contacts, &from_id), vdir::state_path(account, Kind::Contacts, &to_id));
@@ -1794,7 +1796,7 @@ fn move_on_server(client: &Client, account: &str) -> Result<usize, SyncError> {
         }
         let source = absolute(&from.url, &from.items[at].href);
         let target = format!("{}/{}", to.url.trim_end_matches('/'), url_segment(&new_file));
-        let (size, mtime) = std::fs::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
+        let (size, mtime) = crate::files::metadata(&new).map(|m| stamp(&m)).unwrap_or_default();
         let text = read_text(&new)?;
         let (mut etag, mut agreed) = (from.items[at].etag.clone(), from.items[at].hash.clone());
         // Changed here and not sent yet (review F15): sent first, at its old place, then moved;
@@ -1853,7 +1855,7 @@ fn hash_of(path: &Path) -> Option<String> {
 fn read_item(path: &Path) -> std::io::Result<Vec<u8>> {
     #[cfg(test)]
     tests::READS.with(|reads| reads.set(reads.get() + 1));
-    std::fs::read(path)
+    crate::files::read(path)
 }
 
 /// An item's file as text; what cannot be read is said with its path.
@@ -1923,7 +1925,7 @@ fn sync_part(client: &Client, account: &str, listed: &Listed, report: &mut Repor
         // Its state as the guard reads it first: what the calendar may hold.
         state.save(&state_path).map_err(SyncError::Disk)?;
         let done = sioul_core::interop::migrate_folder(&dir, &listed.components, sioul_core::agenda::default_calendar().as_ref(), false);
-        report.moved_out.extend(done.moved.iter().filter_map(|(_, to)| std::fs::read_to_string(to).ok()).map(|text| summary_of(&text)));
+        report.moved_out.extend(done.moved.iter().filter_map(|(_, to)| crate::files::read_to_string(to).ok()).map(|text| summary_of(&text)));
         report.problems.extend(done.problems.into_iter().map(SyncError::Disk));
     }
     let passing = report.passing;
@@ -2010,7 +2012,7 @@ fn upgrade(client: &Client, dir: &Path, listed: &Listed, state: &mut State, only
                 let unchanged = read_text(&path).is_ok_and(|now| vdir::content_hash(now.as_bytes()) == item.hash);
                 if unchanged && vdir::store_item(&path, &migrated).is_ok() {
                     report.rewritten += 1;
-                    let (size, mtime) = std::fs::metadata(&path).map(|m| stamp(&m)).unwrap_or_default();
+                    let (size, mtime) = crate::files::metadata(&path).map(|m| stamp(&m)).unwrap_or_default();
                     let sent = if etag.is_empty() { sent_hash(&migrated) } else { String::new() };
                     state.items[i] = ItemState { etag, hash: vdir::content_hash(migrated.as_bytes()), size, mtime, sent, ..item };
                 } else {
@@ -2062,7 +2064,7 @@ fn has_local_changes(dir: &Path, kind: Kind, state: &State) -> bool {
 /// Whether an item's file is as last synced: by its size and time when
 /// noted, else by its hash.
 fn unchanged(path: &Path, item: &ItemState) -> bool {
-    std::fs::metadata(path).is_ok_and(|m| as_noted(&m, item)) || hash_of(path).is_some_and(|hash| hash == item.hash)
+    crate::files::metadata(path).is_ok_and(|m| as_noted(&m, item)) || hash_of(path).is_some_and(|hash| hash == item.hash)
 }
 
 /// A file's time is trusted to tell it unchanged once this old: a change made
@@ -2073,19 +2075,19 @@ const SETTLED: Duration = Duration::from_secs(2);
 /// A file's size and modification time (nanoseconds since 1970), noted to
 /// tell it unchanged later without reading it; the time 0 (unknown) while
 /// too recent, or ahead of now.
-fn stamp(metadata: &std::fs::Metadata) -> (u64, i64) {
+fn stamp(metadata: &crate::files::Metadata) -> (u64, i64) {
     let settled = metadata.modified().ok().filter(|m| std::time::SystemTime::now().duration_since(*m).is_ok_and(|age| age >= SETTLED));
     let mtime = settled.and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_nanos()).ok()).unwrap_or(0);
     (metadata.len(), mtime)
 }
 
 /// Whether a file is as noted for its item: the same size and the same settled time.
-fn as_noted(metadata: &std::fs::Metadata, item: &ItemState) -> bool {
+fn as_noted(metadata: &crate::files::Metadata, item: &ItemState) -> bool {
     item.mtime != 0 && stamp(metadata) == (item.size, item.mtime)
 }
 
 fn local_files(dir: &Path, kind: Kind) -> BTreeSet<String> {
-    std::fs::read_dir(dir)
+    crate::files::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -2130,7 +2132,7 @@ fn push(client: &Client, kind: Kind, dir: &Path, listed: &Listed, state: &mut St
     for file in local_files(dir, kind).into_iter().filter(|f| !known.contains(f)) {
         let path = dir.join(&file);
         // Noted before it is read: a change made meanwhile is seen next time.
-        let (size, mtime) = std::fs::metadata(&path).map(|m| stamp(&m)).unwrap_or_default();
+        let (size, mtime) = crate::files::metadata(&path).map(|m| stamp(&m)).unwrap_or_default();
         let text = match read_text(&path) {
             Ok(text) => own_form_of(kind, &path, text),
             Err(e) => {
@@ -2356,7 +2358,7 @@ fn send_known(client: &Client, kind: Kind, dir: &Path, listed: &Listed, item: &I
     let path = dir.join(&item.file);
     let url = absolute(&listed.url, &item.href);
     let unreadable = |e: std::io::Error| Sent::Refused(SyncError::Disk(format!("{}: {e}", path.display())));
-    let metadata = match std::fs::metadata(&path) {
+    let metadata = match crate::files::metadata(&path) {
         Ok(metadata) => metadata,
         // Deleted here: deleted there, unless it changed there meanwhile.
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -2531,7 +2533,7 @@ fn set_aside(path: &Path, mine: &[u8]) -> Result<PathBuf, SyncError> {
 
 /// An item's file, when it changed here since the server last agreed on it (or never did).
 fn changed_here(path: &Path, item: &ItemState) -> Option<Vec<u8>> {
-    if std::fs::metadata(path).is_ok_and(|m| as_noted(&m, item)) {
+    if crate::files::metadata(path).is_ok_and(|m| as_noted(&m, item)) {
         return None;
     }
     read_item(path).ok().filter(|bytes| item.hash.is_empty() || vdir::content_hash(bytes) != item.hash)
@@ -2575,7 +2577,7 @@ fn pull(client: &Client, dir: &Path, listed: &Listed, state: &mut State, state_p
         if let Some(mine) = changed_here(&path, &state.items[i]) {
             report.conflicts.push(set_aside(&path, &mine)?);
         }
-        let _ = std::fs::remove_file(&path);
+        let _ = crate::files::remove_file(&path);
         state.items.remove(i);
         report.removed += 1;
     }
@@ -2734,7 +2736,7 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
         && sent_hash(data) == state.items[i].sent
     {
         // None: as agreed; Some(None): deleted here; Some(Some(text)): changed here.
-        let here: Option<Option<String>> = if path.exists() { changed_here(&path, &state.items[i]).map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned())) } else { Some(None) };
+        let here: Option<Option<String>> = if path.present() { changed_here(&path, &state.items[i]).map(|bytes| Some(String::from_utf8_lossy(&bytes).into_owned())) } else { Some(None) };
         let kept: Option<Option<String>> = match &here {
             None => None,
             Some(Some(mine)) if kind == Kind::Calendars && sioul_core::agenda::organized_meeting(mine, &own()) => sioul_core::organizer::kept_over_its_server(data, mine, server_tells(dir, state.owned, data, mine)).map(Some),
@@ -2754,7 +2756,7 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
     // The move holds, the server's change is kept among the earlier versions and said once, and
     // the state takes the new ETag, so that the deletion goes once the new copy is there (R4-F).
     let mut gave_way = false;
-    if let Some(i) = position.filter(|_| !path.exists())
+    if let Some(i) = position.filter(|_| !path.present())
         && let Some(new) = vdir::moved_away(&path)
     {
         let hash = vdir::content_hash(crlf(data).as_bytes());
@@ -2800,7 +2802,7 @@ fn store(dir: &Path, kind: Kind, state: &mut State, url: &str, (href, etag, data
     // Deleted here, changed there before the deletion reached it (its DELETE refused, 412, or
     // the file deleted while this sync ran): the server's version comes back, said once (R8).
     // Never one moved or made another here, whose old copy waits for the new one (F6).
-    let undeleted = !gave_way && position.is_some() && !path.exists() && vdir::deletion_waits_for(&path).is_none();
+    let undeleted = !gave_way && position.is_some() && !path.present() && vdir::deletion_waits_for(&path).is_none();
     let mut merged: Option<String> = None;
     let mut again: Option<String> = None;
     if let Some(i) = position
@@ -3884,6 +3886,68 @@ mod tests {
             let _ = std::fs::remove_dir_all(&c.dir);
             let _ = std::fs::remove_file(c.state_path());
         }
+    }
+
+    /// After a move cut half way (the window closed, a power cut), a
+    /// calendar's sync finds every item it knows, whether moved in, not moved
+    /// yet, or waiting aside when the cut came: it sends no DELETE, and no PUT
+    /// either (review-finish G3). The next start's move then ends it.
+    #[test]
+    fn a_calendar_sync_after_an_interrupted_move_sends_no_delete() {
+        use sioul_core::sealed::{Folders, How, LogicalPath, Options, RootKey, Store, files as door};
+        struct Recorder(std::sync::Mutex<Vec<String>>);
+        impl super::stand_in::Server for Recorder {
+            fn misbehaves(&self, _: &super::stand_in::Request) -> Option<Fault> {
+                None
+            }
+            fn answer(&self, request: &super::stand_in::Request) -> super::stand_in::Reply {
+                self.0.lock().unwrap().push(format!("{} {}", request.method, request.path));
+                super::stand_in::Reply::new(204, "")
+            }
+        }
+        let base = std::env::temp_dir().join(format!("sioul-dav-cut-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let home = base.join("data/calendars/acct/home");
+        std::fs::create_dir_all(&home).unwrap();
+        let names: Vec<String> = (0..8).map(|i| format!("{i}.ics")).collect();
+        for name in &names {
+            std::fs::write(home.join(name), event(name, "Lesson")).unwrap();
+        }
+        let store = Arc::new(Store::create(&Folders::under(&base), &RootKey::from_bytes([9; 32]), Options::default()).unwrap());
+        let _mounted = door::mount(store.clone());
+        // The move cut after three files.
+        let cut = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| store.move_plain_files_said(&[], &|done, _| assert!(done < 4, "the move cut"))));
+        assert!(cut.is_err());
+        // And one cut between its rename aside and its removal: sealed, its plain copy aside.
+        let waiting = names.iter().find(|n| home.join(n.as_str()).exists()).unwrap().clone();
+        let aside = base.join("data/sealed-moving/calendars/acct/home").join(&waiting);
+        store.write(&LogicalPath::new(&format!("data/calendars/acct/home/{waiting}")).unwrap(), event(&waiting, "Lesson").as_bytes(), How::default()).unwrap();
+        std::fs::create_dir_all(aside.parent().unwrap()).unwrap();
+        std::fs::rename(home.join(&waiting), &aside).unwrap();
+        assert!(names.iter().any(|n| home.join(n.as_str()).exists()) && names.iter().any(|n| !home.join(n.as_str()).exists()), "some moved, some not");
+        let recorder = Arc::new(Recorder(std::sync::Mutex::new(Vec::new())));
+        let url = super::stand_in::serve(recorder.clone());
+        let listed = Listed { kind: Kind::Calendars, url: format!("{url}/cal/home/"), id: "home".into(), name: "Home".into(), color: None, read_only: false, ctag: None, sync_token: None, components: vec!["VEVENT".into()], transparent: false, transp_known: false, owned: Some(true), writers: Vec::new(), writers_known: false };
+        let push = || {
+            let (mut report, mut refetch) = (Report::default(), BTreeSet::new());
+            for name in &names {
+                let item = ItemState { href: format!("/cal/home/{name}"), file: name.clone(), etag: "\"e1\"".into(), hash: vdir::content_hash(event(name, "Lesson").as_bytes()), ..ItemState::default() };
+                let sent = send_known(&client(), Kind::Calendars, &home, &listed, &item, &mut refetch, &mut report).unwrap();
+                assert!(!matches!(sent, Sent::Deleted | Sent::Refused(_)), "{name}");
+            }
+        };
+        push();
+        assert_eq!(recorder.0.lock().unwrap().clone(), Vec::<String>::new(), "after a move cut half way, the sync sent this");
+        // The next start's move ends it: every item sealed, nothing left in clear, nothing set aside.
+        let moved = store.move_plain_files().unwrap();
+        assert_eq!((moved.set_aside, moved.left.len()), (0, 0), "{moved:?}");
+        assert!(!aside.exists() && names.iter().all(|n| !home.join(n.as_str()).exists()), "nothing left in clear");
+        for name in &names {
+            assert_eq!(door::read_to_string(home.join(name)).unwrap(), event(name, "Lesson"));
+        }
+        push();
+        assert_eq!(recorder.0.lock().unwrap().clone(), Vec::<String>::new(), "after the move, the sync sent this");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn client() -> Client {

@@ -36,7 +36,7 @@ const CLIENT: GUID = GUID::from_u128(0xff04ac7e_3163_436b_aa8f_400954e7cbc0);
 
 /// Checks a file through Windows' doors, newest first, as far as needed.
 pub(super) fn scan(file: &Path) -> Verdict {
-    let bytes = match std::fs::read(file) {
+    let bytes = match crate::files::read(file) {
         Ok(bytes) => bytes,
         Err(e) => return unread(&e),
     };
@@ -230,7 +230,7 @@ fn attachment_service(bytes: &[u8], file: &Path) -> Answer {
     })
     .join();
     match saved {
-        Ok(Ok(code)) => service_answer(code, std::fs::read(file).is_ok_and(|now| now == bytes)),
+        Ok(Ok(code)) => service_answer(code, crate::files::read(file).is_ok_and(|now| now == bytes)),
         Ok(Err(why)) => Answer::Closed(why),
         Err(_) => Answer::Closed("the attachment service stopped".into()),
     }

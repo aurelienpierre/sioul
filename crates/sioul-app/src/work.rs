@@ -10,6 +10,8 @@
 //! headers) is read once per change and kept, so the Related panel answers at
 //! once.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, load_config, say, tell, tr};
 use crate::{mail, pim};
 use cxx_qt_lib::QString;
@@ -85,16 +87,16 @@ impl WorkState {
 
     /// The choices as you left them.
     pub(crate) fn load() -> WorkState {
-        std::fs::read_to_string(WorkState::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(WorkState::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub(crate) fn save(&self) {
         let path = WorkState::path();
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            let _ = crate::files::create_dir_all(parent);
         }
         if let Ok(text) = toml::to_string(self) {
-            let _ = std::fs::write(&path, text);
+            let _ = crate::files::write(&path, text);
         }
     }
 }
@@ -583,7 +585,7 @@ pub(crate) fn task_pinned_today(calendar: &std::path::Path, uid: &str, title: &s
     sioul_core::vdir::write_item(&calendar.join(format!("{uid}.ics")), &tasks::new_task(&edit, uid, &zone, &now).unwrap()).unwrap();
     let utc = |at: i64| jiff::Timestamp::from_second(at).unwrap().strftime("%Y%m%dT%H%M%SZ").to_string();
     let block = format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:{uid}-block\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:{title}\r\n{}:{uid}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n", utc(start), utc(start + 1800), sioul_core::blocks::TASK);
-    std::fs::write(calendar.join(format!("{uid}-block.ics")), block).unwrap();
+    crate::files::write(calendar.join(format!("{uid}-block.ics")), block).unwrap();
     true
 }
 
@@ -1358,7 +1360,7 @@ pub(crate) fn move_step(qt: &QtThread, shared: &Arc<Shared>, uid: &str, before: 
         let now = sioul_core::zone::now();
         for (u, place) in &writes {
             let Some(step) = file_of(u) else { continue };
-            let current = std::fs::read_to_string(&step.key).map_err(|e| e.to_string())?;
+            let current = crate::files::read_to_string(&step.key).map_err(|e| e.to_string())?;
             let text = tasks::set_sequence(&current, *place, &now)?;
             if text != current {
                 write(qt, shared, Path::new(&step.key), &text)?;
@@ -1413,7 +1415,7 @@ fn change(qt: &QtThread, shared: &Arc<Shared>, uid: &str, change: impl FnOnce(&s
     if task.read_only {
         return Err(tr().text("task-read-only", None));
     }
-    let current = std::fs::read_to_string(&task.key).map_err(|e| e.to_string())?;
+    let current = crate::files::read_to_string(&task.key).map_err(|e| e.to_string())?;
     let text = change(&current)?;
     if text != current {
         write(qt, shared, Path::new(&task.key), &text)?;
@@ -1471,7 +1473,7 @@ pub(crate) fn rename_category(qt: &QtThread, shared: &Arc<Shared>, from: &str, t
     for task in loaded(shared).tasks.iter().filter(|t| !t.read_only && t.categories.iter().any(|c| fold(c) == from)) {
         let path = Path::new(&task.key);
         // The categories renamed over the file as it is now (`changed_in_file`).
-        let written = std::fs::read_to_string(path)
+        let written = crate::files::read_to_string(path)
             .map_err(|e| e.to_string())
             .and_then(|current| changed_in_file(&current, |edit| edit.categories = renamed(&edit.categories)).map(|text| (current, text)))
             .and_then(|(current, text)| if text == current { Ok(()) } else { vdir::write_item(path, &text) });
@@ -1506,7 +1508,7 @@ pub(crate) fn tick_for_office(shared: &Shared, uid: &str, hours: &sioul_core::op
     let mut ticked = 0;
     for task in sioul_core::opening::to_tick(&loaded.tasks, uid, hours) {
         let path = Path::new(&task.key);
-        let written = std::fs::read_to_string(path)
+        let written = crate::files::read_to_string(path)
             .map_err(|e| e.to_string())
             .and_then(|current| changed_in_file(&current, |edit| edit.office_hours = true).map(|text| (current, text)))
             .and_then(|(current, text)| if text == current { Ok(false) } else { vdir::write_item(path, &text).map(|()| true) });
@@ -1667,7 +1669,7 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
                     view["when"] = serde_json::Value::String(String::new());
                 }
                 // One time of a repeating event: "Before: …", "Was before: …", and the way on (`pairs::turn_line`).
-                if let Some(line) = std::fs::read_to_string(&event.key).ok().and_then(|text| sioul_core::pairs::turn_line(task, &text, tr(), &moment)) {
+                if let Some(line) = crate::files::read_to_string(&event.key).ok().and_then(|text| sioul_core::pairs::turn_line(task, &text, tr(), &moment)) {
                     view["turn"] = serde_json::to_value(line).unwrap_or_default();
                 }
                 view
@@ -1686,7 +1688,7 @@ pub(crate) fn task(shared: &Shared, uid: &str) -> String {
 /// (its list, its colour, whether it can be written); None when the file is
 /// gone or holds no task any more.
 pub(crate) fn from_its_file(known: &Task) -> Option<Task> {
-    let text = std::fs::read_to_string(&known.key).ok()?;
+    let text = crate::files::read_to_string(&known.key).ok()?;
     if !text.to_ascii_uppercase().contains("BEGIN:VTODO") {
         return None;
     }
@@ -1763,7 +1765,7 @@ pub(crate) fn set_step_after(qt: &QtThread, shared: &Arc<Shared>, uid: &str, aft
     let planned = match all.iter().find(|t| t.uid == uid) {
         None => Err(sioul_core::composed::Refusal::Gone),
         Some(step) if step.read_only => Err(sioul_core::composed::Refusal::ReadOnly),
-        Some(step) => std::fs::read_to_string(&step.key)
+        Some(step) => crate::files::read_to_string(&step.key)
             .ok()
             .and_then(|text| sioul_core::anchors::step_side(&text, after, &now).ok().filter(|t| *t != text))
             .map(|text| sioul_core::composed::Change { written: vec![(std::path::PathBuf::from(&step.key), text)], ..sioul_core::composed::Change::default() })
@@ -1811,7 +1813,7 @@ pub(crate) fn convert_item(qt: &QtThread, shared: &Arc<Shared>, kind: &str, key:
         },
         _ => {
             let Some(path) = crate::pim::ours(key) else { return tr().text("agenda-gone", None) };
-            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let text = crate::files::read_to_string(&path).unwrap_or_default();
             let writable = vdir::collections(Kind::Calendars).into_iter().find(|c| path.parent() == Some(c.dir.as_path())).is_some_and(|c| !c.read_only);
             if !writable {
                 return tr().text("agenda-read-only", None);
@@ -2020,14 +2022,14 @@ pub(crate) fn set_status(qt: &QtThread, shared: &Arc<Shared>, uid: &str, status:
         return answer["error"].as_str().unwrap_or_default().to_string();
     }
     // The step as it was, for Undo when its bigger task closes with it.
-    let step_was = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|t| (PathBuf::from(&t.key), std::fs::read_to_string(&t.key).ok()));
+    let step_was = before.loaded.tasks.iter().find(|t| t.uid == uid).map(|t| (PathBuf::from(&t.key), crate::files::read_to_string(&t.key).ok()));
     let result = change(qt, shared, uid, |text| tasks::set_status(text, status, &sioul_core::zone::current(), &sioul_core::zone::now()));
     if let Err(e) = result {
         return e;
     }
     // Its bigger task, without an estimate of its own, done with its last step (docs/tasks.md, "Composed tasks"): said, with Undo.
     // Only a step done for good: a repeating one's turn comes back open, and closes nothing.
-    let for_good = step_was.as_ref().and_then(|(path, _)| std::fs::read_to_string(path).ok()).is_some_and(|text| sioul_core::composed::done_for_good(&text));
+    let for_good = step_was.as_ref().and_then(|(path, _)| crate::files::read_to_string(path).ok()).is_some_and(|text| sioul_core::composed::done_for_good(&text));
     if status == Status::Completed
         && for_good
         && let Ok(closing) = sioul_core::composed::close_with(&before.loaded.tasks, uid, &sioul_core::zone::now())
@@ -2416,7 +2418,7 @@ pub(crate) fn note(shared: &Shared, path: &str) -> String {
         })
         .to_string();
     }
-    let Ok(text) = std::fs::read_to_string(&file) else { return String::new() };
+    let Ok(text) = crate::files::read_to_string(&file) else { return String::new() };
     let note = notes::read(path, &text);
     // Read as a list of its blocks, each heading of its outline to its block (`notesview::shown`).
     let (blocks, outline) = crate::notesview::shown(vault, &note, &text);
@@ -2449,7 +2451,7 @@ pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &
         // Changed since it was opened (another device through the sharing, a sync
         // app, another editor, an agent): that version keeps the name, this one goes beside it.
         let changed = notes::normalize(path)
-            .and_then(|relative| std::fs::read_to_string(root.join(relative)).ok())
+            .and_then(|relative| crate::files::read_to_string(root.join(relative)).ok())
             .is_some_and(|current| !stamp.is_empty() && text_stamp(&current) != stamp && current != text);
         let target = if changed { conflict_path(&root, path) } else { path.to_string() };
         notes::write(&root, &target, text).map(|_| (target, changed))
@@ -2474,7 +2476,7 @@ pub(crate) fn save_note(qt: &QtThread, shared: &Arc<Shared>, path: &str, text: &
 pub(crate) fn note_stamp(path: &str) -> String {
     let Some(root) = load_config().notes_root_path() else { return String::new() };
     let Some(relative) = notes::normalize(path).filter(|p| notes::kind_of_file(p) == Some(notes::NoteKind::Text)) else { return String::new() };
-    std::fs::read_to_string(root.join(relative)).map(|text| text_stamp(&text)).unwrap_or_default()
+    crate::files::read_to_string(root.join(relative)).map(|text| text_stamp(&text)).unwrap_or_default()
 }
 
 /// A fingerprint of a note's text as it was read, given back when it is saved.
@@ -2497,7 +2499,7 @@ fn conflict_path(root: &Path, path: &str) -> String {
     let join = |file: String| if folder.is_empty() { file } else { format!("{folder}/{file}") };
     let mut candidate = join(format!("{named}{extension}"));
     let mut n = 2;
-    while root.join(&candidate).exists() {
+    while root.join(&candidate).present() {
         candidate = join(format!("{named} {n}{extension}"));
         n += 1;
     }
@@ -2514,17 +2516,86 @@ pub(crate) fn notes_folder() -> String {
 pub(crate) fn memo_url() -> String {
     let Some(root) = load_config().notes_root_path() else { return String::new() };
     let folder = root.join(notes_folder()).join("memos");
-    if std::fs::create_dir_all(&folder).is_err() {
+    if crate::files::create_dir_all(&folder).is_err() {
         return String::new();
     }
     let stamp = Zoned::now().strftime("%Y-%m-%d %H.%M").to_string();
     let mut file = folder.join(format!("{stamp}.ogg"));
     let mut n = 2;
-    while file.exists() {
+    while file.present() {
         file = folder.join(format!("{stamp} {n}.ogg"));
         n += 1;
     }
+    // A notes folder sealed (placed inside Sioul's folders): Qt records by the
+    // path, which the disk does not hold; the memo is recorded in clear beside
+    // (`memos_recording`, in clear by rule, outside the cache that is emptied),
+    // then sealed into its place when it ends (`memo_settled`), or at the next
+    // start when Sioul stopped meanwhile (`settle_memos_left`): never lost
+    // (review-finish F6, G8).
+    if crate::files::is_sealed(&file) {
+        let beside = memos_recording();
+        if crate::files::DirBuilder::new().recursive(true).mode(0o700).create(&beside).is_err() {
+            return String::new();
+        }
+        let recorded = beside.join(file.file_name().unwrap_or_default());
+        MEMOS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push((recorded.clone(), file));
+        return crate::backend::file_url(&recorded);
+    }
     crate::backend::file_url(&file)
+}
+
+/// Memos recorded in clear beside a sealed notes folder, with their places there.
+static MEMOS: std::sync::Mutex<Vec<(std::path::PathBuf, std::path::PathBuf)>> = std::sync::Mutex::new(Vec::new());
+
+/// Where a memo is recorded while the notes folder is sealed: Sioul's data
+/// folder, `memos-recording/`, in clear by rule (`files::stays_plain`), never
+/// in the cache, which is emptied.
+fn memos_recording() -> std::path::PathBuf {
+    sioul_core::config::data_dir().join("memos-recording")
+}
+
+/// Memos a Sioul stopped while recording (or while sealing them) left in
+/// clear beside the notes: sealed into the notes' memos folder now, under
+/// the first free name; one that cannot be stays where it is, said.
+pub(crate) fn settle_memos_left() {
+    let folder = memos_recording();
+    let Ok(entries) = crate::files::read_dir(&folder) else { return };
+    let Some(root) = load_config().notes_root_path() else { return };
+    let memos = root.join(notes_folder()).join("memos");
+    for entry in entries.flatten() {
+        let beside = entry.path();
+        if !beside.present_file() {
+            continue;
+        }
+        let name = beside.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        let extension = beside.extension().map(|e| e.to_string_lossy().to_string()).unwrap_or_else(|| "ogg".to_string());
+        let mut place = memos.join(format!("{name}.{extension}"));
+        let mut n = 2;
+        while place.present() {
+            place = memos.join(format!("{name} {n}.{extension}"));
+            n += 1;
+        }
+        if let Err(e) = crate::files::create_dir_all(&memos).and_then(|()| crate::files::rename(&beside, &place)) {
+            eprintln!("Sioul: a memo stays where it was recorded ({}): {e}", beside.display());
+        }
+    }
+    let _ = crate::files::remove_dir(&folder);
+}
+
+/// A memo recorded: sealed into its place in the notes when it was recorded
+/// beside; its URL, or the one it was recorded at when that fails (kept, never removed).
+pub(crate) fn memo_settled(url: &str) -> String {
+    let recorded = crate::backend::local_path(url);
+    let mut memos = MEMOS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(at) = memos.iter().position(|(beside, _)| *beside == recorded) else { return url.to_string() };
+    let (beside, place) = memos.remove(at);
+    match crate::files::rename(&beside, &place) {
+        Ok(()) => crate::backend::file_url(&place),
+        Err(e) => {
+            eprintln!("Sioul: a memo stays where it was recorded: {e}");
+            url.to_string()
+        }
+    }
 }
 
 /// Your recordings to rest by: the sounds in a `sounds` folder of the notes
@@ -2964,7 +3035,7 @@ fn draft_about(qt: &QtThread, shared: &Arc<Shared>, loaded: &Loaded, from: &str)
 /// The message's card, and its file.
 fn message_card(key: &str) -> Option<(PathBuf, Card)> {
     let path = maildir::locate(Path::new(key))?;
-    let card = Card::from_bytes(&std::fs::read(&path).ok()?)?;
+    let card = Card::from_bytes(&crate::files::read(&path).ok()?)?;
     Some((path, card))
 }
 
@@ -3118,7 +3189,7 @@ pub(crate) fn mail_note(qt: &QtThread, shared: &Arc<Shared>, path: &str) -> Stri
     let loaded = loaded(shared);
     let Some(note) = loaded.vault.as_ref().and_then(|v| v.note(path)).cloned() else { return String::new() };
     let Some(file) = loaded.vault.as_ref().and_then(|v| v.file(path)) else { return String::new() };
-    let text = std::fs::read_to_string(&file).unwrap_or_default();
+    let text = crate::files::read_to_string(&file).unwrap_or_default();
     let (_, body_start) = notes::front_matter(&text);
     // Without the front matter and the title: the text itself.
     let body: Vec<&str> = text.lines().skip(body_start).collect();

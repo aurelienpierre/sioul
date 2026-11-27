@@ -7,6 +7,8 @@
 //! the system's own programs, as the antivirus is: optional, said when missing,
 //! with the command that installs them. Nothing leaves this computer.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::{Path, PathBuf};
 
 /// Why a scan could not be read.
@@ -29,7 +31,7 @@ fn program(name: &str) -> PathBuf {
             return found;
         }
     }
-    ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(|dir| Path::new(dir).join(name)).find(|p| p.is_file()).filter(|_| cfg!(target_os = "macos")).unwrap_or_else(|| PathBuf::from(name))
+    ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(|dir| Path::new(dir).join(name)).find(|p| p.present_file()).filter(|_| cfg!(target_os = "macos")).unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// The folders Windows installers put Tesseract in, from the environment
@@ -57,7 +59,7 @@ fn tesseract_places(env: impl Fn(&str) -> Option<String>) -> Vec<PathBuf> {
 /// in the first of `places` that does.
 #[cfg(any(windows, test))]
 fn find_in(file: &str, path: &[PathBuf], places: &[PathBuf]) -> Option<PathBuf> {
-    path.iter().chain(places).map(|dir| dir.join(file)).find(|candidate| candidate.is_file())
+    path.iter().chain(places).map(|dir| dir.join(file)).find(|candidate| candidate.present_file())
 }
 
 fn runs(name: &str) -> bool {
@@ -97,7 +99,7 @@ pub fn install_hint(wanted: &[String]) -> String {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
+        let release = crate::files::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
         let like = |name: &str| release.lines().any(|l| (l.starts_with("id=") || l.starts_with("id_like=")) && l.contains(name));
         if like("fedora") || like("rhel") {
             format!("`sudo dnf install tesseract{} poppler-utils`", models("tesseract-langpack-"))
@@ -162,10 +164,10 @@ pub fn text_of(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Un
     }
     // A scanned PDF: its pages as images, at 300 dpi, read one by one. The
     // pictures of your letter go afterwards, whether they could be read or not.
-    let _ = std::fs::remove_dir_all(work);
-    std::fs::create_dir_all(work).map_err(|e| Unread::Failed(e.to_string()))?;
+    let _ = crate::files::remove_dir_all(work);
+    crate::files::create_dir_all(work).map_err(|e| Unread::Failed(e.to_string()))?;
     let read = pages_read(file, work, wanted);
-    let _ = std::fs::remove_dir_all(work);
+    let _ = crate::files::remove_dir_all(work);
     read
 }
 
@@ -175,7 +177,7 @@ fn pages_read(file: &Path, work: &Path, wanted: &[String]) -> Result<String, Unr
     if !made.status.success() {
         return Err(Unread::Failed(String::from_utf8_lossy(&made.stderr).lines().last().unwrap_or("").to_string()));
     }
-    let mut pages: Vec<PathBuf> = std::fs::read_dir(work).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "png")).collect();
+    let mut pages: Vec<PathBuf> = crate::files::read_dir(work).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "png")).collect();
     pages.sort();
     let mut out = String::new();
     for page in pages {

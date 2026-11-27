@@ -105,6 +105,8 @@
 #[cfg(all(feature = "insecure-test-tls", not(debug_assertions)))]
 compile_error!("insecure-test-tls accepts any certificate: for test builds only, never with --release");
 
+/// Every file call goes through the sealed store's door through paths (docs/store.md, "Paths").
+pub(crate) use sioul_core::sealed::files;
 #[cfg(target_os = "android")]
 pub mod android;
 pub mod antivirus;
@@ -166,6 +168,8 @@ pub mod scheduling;
 pub mod scout;
 pub mod search;
 pub mod secret;
+// The sealed store's key in the keyring, and a passphrase where there is none (docs/store.md).
+pub mod storekey;
 pub mod securitykey;
 pub mod send;
 pub mod share;

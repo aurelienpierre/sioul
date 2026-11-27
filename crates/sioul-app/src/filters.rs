@@ -16,6 +16,8 @@
 //! filter moves out of the inbox or marks read is never told as new mail
 //! (`untold`, for `mailnote`), whichever device acts on it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, config_path, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde::{Deserialize, Serialize};
@@ -209,7 +211,7 @@ pub(crate) fn new_from(given: &str) -> String {
     // Added last to the list as the configuration holds it now, under its lock, which the sharing takes too.
     let path = config_path();
     let added = sioul_core::filelock::with_lock(&path, || {
-        let config = if path.exists() { Config::load(&path)? } else { load_config() };
+        let config = if path.present() { Config::load(&path)? } else { load_config() };
         let ids: Vec<String> = config.accounts.iter().filter(|a| a.syncs()).map(|a| a.id.clone()).collect();
         let (filter, left_out) = from_search(given, &ids);
         let mut filters = config.mail.filters.clone();
@@ -284,7 +286,7 @@ pub(crate) fn save(list: &str, shown: &str) -> String {
     let path = config_path();
     sioul_core::filelock::with_lock(&path, || {
         let filters = match &shown {
-            Some(shown) if path.exists() => {
+            Some(shown) if path.present() => {
                 let config = Config::load(&path)?;
                 // As the editor would show them: what a newer Sioul wrote in them aside (`set_filters` keeps it).
                 let current: Vec<Filter> = config.mail.filters.iter().map(|f| Edited::of(f, &config).filter()).collect();

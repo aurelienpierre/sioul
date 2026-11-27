@@ -11,6 +11,8 @@
 //! calendar app where one rings it (the notifications' decision 3,
 //! `eventalarms::calendar_app`), else here, as on a computer.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, load_config, say, tr};
 use sioul_core::reminders::{self, Kind};
 use std::path::PathBuf;
@@ -220,13 +222,13 @@ pub(crate) fn tell_once_since_whose(qt: &QtThread) {
 /// said before or there is nothing to say; marked told either way.
 fn once_since_whose(config: &sioul_core::config::Config) -> Option<String> {
     let mark = sioul_core::config::state_dir().join("told-whose-reminds");
-    if mark.exists() {
+    if mark.present() {
         return None;
     }
-    let told_before = reminders::told_dir().is_dir();
+    let told_before = reminders::told_dir().present_dir();
     let names: Vec<String> = sioul_core::agendas::all(config).into_iter().filter(|a| a.events && a.whose.another_person()).map(|a| a.name).collect();
-    let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
-    let _ = std::fs::write(&mark, "");
+    let _ = crate::files::create_dir_all(sioul_core::config::state_dir());
+    let _ = crate::files::write(&mark, "");
     match (names.is_empty(), told_before) {
         (false, _) => Some(say("reminders-update-theirs", &[("agendas", names.join(", "))])),
         (true, true) => Some(say("reminders-update-free", &[])),
@@ -243,7 +245,7 @@ pub(crate) fn set_event(qt: &QtThread, shared: &std::sync::Arc<crate::backend::S
     let mut edit = crate::pim::edit_with_own(&path).ok_or_else(|| tr().text("agenda-gone", None))?;
     edit.remind = remind_word(value);
     // A meeting, yours to organize too: your own file alone, never its file nor its door (review of 1e8551e, F13).
-    if std::fs::read_to_string(&path).is_ok_and(|text| crate::pim::with_others(&text)) {
+    if crate::files::read_to_string(&path).is_ok_and(|text| crate::pim::with_others(&text)) {
         return crate::pim::save_own_time(qt, shared, key, &edit);
     }
     let json = serde_json::to_string(&edit).map_err(|e| e.to_string())?;
@@ -253,8 +255,8 @@ pub(crate) fn set_event(qt: &QtThread, shared: &std::sync::Arc<crate::backend::S
 /// `sioul`, next to this program, else on the PATH: the reminders' watcher, the spam filter's training by itself.
 pub(crate) fn command() -> Option<PathBuf> {
     let name = format!("sioul{}", std::env::consts::EXE_SUFFIX);
-    let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join(&name))).filter(|p| p.is_file());
-    beside.or_else(|| std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.is_file())))
+    let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join(&name))).filter(|p| p.present_file());
+    beside.or_else(|| std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).map(|dir| dir.join(&name)).find(|p| p.present_file())))
 }
 
 /// Whether reminders come with the window closed: the entry is there and
@@ -267,10 +269,10 @@ pub(crate) fn background() -> bool {
 pub(crate) fn set_background(on: bool) -> Result<(), String> {
     let entry = reminders::watcher_entry().ok_or_else(|| tr().text("reminders-closed-unavailable", None))?;
     if !on {
-        let _ = std::fs::remove_file(&entry);
+        let _ = crate::files::remove_file(&entry);
         if let Some(restart) = reminders::watcher_restart() {
-            let _ = std::fs::remove_file(&restart);
-            let _ = restart.parent().map(std::fs::remove_dir);
+            let _ = crate::files::remove_file(&restart);
+            let _ = restart.parent().map(crate::files::remove_dir);
         }
         stop();
         return Ok(());
@@ -292,20 +294,20 @@ pub(crate) fn set_background(on: bool) -> Result<(), String> {
 fn write_entries(entry: &std::path::Path, sioul: &std::path::Path, whole: bool) -> Result<(), String> {
     let line = |id: &str| tr().text(id, None).replace(['\n', '\r'], " ");
     let made = entry_text(sioul, &line("reminders-entry-name"), &line("reminders-entry-comment"));
-    let text = match std::fs::read_to_string(entry) {
+    let text = match crate::files::read_to_string(entry) {
         Ok(kept) if !whole => with_program_of(&kept, &made),
         _ => made,
     };
     let mut files = vec![(entry.to_path_buf(), text)];
     files.extend(reminders::watcher_restart().map(|restart| (restart, RESTART.to_string())));
     for (path, text) in files {
-        if std::fs::read_to_string(&path).is_ok_and(|kept| kept == text) {
+        if crate::files::read_to_string(&path).is_ok_and(|kept| kept == text) {
             continue;
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
-        std::fs::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::files::write(&path, text).map_err(|e| format!("{}: {e}", path.display()))?;
     }
     Ok(())
 }
@@ -401,7 +403,7 @@ pub(crate) fn keep_watching() {
         let Some(entry) = reminders::watcher_entry() else { return };
         // The program the entry names while it is there: a window started from
         // elsewhere (a build tried) never moves the session's watcher to it.
-        let Some(sioul) = named_program(&entry).filter(|p| p.is_file()).or_else(command) else { return };
+        let Some(sioul) = named_program(&entry).filter(|p| p.present_file()).or_else(command) else { return };
         if let Err(e) = write_entries(&entry, &sioul, false) {
             eprintln!("Sioul: the reminders' watcher: {e}");
         }
@@ -431,7 +433,7 @@ const UNIT: &str = "app-sioul\\x2dreminders@autostart.service";
 /// The program an entry starts: its `Exec`'s first word, quoted as Sioul
 /// writes it; on macOS, the first of its `ProgramArguments`.
 fn named_program(entry: &std::path::Path) -> Option<PathBuf> {
-    let text = std::fs::read_to_string(entry).ok()?;
+    let text = crate::files::read_to_string(entry).ok()?;
     let program = if cfg!(target_os = "macos") {
         text.split("<key>ProgramArguments</key>").nth(1)?.split("<string>").nth(1)?.split("</string>").next()?.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
     } else {
@@ -447,7 +449,7 @@ fn named_program(entry: &std::path::Path) -> Option<PathBuf> {
 /// Whether a watcher holds its lock (`sioul remind --watch`).
 fn watching() -> bool {
     let lock = sioul_core::config::state_dir().join("remind.lock");
-    std::fs::OpenOptions::new().write(true).open(lock).is_ok_and(|lock| matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
+    crate::files::OpenOptions::new().write(true).open(lock).is_ok_and(|lock| matches!(lock.try_lock(), Err(crate::files::TryLockError::WouldBlock)))
 }
 
 /// Stops the watcher started earlier, by its number: only while a watcher
@@ -456,14 +458,14 @@ fn watching() -> bool {
 fn stop() {
     let state = sioul_core::config::state_dir();
     let path = state.join("remind.pid");
-    let pid = std::fs::read_to_string(&path).ok().and_then(|t| t.trim().parse::<u32>().ok()).filter(|_| watching());
+    let pid = crate::files::read_to_string(&path).ok().and_then(|t| t.trim().parse::<u32>().ok()).filter(|_| watching());
     if let Some(pid) = pid {
         #[cfg(unix)]
         let _ = std::process::Command::new("kill").arg(pid.to_string()).status();
         #[cfg(windows)]
         let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string()]).status();
     }
-    let _ = std::fs::remove_file(path);
+    let _ = crate::files::remove_file(path);
 }
 
 #[cfg(test)]

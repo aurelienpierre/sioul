@@ -53,6 +53,8 @@
 //!   is part of the lesson's hash, so a card bound again, merged into another
 //!   or removed writes the event again, re-pointed or without the line.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::reply::AgendaReply;
 use crate::{agenda, lines, vdir};
 use jiff::tz::TimeZone;
@@ -289,14 +291,14 @@ pub fn held(dir: &Path, extension: &str, agenda: &str) -> BTreeMap<String, Held>
 /// extension's (`super::uid_mark`): their path, that UID, their text. A file
 /// too large to be one, or that does not read, is passed over.
 fn marked_files(dir: &Path) -> Vec<(PathBuf, String, String)> {
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
+    let mut paths: Vec<PathBuf> = crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
     paths.sort();
     let mut out = Vec::new();
     for path in paths {
-        if std::fs::metadata(&path).map_or(true, |m| !m.is_file() || m.len() > READ_MOST) {
+        if crate::files::metadata(&path).map_or(true, |m| !m.present_file() || m.len() > READ_MOST) {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         let unfolded = lines::unfold(&text);
         let mut inside = false;
         let mut uid = None;
@@ -354,7 +356,7 @@ pub fn plan(dir: &Path, lessons: &[Lesson], held: &BTreeMap<String, Held>, noted
             None => {
                 let path = dir.join(&lesson.file);
                 // A file of that name that is no event of this agenda's: never written over.
-                if path.exists() {
+                if path.present() {
                     plan.clash += 1;
                 } else {
                     plan.write.push((path, lesson.text.clone(), lesson.uid.clone(), lesson.hash.clone()));
@@ -445,7 +447,7 @@ pub fn closed(calendar: &vdir::Collection, config: &crate::config::Config) -> Op
     if vdir::server_read_only(&calendar.account, &calendar.id) {
         return Some(Closed::ServerReadOnly);
     }
-    if !calendar.dir.is_dir() {
+    if !calendar.dir.present_dir() {
         return Some(Closed::NotHere);
     }
     None
@@ -550,7 +552,7 @@ pub fn take_out(extension: &str) -> (usize, usize) {
             }
         }
     }
-    let _ = std::fs::remove_file(noted_path(extension));
+    let _ = crate::files::remove_file(noted_path(extension));
     (removed, refused)
 }
 
@@ -588,7 +590,7 @@ pub fn noted_path(extension: &str) -> PathBuf {
 }
 
 fn load_noted(extension: &str) -> Noted {
-    std::fs::read_to_string(noted_path(extension)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(noted_path(extension)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// The notes written, `MOST_NOTED` at most (beyond, the events' own lines stand alone).
@@ -597,7 +599,7 @@ fn save_noted(extension: &str, noted: &Noted) -> Result<(), String> {
     let kept = Noted { events: noted.events.iter().take(MOST_NOTED).map(|(k, v)| (k.clone(), v.clone())).collect() };
     let text = toml::to_string(&kept).map_err(|e| e.to_string())?;
     if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     }
     crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }

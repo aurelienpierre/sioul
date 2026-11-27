@@ -747,7 +747,7 @@ async fn sizes_of(session: &mut Imap, uids: &[u32]) -> Result<std::collections::
 fn local_uids(root: &Path, validity: u32) -> BTreeSet<u32> {
     ["new", "cur"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(root.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(root.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .filter_map(|e| maildir::origin_of(&e.path()))
@@ -890,7 +890,7 @@ pub(crate) fn forget_folder_state(account: &Account, name: &str) -> Result<(), S
 
 impl SyncState {
     fn load(path: &Path) -> SyncState {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// Written next to its place, then moved: an interruption never leaves
@@ -899,12 +899,12 @@ impl SyncState {
     fn save(&self, path: &Path) -> Result<(), SyncError> {
         let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| SyncError::Disk(e.to_string()))?;
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::write(&temporary, text).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 }
 
@@ -916,28 +916,28 @@ pub(crate) fn lock_path(account: &Account) -> PathBuf {
 
 /// The same lock, waited for `wait` at most: none when it did not come (a
 /// fetch of older mail may hold it for minutes), or cannot be taken here.
-pub(crate) fn lock_within(path: &Path, wait: Duration) -> Option<std::fs::File> {
+pub(crate) fn lock_within(path: &Path, wait: Duration) -> Option<crate::files::File> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).ok()?;
+        crate::files::create_dir_all(parent).ok()?;
     }
-    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
+    let file = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(path).ok()?;
     let start = Instant::now();
     loop {
         match file.try_lock() {
             Ok(()) => return Some(file),
-            Err(std::fs::TryLockError::WouldBlock) if start.elapsed() < wait => std::thread::sleep(Duration::from_millis(50)),
+            Err(crate::files::TryLockError::WouldBlock) if start.elapsed() < wait => std::thread::sleep(Duration::from_millis(50)),
             Err(_) => return None,
         }
     }
 }
 
 /// An exclusive lock on a file, released when the returned file is dropped.
-pub(crate) fn lock(path: &Path) -> Result<std::fs::File, SyncError> {
+pub(crate) fn lock(path: &Path) -> Result<crate::files::File, SyncError> {
     let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
-    let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).map_err(fail)?;
+    let file = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(path).map_err(fail)?;
     file.lock().map_err(fail)?;
     Ok(file)
 }

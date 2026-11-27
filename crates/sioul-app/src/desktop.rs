@@ -66,6 +66,8 @@ pub mod ffi {
     }
 }
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use cxx_qt_lib::{QList, QString, QStringList};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock, PoisonError};
@@ -153,7 +155,7 @@ fn xdg_icon_folders() -> Vec<PathBuf> {
         .map_or_else(|| sioul_core::config::expand_home("~/.local/share"), PathBuf::from);
     let dirs = std::env::var_os("XDG_DATA_DIRS").filter(|v| !v.is_empty()).unwrap_or_else(|| "/usr/local/share:/usr/share".into());
     // ":" between folders, ";" on Windows, where ":" follows a drive letter.
-    std::iter::once(home).chain(std::env::split_paths(&dirs)).map(|d| d.join("icons")).filter(|d| d.is_dir()).collect()
+    std::iter::once(home).chain(std::env::split_paths(&dirs)).map(|d| d.join("icons")).filter(|d| d.present_dir()).collect()
 }
 
 /// The object behind QML's `Desktop`: nothing of its own.
@@ -301,7 +303,7 @@ fn command(program: &str, args: &[&str]) -> Option<String> {
 /// global theme's, else the system's, else Plasma's own, "MS" on the left
 /// (the window's menu, on all desktops) and "HIAX" on the right.
 fn kde_layout() -> ButtonLayout {
-    let files: Vec<String> = kwinrc_files().iter().filter_map(|path| std::fs::read_to_string(path).ok()).collect();
+    let files: Vec<String> = kwinrc_files().iter().filter_map(|path| crate::files::read_to_string(path).ok()).collect();
     let read = |key: &str, plasma: &str| files.iter().find_map(|text| kconfig_value(text, "org.kde.kdecoration2", key)).unwrap_or_else(|| plasma.to_string());
     ButtonLayout { left: kde_buttons(&read("ButtonsOnLeft", "MS")), right: kde_buttons(&read("ButtonsOnRight", "HIAX")) }
 }

@@ -270,10 +270,10 @@ pub fn migrate_folder(dir: &Path, components: &[String], events_to: Option<&vdir
     let mut done = Migrated::default();
     let holds = |component: &str| components.is_empty() || components.iter().any(|c| c.eq_ignore_ascii_case(component));
     let tasks_only = !holds("VEVENT");
-    let mut files: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == Kind::Calendars.extension()) && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))).collect();
+    let mut files: Vec<PathBuf> = crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == Kind::Calendars.extension()) && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))).collect();
     files.sort();
     for path in files {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         let event = text.lines().any(|l| l.trim().eq_ignore_ascii_case("BEGIN:VEVENT"));
         if event && crate::agenda::with_others(&text) {
             done.meetings += 1;

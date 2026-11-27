@@ -318,7 +318,7 @@ impl Rules {
     /// The list at `path`; none there, no rules. One that does not read is
     /// an error, and is never written over.
     pub fn load(path: &Path) -> Result<Rules, String> {
-        let text = match std::fs::read_to_string(path) {
+        let text = match crate::files::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -505,13 +505,13 @@ impl Rules {
             None => model_table(model),
         }, |model| model.kept.at);
         if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = doc.to_string();
         // What this Sioul wrote, it reads again: never a file it cannot read.
         Rules::parse(&self.path, &text)?;
         let temporary = self.path.with_extension("toml.new");
-        std::fs::write(&temporary, &text).and_then(|()| std::fs::rename(&temporary, &self.path)).map_err(fail)?;
+        crate::files::write(&temporary, &text).and_then(|()| crate::files::rename(&temporary, &self.path)).map_err(fail)?;
         *self = Rules::parse(&self.path, &text)?;
         Ok(())
     }

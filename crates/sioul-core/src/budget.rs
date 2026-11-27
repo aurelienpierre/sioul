@@ -611,7 +611,7 @@ impl Ledger {
 
     /// Reads a budget file anywhere.
     pub fn load_file(path: &Path) -> Result<Ledger, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
     }
 
@@ -1120,8 +1120,8 @@ pub fn person_of(budget: &Budget) -> Option<String> {
 fn write_ledger(path: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)?;
+    crate::files::write(&temporary, doc.to_string()).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)?;
     // Every view of money reads it again (Budgets, a person's page, the dates asked).
     crate::changes::said(crate::changes::Kind::Money);
     Ok(())
@@ -1141,7 +1141,7 @@ pub fn save_budget(path: &Path, id: &str, edit: &BudgetEdit) -> Result<String, S
             return Err(fail("a target is a number".into()));
         }
         // The first budget makes the file; a file that cannot be read is never written over.
-        let text = match std::fs::read_to_string(path) {
+        let text = match crate::files::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(fail(e.to_string())),
@@ -1215,7 +1215,7 @@ pub fn remove_budget(path: &Path, id: &str) -> Result<(), String> {
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let budgets = doc.get_mut("budget").and_then(Item::as_array_of_tables_mut).ok_or_else(|| fail(format!("no budget {id}")))?;
         let before = budgets.len();
@@ -1295,7 +1295,7 @@ pub fn remove_line(path: &Path, place: usize, seen: &SeenLine) -> Result<bool, S
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
         let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
@@ -1316,7 +1316,7 @@ pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amou
         if amount == 0.0 || !amount.is_finite() {
             return Err(fail("an amount is needed".into()));
         }
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
         let Some(place) = find_line(lines, place, seen) else { return Ok(false) };
@@ -1343,7 +1343,7 @@ pub fn change_line(path: &Path, place: usize, seen: &SeenLine, label: &str, amou
 pub fn lower_planned(path: &Path, link: &str, by: Money) -> Result<Option<(Line, bool)>, String> {
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = match std::fs::read_to_string(path) {
+        let text = match crate::files::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(fail(e.to_string())),
@@ -1387,7 +1387,7 @@ pub fn restore_lowered(path: &Path, was: &Line, gone: bool, origin: &str) -> Res
 pub fn edit_line(path: &Path, key: &str, change: impl FnOnce(&mut Table) -> Result<(), String>) -> Result<bool, String> {
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
         let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
@@ -1403,7 +1403,7 @@ pub fn edit_line(path: &Path, key: &str, change: impl FnOnce(&mut Table) -> Resu
 pub fn remove_line_by_key(path: &Path, key: &str) -> Result<bool, String> {
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let ledger: Ledger = toml::from_str(&text).map_err(|e| fail(e.to_string()))?;
         let Some(at) = crate::movements::line_keys(&ledger).iter().position(|k| k == key) else { return Ok(false) };
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
@@ -1472,7 +1472,7 @@ pub fn record_line_once(path: &Path, line: &Line, origin: &str) -> Result<(Strin
     // Read, changed and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let messages: Vec<&str> = line.links.iter().map(|l| l.trim()).filter(|l| is_message_key(l)).collect();
         if !messages.is_empty()
@@ -1549,8 +1549,8 @@ pub fn record_line_once(path: &Path, line: &Line, origin: &str) -> Result<(Strin
         let lines = doc.entry("line").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
         lines.as_array_of_tables_mut().ok_or_else(|| fail("`line` is not a list of tables".into()))?.push(table);
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        crate::files::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        crate::files::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Money);
         Ok((id, true))
     })
@@ -1836,7 +1836,7 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
         if !preset.amount.is_finite() {
             return Err(fail("an amount is needed".into()));
         }
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let day_value = |text: &str| -> Option<toml_edit::Datetime> {
             let d: Date = text.parse().ok()?;
@@ -1872,8 +1872,8 @@ pub fn record_preset(path: &Path, preset: &PresetEdit, origin: &str) -> Result<(
         let presets = doc.entry("preset").or_insert(Item::ArrayOfTables(ArrayOfTables::new()));
         presets.as_array_of_tables_mut().ok_or_else(|| fail("`preset` is not a list of tables".into()))?.push(table);
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+        crate::files::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        crate::files::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Money);
         Ok(())
     })
@@ -1950,7 +1950,7 @@ fn day_of(date: Date) -> toml_edit::Datetime {
 fn change_linked<T>(path: &Path, link: &str, change: impl FnOnce(&mut Table) -> T) -> Result<Option<T>, String> {
     crate::filelock::with_lock(path, || {
         let fail = |e: String| format!("{}: {e}", path.display());
-        let text = std::fs::read_to_string(path).map_err(|e| fail(e.to_string()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| fail(e.to_string()))?;
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(lines) = doc.get_mut("line").and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
         let Some(line) = lines.iter_mut().find(|t| t.get("links").and_then(Item::as_array).is_some_and(|a| a.iter().any(|v| v.as_str() == Some(link)))) else { return Ok(None) };
@@ -1959,8 +1959,8 @@ fn change_linked<T>(path: &Path, link: &str, change: impl FnOnce(&mut Table) -> 
         let changed = doc.to_string();
         if changed != text {
             let temporary = path.with_extension("toml.new");
-            std::fs::write(&temporary, changed).map_err(|e| fail(e.to_string()))?;
-            std::fs::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
+            crate::files::write(&temporary, changed).map_err(|e| fail(e.to_string()))?;
+            crate::files::rename(&temporary, path).map_err(|e| fail(e.to_string()))?;
             crate::changes::said(crate::changes::Kind::Money);
         }
         Ok(Some(out))

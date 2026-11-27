@@ -139,7 +139,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // A phone's window starts cold many times a day: no reading for its opening there (F23).
     let opening = !OPENED.swap(true, Ordering::Relaxed) && !cfg!(target_os = "android");
     // Nothing subscribed, nothing left here to take out: no round.
-    let left = std::fs::read_dir(sioul_core::vdir::Kind::Calendars.root().join(subscribed::ACCOUNT)).is_ok_and(|mut d| d.next().is_some());
+    let left = crate::files::read_dir(sioul_core::vdir::Kind::Calendars.root().join(subscribed::ACCOUNT)).is_ok_and(|mut d| d.next().is_some());
     // Settings that do not read: no round (F19).
     let Some(config) = crate::backend::config_read() else { return };
     if config.agenda.subscriptions.is_empty() && !left {

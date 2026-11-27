@@ -45,6 +45,8 @@
 //! - `spamcore`, inside this crate (so not linked from here): the seam to sioul-core's spam module: a corpus record read as the Porch reads the message.
 //! - `synthetic`, for tests only, this crate's and the command line's (so not shown here): invented mail on reserved domains.
 
+/// Every file call goes through the sealed store's door through paths (docs/store.md, "Paths").
+pub(crate) use sioul_core::sealed::files;
 pub mod auto;
 pub mod consent;
 pub mod corpus;
@@ -65,6 +67,8 @@ pub mod synthetic;
 pub mod topics;
 pub mod train;
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -159,11 +163,11 @@ impl Dirs {
     fn forget_account_within(&self, id: &str, within: std::time::Duration) -> std::io::Result<bool> {
         let plain = matches!(std::path::Path::new(id).components().collect::<Vec<_>>().as_slice(), [std::path::Component::Normal(_)]);
         let folder = self.corpus().join(id);
-        if !plain || !folder.is_dir() {
+        if !plain || !folder.present_dir() {
             return Ok(false);
         }
         unlocked(&folder.join("lock"), within);
-        std::fs::remove_dir_all(&folder)?;
+        crate::files::remove_dir_all(&folder)?;
         Ok(true)
     }
 }
@@ -175,7 +179,7 @@ const FORGET_WAITS: std::time::Duration = std::time::Duration::from_secs(30 * 60
 /// it: `corpus.rs`), at most `within`; then lets it go at once, so that its
 /// folder can be deleted (Windows deletes no open file). No file: none runs.
 fn unlocked(path: &std::path::Path, within: std::time::Duration) {
-    let Ok(file) = std::fs::OpenOptions::new().write(true).open(path) else { return };
+    let Ok(file) = crate::files::OpenOptions::new().write(true).open(path) else { return };
     let until = std::time::Instant::now() + within;
     while file.try_lock().is_err() && std::time::Instant::now() < until {
         std::thread::sleep(std::time::Duration::from_millis(100));

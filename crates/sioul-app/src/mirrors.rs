@@ -127,7 +127,7 @@ static LAST: std::sync::Mutex<Option<av::BusyTimes>> = std::sync::Mutex::new(Non
 
 impl Memo {
     fn load() -> Memo {
-        std::fs::read_to_string(memo_path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(memo_path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     fn save(&self) {
@@ -428,7 +428,7 @@ fn write_files(collection: &Collection, files: &BTreeMap<String, String>) -> boo
     let mut changed = false;
     for (name, text) in files {
         let path = collection.dir.join(name);
-        if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) && vdir::write_item(&path, text).is_ok() {
+        if crate::files::read_to_string(&path).ok().as_deref() != Some(text.as_str()) && vdir::write_item(&path, text).is_ok() {
             changed = true;
         }
     }

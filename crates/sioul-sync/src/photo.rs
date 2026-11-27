@@ -68,11 +68,11 @@ pub fn keep(url: &str, content_type: &str, bytes: &[u8], folder: &Path) -> Resul
         return Err("larger than a megabyte".into());
     }
     let kind = kind_of(content_type, bytes).ok_or("not a picture")?;
-    std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
     let path = sioul_core::contacts::web_photo_path(folder, url, kind);
     let part = path.with_extension("part");
-    std::fs::write(&part, bytes).map_err(|e| format!("{}: {e}", part.display()))?;
-    std::fs::rename(&part, &path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::write(&part, bytes).map_err(|e| format!("{}: {e}", part.display()))?;
+    crate::files::rename(&part, &path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
 

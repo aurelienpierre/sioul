@@ -116,7 +116,7 @@ fn places() -> Vec<PathBuf> {
 pub fn load() -> TopicPresets {
     let mut best = built_in();
     for path in places() {
-        if let Some(found) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<TopicPresets>(&t).ok())
+        if let Some(found) = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<TopicPresets>(&t).ok())
             && found.checked > best.checked
         {
             best = found;

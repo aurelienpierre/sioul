@@ -42,6 +42,8 @@
 //! - [`spam`]: `sioul spam`, the spam filter learned on this computer (docs/spam-filter.md); computers only.
 //! - [`topics`]: `sioul topics`, mail topics measured on this computer (docs/topics.md); computers only.
 
+/// Every file call goes through the sealed store's door through paths (docs/store.md, "Paths").
+pub(crate) use sioul_core::sealed::files;
 mod accounts;
 mod dav;
 mod devices;
@@ -53,12 +55,15 @@ mod mcp;
 mod money;
 mod pgp;
 mod remind;
+mod store;
 // The spam filter learned on this device (sioul-learn): every device trains its own.
 mod spam;
 mod tasks;
 // Mail topics learned and measured on this device (sioul-learn).
 mod topics;
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use jiff::{Timestamp, Zoned};
 use sioul_core::budget::{self, Ledger};
@@ -302,6 +307,12 @@ enum Command {
     /// contacts' categories would propose, and how well a model of them sorts your mail.
     #[command(subcommand)]
     Topics(topics::TopicsCommand),
+    /// What Sioul keeps on this device, sealed: its files read and written through the seal.
+    #[command(subcommand)]
+    Store(store::StoreCommand),
+    /// One of Sioul's settings, read or changed as the window does.
+    #[command(subcommand)]
+    Settings(store::SettingsCommand),
 }
 
 /// What every command needs: the configuration, where it lives, and the language.
@@ -412,13 +423,17 @@ fn main() -> ExitCode {
     if let Err(e) = sioul_core::coredump::no_core_file() {
         eprintln!("sioul: a crash may leave a core file: {e}");
     }
+    // What Sioul keeps on this device, sealed (docs/store.md): opened at the
+    // first file call that needs it, its key read from the keyring without
+    // asking it to open; never made nor moved here (the window does).
+    sioul_sync::storekey::open_on_demand("cli");
     // The configuration and the language first, from the arguments as given:
     // the help itself is written in that language (help.rs).
     let early = help::Early::of(std::env::args_os());
     let config_path = early.config.clone().unwrap_or_else(config::default_path);
     // No file yet: Sioul's defaults. A file that cannot be read is said, not taken for none.
     let config = Config::load(&config_path).unwrap_or_else(|e| {
-        if config_path.exists() {
+        if config_path.present() {
             eprintln!("{e}");
         }
         Config::default()
@@ -463,6 +478,8 @@ fn main() -> ExitCode {
         Command::Mail(command) => mail::run(&session, command),
         Command::Dav(command) => dav::run(&session, command),
         Command::Pgp(command) => pgp::run(&session, command),
+        Command::Store(command) => store::run(&session, command),
+        Command::Settings(command) => store::settings(&session, command),
         Command::Contacts { query } => dav::list_contacts(&session, query.as_deref().unwrap_or("")),
         Command::Contact { name, email, phone } => dav::new_contact(&session, &name, &email, &phone),
         Command::Agenda { days } => dav::list_agenda(&session, days),

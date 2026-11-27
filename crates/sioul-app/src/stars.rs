@@ -130,7 +130,7 @@ pub(crate) fn turn(on: bool) -> Result<(), String> {
     sioul_core::config::set_value(&crate::backend::config_path(), "dnd.stars", &sioul_core::config::SettingValue::Bool(on))?;
     if !on {
         // Forgotten at once here; each device forgets its own at its next look (H3).
-        let _ = std::fs::remove_dir_all(stars::folder());
+        let _ = crate::files::remove_dir_all(stars::folder());
     }
     if on && cfg!(target_os = "android") && !writable_here() {
         crate::steps::java("calls-ask-stars", "{}");

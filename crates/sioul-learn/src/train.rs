@@ -54,6 +54,8 @@
 //! the table, the one before, the language model nor `trained.toml`.
 //! `train_with` also says what the test said message by message (`detail`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::corpus::{self, KEEP_FREE, Place, Record};
 use crate::detail::{self, Detail, Origin, Tested};
 use crate::eval::{self, Numbers};
@@ -354,7 +356,7 @@ fn is_zero_f(x: &f64) -> bool {
 
 /// The last training's summary; none before the first.
 pub fn last(dirs: &Dirs) -> Option<Summary> {
-    std::fs::read_to_string(dirs.trained()).ok().and_then(|t| toml::from_str(&t).ok())
+    crate::files::read_to_string(dirs.trained()).ok().and_then(|t| toml::from_str(&t).ok())
 }
 
 /// "Train now": the corpus brought up to date from every account (each
@@ -414,7 +416,7 @@ struct TokenFile(PathBuf);
 
 impl Drop for TokenFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        let _ = crate::files::remove_file(&self.0);
     }
 }
 
@@ -473,7 +475,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
 
     // Room: the tokenized corpus (at most the texts' size) and the language model.
     let model_bytes = (u64::from(options.bucket) + 2 * (label_summary.records + ham + spam).min(500_000)) * u64::from(options.dim) * 4;
-    std::fs::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
+    crate::files::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
     if let Some(free) = corpus::free_space(&dirs.cache)
         && free < KEEP_FREE + texts + model_bytes
     {
@@ -490,7 +492,7 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
     let tokens_total = labeled.len() as u64 + (ham + spam) - (label_summary.ham + label_summary.spam);
     let lexicon = Lexicon::cached(&options.lexicon);
     {
-        let file = std::fs::File::create(&token_path).map_err(|e| io_error(&token_path, e))?;
+        let file = crate::files::File::create(&token_path).map_err(|e| io_error(&token_path, e))?;
         let mut out = BufWriter::new(file);
         let mut offset = 0u64;
         let mut done = 0u64;
@@ -713,10 +715,10 @@ pub fn train_with(dirs: &Dirs, trusted: &BTreeMap<String, Vec<String>>, options:
         check()?;
         // Written whole or not at all; the table it replaces is kept as table.prev.bin.
         written.write(&dirs.table()).map_err(|e| io_error(&dirs.table(), e))?;
-        table_bytes = std::fs::metadata(dirs.table()).map_or(table_bytes, |m| m.len());
+        table_bytes = crate::files::metadata(dirs.table()).map_or(table_bytes, |m| m.len());
         let fresh = dirs.language().with_extension("bin.new");
         language.save_model(&fresh).map_err(|e| io_error(&fresh, e))?;
-        std::fs::rename(&fresh, dirs.language()).map_err(|e| io_error(&dirs.language(), e))?;
+        crate::files::rename(&fresh, dirs.language()).map_err(|e| io_error(&dirs.language(), e))?;
         step("");
         Some(refit)
     } else {
@@ -912,7 +914,7 @@ pub(crate) fn metrics(test: &Numbers) -> BTreeMap<String, f64> {
 pub(crate) fn against_current(dirs: &Dirs, test_ids: &[usize], test_words: &[Vec<String>], messages: &[Message], new_scored: &[(f64, bool)], options: &Options) -> Result<(Option<Numbers>, Option<Compared>, bool, &'static str), LearnError> {
     let current = match Table::read(&dirs.table()) {
         Ok(current) => Ok(Some(current)),
-        Err(_) if !dirs.table().exists() => Ok(None),
+        Err(_) if !dirs.table().present() => Ok(None),
         Err(e) => Err(e),
     };
     let (current_numbers, compared) = match &current {
@@ -1211,7 +1213,7 @@ fn message_vectors(language: &fasttext::FastText, path: &Path, messages: &[Messa
             let (known, done, failed) = (&known, &done, &failed);
             workers.push(s.spawn(move || {
                 let first = t * per;
-                let mut file = match std::fs::File::open(path) {
+                let mut file = match crate::files::File::open(path) {
                     Ok(file) => file,
                     Err(e) => {
                         *failed.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(io_error(path, e));
@@ -1274,7 +1276,7 @@ fn message_vectors(language: &fasttext::FastText, path: &Path, messages: &[Messa
 
 /// The words of some messages, read back from the tokenized corpus.
 pub(crate) fn words_of(path: &Path, messages: &[Message], ids: &[usize]) -> Result<Vec<Vec<String>>, LearnError> {
-    let file = std::fs::File::open(path).map_err(|e| io_error(path, e))?;
+    let file = crate::files::File::open(path).map_err(|e| io_error(path, e))?;
     let mut reader = BufReader::new(file);
     ids.iter()
         .map(|&i| {

@@ -5,6 +5,8 @@
 //! the list, the board, the timeline; adding a task in one line; importing a
 //! whole plan from a file (for agents and scripts); following links.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::{Session, one_line, plain_lines};
 use clap::Subcommand;
 use jiff::{Timestamp, Zoned, tz::TimeZone};
@@ -568,7 +570,7 @@ fn move_step(s: &Session, wanted: &str, before: Option<&str>, no_sync: bool) -> 
     let mut lists: BTreeSet<String> = BTreeSet::new();
     for (uid, place) in &writes {
         let Some(task) = file_of(uid) else { continue };
-        let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+        let current = crate::files::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
         let text = tasks::set_sequence(&current, *place, &now)?;
         if text != current {
             vdir::write_item(Path::new(&task.key), &text)?;
@@ -627,7 +629,7 @@ fn attach(s: &Session, wanted: &str, event: &str, on: Option<&str>, no_sync: boo
     let now = sioul_core::zone::now();
     let file_of = |key: &str| -> Result<(PathBuf, String, bool), String> {
         let path = PathBuf::from(key);
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{key}: {e}"))?;
+        let text = crate::files::read_to_string(&path).map_err(|e| format!("{key}: {e}"))?;
         let writable = vdir::collections(Kind::Calendars).into_iter().find(|c| path.parent() == Some(c.dir.as_path())).is_some_and(|c| !c.read_only);
         Ok((path, text, writable))
     };
@@ -697,7 +699,7 @@ fn set_status(s: &Session, wanted: &str, status: Status) -> Result<(), String> {
     if task.read_only {
         return Err(s.tr.text("task-read-only", None));
     }
-    let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let text = tasks::set_status(&current, status, &sioul_core::zone::current(), &sioul_core::zone::now())?;
     vdir::write_item(Path::new(&task.key), &text)?;
     // Its supplies follow at once (docs/supplies.md); what it used said with the done line.
@@ -913,7 +915,7 @@ fn draft_id(prefix: &str, key: &str) -> String {
 }
 
 fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), String> {
-    let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let text = crate::files::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     let plan: Plan_ = toml::from_str(&text).map_err(|e| format!("{}: {e}", file.display()))?;
     // A new task's or contact's file is named by its UID: none may lead out of
     // its folder ("../../.bashrc"), whoever wrote the file (an agent, a script).
@@ -972,7 +974,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         };
         let (path, new_text) = match everyone.iter().find(|c| c.uid == uid) {
             Some(found) => {
-                let current = std::fs::read_to_string(&found.key).map_err(|e| e.to_string())?;
+                let current = crate::files::read_to_string(&found.key).map_err(|e| e.to_string())?;
                 (PathBuf::from(&found.key), contacts::apply(&current, &edit))
             }
             None => {
@@ -980,7 +982,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
                 (book.dir.join(format!("{uid}.vcf")), contacts::new_card_with_uid(&edit, &uid))
             }
         };
-        let old = std::fs::read_to_string(&path).unwrap_or_default();
+        let old = crate::files::read_to_string(&path).unwrap_or_default();
         if old != new_text {
             println!("{} {}", if old.is_empty() { "+" } else { "~" }, one_line(&contact.name));
             if !dry_run {
@@ -1073,7 +1075,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         }
         let (path, old, new_text) = match found {
             Some(found) => {
-                let current = std::fs::read_to_string(&found.key).map_err(|e| e.to_string())?;
+                let current = crate::files::read_to_string(&found.key).map_err(|e| e.to_string())?;
                 let text = tasks::apply(&current, &edit, &zone, &now)?;
                 (PathBuf::from(&found.key), current, text)
             }
@@ -1109,8 +1111,8 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
         let successor = uid_of(&plan.prefix, &task.key);
         for (key, days) in &task.after_gap {
             let predecessor = uid_of(&plan.prefix, key);
-            let Some(path) = written.get(&predecessor).filter(|p| p.exists()) else { continue };
-            let current = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+            let Some(path) = written.get(&predecessor).filter(|p| p.present()) else { continue };
+            let current = crate::files::read_to_string(path).map_err(|e| e.to_string())?;
             let text = tasks::set_gap(&current, &successor, i64::from(*days) * 1440, &now)?;
             if text != current && !dry_run {
                 vdir::write_item(path, &text)?;
@@ -1134,7 +1136,7 @@ fn import(s: &Session, file: &Path, no_sync: bool, dry_run: bool) -> Result<(), 
 fn event_file(uid: &str) -> Option<PathBuf> {
     let wanted = format!("UID:{uid}");
     vdir::collections(Kind::Calendars).into_iter().flat_map(|c| c.items()).find(|p| {
-        std::fs::read_to_string(p).is_ok_and(|t| {
+        crate::files::read_to_string(p).is_ok_and(|t| {
             let lines = sioul_core::lines::unfold(&t);
             lines.iter().any(|l| l == "BEGIN:VEVENT") && lines.iter().any(|l| l.trim_end() == wanted)
         })
@@ -1148,7 +1150,7 @@ fn blocks_of(uid: &str) -> Vec<PathBuf> {
         .filter(|c| !c.read_only)
         .flat_map(|c| c.items())
         // Never a block given a guest: a meeting with others now, it stays as it is (`agenda::may_change`).
-        .filter(|p| std::fs::read_to_string(p).is_ok_and(|t| sioul_core::lines::unfold(&t).iter().any(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK && sioul_core::lines::value(l).trim() == uid) && !sioul_core::agenda::with_others(&t)))
+        .filter(|p| crate::files::read_to_string(p).is_ok_and(|t| sioul_core::lines::unfold(&t).iter().any(|l| sioul_core::lines::name(l) == sioul_core::blocks::TASK && sioul_core::lines::value(l).trim() == uid) && !sioul_core::agenda::with_others(&t)))
         .collect()
 }
 
@@ -1165,7 +1167,7 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
         let found = event_file(&uid);
         // An event imported before: what it holds is the start, the file's
         // lines over it, its margins, costs and reminder kept (the review of 22 October 2026, F4).
-        let before = found.as_ref().and_then(|p| std::fs::read_to_string(p).ok()).and_then(|t| sioul_core::agenda::edit_of_text(&t, zone));
+        let before = found.as_ref().and_then(|p| crate::files::read_to_string(p).ok()).and_then(|t| sioul_core::agenda::edit_of_text(&t, zone));
         // The plan's times are this device's; the event's own clock is kept, its times said on it.
         let clock = before.as_ref().map(|b| b.clock.clone()).unwrap_or_default();
         let before = before.map(|b| sioul_core::agenda::on_zone(b, zone));
@@ -1206,7 +1208,7 @@ fn import_events(s: &Session, plan: &Plan_, existing: &[Task], dry_run: bool, zo
         let as_task = existing.iter().find(|t| t.uid == uid);
         match (found, as_task) {
             (Some(path), _) => {
-                let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let current = crate::files::read_to_string(&path).map_err(|e| e.to_string())?;
                 let text = sioul_core::agenda::apply(&current, &edit, zone)?;
                 let change = sioul_core::agenda::Change::Write(&text);
                 if text != current {

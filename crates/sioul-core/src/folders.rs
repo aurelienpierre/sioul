@@ -100,7 +100,7 @@ pub fn saved(account: &str) -> Vec<Folder> {
         #[serde(default, rename = "folder")]
         folders: Vec<Folder>,
     }
-    std::fs::read_to_string(saved_path(account)).ok().and_then(|t| toml::from_str::<Saved>(&t).ok()).map(|s| s.folders).unwrap_or_default()
+    crate::files::read_to_string(saved_path(account)).ok().and_then(|t| toml::from_str::<Saved>(&t).ok()).map(|s| s.folders).unwrap_or_default()
 }
 
 /// The folder for a role when several have it ("Junk" and "spam" on cPanel

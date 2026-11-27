@@ -35,6 +35,8 @@
 //! reads or writes. An older Sioul still running writes that file again for
 //! itself, and nothing new depends on it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::Card;
 use crate::headers::RawHeaders;
 use crate::maildir;
@@ -245,7 +247,7 @@ fn event_uid(text: &str) -> Option<String> {
 /// A message's headers: what comes before its first empty line, at most 256 KB.
 pub fn headers_of(path: &Path) -> Option<Vec<u8>> {
     let mut bytes = Vec::with_capacity(8192);
-    std::fs::File::open(path).ok()?.take(256 * 1024).read_to_end(&mut bytes).ok()?;
+    crate::files::File::open(path).ok()?.take(256 * 1024).read_to_end(&mut bytes).ok()?;
     let end = bytes.windows(4).position(|w| w == b"\r\n\r\n").or_else(|| bytes.windows(2).position(|w| w == b"\n\n"))?;
     bytes.truncate(end);
     Some(bytes)
@@ -308,7 +310,7 @@ fn index_root() -> PathBuf {
 fn index_root_in(cache: &Path) -> PathBuf {
     let root = cache.join("mail-index");
     let older = cache.join("mail-index.tsv");
-    let made = !root.is_dir() && std::fs::create_dir_all(&root).is_ok();
+    let made = !root.present_dir() && crate::files::create_dir_all(&root).is_ok();
     if made {
         private_dir(&root);
     }
@@ -317,7 +319,7 @@ fn index_root_in(cache: &Path) -> PathBuf {
     // 05ccd0a, L13): it holds every message's path, subject and sender.
     let stale = || older.metadata().and_then(|m| m.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > OLDER_KEPT);
     if made || stale() {
-        let _ = std::fs::remove_file(&older);
+        let _ = crate::files::remove_file(&older);
     }
     root
 }
@@ -329,7 +331,7 @@ fn private_dir(dir: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        let _ = crate::files::set_permissions(dir, crate::files::Permissions::from_mode(0o700));
     }
     #[cfg(not(unix))]
     let _ = dir;
@@ -374,14 +376,14 @@ struct File {
 fn files(dir: &Path) -> Vec<File> {
     let mut out = Vec::new();
     for sub in ["new", "cur"] {
-        let Ok(entries) = std::fs::read_dir(dir.join(sub)) else { continue };
+        let Ok(entries) = crate::files::read_dir(dir.join(sub)) else { continue };
         for entry in entries.filter_map(Result::ok) {
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with('.') {
                 continue;
             }
             let Ok(meta) = entry.metadata() else { continue };
-            if !meta.is_file() {
+            if !meta.present_file() {
                 continue;
             }
             let arrived = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64);
@@ -394,7 +396,7 @@ fn files(dir: &Path) -> Vec<File> {
 /// The index's lines by unique part, and how many lines it holds; none when
 /// its first line is not this format with this stamp (made again then).
 fn read_index(path: &Path, header: &str) -> Option<(HashMap<String, Line>, usize)> {
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = crate::files::read(path).ok()?;
     // A stop may cut the last line (and a character in it): every line written ends with a line end.
     let whole = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |end| end + 1);
     let cut = whole < bytes.len();
@@ -415,10 +417,9 @@ fn read_index(path: &Path, header: &str) -> Option<(HashMap<String, Line>, usize
 }
 
 /// `path` opened with `options`, made readable by you alone (0600) when it is made.
-fn private_file(path: &Path, options: &mut std::fs::OpenOptions) -> std::io::Result<std::fs::File> {
+fn private_file(path: &Path, options: &mut crate::files::OpenOptions) -> std::io::Result<crate::files::File> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     options.open(path)
@@ -434,16 +435,16 @@ fn write_whole(path: &Path, header: &str, lines: &[&Line]) -> std::io::Result<()
         text.push_str(&line.to_tsv());
         text.push('\n');
     }
-    let mut file = private_file(&beside, std::fs::OpenOptions::new().write(true).create(true).truncate(true))?;
+    let mut file = private_file(&beside, crate::files::OpenOptions::new().write(true).create(true).truncate(true))?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     drop(file);
-    std::fs::rename(&beside, path)
+    crate::files::rename(&beside, path)
 }
 
 /// Lines added at the end of `path`, after a line end if a stop cut the last one.
 fn append(path: &Path, lines: &[Line]) -> std::io::Result<()> {
-    let mut file = private_file(path, std::fs::OpenOptions::new().read(true).append(true).create(true))?;
+    let mut file = private_file(path, crate::files::OpenOptions::new().read(true).append(true).create(true))?;
     let mut text = String::new();
     let length = file.metadata()?.len();
     if length > 0 {
@@ -507,7 +508,7 @@ fn look(account: &str, root: &Path, local: &str, fill: usize) -> Looked {
     // Its folders (the account's, `nested/`), yours alone as the messages are.
     let base = index_root();
     for dir in index.ancestors().skip(1).take_while(|dir| *dir != base && dir.starts_with(&base)).collect::<Vec<_>>().into_iter().rev() {
-        let _ = std::fs::create_dir(dir);
+        let _ = crate::files::create_dir(dir);
         private_dir(dir);
     }
     let header = format!("{FORMAT}\t{}", stamp(&words));
@@ -570,14 +571,14 @@ struct Stamp {
 
 impl Stamp {
     fn of_dirs(dir: &Path) -> (Option<std::time::SystemTime>, Option<std::time::SystemTime>) {
-        let at = |sub: &str| std::fs::metadata(dir.join(sub)).and_then(|m| m.modified()).ok();
+        let at = |sub: &str| crate::files::metadata(dir.join(sub)).and_then(|m| m.modified()).ok();
         (at("cur"), at("new"))
     }
 
     fn of_file(index: &Path, header: &str) -> Option<Stamp> {
-        let meta = std::fs::metadata(index).ok()?;
+        let meta = crate::files::metadata(index).ok()?;
         #[cfg(unix)]
-        let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+        let inode = meta.ino();
         #[cfg(not(unix))]
         let inode = 0;
         Some(Stamp { cur: None, new: None, index: Some((meta.len(), meta.modified().ok()?, inode)), header: header.to_string() })
@@ -666,7 +667,7 @@ pub fn recent(account: &str, root: &Path, local: &str, since: i64, fill: usize) 
 
 /// One message file's line, read whole once; none when it does not read.
 fn read_line(file: &File, words: &crate::words::Words) -> Option<Line> {
-    let raw = std::fs::read(&file.path).ok()?;
+    let raw = crate::files::read(&file.path).ok()?;
     Line::of_raw(&file.unique, file.arrived, &raw, words)
 }
 
@@ -675,7 +676,7 @@ fn read_line(file: &File, words: &crate::words::Words) -> Option<Line> {
 /// within others, as other programs lay them out ("Archive/2024"), eight
 /// levels at most. A folder that is a link is not followed.
 pub fn folders(root: &Path) -> Vec<String> {
-    let has_mail = |dir: &Path| dir.join("cur").is_dir() || dir.join("new").is_dir();
+    let has_mail = |dir: &Path| dir.join("cur").present_dir() || dir.join("new").present_dir();
     let mut out = Vec::new();
     if has_mail(root) {
         out.push(String::new());
@@ -686,9 +687,9 @@ pub fn folders(root: &Path) -> Vec<String> {
         if depth == 8 {
             continue;
         }
-        for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+        for entry in crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
             // The entry itself: a link to a folder is not a folder here.
-            if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            if !entry.file_type().is_ok_and(|t| t.present_dir()) {
                 continue;
             }
             let name = entry.file_name().to_string_lossy().to_string();

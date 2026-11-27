@@ -71,14 +71,14 @@ impl Seen {
     /// As kept; empty (every appointment seen for the first time) when it
     /// does not read or is of another form.
     pub fn load() -> Seen {
-        let read: Seen = std::fs::read_to_string(Seen::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let read: Seen = crate::files::read_to_string(Seen::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         if read.version == VERSION { read } else { Seen { version: VERSION, ..Seen::default() } }
     }
 
     pub fn save(&self) -> Result<(), String> {
         let path = Seen::path();
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            crate::files::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
         let kept = Seen { version: VERSION, ..self.clone() };
         crate::vdir::write_item(&path, &toml::to_string(&kept).map_err(|e| e.to_string())?)
@@ -264,7 +264,7 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
         let day = jiff::Timestamp::from_second(appointment.instants.start).ok().map(|t| t.to_zoned(zone.clone()).date());
         let dated = crate::pairs::Appointment { day, cancelled: reference.cancelled, recurring: reference.recurring, start: appointment.instants.start, all_day: appointment.all_day };
         for task in tied {
-            let Ok(text) = std::fs::read_to_string(&task.key) else {
+            let Ok(text) = crate::files::read_to_string(&task.key) else {
                 settled = false;
                 continue;
             };
@@ -300,7 +300,7 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
     for ((uid, rid), tied) in &turns {
         let Some(reference) = events.iter().find(|e| e.uid == *uid && e.anchor.is_none()) else { continue };
         let path = Path::new(&reference.key);
-        let Ok(event_text) = std::fs::read_to_string(path) else { continue };
+        let Ok(event_text) = crate::files::read_to_string(path) else { continue };
         let Some(turn) = crate::agenda::turn_named(&event_text, rid, zone).filter(|t| !t.cancelled) else { continue };
         let key = turn_key(uid, rid);
         let pull = Pull::of_with(path, local);
@@ -309,7 +309,7 @@ pub fn upkeep_with(tasks: &[crate::tasks::Task], events: &[crate::agenda::EventR
         let dated = crate::pairs::Appointment { day, cancelled: false, recurring: false, start: turn.start, all_day: turn.all_day };
         let (mut settled, mut waits) = (true, Vec::new());
         for task in tied {
-            let Ok(text) = std::fs::read_to_string(&task.key) else {
+            let Ok(text) = crate::files::read_to_string(&task.key) else {
                 settled = false;
                 continue;
             };

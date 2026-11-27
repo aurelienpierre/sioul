@@ -80,7 +80,7 @@ impl DoseReminders {
     /// written here (`health::witnessed`): a device's word that it sent a
     /// notice would look never said.
     pub fn read(path: &Path) -> Result<DoseReminders, Unsound> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() && crate::health::witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

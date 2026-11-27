@@ -9,6 +9,8 @@
 //! `qt_thread().queue`. Each mail account has a watcher that keeps its inbox
 //! open with IDLE, so a verified code becomes a notification within seconds.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use cxx_qt::{CxxQtType, Threading};
 use cxx_qt_lib::QString;
 use sioul_core::budget::{self, Ledger, MailLine};
@@ -2331,6 +2333,34 @@ pub mod qobject {
         /// chosen for papers or letters (`share::carrier_of`), or "".
         #[qinvokable]
         fn folder_carrier(self: &Sioul, folder: &QString) -> QString;
+        /// The paragraph that says the trade-off of a folder of yours
+        /// (notes, papers, letters) chosen inside Sioul's own folders, where
+        /// it is sealed with the rest (`sealed::files::would_seal`), or "".
+        #[qinvokable]
+        fn folder_sealed(self: &Sioul, folder: &QString) -> QString;
+        /// What Sioul keeps here: sealed or not, its ways back, n (`storegate::ways_json`).
+        #[qinvokable]
+        fn store_ways(self: &Sioul) -> QString;
+        /// A passphrase way back kept: "" or why not.
+        #[qinvokable]
+        fn keep_passphrase_way(self: &Sioul, passphrase: &QString, sharing: bool) -> QString;
+        /// A new recovery code, shown once.
+        #[qinvokable]
+        fn make_recovery_code(self: &Sioul) -> QString;
+        /// The security keys' ways back kept: what was done.
+        #[qinvokable]
+        fn keep_card_way(self: &Sioul) -> QString;
+        /// A way back taken out: "" or why not.
+        #[qinvokable]
+        fn forget_way(self: &Sioul, kind: &QString) -> QString;
+        /// What another program opens for a file (a URL or a path): itself, or,
+        /// sealed (a paper, a letter, a note's file placed inside Sioul's
+        /// folders), a copy in clear in Sioul's cache.
+        #[qinvokable]
+        fn openable_url(self: &Sioul, target: &QString) -> QString;
+        /// n, the earlier versions of each file kept, for every process (`Store::set_versions`).
+        #[qinvokable]
+        fn set_versions_kept(self: &Sioul, n: i32);
         /// Sioul's old files out of this device's notes folder, on your press
         /// in Settings ▸ Sharing once every device moved (`storage::take_out`).
         /// Off the window's thread; said in the status line and in `storageMove`.
@@ -3984,7 +4014,7 @@ fn config_parsed() -> (Config, bool) {
     static PARSED: Mutex<Option<Parsed>> = Mutex::new(None);
     let path = config_path();
     let settled = |time: &std::time::SystemTime| time.elapsed().is_ok_and(|age| age > std::time::Duration::from_secs(2));
-    let stamp = std::fs::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
+    let stamp = crate::files::metadata(&path).ok().and_then(|m| Some((m.len(), m.modified().ok()?))).filter(|(_, time)| settled(time));
     if let Some((size, time)) = stamp
         && let Ok(parsed) = PARSED.lock()
         && let Some((p, s, t, config, reads)) = parsed.as_ref()
@@ -4284,9 +4314,9 @@ impl World {
 
     /// One message file judged as the Porch judges it, only inside the accounts' own mail.
     fn judge(&self, key: &str) -> Option<(PathBuf, Triaged)> {
-        let path = maildir::locate(Path::new(key))?.canonicalize().ok()?;
+        let path = crate::files::canonicalize(maildir::locate(Path::new(key))?).ok()?;
         let sources = self.config.mail_sources();
-        let inside = sources.iter().any(|s| s.folder.canonicalize().is_ok_and(|f| path.starts_with(f)));
+        let inside = sources.iter().any(|s| crate::files::canonicalize(&s.folder).is_ok_and(|f| path.starts_with(f)));
         if !inside {
             return None;
         }
@@ -4294,7 +4324,7 @@ impl World {
         let canonical: Vec<_> = sources
             .into_iter()
             .map(|mut s| {
-                s.folder = s.folder.canonicalize().unwrap_or(s.folder);
+                s.folder = crate::files::canonicalize(&s.folder).unwrap_or(s.folder);
                 s
             })
             .collect();
@@ -4339,7 +4369,7 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
         return;
     };
     let now = sioul_core::zone::now();
-    let kept: Option<sioul_core::weather::Forecast> = std::fs::read_to_string(weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok());
+    let kept: Option<sioul_core::weather::Forecast> = crate::files::read_to_string(weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok());
     let shown = move |forecast: &sioul_core::weather::Forecast| {
         let view = sioul_core::weather::view(forecast, &sioul_core::zone::now(), tr());
         serde_json::json!({ "place": place, "view": view, "credit": tr().text("weather-credit", None) }).to_string()
@@ -4356,8 +4386,8 @@ pub(crate) fn update_weather(qt: &QtThread, shared: &Arc<Shared>) {
     std::thread::spawn(move || {
         if let Ok(forecast) = sioul_sync::weather::forecast(latitude, longitude, sioul_core::zone::now().timestamp().as_second()) {
             if let Ok(text) = serde_json::to_string(&forecast) {
-                let _ = std::fs::create_dir_all(config::state_dir());
-                let _ = std::fs::write(weather_cache(), text);
+                let _ = crate::files::create_dir_all(config::state_dir());
+                let _ = crate::files::write(weather_cache(), text);
             }
             // The phone's card shows it too, hour by hour.
             crate::homecard::weather_seen();
@@ -4996,7 +5026,7 @@ fn codes_until(items: &[Triaged]) -> i64 {
 /// Whether an account's Maildir is as its last look left it; noted as it is now.
 fn mail_unchanged(account: &str, root: &Path) -> bool {
     let time = |path: PathBuf| {
-        let time = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+        let time = crate::files::metadata(&path).and_then(|m| m.modified()).ok();
         (path, time)
     };
     let mut now = vec![time(root.to_path_buf())];
@@ -5182,7 +5212,7 @@ fn attachment_cache(key: &str) -> PathBuf {
 /// runs, in the tray too (`keep_forgetting_opened_attachments`), and once
 /// as it quits (lib.rs).
 pub(crate) fn forget_opened_attachments() {
-    let Ok(entries) = std::fs::read_dir(config::cache_dir().join("attachments")) else { return };
+    let Ok(entries) = crate::files::read_dir(config::cache_dir().join("attachments")) else { return };
     let day = std::time::Duration::from_secs(86_400);
     for entry in entries.filter_map(Result::ok) {
         if entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > day) {
@@ -5213,7 +5243,7 @@ pub(crate) fn mark_from_outside(file: &Path) {
     {
         let mut stream = file.as_os_str().to_owned();
         stream.push(":Zone.Identifier");
-        let _ = std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n");
+        let _ = crate::files::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n");
     }
     #[cfg(target_os = "macos")]
     {
@@ -5232,14 +5262,14 @@ fn downloads() -> PathBuf {
 /// `name`, else "name (2).ext", "name (3).ext"… so nothing is overwritten.
 fn free_path(folder: &Path, name: &str) -> PathBuf {
     let wanted = folder.join(name);
-    if !wanted.exists() {
+    if !wanted.present() {
         return wanted;
     }
     let (stem, extension) = match name.rsplit_once('.') {
         Some((stem, ext)) if !stem.is_empty() => (stem.to_string(), format!(".{ext}")),
         _ => (name.to_string(), String::new()),
     };
-    (2..).map(|n| folder.join(format!("{stem} ({n}){extension}"))).find(|p| !p.exists()).unwrap_or(wanted)
+    (2..).map(|n| folder.join(format!("{stem} ({n}){extension}"))).find(|p| !p.present()).unwrap_or(wanted)
 }
 
 /// An attachment's name as one file in a folder. The core takes any path out
@@ -5311,7 +5341,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
         }
         let folder = attachment_cache(&key);
         let file = folder.join(&name);
-        if std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, &bytes)).is_err() {
+        if crate::files::create_dir_all(&folder).and_then(|()| crate::files::write(&file, &bytes)).is_err() {
             set_status(&qt, say("scan-error", &[("name", name), ("detail", folder.display().to_string())]));
             return;
         }
@@ -5372,7 +5402,7 @@ fn checked_attachment(qt: &QtThread, shared: &Arc<Shared>, key: String, index: i
                 Afterwards::Save if phone => crate::attachments::save(&qt, &file, &name),
                 Afterwards::Save => {
                     let target = free_path(&downloads(), &name);
-                    let saved = std::fs::create_dir_all(downloads()).and_then(|()| std::fs::copy(&file, &target));
+                    let saved = crate::files::create_dir_all(downloads()).and_then(|()| crate::files::copy(&file, &target));
                     let _ = sioul_core::filelock::remove_wiping(&file);
                     match saved {
                         Ok(_) => {
@@ -5446,7 +5476,7 @@ fn message_json(key: &str) -> String {
     let world = World::load();
     let own = mail::own_addresses(&world.config);
     let shown = world.judge(key).and_then(|(path, triaged)| {
-        let raw = std::fs::read(&path).ok()?;
+        let raw = crate::files::read(&path).ok()?;
         crypto::learn_autocrypt(&raw, &triaged);
         let (opened, protection) = match crypto::open(&raw) {
             Some((opened, protection)) => (opened, Some(protection)),
@@ -5490,6 +5520,22 @@ impl qobject::Sioul {
         crate::changes::watch(&self.qt_thread(), &self.shared());
         // Each agenda's role given its person, those typed before Sioul did (docs/persons.md).
         std::thread::spawn(crate::persons::tie_roles);
+        // Said once, at this start: plain files written beside what Sioul keeps (an older Sioul, another
+        // program, a backup put back by hand), set aside and never read as current, and where; `sioul store
+        // bring-in` takes one in (docs/store.md, "The move").
+        let set_aside = crate::SET_ASIDE.swap(0, std::sync::atomic::Ordering::Relaxed);
+        if set_aside > 0 {
+            let folder = crate::ASIDE_FOLDER.lock().map(|mut f| std::mem::take(&mut *f)).unwrap_or_default();
+            let mut args = tr().counted(set_aside);
+            args.set("folder", folder);
+            tell(&self.qt_thread(), &self.shared(), tr().text("store-set-aside", Some(&args)));
+        }
+        // Said once: files the sealing left in clear where they are (or the sealing stopped); the next start tries again.
+        match crate::LEFT_PLAIN.swap(0, std::sync::atomic::Ordering::Relaxed) {
+            0 => {}
+            usize::MAX => tell(&self.qt_thread(), &self.shared(), tr().text("store-gate-move-stopped", None)),
+            left => tell(&self.qt_thread(), &self.shared(), tr().text("store-left-plain", Some(&tr().counted(left)))),
+        }
         // Said once on this device after the update: what no longer reminds you (review of 3346ff96, 6).
         {
             let qt = self.qt_thread();
@@ -8015,7 +8061,7 @@ impl qobject::Sioul {
         if let Err(e) = written {
             self.as_mut().set_status(QString::from(&e));
         }
-        let _ = std::fs::remove_file(weather_cache());
+        let _ = crate::files::remove_file(weather_cache());
         self.as_mut().set_forecast(QString::default());
         update_weather(&self.qt_thread(), &self.shared());
         // The phone's card: no place, where to choose one; a new place, its forecast once fetched.
@@ -8430,8 +8476,9 @@ impl qobject::Sioul {
 
     fn memo_recorded(self: Pin<&mut Self>, url: &QString) -> QString {
         let (qt, shared) = (self.qt_thread(), self.shared());
+        let url = work::memo_settled(&url.to_string());
         work::show_work(&qt, &shared);
-        QString::from(&work::note_path_of(&url.to_string()))
+        QString::from(&work::note_path_of(&url))
     }
 
     fn set_notes_view(self: Pin<&mut Self>, show: &QString, kind: &QString) {
@@ -9826,6 +9873,54 @@ impl qobject::Sioul {
     fn folder_carrier(&self, folder: &QString) -> QString {
         let folder = local_path(folder.to_string().trim());
         QString::from(&crate::share::carrier_of(&folder).map(|carrier| say("storage-move-carried", &[("carrier", carrier)])).unwrap_or_default())
+    }
+
+    fn openable_url(&self, target: &QString) -> QString {
+        let text = target.to_string();
+        let path = if text.starts_with("file:") { local_path(&text) } else { std::path::PathBuf::from(&text) };
+        match crate::storegate::openable(&path) {
+            Some(copy) => QString::from(&file_url(&copy)),
+            None if text.starts_with("file:") => QString::from(&text),
+            None => QString::from(&file_url(&path)),
+        }
+    }
+
+    fn store_ways(&self) -> QString {
+        QString::from(&crate::storegate::ways_json())
+    }
+
+    fn keep_passphrase_way(&self, passphrase: &QString, sharing: bool) -> QString {
+        QString::from(&crate::storegate::keep_passphrase(&passphrase.to_string(), sharing))
+    }
+
+    fn make_recovery_code(&self) -> QString {
+        QString::from(&crate::storegate::new_code())
+    }
+
+    fn keep_card_way(&self) -> QString {
+        QString::from(&crate::storegate::keep_cards())
+    }
+
+    fn forget_way(&self, kind: &QString) -> QString {
+        QString::from(&crate::storegate::forget(&kind.to_string()))
+    }
+
+    fn set_versions_kept(&self, n: i32) {
+        if let Ok(store) = sioul_core::sealed::opened()
+            && let Err(e) = store.set_versions(usize::try_from(n).unwrap_or(0))
+        {
+            eprintln!("Sioul: the earlier versions kept could not be set: {e}");
+        }
+    }
+
+    fn folder_sealed(&self, folder: &QString) -> QString {
+        let text = folder.to_string();
+        let text = text.trim();
+        if text.is_empty() {
+            return QString::default();
+        }
+        let folder = sioul_core::config::expand_home(&local_path(text).to_string_lossy());
+        QString::from(&if sioul_core::sealed::files::would_seal(&folder) { say("storage-sealed-tradeoff", &[]) } else { String::new() })
     }
 
     fn take_out_old_files(self: Pin<&mut Self>) {

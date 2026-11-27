@@ -4,13 +4,15 @@
 //! The room left on a disk, so fetching older mail, or your other devices'
 //! notes, never fills it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::Path;
 
 /// Bytes this user may still write on the disk holding `path`, and the
 /// disk's size; None when the system does not say.
 pub fn space(path: &Path) -> Option<(u64, u64)> {
     // The folder may not exist yet: its nearest parent that does.
-    let existing = path.ancestors().find(|p| p.exists())?;
+    let existing = path.ancestors().find(|p| p.present())?;
     platform(existing)
 }
 

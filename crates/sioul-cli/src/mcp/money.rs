@@ -14,6 +14,8 @@
 //! masked. Each write is said in the window, with Undo, for as long as its
 //! files stay as the agent left them (`agentwrites`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::items::say_in_window;
 use super::tools::{Answer, Args};
 use super::{access, mask, read};
@@ -41,7 +43,7 @@ struct Opened {
 }
 
 fn opened(s: &Session) -> Result<Opened, String> {
-    let root = s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
+    let root = s.config.records_root().filter(|r| r.join(sioul_core::budget::LEDGER).present_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     sioul_core::budget::Ledger::load(&root)?;
     let books = movements::books(&root, &sioul_core::words::Words::of(&s.config), sioul_core::zone::now().date());
     let consent = access::of(s, &Loaded::read(&s.config));
@@ -115,7 +117,7 @@ fn fees_of(args: &Args) -> Result<Option<Vec<Fee>>, String> {
 /// The files an act may write, as they are before it.
 fn before(root: &Path) -> Vec<(PathBuf, Option<String>)> {
     [root.join(sioul_core::budget::LEDGER), movements::Store::path(root)].into_iter().map(|p| {
-        let text = std::fs::read_to_string(&p).ok();
+        let text = crate::files::read_to_string(&p).ok();
         (p, text)
     }).collect()
 }

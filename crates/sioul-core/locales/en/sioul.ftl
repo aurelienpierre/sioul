@@ -10244,6 +10244,7 @@ storage-move-scans-stop = Your letters' scans travelled with your notes through 
 storage-move-scans-start = After the move, your letters' scans ({ $count }) travel sealed in Papers to your other devices, where they did not before.
 storage-trial-own = The folder given with { $flag } is, holds or sits inside this device's own { $own } folder: a trial of the move runs on copies only.
 storage-move-carried = A sync program carries { $carrier }: the files of this folder would travel there too, readable on that program's server, not sealed by Sioul.
+storage-sealed-tradeoff = This folder is inside Sioul's own folders, so what it holds is sealed with the rest. What is gained: on the disk it is unreadable without your session, on a lost or stolen device too, and it is carried sealed. What is lost: Obsidian, Nextcloud Notes, your file manager and the system's search and previews no longer read it; getting its files out takes Sioul, or sioul store export.
 storage-folder-empty = Choose a folder: an empty row would leave the files where they are and look for them elsewhere.
 storage-move-left = These stay in your notes folder, since no list of Sioul's names them: { $files }.
 storage-folder-not-empty = { $what } already holds files: choose an empty folder, or a new one. Everything in that folder is shared by Sioul with your other devices.
@@ -11565,3 +11566,165 @@ reach-remove-phone-keep = Keep it
 reach-by-free-nothing = Decided by “Nothing at all” in Free time: only your Always through people come then.
 except-circle-groups = Group conversations
 except-circle-hidden = Hidden numbers
+
+## sioul store and sioul settings: Sioul's sealed files from the command line (crates/sioul-cli/src/store.rs, docs/store.md)
+store-not-created = Sioul keeps nothing sealed on this device yet.
+store-exists = What Sioul keeps on this device is sealed already.
+store-wrong-key = This key does not open what Sioul keeps on this device: nothing was read or changed.
+store-key-locked = Sioul waits for your keyring to open.
+store-key-no-service = This system has no keyring: Sioul's passphrase opens what it keeps.
+store-key-missing = Your keyring holds no key for what Sioul keeps here: a way back is needed.
+store-wrong-passphrase = This is not the passphrase Sioul's key is kept with.
+store-passphrase = Sioul's passphrase:{" "}
+store-absent = { $path }: no such file among what Sioul keeps here.
+store-damaged = { $path } is damaged and none of its copies opens.
+store-changed = { $path } changed meanwhile: nothing was written. Read it again.
+store-locked = A lock on Sioul's sealed files could not be taken: { $why }
+store-no-room = The disk is too full to write this: the file was left as it was.
+store-synced = { $folder } is carried by a sync app: Sioul keeps nothing sealed there.
+store-refused = { $why }
+store-not-text = { $path } is not text.
+store-not-config = { $path } is not one of Sioul's configuration files: add --any to reach it.
+store-client-file = { $path } belongs to a client's file: add --clients to reach it.
+store-not-parsed = { $path } does not read as a file of its kind: nothing was written. { $why }
+store-written = { $path } is sealed (version { $version }). The version it replaces is kept: sioul store versions { $path }
+store-unchanged = { $path } did not change: nothing was written.
+store-edit-elsewhere = Editing in place needs a memory-backed folder, which only Linux has: use sioul store cat, then sioul store put.
+store-edit-cancelled = The editor stopped on an error: nothing was written.
+store-version-current = now
+store-no-such-version = { $path } has no version { $version }: sioul store versions { $path } lists them.
+store-restored = { $path }: version { $version } is put back. To undo it: sioul store restore { $path } --version 1
+store-ls-files = { $count ->
+    [one] 1 file
+   *[other] { $count } files
+}
+store-ls-copies = { $count ->
+    [one] 1 copy
+   *[other] { $count } copies
+}
+store-ls-damaged = damaged
+store-unseal-inside = That folder is inside Sioul's folders, or holds them: choose another.
+store-unseal-not-empty = { $folder } is not empty: give an empty folder.
+store-unsealed = { $count ->
+    [one] 1 file written plain in { $folder }.
+   *[other] { $count } files written plain in { $folder }.
+}
+store-exported = { $count ->
+    [one] 1 file written in clear in { $folder }, in its standard format.
+   *[other] { $count } files written in clear in { $folder }, each in its standard format (TOML, iCalendar, vCard, Maildir, JSON).
+}
+store-export-clients-left = { $count ->
+    [one] 1 file of a client's was left out: add --clients to write it too.
+   *[other] { $count } files of clients were left out: add --clients to write them too.
+}
+store-export-damaged = { $count ->
+    [one] 1 file did not open and was not written: sioul store check says which.
+   *[other] { $count } files did not open and were not written: sioul store check says which.
+}
+store-set-aside = { $count ->
+    [one] A file written beside what Sioul keeps here, by another program or an older Sioul (or a copy put back by hand), was set aside, sealed, in { $folder }: Sioul did not read it as yours. To take it in on purpose: sioul store bring-in, with its path there.
+   *[other] { $count } files written beside what Sioul keeps here, by another program or an older Sioul (or copies put back by hand), were set aside, sealed, in { $folder }: Sioul did not read them as yours. To take one in on purpose: sioul store bring-in, with its path there.
+}
+store-check-copies = { $files } with { $good }
+store-check-folder = { $folder }: { $files } files, { $whole } whole (good copies: { $copies }).
+store-check-list-damaged = Its list does not open: --repair makes it again from the files.
+store-check-thin = { $name }: { $good } of { $kept } copies open.
+store-check-mended = { $name }: mended from { $from }.
+store-check-lost-file = { $name }: no copy opens here; its server or another of your devices may bring it back.
+store-check-lines = { $count ->
+    [one] 1 line does not open in files that only grow; the others read.
+   *[other] { $count } lines do not open in files that only grow; the others read.
+}
+store-check-newer = { $name }: a copy newer than its list says is there (--repair takes it).
+store-check-newer-taken = { $name }: a copy newer than its list said was there, and was taken.
+store-check-unlisted = { $count } sealed files that no list names (--repair takes them out).
+store-check-unlisted-taken = { $count } sealed files that no list named were taken out.
+store-check-lost = Some files no longer open here: see above.
+settings-unset = { $key } is not in the configuration.
+settings-set = { $key } = { $value }: changed as the window changes it.
+store-bad-path = { $path } is not a path of Sioul's files: config/…, data/…, state/… or cache/…, without an empty part, "." or "..".
+store-cat-earlier = { $path }: its current copy does not open; this is its earlier version of { $when }.
+store-cat-lines-lost = { $path }: { $count } lines do not open or are gone; the others follow.
+store-ls-hidden = { $count } files of clients or of health and your own keys are not named: add --clients or --any.
+store-edit-kept = What you edited is kept in { $file }: nothing you typed is lost.
+store-unseal-left = { $count ->
+    [one] 1 file of a client, of health or of your own keys was left out: add --clients or --any to write it too.
+   *[other] { $count } files of clients, of health or of your own keys were left out: add --clients or --any to write them too.
+}
+store-check-private = a file not named (--clients or --any names it)
+store-check-from-twin = its second copy
+store-check-from-earlier = its earlier version of { $when }
+settings-in-window = { $key } is changed in Sioul's window, which does more than write it.
+settings-not-json = { $value } is not a value in JSON: write true, 3, "text" or [1, 2].
+settings-broke = { $key } was not changed: with it, the configuration no longer reads ({ $why }).
+
+## The screen before the window, the ways back and the card "What Sioul keeps here" (storegate.rs, StoreGateWindow.qml, WaysBack.qml, StoreCard.qml; docs/store.md, "Ways back")
+store-gate-title = What Sioul keeps on this device
+store-gate-missing = Your keyring holds no key for what Sioul keeps here any more. A way back you kept opens it again; without one, Sioul can start again from your servers and your other devices.
+store-gate-waiting-help = Open your keyring as your system asks, often with your session's password: Sioul goes on by itself once it is open.
+store-gate-use-way = Use a way back…
+store-gate-passphrase = The passphrase you kept
+store-gate-code = Your recovery code
+store-gate-card-pin = Your security key's PIN
+store-gate-use = Open
+store-gate-use-card = Use my security key
+store-gate-start-again = Start again from your servers and your other devices
+store-gate-start-again-help = Without a way back: what is sealed here is set aside, never removed, so that a way back found later still opens it. Your mail, agendas and contacts come back from their servers; what your sharing carries comes back from your other devices once this one joins it again with its passphrase. What only this device held stays sealed, aside.
+store-gate-moving = { $count ->
+    [one] Sioul seals what it keeps on this device: 1 file.
+   *[other] Sioul seals what it keeps on this device, one file after the other: { $count } files.
+}
+store-gate-moving-help = Each file is sealed, read back and compared before its copy in clear goes. If this is interrupted, Sioul goes on where it stopped at its next start.
+store-gate-sealed = What Sioul keeps on this device is sealed: your session opens it, as for any application.
+store-gate-open = Open Sioul
+store-gate-move-stopped = The sealing stopped: what was sealed stays sealed, the rest stays in clear and reads as before, and it goes on at the next start.
+store-gate-start-again-confirm = This sets aside what Sioul keeps here, sealed and whole, in folders named sealed-unopened beside Sioul's own: nothing is removed. A way back found later opens it again (sioul store reopen), and from there it can be exported. Then Sioul starts again empty: your mail, agendas and contacts come back from their servers, and what your sharing carries from your other devices.
+store-gate-start-again-yes = Set it aside and start again
+store-gate-start-again-no = Not now
+store-gate-start-again-not-now = Your keyring is there but not open: open it, and Sioul goes on by itself. Starting again is only for a key your keyring no longer holds.
+store-gate-passphrase-kept-on = The passphrase you kept on { $date }.
+store-gate-passphrase-sharing-then = The passphrase you kept on { $date }: your sharing's passphrase as it was that day.
+store-way-card-stale = A security key of yours was reset or given a new encryption key since its way back was kept: that way opens nothing now. Keep this way back again below.
+store-reopen-none = Nothing was set aside here by starting again from your servers and your other devices.
+store-reopen-list = Set aside on { $when }, with these ways back: { $ways }
+store-reopen-which = Name the one to open again: sioul store reopen { $when }
+store-reopen-no-way = What was set aside there keeps no way back: nothing can open it again.
+store-reopen-done = What was set aside on { $when } is what Sioul keeps here again. What Sioul kept until now is set aside in its turn{ $then }, never removed.
+store-bring-in-not-aside = { $path } is not a file set aside: give its path under data/set-aside/ (sioul store ls data/set-aside --any lists them).
+store-bring-in-done = { $path } is taken in as { $target }; what it replaces is kept as its earlier version (sioul store versions { $target } --any).
+store-reopen-pin = Your security key's PIN:{" "}
+store-reopen-code = Your recovery code:{" "}
+store-wrong-code = This code opens nothing Sioul keeps here.
+store-no-card = No security key there opened it: plug in the one you chose, and check its PIN.
+store-ways-not-open = What Sioul keeps here is not open in this window: a way back is kept from the window that opened it.
+store-ways-help = Your keyring keeps the key that opens what Sioul keeps here. If it ever lost it, a way back opens it again. Each one is yours to choose, and none is needed.
+store-ways-none = No way back is kept. If your keyring lost its key, what only this device holds would be lost; your mail, agendas and contacts would come back from their servers, and what your sharing carries from your other devices.
+store-ways-none-alone = No way back is kept, and this device shares nothing. If your keyring lost its key, what Sioul keeps here would be lost, but for your mail, agendas and contacts, which come back from their servers.
+store-way-passphrase = A passphrase
+store-way-passphrase-help = Typed when the keyring lost the key. It protects against a keyring lost or reset. Whoever knows it and holds this disk can open what Sioul keeps here: choose a long one. It may be your sharing's.
+store-way-passphrase-sharing = It is my sharing's passphrase
+store-way-passphrase-short = { $count ->
+    [one] A passphrase of 1 character at least.
+   *[other] A passphrase of { $count } characters at least: a few words do it.
+}
+store-way-code = A recovery code
+store-way-code-help = A code to write down and keep away from this device. It protects against a keyring lost. Whoever holds it and this disk can open what Sioul keeps here. A new code replaces the one before.
+store-way-code-make = Make a recovery code
+store-way-code-shown = Write this code down now and keep it away from this device: it is shown once.
+store-way-card = Your security key
+store-way-card-help = Your security key opens it, with its PIN. It protects against a keyring lost, while the key and its PIN remain.
+store-way-card-none = No security key of yours that decrypts is known on this device yet: add it in Accounts ▸ Security key first.
+store-way-kept = kept
+store-way-keep = Keep this way back
+store-way-forget = Take out
+store-way-done = A way back is kept.
+store-versions = Earlier versions of each file
+store-versions-help = How many earlier versions of each file Sioul keeps, to mend a damaged file or to go back: 2 until you change it, 0 for none.
+store-card-title = What Sioul keeps here
+store-card-sealed = Sealed on this device: your session opens it.
+store-card-plain = In clear on this device: not sealed.
+store-left-plain = { $count ->
+    [one] A file could not be sealed and stays in clear where it is, read as before: the next start tries again.
+   *[other] { $count } files could not be sealed and stay in clear where they are, read as before: the next start tries again.
+}
+store-lists-clear = Sioul's own lists (projects, budgets, health, money) are still in your notes folder, in clear there, as before: they are sealed once they move to Sioul's own folder (Settings ▸ Your folder and sharing ▸ Where Sioul keeps its lists).

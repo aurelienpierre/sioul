@@ -142,7 +142,7 @@ impl Change {
             out.push(FileChange { path: path.clone(), before: None, after: Some(text.clone()) });
         }
         for (path, text) in &self.written {
-            let before = std::fs::read_to_string(path).ok();
+            let before = crate::files::read_to_string(path).ok();
             vdir::write_item(path, text)?;
             out.push(FileChange { path: path.clone(), before, after: Some(text.clone()) });
         }
@@ -150,7 +150,7 @@ impl Change {
             moved_into(from, to, text, out, &vdir::write_item)?;
         }
         for path in &self.gone {
-            let Ok(before) = std::fs::read_to_string(path) else { continue };
+            let Ok(before) = crate::files::read_to_string(path) else { continue };
             vdir::remove_item(path)?;
             out.push(FileChange { path: path.clone(), before: Some(before), after: None });
         }
@@ -164,7 +164,7 @@ impl Change {
 /// then takes the moved file out, never leaving the task in both lists
 /// (review of 4d7bab4, later 6).
 fn moved_into(from: &Path, to: &Path, text: &str, out: &mut Vec<FileChange>, write: &dyn Fn(&Path, &str) -> Result<(), String>) -> Result<(), String> {
-    let before = std::fs::read_to_string(from).ok();
+    let before = crate::files::read_to_string(from).ok();
     vdir::move_item(from, to)?;
     out.push(FileChange { path: from.to_path_buf(), before: before.clone(), after: None });
     out.push(FileChange { path: to.to_path_buf(), before: None, after: before.clone() });
@@ -183,7 +183,7 @@ fn moved_into(from: &Path, to: &Path, text: &str, out: &mut Vec<FileChange>, wri
 /// pull, another program) is never written over (review of ab7daa4, later 4).
 fn take_back(done: &[FileChange]) {
     for change in done.iter().rev() {
-        let now = std::fs::read_to_string(&change.path).ok();
+        let now = crate::files::read_to_string(&change.path).ok();
         if now != change.after {
             continue;
         }
@@ -200,7 +200,7 @@ fn find<'a>(tasks: &'a [Task], uid: &str) -> Result<&'a Task, Refusal> {
 }
 
 fn text_of(task: &Task) -> Result<String, Refusal> {
-    std::fs::read_to_string(&task.key).map_err(|_| Refusal::Gone)
+    crate::files::read_to_string(&task.key).map_err(|_| Refusal::Gone)
 }
 
 /// The task and every step under it, however far down, each once.

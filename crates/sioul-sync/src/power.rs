@@ -106,8 +106,8 @@ pub fn supply() -> Power {
 /// `/sys/class/power_supply`): each entry whose `type` is "Battery" and that
 /// says its `temp`, in tenths of a degree Celsius; none says it, none.
 pub fn battery_tenths_in(folder: &std::path::Path) -> Option<i32> {
-    let read = |path: std::path::PathBuf| std::fs::read_to_string(path).ok().map(|t| t.trim().to_string());
-    std::fs::read_dir(folder)
+    let read = |path: std::path::PathBuf| crate::files::read_to_string(path).ok().map(|t| t.trim().to_string());
+    crate::files::read_dir(folder)
         .ok()?
         .filter_map(Result::ok)
         .map(|entry| entry.path())

@@ -22,7 +22,7 @@ use std::time::SystemTime;
 
 /// When a file last changed; none when it is not there.
 fn changed(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::files::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 /// Today's events as the time they hold (their margins counted), read again

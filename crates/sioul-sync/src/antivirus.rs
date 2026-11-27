@@ -55,6 +55,8 @@
 //!   `scan` answers `Unavailable` there without trying, and Sioul's window
 //!   does not ask it (crates/sioul-app/src/attachments.rs).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::Path;
 #[cfg(not(windows))]
 use std::path::PathBuf;
@@ -318,7 +320,7 @@ pub fn security_center(products: Option<&[(String, i32)]>, health: Option<i32>) 
 /// Homebrew puts it (a macOS application does not get the shell's path).
 #[cfg(not(windows))]
 fn program(name: &str) -> PathBuf {
-    ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(|dir| Path::new(dir).join(name)).find(|p| p.is_file()).filter(|_| cfg!(target_os = "macos")).unwrap_or_else(|| PathBuf::from(name))
+    ["/opt/homebrew/bin", "/usr/local/bin"].iter().map(|dir| Path::new(dir).join(name)).find(|p| p.present_file()).filter(|_| cfg!(target_os = "macos")).unwrap_or_else(|| PathBuf::from(name))
 }
 
 /// How to install an antivirus here, in one line: the command for this
@@ -340,7 +342,7 @@ pub fn install_hint() -> String {
     }
     #[cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))]
     {
-        let release = std::fs::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
+        let release = crate::files::read_to_string("/etc/os-release").unwrap_or_default().to_ascii_lowercase();
         let like = |name: &str| release.lines().any(|l| (l.starts_with("id=") || l.starts_with("id_like=")) && l.contains(name));
         if like("fedora") || like("rhel") {
             "`sudo dnf install clamav clamav-update && sudo freshclam`".to_string()
@@ -360,7 +362,7 @@ pub fn install_hint() -> String {
 #[cfg(not(windows))]
 fn installed(name: &str) -> bool {
     let found = program(name);
-    (found.is_absolute() && found.is_file()) || std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(name).is_file()))
+    (found.is_absolute() && found.present_file()) || std::env::var_os("PATH").is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(name).present_file()))
 }
 
 /// Where Sioul keeps its own ClamAV signatures (not on Windows, which has its own antivirus).
@@ -374,14 +376,14 @@ fn own_signatures() -> PathBuf {
 fn system_signatures() -> bool {
     ["/var/lib/clamav", "/usr/local/share/clamav", "/opt/homebrew/var/lib/clamav", "/usr/local/var/lib/clamav"]
         .iter()
-        .any(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| e.path().extension().is_some_and(|x| x == "cvd" || x == "cld")))
+        .any(|dir| crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).any(|e| e.path().extension().is_some_and(|x| x == "cvd" || x == "cld")))
 }
 
 #[cfg(not(any(windows, target_os = "android")))]
 fn clamav(file: &Path) -> Verdict {
     let own = own_signatures();
     let mut problem = String::new();
-    for (command, options) in runs(own.is_dir().then_some(own.as_path()), daemon_here()) {
+    for (command, options) in runs(own.present_dir().then_some(own.as_path()), daemon_here()) {
         match std::process::Command::new(program(command)).args(&options).arg(file).output() {
             Ok(out) => match clamav_verdict(out.status.code(), &String::from_utf8_lossy(&out.stdout)) {
                 Some(verdict) => return verdict,
@@ -432,7 +434,7 @@ fn clamav_verdict(code: Option<i32>, stdout: &str) -> Option<Verdict> {
 /// system's packages put it; none when there is none to read.
 #[cfg(not(any(windows, target_os = "android")))]
 fn daemon_config() -> Option<String> {
-    ["/etc/clamd.d/scan.conf", "/etc/clamav/clamd.conf", "/etc/clamd.conf", "/usr/local/etc/clamd.conf", "/opt/homebrew/etc/clamav/clamd.conf", "/usr/local/etc/clamav/clamd.conf"].iter().find_map(|path| std::fs::read_to_string(path).ok())
+    ["/etc/clamd.d/scan.conf", "/etc/clamav/clamd.conf", "/etc/clamd.conf", "/usr/local/etc/clamd.conf", "/opt/homebrew/etc/clamav/clamd.conf", "/usr/local/etc/clamav/clamd.conf"].iter().find_map(|path| crate::files::read_to_string(path).ok())
 }
 
 /// Whether this system's ClamAV daemon says when a file passes its limits (`daemon_alerts`).
@@ -459,8 +461,8 @@ pub fn refresh_signatures() -> Result<bool, String> {
         return Ok(false);
     }
     let own = own_signatures();
-    let fresh = std::fs::metadata(own.join("daily.cld"))
-        .or_else(|_| std::fs::metadata(own.join("daily.cvd")))
+    let fresh = crate::files::metadata(own.join("daily.cld"))
+        .or_else(|_| crate::files::metadata(own.join("daily.cvd")))
         .and_then(|m| m.modified())
         .ok()
         .and_then(|t| t.elapsed().ok())
@@ -468,10 +470,10 @@ pub fn refresh_signatures() -> Result<bool, String> {
     if fresh {
         return Ok(false);
     }
-    std::fs::create_dir_all(&own).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(&own).map_err(|e| e.to_string())?;
     // freshclam reads its settings from a file: the smallest one, written here.
     let settings = own.join("freshclam.conf");
-    std::fs::write(&settings, format!("DatabaseDirectory {}\nDatabaseMirror database.clamav.net\nNotifyClamd no\n", own.display())).map_err(|e| e.to_string())?;
+    crate::files::write(&settings, format!("DatabaseDirectory {}\nDatabaseMirror database.clamav.net\nNotifyClamd no\n", own.display())).map_err(|e| e.to_string())?;
     let out = std::process::Command::new(program("freshclam")).arg(format!("--config-file={}", settings.display())).arg("--quiet").output().map_err(|e| e.to_string())?;
     if out.status.success() { Ok(true) } else { Err(String::from_utf8_lossy(&out.stderr).lines().next().unwrap_or("freshclam").to_string()) }
 }

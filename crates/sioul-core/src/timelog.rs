@@ -107,11 +107,11 @@ fn month_file(dir: &Path, start: i64) -> PathBuf {
 fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    crate::files::write(&temporary, text).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)
 }
 
 /// Adds a session to its month's file, in `dir`, with an id of its own when it has none.
@@ -121,7 +121,7 @@ pub fn record_in(dir: &Path, session: &Session) -> Result<(), String> {
     crate::filelock::with_lock(&path, || {
         // A month not begun yet starts empty; one there that cannot be read is left
         // alone: written over, its time (and what was billed of it) would be lost.
-        let mut month: Month = match std::fs::read_to_string(&path) {
+        let mut month: Month = match crate::files::read_to_string(&path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Month::default(),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -142,14 +142,14 @@ pub fn record(session: &Session) -> Result<(), String> {
 
 /// Every session kept in `dir`, oldest first.
 pub fn sessions_in(dir: &Path) -> Vec<Session> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     let mut files: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml") && p.file_stem().is_some_and(|s| s.to_string_lossy().chars().next().is_some_and(|c| c.is_ascii_digit())))
         .collect();
     files.sort();
-    let mut all: Vec<Session> = files.iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Month>(&t).ok()).flat_map(|m| m.sessions).collect();
+    let mut all: Vec<Session> = files.iter().filter_map(|p| crate::files::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Month>(&t).ok()).flat_map(|m| m.sessions).collect();
     all.sort_by_key(|s| s.start);
     all
 }
@@ -178,12 +178,12 @@ impl Session {
 /// Changes the sessions `keys` names with `change`, in their month files in
 /// `dir`; returns how many were changed.
 pub fn update_in(dir: &Path, keys: &[String], change: impl Fn(&mut Session)) -> Result<usize, String> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Ok(0) };
     let mut changed = 0;
     for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != "running.toml")) {
         // Each month read, changed and written under its lock.
         changed += crate::filelock::with_lock(&path, || -> Result<usize, String> {
-            let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
+            let Some(mut month) = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
             let mut here = 0;
             for session in month.sessions.iter_mut().filter(|s| keys.contains(&s.key())) {
                 change(session);
@@ -207,7 +207,7 @@ pub fn change_in(dir: &Path, key: &str, change: impl Fn(&mut Session)) -> Result
     // The session as its month holds it now, read and changed under the month's
     // lock, which the sharing takes too: never a copy read before.
     let new = crate::filelock::with_lock(&path, || {
-        let month: Month = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let month: Month = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         month.sessions.into_iter().find(|s| s.key() == key).map(|mut session| {
             change(&mut session);
             session
@@ -224,11 +224,11 @@ pub fn change_in(dir: &Path, key: &str, change: impl Fn(&mut Session)) -> Result
 
 /// Takes out the sessions `keys` names (time noted by mistake).
 pub fn remove_in(dir: &Path, keys: &[String]) -> Result<usize, String> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(0) };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Ok(0) };
     let mut removed = 0;
     for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != "running.toml")) {
         removed += crate::filelock::with_lock(&path, || -> Result<usize, String> {
-            let Some(mut month) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
+            let Some(mut month) = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str::<Month>(&t).ok()) else { return Ok(0) };
             let before = month.sessions.len();
             month.sessions.retain(|s| !keys.contains(&s.key()));
             if month.sessions.len() != before {
@@ -304,7 +304,7 @@ fn running_path(dir: &Path) -> PathBuf {
 
 /// The session running now, if any.
 pub fn running_in(dir: &Path) -> Option<Running> {
-    std::fs::read_to_string(running_path(dir)).ok().and_then(|t| toml::from_str(&t).ok())
+    crate::files::read_to_string(running_path(dir)).ok().and_then(|t| toml::from_str(&t).ok())
 }
 
 pub fn running() -> Option<Running> {
@@ -316,7 +316,7 @@ pub fn keep_running_in(dir: &Path, running: Option<&Running>) -> Result<(), Stri
     let path = running_path(dir);
     crate::filelock::with_lock(&path, || match running {
         Some(r) => write_atomically(&path, &toml::to_string(r).map_err(|e| e.to_string())?),
-        None => match std::fs::remove_file(&path) {
+        None => match crate::files::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{}: {e}", path.display())),
             _ => Ok(()),
         },

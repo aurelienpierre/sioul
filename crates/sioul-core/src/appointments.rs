@@ -240,7 +240,7 @@ pub fn block_of(text: &str, uid: &str) -> bool {
 
 /// The UID a calendar item's file holds; "" none.
 pub fn uid_in(path: &Path) -> String {
-    std::fs::read_to_string(path).ok().and_then(|t| crate::lines::unfold(&t).iter().find(|l| crate::lines::name(l) == "UID").map(|l| crate::lines::value(l).trim().to_string())).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|t| crate::lines::unfold(&t).iter().find(|l| crate::lines::name(l) == "UID").map(|l| crate::lines::value(l).trim().to_string())).unwrap_or_default()
 }
 
 /// A task made an appointment, planned, nothing written (the editor's and
@@ -293,7 +293,7 @@ pub fn task_to_event(task: &Task, others: &[Task], blocks: &[PathBuf], edit: &Ev
 /// Refused for an invitation, a block, a repeat a task cannot say.
 pub fn event_to_task(path: &Path, list: &Collection, place: &dyn Fn(&Task) -> Result<Collection, String>, alarm: bool, now: &Zoned) -> Result<Replacement, Refused> {
     use crate::lines;
-    let text = std::fs::read_to_string(path).map_err(|_| Refused::Word("agenda-gone"))?;
+    let text = crate::files::read_to_string(path).map_err(|_| Refused::Word("agenda-gone"))?;
     if block_of(&text, "") {
         return Err(Refused::Word("task-made-already"));
     }
@@ -362,7 +362,7 @@ pub fn retie(tasks: &[Task], old: &str, new: &str, became_event: bool, now: &Zon
     let mut written = Vec::new();
     for task in tasks.iter().filter(|t| t.uid != old && !t.read_only) {
         let path = PathBuf::from(&task.key);
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         if let Some(changed) = retarget(&text, old, new, became_event, now)
             && crate::vdir::write_item(&path, &changed).is_ok()
         {

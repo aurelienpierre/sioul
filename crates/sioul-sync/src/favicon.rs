@@ -7,6 +7,8 @@
 //! the larger the better), else `/favicon.ico`; the icon is kept in the cache
 //! folder, by host, and asked again after a week.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use ureq::ResponseExt;
@@ -19,12 +21,12 @@ const AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Fi
 
 /// Where a site's icon is kept: `<dir>/<host>.<png|ico|svg|…>`, if it is.
 pub fn cached(dir: &Path, host: &str) -> Option<PathBuf> {
-    ["png", "ico", "svg", "gif", "jpg", "webp"].iter().map(|ext| dir.join(format!("{}.{ext}", safe(host)))).find(|p| p.is_file())
+    ["png", "ico", "svg", "gif", "jpg", "webp"].iter().map(|ext| dir.join(format!("{}.{ext}", safe(host)))).find(|p| p.present_file())
 }
 
 /// Whether the icon kept for `host` is missing or older than a week.
 pub fn stale(dir: &Path, host: &str) -> bool {
-    cached(dir, host).and_then(|p| std::fs::metadata(p).ok()).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_none_or(|age| age > FRESH)
+    cached(dir, host).and_then(|p| crate::files::metadata(p).ok()).and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_none_or(|age| age > FRESH)
 }
 
 fn safe(host: &str) -> String {
@@ -159,13 +161,13 @@ pub fn fetch(url: &str, dir: &Path) -> Result<PathBuf, String> {
     let (svg, raster): (Vec<String>, Vec<String>) = named_icons(&html).iter().map(|h| join(&base, h)).partition(|u| u.to_ascii_lowercase().contains(".svg"));
     let candidates: Vec<String> = raster.into_iter().chain([join(&base, "/favicon.ico"), format!("https://{host}/favicon.ico")]).chain(svg).collect();
     let (bytes, kind) = candidates.iter().find_map(|c| download(c)).ok_or_else(|| format!("{host}: no icon"))?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(dir).map_err(|e| e.to_string())?;
     // One icon per host: an older one of another format goes.
     if let Some(old) = cached(dir, &host) {
-        let _ = std::fs::remove_file(old);
+        let _ = crate::files::remove_file(old);
     }
     let path = dir.join(format!("{}.{kind}", safe(&host)));
-    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok(path)
 }
 

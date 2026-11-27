@@ -354,7 +354,7 @@ impl Switch {
     /// The file as it is; none there is no press anywhere yet. One that does
     /// not read is an error: never taken for no device at all.
     pub fn read(path: &Path) -> Result<Switch, String> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Switch::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),
@@ -542,13 +542,13 @@ pub fn change_own(path: &Path, here: &str, change: impl FnOnce(&mut Switch) -> b
 fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
-    std::fs::write(&fresh, text).map_err(fail)?;
-    std::fs::rename(&fresh, path).map_err(|e| {
-        let _ = std::fs::remove_file(&fresh);
+    crate::files::write(&fresh, text).map_err(fail)?;
+    crate::files::rename(&fresh, path).map_err(|e| {
+        let _ = crate::files::remove_file(&fresh);
         fail(e)
     })
 }
@@ -618,7 +618,7 @@ pub fn gone_path() -> PathBuf {
 }
 
 pub fn gone_devices() -> std::collections::BTreeSet<String> {
-    std::fs::read(gone_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
+    crate::files::read(gone_path()).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
 }
 
 /// The switch as every reader on this device reads it: the file, the devices
@@ -1108,7 +1108,7 @@ impl People {
     /// an error, never an empty list (an edit would otherwise take everyone out
     /// on every device).
     pub fn read(path: &Path) -> Result<People, String> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(People::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),

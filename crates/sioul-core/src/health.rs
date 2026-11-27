@@ -13,6 +13,8 @@
 //! body (the liver, the kidneys) needs to clear one before the next: each dose
 //! taken, early or late, sets the next one that many hours after it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use jiff::civil::{Date, Time};
 use jiff::{Span, Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
@@ -404,7 +406,7 @@ impl Health {
             // Lost (of no bytes, or gone though written here): nothing to copy aside.
             Err(Unsound::Lost) => Health::default(),
             Err(Unsound::Unreadable) => {
-                let _ = std::fs::copy(path, path.with_extension("toml.unreadable"));
+                let _ = crate::files::copy(path, path.with_extension("toml.unreadable"));
                 Health::default()
             }
         }
@@ -430,7 +432,7 @@ impl Health {
     /// (a crash before its bytes reached the disk, a full disk, a folder
     /// wiped), never read as no medicines.
     pub fn read_bytes(path: &Path) -> Result<(Health, Vec<u8>), Unsound> {
-        match std::fs::read(path) {
+        match crate::files::read(path) {
             Ok(bytes) if bytes.iter().all(u8::is_ascii_whitespace) => Err(Unsound::Lost),
             Ok(bytes) => std::str::from_utf8(&bytes).ok().and_then(|text| toml::from_str::<Health>(text).ok()).map(|health| (health, bytes)).ok_or(Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1122,7 +1124,7 @@ pub(crate) fn keep_private(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600));
+        let _ = crate::files::set_permissions(path, crate::files::Permissions::from_mode(0o600));
     }
     #[cfg(not(unix))]
     let _ = path;
@@ -1163,7 +1165,7 @@ thread_local! {
 
 /// Whether a record of the doses was written here before (`witnesses`).
 pub fn witnessed(path: &Path) -> bool {
-    witnesses(path).iter().any(|witness| witness.exists())
+    witnesses(path).iter().any(|witness| witness.present())
 }
 
 /// A record of the doses written next to its place, its bytes on the disk
@@ -1176,11 +1178,11 @@ pub fn write_witnessed(path: &Path, bytes: &[u8]) -> Result<(), String> {
     // not be made (a full disk) never says the write failed, which it did not
     // (review of 36002ea's check, low 23: a mark written, its move put back).
     for witness in witnesses(path) {
-        if !witness.exists() {
+        if !witness.present() {
             if let Some(folder) = witness.parent() {
-                let _ = std::fs::create_dir_all(folder);
+                let _ = crate::files::create_dir_all(folder);
             }
-            let _ = std::fs::write(&witness, "");
+            let _ = crate::files::write(&witness, "");
         }
     }
     Ok(())
@@ -1193,17 +1195,17 @@ pub fn write_synced(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let parent = path.parent().unwrap_or(Path::new("."));
-    std::fs::create_dir_all(parent).map_err(fail)?;
+    crate::files::create_dir_all(parent).map_err(fail)?;
     // Next to its place, then moved: a dose marked is never lost to half a file.
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let temporary = path.with_file_name(format!("{name}.new"));
-    let mut file = std::fs::File::create(&temporary).map_err(fail)?;
+    let mut file = crate::files::File::create(&temporary).map_err(fail)?;
     file.write_all(bytes).and_then(|()| file.sync_all()).map_err(fail)?;
     drop(file);
     keep_private(&temporary);
-    std::fs::rename(&temporary, path).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)?;
     #[cfg(unix)]
-    let _ = std::fs::File::open(parent).and_then(|dir| dir.sync_all());
+    let _ = crate::files::File::open(parent).and_then(|dir| dir.sync_all());
     Ok(())
 }
 
@@ -1411,7 +1413,7 @@ impl HealthState {
             #[serde(default)]
             errands: BTreeMap<String, String>,
         }
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() && witnessed(path) => None,
             Ok(text) => toml::from_str::<Errands>(&text).ok().map(|e| e.errands.into_values().collect()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => (!witnessed(path)).then(std::collections::BTreeSet::new),
@@ -1453,7 +1455,7 @@ impl HealthState {
     /// though written before (`witnessed`): lost (a crash after a write that
     /// had not reached the disk, a full disk, a state folder wiped).
     pub fn read(path: &Path) -> Result<HealthState, Unsound> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() && witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1485,14 +1487,14 @@ impl HealthState {
     pub fn set_aside(path: &Path, now: i64) -> Result<Option<PathBuf>, String> {
         crate::filelock::with_lock(path, || {
             for witness in witnesses(path) {
-                let _ = std::fs::remove_file(witness);
+                let _ = crate::files::remove_file(witness);
             }
-            if !path.exists() {
+            if !path.present() {
                 return Ok(None);
             }
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let aside = path.with_file_name(format!("{name}.unreadable-{now}"));
-            std::fs::rename(path, &aside).map_err(|e| format!("{}: {e}", path.display()))?;
+            crate::files::rename(path, &aside).map_err(|e| format!("{}: {e}", path.display()))?;
             Ok(Some(aside))
         })
     }

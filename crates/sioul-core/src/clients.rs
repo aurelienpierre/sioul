@@ -109,7 +109,7 @@ impl Clients {
     /// The notes folder `root`'s profiles; none when the file is not there.
     pub fn load(root: &Path) -> Result<Clients, String> {
         let path = root.join(FILE);
-        match std::fs::read_to_string(&path) {
+        match crate::files::read_to_string(&path) {
             Ok(text) => toml::from_str::<Manifest>(&text).map(|m| Clients { list: m.clients }).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Clients::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),
@@ -138,7 +138,7 @@ pub fn file_in(root: &Path) -> PathBuf {
 pub fn save(file: &Path, profile: &Profile) -> Result<String, String> {
     crate::filelock::with_lock(file, || {
         let fail = |e: String| format!("{}: {e}", file.display());
-        let text = match std::fs::read_to_string(file) {
+        let text = match crate::files::read_to_string(file) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(fail(e.to_string())),
@@ -169,8 +169,8 @@ pub fn save(file: &Path, profile: &Profile) -> Result<String, String> {
             None => list.push(table),
         }
         let temporary = file.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
+        crate::files::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        crate::files::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Invoices);
         Ok(profile.id)
     })
@@ -238,7 +238,7 @@ impl ProfileChange {
 pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, String> {
     let found = crate::filelock::with_lock(file, || -> Result<Option<String>, String> {
         let fail = |e: String| format!("{}: {e}", file.display());
-        let Ok(text) = std::fs::read_to_string(file) else { return Ok(None) };
+        let Ok(text) = crate::files::read_to_string(file) else { return Ok(None) };
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(list) = doc.get_mut(TABLE).and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
         let Some(table) = list.iter_mut().find(|t| !id.is_empty() && t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(None) };
@@ -313,8 +313,8 @@ pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, S
         // What it now says must read back as a profile, else nothing is written.
         toml::from_str::<Manifest>(&doc.to_string()).map_err(|e| fail(e.to_string()))?;
         let temporary = file.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
+        crate::files::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        crate::files::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Invoices);
         Ok(Some(id.to_string()))
     })?;
@@ -353,14 +353,14 @@ fn put(table: &mut dyn toml_edit::TableLike, key: &str, item: Item) {
 pub fn remove(file: &Path, id: &str) -> Result<bool, String> {
     crate::filelock::with_lock(file, || {
         let fail = |e: String| format!("{}: {e}", file.display());
-        let Ok(text) = std::fs::read_to_string(file) else { return Ok(false) };
+        let Ok(text) = crate::files::read_to_string(file) else { return Ok(false) };
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(list) = doc.get_mut(TABLE).and_then(Item::as_array_of_tables_mut) else { return Ok(false) };
         let Some(at) = list.iter().position(|t| t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(false) };
         list.remove(at);
         let temporary = file.with_extension("toml.new");
-        std::fs::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
-        std::fs::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
+        crate::files::write(&temporary, doc.to_string()).map_err(|e| fail(e.to_string()))?;
+        crate::files::rename(&temporary, file).map_err(|e| fail(e.to_string()))?;
         crate::changes::said(crate::changes::Kind::Invoices);
         Ok(true)
     })

@@ -44,6 +44,8 @@
 //! **Its guests' messages after a set-aside change** (`reconcile`): what
 //! each guest still needs to hear, worked out from the server's version.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::lines;
 use serde::{Deserialize, Serialize};
 
@@ -1735,7 +1737,7 @@ fn cancel_notes_path() -> std::path::PathBuf {
 }
 
 fn cancel_notes_read(path: &std::path::Path) -> CancelNotes {
-    std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// The notes changed by `change`, under their lock, written only when it changes
@@ -1748,10 +1750,10 @@ fn cancel_notes_change<T>(change: impl FnOnce(&mut Vec<CancelNote>) -> T) -> T {
         let out = change(&mut all.notes);
         if all.notes != before {
             if all.notes.is_empty() {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_file(&path);
             } else if let Ok(text) = toml::to_string(&all) {
                 if let Some(folder) = path.parent() {
-                    let _ = std::fs::create_dir_all(folder);
+                    let _ = crate::files::create_dir_all(folder);
                 }
                 let _ = crate::filelock::replace(&path, text.as_bytes());
             }
@@ -1787,7 +1789,7 @@ pub fn cancellation_notes(uid: &str) -> Vec<CancelNote> {
 pub fn cancellations_settled(text: &str) -> Vec<CancelNote> {
     let path = cancel_notes_path();
     // A sync brings many items, and most devices hold no note.
-    if !path.exists() {
+    if !path.present() {
         return Vec::new();
     }
     let uid = crate::meeting_lines::uid_of(text);

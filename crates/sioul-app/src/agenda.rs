@@ -285,7 +285,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
         // other device): the changed occurrence its RECURRENCE-ID names (review
         // of 590eb18, later 7).
         if found.is_empty()
-            && let Some(moved) = std::fs::read_to_string(&path).ok().and_then(|text| agenda::moved_to(&text, start, &zone))
+            && let Some(moved) = crate::files::read_to_string(&path).ok().and_then(|text| agenda::moved_to(&text, start, &zone))
             && moved != start
         {
             found = at(moved);
@@ -313,7 +313,7 @@ fn event_card_as(shared: &Shared, key: &str, start: i64, own: &dyn Fn() -> Vec<S
     let both = if o.all_day { String::new() } else { timeline::both_times(&time, o.start, o.end, &o.clock, tr()) };
     let when = format!("{} · {}", tr().day(date), if both.is_empty() { time } else { both });
     // Its own status, its place's point and its people, read from its file (the event card, 5 November 2026).
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = crate::files::read_to_string(&path).unwrap_or_default();
     let own_addresses = own();
     let loaded = crate::work::loaded(shared);
     let people: Vec<serde_json::Value> = agenda::participants(&text)
@@ -488,7 +488,7 @@ pub(crate) fn view() -> String {
 }
 
 fn read_view() -> View {
-    let Ok(text) = std::fs::read_to_string(view_path()) else { return View::default() };
+    let Ok(text) = crate::files::read_to_string(view_path()) else { return View::default() };
     let mut view: View = toml::from_str(&text).unwrap_or_default();
     if !view.calendars_hidden.is_empty() {
         // An older Show, by names: each name as every calendar it names now, kept hidden by place.
@@ -542,7 +542,7 @@ pub(crate) fn keep_hidden(id: &str, hidden: bool) -> String {
 fn write_view_over(was: &str, view: &View) -> std::io::Result<bool> {
     let path = view_path();
     sioul_core::filelock::with_lock(&path, || {
-        if std::fs::read_to_string(&path).ok().as_deref() != Some(was) {
+        if crate::files::read_to_string(&path).ok().as_deref() != Some(was) {
             return Ok(false);
         }
         write_view(view).map(|()| true)
@@ -572,7 +572,7 @@ pub(crate) fn set_view(asked: &str) -> String {
 fn write_view(view: &View) -> std::io::Result<()> {
     let path = view_path();
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        let _ = crate::files::create_dir_all(dir);
     }
     let text = toml::to_string(view).unwrap_or_default();
     sioul_core::filelock::replace(&path, text.as_bytes())
@@ -1341,7 +1341,7 @@ fn appointment_lines(items: &mut [timeline::Item], occurrences: &[Occurrence], t
     for item in items.iter_mut().filter(|i| i.kind == timeline::Kind::Event) {
         let timeline::Source::Calendar { key, start, .. } = &item.source else { continue };
         let Some(o) = occurrences.iter().find(|o| &o.key == key && o.start == *start) else { continue };
-        let links = std::fs::read_to_string(&o.key).ok().and_then(|text| agenda::event_ref(&text, &o.key, zone)).map(|r| r.links).unwrap_or_default();
+        let links = crate::files::read_to_string(&o.key).ok().and_then(|text| agenda::event_ref(&text, &o.key, zone)).map(|r| r.links).unwrap_or_default();
         // Its legs read with it (part E): Leave at from the first, their titles on its line.
         let legs = sioul_core::anchors::legs_seen_in(&o.uid, occurrences);
         let view = sioul_core::pairs::appointment_view(o, &links, tasks, &legs, None, tr(), zone);
@@ -1361,7 +1361,7 @@ pub(crate) fn appointment_card(shared: &Shared, key: &str, start: i64) -> String
     let zone = sioul_core::zone::current();
     let found = agenda::file_occurrences(&path, &calendar, start, start + 1, &zone);
     let Some(o) = found.into_iter().find(|o| o.start == start) else { return "{}".into() };
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = crate::files::read_to_string(&path).unwrap_or_default();
     let links = agenda::event_ref(&text, key, &zone).map(|r| r.links).unwrap_or_default();
     let known = work::loaded_known(shared);
     let tasks = known.as_ref().map(|l| l.tasks.clone()).unwrap_or_default();

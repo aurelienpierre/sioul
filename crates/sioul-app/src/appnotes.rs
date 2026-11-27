@@ -20,6 +20,8 @@
 //! silent and give back, `appnotes::channels_plan`; each one's importance
 //! noted first, `appnotes::Silenced`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{load_config, tr};
 use crate::everywhere::Gated;
 use jiff::Zoned;
@@ -78,7 +80,7 @@ pub(crate) fn access_here() -> Option<bool> {
 
 /// When a file last changed; none when it is not there.
 fn changed(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::files::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 /// The clock as it stands, kept a minute in the listener's process: read
@@ -1109,7 +1111,7 @@ fn talks_path() -> std::path::PathBuf {
 }
 
 fn released_talks() -> std::collections::BTreeMap<String, i64> {
-    std::fs::read_to_string(talks_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(talks_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// The conversations the phone holds now, for the card (ReachCard.qml): {key,
@@ -1121,7 +1123,7 @@ pub(crate) fn held_talks() -> Vec<Value> {
         return Vec::new();
     }
     let path = Ledger::default_path();
-    if !path.exists() {
+    if !path.present() {
         return Vec::new();
     }
     let ledger = Ledger::load(&path);
@@ -1149,7 +1151,7 @@ pub(crate) fn release_talk(key: &str) -> String {
     let path = talks_path();
     let written = toml::to_string(&talks).map_err(|e| e.to_string()).and_then(|text| {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            crate::files::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     });
@@ -1212,7 +1214,7 @@ pub(crate) fn let_talk_then(key: &str) -> String {
 /// waits nor came back lately, and on a computer (no listener there).
 pub(crate) fn porch_line() -> String {
     let path = Ledger::default_path();
-    if !path.exists() {
+    if !path.present() {
         return String::new();
     }
     appnotes::porch_line(tr(), &Ledger::load(&path), &sioul_core::zone::now())

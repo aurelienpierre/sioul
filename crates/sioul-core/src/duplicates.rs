@@ -26,6 +26,8 @@
 //!   `$XDG_STATE_HOME/sioul/contacts-undo`, thirty days; undoing writes them
 //!   back, and the sync sends them again.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::contacts::{self, Contact};
 use crate::lines;
 use crate::phones::{self, Region};
@@ -279,7 +281,7 @@ pub fn cleanings(contacts: &[Contact], region: Option<&Region>) -> Vec<Cleaning>
             repeats(c.phones.iter().map(|p| phones::key(&p.value, region)).collect()) || repeats(c.emails.iter().map(|e| email_key(&e.value)).collect())
         })
         .filter_map(|c| {
-            let text = std::fs::read_to_string(&c.key).ok()?;
+            let text = crate::files::read_to_string(&c.key).ok()?;
             let (_, removed) = clean(&text, region)?;
             Some(Cleaning { key: c.key.clone(), name: c.name.clone(), removed })
         })
@@ -389,19 +391,19 @@ impl NotTheSame {
     }
 
     pub fn load(path: &Path) -> NotTheSame {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written next to its place, then moved: never half a file.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::write(&temporary, text).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 
     fn ordered(a: &str, b: &str) -> [String; 2] {
@@ -619,7 +621,7 @@ fn is_id(id: &str) -> bool {
 fn put(path: &Path, text: Option<&str>) -> Result<(), String> {
     match text {
         Some(text) => crate::vdir::write_item(path, text),
-        None if !path.exists() => Ok(()),
+        None if !path.present() => Ok(()),
         None => crate::vdir::remove_item(path),
     }
 }
@@ -628,19 +630,19 @@ fn put(path: &Path, text: Option<&str>) -> Result<(), String> {
 /// what was done. When one change fails, those made before it are undone.
 pub fn apply(dir: &Path, kind: &str, names: Vec<String>, changes: Vec<Change>, now: i64) -> Result<Done, String> {
     let fail = |e: std::io::Error| format!("{}: {e}", dir.display());
-    std::fs::create_dir_all(dir).map_err(fail)?;
-    let id = std::iter::once(format!("{now}-{kind}")).chain((2..1000).map(|n| format!("{now}-{kind}-{n}"))).find(|id| !dir.join(format!("{id}.json")).exists()).ok_or_else(|| format!("{}: full", dir.display()))?;
+    crate::files::create_dir_all(dir).map_err(fail)?;
+    let id = std::iter::once(format!("{now}-{kind}")).chain((2..1000).map(|n| format!("{now}-{kind}-{n}"))).find(|id| !dir.join(format!("{id}.json")).present()).ok_or_else(|| format!("{}: full", dir.display()))?;
     let done = Done { id: id.clone(), at: now, kind: kind.to_string(), names, changes };
     let record = dir.join(format!("{id}.json"));
     let temporary = dir.join(format!("{id}.json.new"));
-    std::fs::write(&temporary, serde_json::to_string(&done).map_err(|e| e.to_string())?).map_err(fail)?;
-    std::fs::rename(&temporary, &record).map_err(fail)?;
+    crate::files::write(&temporary, serde_json::to_string(&done).map_err(|e| e.to_string())?).map_err(fail)?;
+    crate::files::rename(&temporary, &record).map_err(fail)?;
     for (n, change) in done.changes.iter().enumerate() {
         if let Err(e) = put(&change.path, change.after.as_deref()) {
             for earlier in done.changes[..n].iter().rev() {
                 let _ = put(&earlier.path, earlier.before.as_deref());
             }
-            let _ = std::fs::remove_file(&record);
+            let _ = crate::files::remove_file(&record);
             return Err(e);
         }
     }
@@ -650,14 +652,14 @@ pub fn apply(dir: &Path, kind: &str, names: Vec<String>, changes: Vec<Change>, n
 /// What was done lately, the newest first. What is older than thirty days
 /// goes, with the versions set aside by its undoing.
 pub fn done(dir: &Path, now: i64) -> Vec<Done> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     let mut found: Vec<Done> = Vec::new();
     let mut old: Vec<String> = Vec::new();
     for path in entries.filter_map(Result::ok).map(|e| e.path()) {
         let Some(id) = path.file_name().and_then(|n| n.to_str()).and_then(|n| n.strip_suffix(".json")).map(str::to_string) else { continue };
-        let Some(mut record) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Done>(&t).ok()) else { continue };
+        let Some(mut record) = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Done>(&t).ok()) else { continue };
         if now - record.at > KEPT_DAYS * 86_400 {
-            let _ = std::fs::remove_file(&path);
+            let _ = crate::files::remove_file(&path);
             old.push(id);
             continue;
         }
@@ -665,12 +667,12 @@ pub fn done(dir: &Path, now: i64) -> Vec<Done> {
         found.push(record);
     }
     // The versions an undoing set aside, from records gone ("<id>.<n>.vcf").
-    if let Ok(entries) = std::fs::read_dir(dir) {
+    if let Ok(entries) = crate::files::read_dir(dir) {
         for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "vcf")) {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            let age = std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|m| m.elapsed().ok()).map_or(0, |d| d.as_secs());
+            let age = crate::files::metadata(&path).ok().and_then(|m| m.modified().ok()).and_then(|m| m.elapsed().ok()).map_or(0, |d| d.as_secs());
             if old.iter().any(|id| name.starts_with(&format!("{id}."))) || age > (KEPT_DAYS as u64) * 86_400 {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_file(&path);
             }
         }
     }
@@ -688,15 +690,15 @@ pub fn undo(dir: &Path, id: &str, root: &Path) -> Result<(Vec<PathBuf>, usize), 
         return Err(format!("{id}: not something done here"));
     }
     let record = dir.join(format!("{id}.json"));
-    let done: Done = std::fs::read_to_string(&record).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or_else(|| format!("{id}: nothing to undo"))?;
+    let done: Done = crate::files::read_to_string(&record).ok().and_then(|t| serde_json::from_str(&t).ok()).ok_or_else(|| format!("{id}: nothing to undo"))?;
     let mut touched = Vec::new();
     let mut aside = 0;
     for (n, change) in done.changes.iter().enumerate().rev() {
         let inside = change.path.starts_with(root) && !change.path.components().any(|c| c == std::path::Component::ParentDir);
-        if !inside || change.path.parent().is_some_and(|p| !p.is_dir()) {
+        if !inside || change.path.parent().is_some_and(|p| !p.present_dir()) {
             continue;
         }
-        let now = std::fs::read_to_string(&change.path).ok();
+        let now = crate::files::read_to_string(&change.path).ok();
         // A card moved to another book since (its file gone here, its UID there): left where it
         // is now, never written back beside itself (review F23).
         if now.is_none()
@@ -706,13 +708,13 @@ pub fn undo(dir: &Path, id: &str, root: &Path) -> Result<(Vec<PathBuf>, usize), 
             continue;
         }
         if now.is_some() && now != change.after && now != change.before {
-            std::fs::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default()).map_err(|e| format!("{}: {e}", dir.display()))?;
+            crate::files::write(dir.join(format!("{id}.{n}.vcf")), now.unwrap_or_default()).map_err(|e| format!("{}: {e}", dir.display()))?;
             aside += 1;
         }
         put(&change.path, change.before.as_deref())?;
         touched.push(change.path.clone());
     }
-    let _ = std::fs::remove_file(&record);
+    let _ = crate::files::remove_file(&record);
     Ok((touched, aside))
 }
 
@@ -722,7 +724,7 @@ pub fn clean_files(paths: &[PathBuf], region: Option<&Region>, dir: &Path, now: 
     let mut changes = Vec::new();
     let mut names = Vec::new();
     for path in paths {
-        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        let Ok(text) = crate::files::read_to_string(path) else { continue };
         if let Some((cleaned, _)) = clean(&text, region) {
             names.push(contacts::display_name(&lines::unfold(&text)));
             changes.push(Change { path: path.clone(), before: Some(text), after: Some(cleaned) });
@@ -741,7 +743,7 @@ pub fn merge_files(lead: &Path, other: &Path, region: Option<&Region>, dir: &Pat
     if lead == other {
         return Err(format!("{}: the same card", lead.display()));
     }
-    let read = |path: &Path| std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
+    let read = |path: &Path| crate::files::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()));
     let (lead_text, other_text) = (read(lead)?, read(other)?);
     let merged = merge_with(&lead_text, &other_text, region, groups);
     let names = vec![contacts::display_name(&lines::unfold(&lead_text)), contacts::display_name(&lines::unfold(&other_text))];

@@ -989,7 +989,7 @@ pub fn own_stamp_id() -> Option<String> {
     {
         return Some(id.clone());
     }
-    let id = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid"))?;
+    let id = crate::files::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid"))?;
     *kept = Some((path, id.clone()));
     Some(id)
 }

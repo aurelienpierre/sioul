@@ -93,14 +93,14 @@ pub struct Memory {
 impl Memory {
     /// What the place's file holds; nothing yet, or a file that does not read: a first look.
     pub fn load(path: &Path) -> Memory {
-        std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// Written beside, then put in place.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }
@@ -109,7 +109,7 @@ impl Memory {
     /// look once it is on again is a first look (adding only: H3). Whether a
     /// file was there.
     pub fn forget(path: &Path) -> bool {
-        std::fs::remove_file(path).is_ok()
+        crate::files::remove_file(path).is_ok()
     }
 }
 
@@ -126,11 +126,11 @@ pub fn note_kept(place: &str, names: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let path = kept_path();
-    let mut waiting: Vec<(String, Vec<String>)> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut waiting: Vec<(String, Vec<String>)> = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     waiting.push((place.to_string(), names.to_vec()));
     let text = serde_json::to_string(&waiting).map_err(|e| e.to_string())?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -138,8 +138,8 @@ pub fn note_kept(place: &str, names: &[String]) -> Result<(), String> {
 /// What waits to be told (`note_kept`), taken: the file gone.
 pub fn take_kept() -> Vec<(String, Vec<String>)> {
     let path = kept_path();
-    let waiting = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
-    let _ = std::fs::remove_file(&path);
+    let waiting = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let _ = crate::files::remove_file(&path);
     waiting
 }
 

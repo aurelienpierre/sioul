@@ -199,7 +199,7 @@ pub fn path_here(path: Option<&Path>) {
 /// The file as it is; empty when there is none, or it does not read. What a
 /// removal that came left behind (the tables of the lines it took out) is no entry.
 pub fn load(path: &Path) -> MeetingLines {
-    read_text(std::fs::read_to_string(path).ok().as_deref())
+    read_text(crate::files::read_to_string(path).ok().as_deref())
 }
 
 /// A text of the file (None: no file) as `load` reads it.
@@ -243,7 +243,7 @@ fn change(path: &Path, uid: &str, change: impl FnOnce(&mut Option<Kept>)) -> Res
 fn write(path: &Path, all: &MeetingLines) -> Result<(), String> {
     let text = toml::to_string(all).map_err(|e| e.to_string())?;
     if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
     }
     let bytes = format!("# Sioul's own lines of meetings with others, by their UID and time (docs/client.md): kept here, never in the meeting.\n{text}");
     crate::filelock::replace(path, bytes.as_bytes()).map_err(|e| e.to_string())
@@ -439,7 +439,7 @@ pub fn later_than_entry(text: &str, kept: &Kept) -> bool {
 /// yet, which was made on what this device held and says nothing of guests
 /// gone. Whether its file was written.
 pub fn back_into_file(path: &Path, at: &Path, store: &MeetingLines) -> bool {
-    let Ok(file) = std::fs::read_to_string(path) else { return false };
+    let Ok(file) = crate::files::read_to_string(path) else { return false };
     let uid = uid_of(&file);
     let Some(kept) = store.events.get(&uid) else { return false };
     if crate::agenda::with_others(&file) || !later_than_entry(&file, kept) {

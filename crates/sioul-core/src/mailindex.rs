@@ -17,6 +17,8 @@
 //! that copy. The rank is found from each copy's folder at each build and is
 //! never written.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -67,7 +69,7 @@ pub struct Root {
 fn own_copy(file: &Path) -> bool {
     use std::io::Read;
     let mut head = Vec::new();
-    std::fs::File::open(file).and_then(|f| f.take(64 * 1024).read_to_end(&mut head)).is_ok() && crate::draftserver::copy_of(&head).is_some()
+    crate::files::File::open(file).and_then(|f| f.take(64 * 1024).read_to_end(&mut head)).is_ok() && crate::draftserver::copy_of(&head).is_some()
 }
 
 /// What the folder holding `file` under `root` is for: the inbox for the
@@ -107,15 +109,15 @@ pub fn message_files(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = crate::files::read_dir(&dir) else { continue };
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
-            if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+            if !entry.file_type().is_ok_and(|t| t.present_dir()) {
                 continue;
             }
             if name == "cur" || name == "new" {
-                out.extend(std::fs::read_dir(&path).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))));
+                out.extend(crate::files::read_dir(&path).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file() && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.'))));
             } else if name != "tmp" {
                 stack.push(path);
             }

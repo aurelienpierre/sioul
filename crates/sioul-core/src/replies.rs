@@ -44,6 +44,8 @@
 //!   comes through at once on the phone for twenty minutes after
 //!   (`note_answered`, `answered_lately`), never during a pause.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::appnotes::{self, Kind, Posted};
 use crate::calls;
 use crate::phonemsgs::{self, Extra};
@@ -172,10 +174,10 @@ pub fn read_done(folder: &Path) -> Vec<Done> {
 
 /// The private folder made, yours alone (0700 on Unix), before its lock is taken there.
 fn private_dir(folder: &Path) -> Result<(), String> {
-    let mut builder = std::fs::DirBuilder::new();
+    let mut builder = crate::files::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.mode(0o700);
     builder.create(folder).map_err(|e| format!("{}: {e}", folder.display()))
 }
 
@@ -194,7 +196,7 @@ pub fn open_ledger(folder: &Path, now_ms: i64) -> Result<crate::texts::Ledger, S
 /// than the first reply. Never moved once made.
 pub fn mark_ledger(folder: &Path, now_ms: i64) -> Result<(), String> {
     private_dir(folder)?;
-    if folder.join(crate::texts::MARK).is_file() {
+    if folder.join(crate::texts::MARK).present_file() {
         return Ok(());
     }
     crate::filelock::with_lock(&folder.join(crate::texts::LEDGER), || crate::texts::Ledger::open(folder, now_ms).map(|_| ()))
@@ -208,10 +210,10 @@ pub fn write_due(folder: &Path, due: &[Due], seal: &dyn Sealer) -> Result<(), St
     crate::filelock::with_lock(&path, || {
         let body: String = due.iter().filter_map(|d| serde_json::to_string(d).ok()).map(|plain| format!("{}\n", seal.seal(&plain))).collect();
         let fresh = folder.join(format!(".{DUE}.{}.new", std::process::id()));
-        let _ = std::fs::remove_file(&fresh);
+        let _ = crate::files::remove_file(&fresh);
         calls::append_private(&fresh, &body)?;
-        std::fs::rename(&fresh, &path).map_err(|e| {
-            let _ = std::fs::remove_file(&fresh);
+        crate::files::rename(&fresh, &path).map_err(|e| {
+            let _ = crate::files::remove_file(&fresh);
             format!("{}: {e}", path.display())
         })
     })
@@ -223,7 +225,7 @@ fn append_flushed(path: &Path, done: &Done) -> Result<(), String> {
     let line = serde_json::to_string(done).map_err(|e| e.to_string())? + "\n";
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     calls::append_private(path, "")?;
-    let mut file = std::fs::OpenOptions::new().append(true).open(path).map_err(fail)?;
+    let mut file = crate::files::OpenOptions::new().append(true).open(path).map_err(fail)?;
     file.write_all(line.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
 }
@@ -241,7 +243,7 @@ fn append_all_flushed(path: &Path, done: &[Done]) -> Result<(), String> {
     }
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     calls::append_private(path, "")?;
-    let mut file = std::fs::OpenOptions::new().append(true).open(path).map_err(fail)?;
+    let mut file = crate::files::OpenOptions::new().append(true).open(path).map_err(fail)?;
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
 }
@@ -638,7 +640,7 @@ pub struct FileRead {
 
 /// The marks as kept; none when the file does not read.
 pub fn read_marks(folder: &Path) -> BTreeMap<String, ReadMark> {
-    std::fs::read_to_string(folder.join(READ_MARKS)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(folder.join(READ_MARKS)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// The marks written whole, beside then put in place.
@@ -646,9 +648,9 @@ pub fn save_read_marks(folder: &Path, marks: &BTreeMap<String, ReadMark>) -> Res
     private_dir(folder)?;
     let text = serde_json::to_string(marks).map_err(|e| e.to_string())?;
     let fresh = folder.join(format!(".{READ_MARKS}.{}.new", std::process::id()));
-    let _ = std::fs::remove_file(&fresh);
+    let _ = crate::files::remove_file(&fresh);
     calls::append_private(&fresh, &text)?;
-    std::fs::rename(&fresh, folder.join(READ_MARKS)).map_err(|e| format!("{}: {e}", folder.display()))
+    crate::files::rename(&fresh, folder.join(READ_MARKS)).map_err(|e| format!("{}: {e}", folder.display()))
 }
 
 /// A sealed line's name for the marks: a hash of it as written.
@@ -679,7 +681,7 @@ pub fn read_asks_after(roots: &[PathBuf], seal: &dyn Sealer, marks: &BTreeMap<St
     let mut reads = Vec::new();
     for root in roots {
         for (device, path) in calls::device_files(&root.join(ASK)) {
-            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let Ok(bytes) = crate::files::read(&path) else { continue };
             let name = path.display().to_string();
             let start = marks.get(&name).filter(|m| holds(&bytes, m)).map_or(0, |m| usize::try_from(m.offset).unwrap_or(0));
             let mut read = FileRead { path: name, start: start as u64, lines: Vec::new() };
@@ -1034,7 +1036,7 @@ pub fn outcomes_of(done: &[Done]) -> Vec<Outcome> {
 pub fn trim_private(folder: &Path, seal: &dyn Sealer, now_ms: i64) -> Result<(), String> {
     crate::filelock::with_lock(&folder.join(DUE), || {
         let due: Vec<Due> = read_due(folder, seal).into_iter().filter(|d| now_ms - d.at <= DAY_MS).collect();
-        if folder.join(DUE).is_file() {
+        if folder.join(DUE).present_file() {
             write_due(folder, &due, seal)?;
         }
         calls::rewrite_lines(&folder.join(DONE), |line| serde_json::from_str::<Done>(line).is_ok_and(|d| now_ms - d.at > DAY_MS)).map(|_| ())
@@ -1184,7 +1186,7 @@ pub struct Withdraw {
 impl Withdraw {
     /// As the private folder `folder` holds it; nothing when it does not read.
     pub fn load(folder: &Path) -> Withdraw {
-        std::fs::read_to_string(folder.join(WITHDRAW)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(folder.join(WITHDRAW)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written whole in `folder`, beside then put in place (the listener
@@ -1192,13 +1194,13 @@ impl Withdraw {
     /// the file gone. Whether it was written.
     pub fn save(&self, folder: &Path) -> Result<bool, String> {
         let path = folder.join(WITHDRAW);
-        if Withdraw::load(folder).names == self.names && (path.exists() || self.names.is_empty()) {
+        if Withdraw::load(folder).names == self.names && (path.present() || self.names.is_empty()) {
             return Ok(false);
         }
         if self.names.is_empty() {
-            return std::fs::remove_file(&path).map(|()| true).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(false) } else { Err(format!("{}: {e}", path.display())) });
+            return crate::files::remove_file(&path).map(|()| true).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(false) } else { Err(format!("{}: {e}", path.display())) });
         }
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
         crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(true)
@@ -1211,7 +1213,7 @@ pub const ANSWERED_MS: i64 = 20 * 60_000;
 
 /// The conversations answered lately, as kept (those past their time left out).
 fn answered(folder: &Path, now_ms: i64) -> BTreeMap<String, i64> {
-    std::fs::read_to_string(folder.join(ANSWERED)).ok().and_then(|t| serde_json::from_str::<BTreeMap<String, i64>>(&t).ok()).unwrap_or_default().into_iter().filter(|(_, until)| *until > now_ms).collect()
+    crate::files::read_to_string(folder.join(ANSWERED)).ok().and_then(|t| serde_json::from_str::<BTreeMap<String, i64>>(&t).ok()).unwrap_or_default().into_iter().filter(|(_, until)| *until > now_ms).collect()
 }
 
 /// A conversation answered (its key, `appnotes::talk_key`): its messages
@@ -1226,9 +1228,9 @@ pub fn note_answered(folder: &Path, talk: &str, now_ms: i64) -> Result<(), Strin
         kept.insert(talk.to_string(), now_ms + ANSWERED_MS);
         let text = serde_json::to_string(&kept).map_err(|e| e.to_string())?;
         let fresh = folder.join(format!(".{ANSWERED}.{}.new", std::process::id()));
-        let _ = std::fs::remove_file(&fresh);
+        let _ = crate::files::remove_file(&fresh);
         calls::append_private(&fresh, &text)?;
-        std::fs::rename(&fresh, folder.join(ANSWERED)).map_err(|e| format!("{}: {e}", folder.display()))
+        crate::files::rename(&fresh, folder.join(ANSWERED)).map_err(|e| format!("{}: {e}", folder.display()))
     })
 }
 

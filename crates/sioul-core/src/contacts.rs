@@ -10,6 +10,8 @@
 //! is kept as it was when Sioul writes it back. New cards are written in
 //! vCard 3.0, which every server and phone reads.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::lines;
 use crate::vdir::{self, Collection, Kind};
 use serde::{Deserialize, Serialize};
@@ -161,7 +163,7 @@ pub fn parse(text: &str) -> Option<calcard::vcard::VCard> {
 
 /// One contact from its file.
 pub fn read(path: &Path, book: &Collection) -> Option<Contact> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     let lines = lines::unfold(&text);
     lines.iter().any(|l| lines::name(l) == "BEGIN").then(|| contact(&lines, path, book))
 }
@@ -477,7 +479,7 @@ fn photo_of(card: &[String]) -> (String, String) {
 /// The copy kept of a picture on the web, by its address: `web-<hash>.<kind>` in `folder`.
 pub fn web_photo_file(folder: &Path, url: &str) -> Option<std::path::PathBuf> {
     let stem = format!("web-{}", vdir::content_hash(url.trim().as_bytes()));
-    ["jpeg", "png", "webp", "gif"].iter().map(|kind| folder.join(format!("{stem}.{kind}"))).find(|p| p.is_file())
+    ["jpeg", "png", "webp", "gif"].iter().map(|kind| folder.join(format!("{stem}.{kind}"))).find(|p| p.present_file())
 }
 
 /// Where the copy of a picture on the web goes, its kind given ("png").
@@ -511,8 +513,8 @@ fn photo_shown(card: &[String], folder: &Path) -> String {
     let Some(bytes) = bytes.filter(|b| !b.is_empty()) else { return String::new() };
     let kind: String = kind.chars().filter(char::is_ascii_alphanumeric).take(5).collect();
     let path = folder.join(format!("{}.{}", vdir::content_hash(&bytes), if kind.is_empty() { "jpeg" } else { &kind }));
-    if !path.exists() {
-        let written = path.parent().map(std::fs::create_dir_all).transpose().and_then(|_| std::fs::write(&path, &bytes));
+    if !path.present() {
+        let written = path.parent().map(crate::files::create_dir_all).transpose().and_then(|_| crate::files::write(&path, &bytes));
         if written.is_err() {
             return String::new();
         }

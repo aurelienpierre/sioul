@@ -9,6 +9,8 @@
 //! alone, never shared; the window reads what was added since it last
 //! looked, and takes out what is older than a day.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -28,7 +30,7 @@ pub struct FileChange {
 impl FileChange {
     /// The file as it is now, beside what it was: what the change will say.
     pub fn of(path: &Path, before: Option<String>) -> FileChange {
-        FileChange { path: path.to_path_buf(), before, after: std::fs::read_to_string(path).ok() }
+        FileChange { path: path.to_path_buf(), before, after: crate::files::read_to_string(path).ok() }
     }
 }
 
@@ -50,7 +52,7 @@ impl Said {
     /// changed since stops nothing (third review of the organizer's door, R9).
     pub fn put_back(&self) -> bool {
         let store = |f: &FileChange| crate::meeting_lines::is_store(&f.path);
-        if self.files.iter().any(|f| if store(f) { !crate::meeting_lines::as_left(&f.path, f.before.as_deref(), f.after.as_deref()) } else { std::fs::read_to_string(&f.path).ok() != f.after }) {
+        if self.files.iter().any(|f| if store(f) { !crate::meeting_lines::as_left(&f.path, f.before.as_deref(), f.after.as_deref()) } else { crate::files::read_to_string(&f.path).ok() != f.after }) {
             return false;
         }
         // An event among them through the one rule first (`agenda::guard`): one refused, none put back.
@@ -67,7 +69,7 @@ impl Said {
             let done = match &f.before {
                 Some(text) => crate::vdir::write_item(&f.path, text),
                 // Gone already (made, then moved on by the same change): removed.
-                None if !f.path.exists() => Ok(()),
+                None if !f.path.present() => Ok(()),
                 None => crate::vdir::remove_item(&f.path),
             };
             if done.is_err() {
@@ -93,7 +95,7 @@ pub fn note(said: &Said) -> Result<(), String> {
 /// when the file is shorter (taken out meanwhile).
 pub fn since(offset: u64) -> (Vec<Said>, u64) {
     let path = path();
-    let Ok(text) = std::fs::read_to_string(&path) else { return (Vec::new(), 0) };
+    let Ok(text) = crate::files::read_to_string(&path) else { return (Vec::new(), 0) };
     let len = text.len() as u64;
     let from = if offset > len { 0 } else { offset as usize };
     let added = text.get(from..).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();

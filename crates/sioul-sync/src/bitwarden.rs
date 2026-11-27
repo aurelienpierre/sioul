@@ -640,14 +640,14 @@ impl Drop for Item {
 /// This computer, as Bitwarden knows it: one identifier kept in `path`, so it
 /// is not a new device each time.
 pub fn device_id(path: &std::path::Path) -> String {
-    if let Some(id) = std::fs::read_to_string(path).ok().map(|t| t.trim().to_string()).filter(|t| t.len() >= 32) {
+    if let Some(id) = crate::files::read_to_string(path).ok().map(|t| t.trim().to_string()).filter(|t| t.len() >= 32) {
         return id;
     }
     let id = uuid::Uuid::new_v4().to_string();
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = crate::files::create_dir_all(parent);
     }
-    let _ = std::fs::write(path, &id);
+    let _ = crate::files::write(path, &id);
     id
 }
 

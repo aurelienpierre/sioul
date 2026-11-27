@@ -370,7 +370,7 @@ impl Record {
 
     /// The record; empty when the file does not exist or cannot be read.
     pub fn load(path: &Path) -> Record {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// The newest entry for a list.
@@ -390,11 +390,11 @@ impl Record {
             record.lists.push(left);
             let fail = |e: std::io::Error| format!("{}: {e}", path.display());
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(fail)?;
+                crate::files::create_dir_all(parent).map_err(fail)?;
             }
             let text = toml::to_string(&record).map_err(|e| e.to_string())?;
             let temporary = path.with_extension("toml.new");
-            std::fs::write(&temporary, text).and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+            crate::files::write(&temporary, text).and_then(|()| crate::files::rename(&temporary, path)).map_err(fail)
         })
     }
 }

@@ -16,6 +16,8 @@
 //! project's things, and things in no project while those are closed, are
 //! left out of every list, counted, never named; asked for by name, refused.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::tools::{self, Answer, Args};
 use super::{access, mask};
 use crate::{Session, one_line};
@@ -132,13 +134,13 @@ pub(super) struct Shield {
 impl Shield {
     /// None when no address is shielded: nothing is hidden then.
     pub fn of(config: &Config) -> Option<Shield> {
-        let folders: Vec<PathBuf> = config.mail_sources().into_iter().filter(|src| src.shielded).map(|src| std::fs::canonicalize(&src.folder).unwrap_or(src.folder)).collect();
+        let folders: Vec<PathBuf> = config.mail_sources().into_iter().filter(|src| src.shielded).map(|src| crate::files::canonicalize(&src.folder).unwrap_or(src.folder)).collect();
         (!folders.is_empty()).then(|| Shield { folders, read_by_ai: shield::AiCache::load_all() })
     }
 
     /// Whether the message in this file is hostile mail to a shielded address.
     pub fn hides(&self, path: &Path) -> bool {
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let path = crate::files::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         if !self.folders.iter().any(|folder| path.starts_with(folder)) {
             return false;
         }
@@ -259,7 +261,7 @@ pub(super) fn mail_index(config: &Config) -> MailIndex {
 /// The account whose mail a file is, and the folder it is in ("" for the
 /// inbox), however the paths are written (`~`, relative, through a link).
 pub(super) fn place_of(config: &Config, path: &Path) -> (String, String) {
-    let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let canonical = |p: &Path| crate::files::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     let path = canonical(path);
     let found = config.accounts.iter().find_map(|a| path.strip_prefix(canonical(&a.maildir_path())).ok().map(|rest| (a.id.clone(), rest.to_path_buf())));
     let Some((account, rest)) = found else { return (String::new(), String::new()) };
@@ -458,7 +460,7 @@ pub(super) fn locate_with(s: &Session, wanted: &str, servers: Option<&dyn mailfi
         // One of Sioul's draft copies (both its marks), found by its address or its path: no mail.
         // The mail index leaves them out, and a fetch never stores them; a draft another program
         // saved again under the same Message-ID without the mark stays mail, and is read.
-        mailfind::Found::Here(here) if std::fs::read(&here.path).ok().is_some_and(|raw| sioul_core::draftserver::copy_of(&raw).is_some()) => Err(not_found()),
+        mailfind::Found::Here(here) if crate::files::read(&here.path).ok().is_some_and(|raw| sioul_core::draftserver::copy_of(&raw).is_some()) => Err(not_found()),
         mailfind::Found::Here(here) => Ok(here),
         mailfind::Found::NotHere => Err(not_found()),
         mailfind::Found::Gone => Err(s.tr.text("mail-find-gone", None)),
@@ -502,13 +504,13 @@ pub(super) fn judged(s: &Session, path: &Path) -> Result<(Triaged, Option<Projec
     }
     // The file resolved as its folders are below: one written through a link
     // (macOS's /var, Windows' \\?\ form) would otherwise be in none of them.
-    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let resolved = crate::files::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let sources: Vec<config::Source> = s
         .config
         .mail_sources()
         .into_iter()
         .map(|mut src| {
-            src.folder = std::fs::canonicalize(&src.folder).unwrap_or(src.folder);
+            src.folder = crate::files::canonicalize(&src.folder).unwrap_or(src.folder);
             src
         })
         .collect();
@@ -786,7 +788,7 @@ impl Desk {
             occurrences
                 .iter()
                 .filter(|o| Timestamp::from_second(o.start).is_ok_and(|t| t.to_zoned(zone.clone()).date() == date))
-                .map(|o| sioul_core::dated::EventSeen { start: o.start, yours: !o.read_only && !o.with_others && o.task.is_empty() && !o.cancelled, text: std::fs::read_to_string(&o.key).unwrap_or_default() })
+                .map(|o| sioul_core::dated::EventSeen { start: o.start, yours: !o.read_only && !o.with_others && o.task.is_empty() && !o.cancelled, text: crate::files::read_to_string(&o.key).unwrap_or_default() })
                 .collect()
         };
         let all = sioul_core::dated::read_all(&s.config, &self.loaded.tasks, &events_on, today, &zone, &s.tr);
@@ -1254,7 +1256,7 @@ pub fn search_contacts(s: &Session, args: &Args) -> Result<Answer, String> {
 // Money.
 
 pub fn budgets(s: &Session, _args: &Args) -> Result<Answer, String> {
-    let root = s.config.records_root().filter(|r| r.join(budget::LEDGER).is_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
+    let root = s.config.records_root().filter(|r| r.join(budget::LEDGER).present_file()).ok_or_else(|| s.tr.text("error-no-ledger", None))?;
     budget::Ledger::load(&root)?;
     let today = sioul_core::zone::now().date();
     // Each money movement counted once: the bank accounts' lines read from the
@@ -1390,7 +1392,7 @@ pub fn read_note(s: &Session, args: &Args) -> Result<Answer, String> {
     let (related, closed) = open_related(&consent, &world, world.related(&note.uri()));
     let related = taskview::related_views(&s.tr, &related);
     let text = match note.kind {
-        NoteKind::Text => vault.file(&note.path).and_then(|f| std::fs::read_to_string(f).ok()).map(|t| {
+        NoteKind::Text => vault.file(&note.path).and_then(|f| crate::files::read_to_string(f).ok()).map(|t| {
             let (head, total) = head(&t);
             given(&mask::text(&head), total)
         }),

@@ -78,7 +78,7 @@ impl Today {
 
     /// Today's choices; yesterday's are forgotten.
     pub fn load(path: &Path, today: Date) -> Today {
-        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let text = crate::files::read_to_string(path).unwrap_or_default();
         let saved: Today = toml::from_str(&text).unwrap_or_default();
         let read = crate::filelock::Read::of(&text);
         if saved.date == today.to_string() { Today { read, ..saved } } else { Today { date: today.to_string(), read, ..Today::default() } }

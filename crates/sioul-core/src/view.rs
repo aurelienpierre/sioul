@@ -1365,7 +1365,7 @@ pub struct AttachmentView {
 /// A message laid out for reading. `own` holds your addresses, to tell whether
 /// anyone else would get a reply to all.
 pub fn message(path: &std::path::Path, triaged: &Triaged, own: &[String], tr: &Translator) -> Option<MessageView> {
-    message_from(&std::fs::read(path).ok()?, path, triaged, own, tr, None)
+    message_from(&crate::files::read(path).ok()?, path, triaged, own, tr, None)
 }
 
 /// The same from the message's bytes (decrypted, they live only in memory),

@@ -39,6 +39,8 @@ pub mod units;
 pub use html::{html, page};
 pub use record::{Address, Bank, Cited, Client, Identifier, Invoice, Issuer, Kind, Line, Nature, Note, Payment, Status, TaxBreak, Terms, Totals};
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::data_dir;
 use std::path::{Path, PathBuf};
 
@@ -72,7 +74,7 @@ pub fn file_name(number: &str) -> String {
 /// (edited by hand, written by a newer Sioul): the number is never given
 /// again, nor its file written over.
 fn read_file(path: &Path) -> Option<Invoice> {
-    let text = std::fs::read_to_string(path).ok();
+    let text = crate::files::read_to_string(path).ok();
     if let Some(invoice) = text.as_deref().and_then(record::read) {
         return Some(invoice);
     }
@@ -100,8 +102,8 @@ pub struct Twice {
 /// number names; a copy that is the same invoice (an older Sioul's Paid
 /// aside, which counts if either says it) is no second one.
 fn records_and_twice(dir: &Path) -> (Vec<Invoice>, Vec<Twice>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return (Vec::new(), Vec::new()) };
-    let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)).collect();
+    let Ok(entries) = crate::files::read_dir(dir) else { return (Vec::new(), Vec::new()) };
+    let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)).collect();
     paths.sort();
     let mut by: std::collections::BTreeMap<String, (PathBuf, Invoice)> = std::collections::BTreeMap::new();
     let mut twice = Vec::new();
@@ -212,7 +214,7 @@ fn draft_file_id(stem: &str) -> Option<(String, String)> {
 /// is listed too, never hidden, as a draft of its own that says what it is
 /// a copy of (`Invoice::copy_of`).
 pub fn drafts_in(dir: &Path) -> Vec<Invoice> {
-    let Ok(entries) = std::fs::read_dir(dir.join(DRAFTS)) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir.join(DRAFTS)) else { return Vec::new() };
     let mut out: Vec<Invoice> = entries
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -240,7 +242,7 @@ pub fn draft_in(dir: &Path, id: &str) -> Option<Invoice> {
 /// writes, and the names are kept with the first real change (R3).
 fn read_draft(path: &Path) -> Option<Invoice> {
     let (id, copy_of) = draft_file_id(&path.file_stem()?.to_string_lossy())?;
-    let mut draft = std::fs::read_to_string(path).ok().and_then(|t| record::read(&t))?;
+    let mut draft = crate::files::read_to_string(path).ok().and_then(|t| record::read(&t))?;
     draft.draft = id;
     draft.copy_of = copy_of;
     draft.number.clear();
@@ -254,7 +256,7 @@ fn read_draft(path: &Path) -> Option<Invoice> {
 
 /// The draft `id`'s file as it is, byte for byte (Discard's Undo writes it back so: R13).
 pub fn draft_bytes(dir: &Path, id: &str) -> Option<Vec<u8>> {
-    std::fs::read(draft_file(dir, id)?).ok()
+    crate::files::read(draft_file(dir, id)?).ok()
 }
 
 /// A draft's file written back byte for byte (Discard's Undo), whatever
@@ -265,7 +267,7 @@ pub fn restore_draft(dir: &Path, id: &str, bytes: &[u8]) -> Result<(), String> {
     }
     let path = dir.join(DRAFTS).join(format!("{id}.toml"));
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     crate::changes::said(crate::changes::Kind::Invoices);
@@ -281,10 +283,10 @@ pub fn with_draft_lock<T>(dir: &Path, id: &str, f: impl FnOnce() -> T) -> T {
 /// The file holding the draft `id` of `dir`: its own, else the conflicted copy whose id it is.
 fn draft_file(dir: &Path, id: &str) -> Option<PathBuf> {
     let own = dir.join(DRAFTS).join(format!("{id}.toml"));
-    if own.is_file() {
+    if own.present_file() {
         return Some(own);
     }
-    std::fs::read_dir(dir.join(DRAFTS)).ok()?.filter_map(Result::ok).map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x == "toml") && p.file_stem().and_then(|s| draft_file_id(&s.to_string_lossy())).is_some_and(|(made, _)| made == id))
+    crate::files::read_dir(dir.join(DRAFTS)).ok()?.filter_map(Result::ok).map(|e| e.path()).find(|p| p.extension().is_some_and(|x| x == "toml") && p.file_stem().and_then(|s| draft_file_id(&s.to_string_lossy())).is_some_and(|(made, _)| made == id))
 }
 
 /// Numbers in their natural order: digits as numbers, the rest as text.
@@ -321,7 +323,7 @@ pub fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 /// (`filelock::replace`, Sioul's shared writer).
 pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -331,7 +333,7 @@ pub(crate) fn write_whole(path: &Path, text: &str) -> Result<(), String> {
 /// read with each change (`edit::save`), so that a change made elsewhere
 /// meanwhile is kept and said.
 pub fn draft_revision(dir: &Path, id: &str) -> String {
-    draft_file(dir, id).and_then(|path| std::fs::read(path).ok()).map(|bytes| kept::sha256(&bytes)[..16].to_string()).unwrap_or_default()
+    draft_file(dir, id).and_then(|path| crate::files::read(path).ok()).map(|bytes| kept::sha256(&bytes)[..16].to_string()).unwrap_or_default()
 }
 
 /// The records and drafts of `dir` a newer Sioul wrote (a later `format`):
@@ -339,9 +341,9 @@ pub fn draft_revision(dir: &Path, id: &str) -> String {
 pub fn newer_in(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for folder in [dir.to_path_buf(), dir.join(DRAFTS)] {
-        let Ok(entries) = std::fs::read_dir(&folder) else { continue };
-        for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)) {
-            if std::fs::read_to_string(&path).is_ok_and(|t| lives::format_of(&t) > record::FORMAT) {
+        let Ok(entries) = crate::files::read_dir(&folder) else { continue };
+        for path in entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_file() && p.extension().is_some_and(|x| x == "toml") && p.file_name().is_some_and(|n| n != series::OLD_JOURNAL)) {
+            if crate::files::read_to_string(&path).is_ok_and(|t| lives::format_of(&t) > record::FORMAT) {
                 out.push(path);
             }
         }
@@ -363,7 +365,7 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
         return Err(format!("“{}” is no draft's id", draft.draft));
     }
     // A newer Sioul's draft is never written over with what this one does not know (the review of phase 3, F13).
-    if draft.newer || draft_file(dir, &draft.draft).and_then(|p| std::fs::read_to_string(p).ok()).is_some_and(|t| lives::format_of(&t) > record::FORMAT) {
+    if draft.newer || draft_file(dir, &draft.draft).and_then(|p| crate::files::read_to_string(p).ok()).is_some_and(|t| lives::format_of(&t) > record::FORMAT) {
         return Err(format!("{}: written by a newer Sioul; update Sioul on this device to change it.", draft.draft));
     }
     draft.format = record::FORMAT;
@@ -373,7 +375,7 @@ pub fn save_draft(dir: &Path, draft: &Invoice) -> Result<Invoice, String> {
     crate::changes::said(crate::changes::Kind::Invoices);
     // A conflicted copy kept under its own id from now on: its file of before goes.
     if let Some(copy) = copy {
-        let _ = std::fs::remove_file(copy);
+        let _ = crate::files::remove_file(copy);
     }
     Ok(draft)
 }
@@ -384,7 +386,7 @@ pub fn remove_draft(dir: &Path, id: &str) -> Result<bool, String> {
         return Err(format!("“{id}” is no draft's id"));
     }
     let Some(path) = draft_file(dir, id) else { return Ok(false) };
-    match std::fs::remove_file(&path) {
+    match crate::files::remove_file(&path) {
         Ok(()) => {
             crate::changes::said(crate::changes::Kind::Invoices);
             Ok(true)
@@ -415,7 +417,7 @@ pub(crate) fn write_new(dir: &Path, invoice: &Invoice) -> Result<PathBuf, String
         return Err("an invoice is kept under its number".into());
     }
     let path = dir.join(file_name(&invoice.number));
-    if path.exists() {
+    if path.present() {
         let there = read_file(&path).map(|i| i.number).unwrap_or_default();
         return Err(format!("{}: {}", path.display(), if there == invoice.number { "kept already".to_string() } else { format!("holds {there}, whose file name is the same") }));
     }
@@ -430,7 +432,7 @@ pub(crate) fn write_new(dir: &Path, invoice: &Invoice) -> Result<PathBuf, String
 /// An issued record taken out: only to undo an issue that failed halfway.
 pub(crate) fn remove_issued(dir: &Path, number: &str) -> Result<(), String> {
     let path = dir.join(file_name(number));
-    std::fs::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::remove_file(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     crate::changes::said(crate::changes::Kind::Issued);
     Ok(())
 }

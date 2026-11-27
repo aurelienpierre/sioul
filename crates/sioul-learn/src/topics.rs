@@ -412,7 +412,7 @@ fn recipients(path: &std::path::Path) -> Vec<String> {
 fn start_of(path: &std::path::Path) -> Option<Vec<u8>> {
     use std::io::Read as _;
     let mut bytes = Vec::new();
-    std::fs::File::open(path).ok()?.take(1 << 20).read_to_end(&mut bytes).ok()?;
+    crate::files::File::open(path).ok()?.take(1 << 20).read_to_end(&mut bytes).ok()?;
     Some(bytes)
 }
 
@@ -1145,7 +1145,7 @@ struct LearnFile(PathBuf);
 
 impl Drop for LearnFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        let _ = crate::files::remove_file(&self.0);
     }
 }
 
@@ -1155,13 +1155,13 @@ fn class_label(c: usize, topics: usize) -> String {
 
 /// fastText's classifier, softmax, learned from messages `ids` of `data` (see the module).
 fn learn(dirs: &Dirs, data: &Data, ids: &[usize], way: &Way, options: &Options, cancel: &Cancel) -> Result<Learned, LearnError> {
-    std::fs::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
+    crate::files::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
     let path = dirs.cache.join(format!("topics-{}.txt", std::process::id()));
     let _guard = LearnFile(path.clone());
     let none = matches!(way.method, Method::NoneClass { .. });
     let classes = data.topics + usize::from(none);
     {
-        let file = std::fs::File::create(&path).map_err(|e| io_error(&path, e))?;
+        let file = crate::files::File::create(&path).map_err(|e| io_error(&path, e))?;
         let mut out = BufWriter::new(file);
         let mut order: Vec<usize> = ids.to_vec();
         let mut rng = crate::Rng::new(options.spam.seed);

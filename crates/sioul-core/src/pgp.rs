@@ -21,6 +21,8 @@
 //! - **What this module does not do**: talk to the network, or to the
 //!   keyring. Passphrases and PINs come in as arguments.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::data_dir;
 use crate::securitykey::{self, CardAccess, CardDecryptor, KnownCard};
 use openpgp::cert::prelude::*;
@@ -101,12 +103,12 @@ pub struct Own<'a> {
 }
 
 fn read_certs(dir: &std::path::Path) -> Vec<Cert> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(dir) else { return Vec::new() };
     entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "asc" || x == "pgp"))
-        .filter_map(|p| std::fs::read(&p).ok())
+        .filter_map(|p| crate::files::read(&p).ok())
         .flat_map(|bytes| CertParser::from_bytes(&bytes).map(|parser| parser.filter_map(Result::ok).collect::<Vec<_>>()).unwrap_or_default())
         .collect()
 }
@@ -207,7 +209,7 @@ fn served_path(dir: &std::path::Path, fingerprint: &str) -> PathBuf {
 /// What the file beside someone's key `cert`, kept in `dir`, says, when it
 /// reads.
 fn record_of(dir: &std::path::Path, cert: &Cert) -> Option<Served> {
-    std::fs::read_to_string(served_path(dir, &cert.fingerprint().to_hex())).ok().and_then(|text| toml::from_str::<Served>(&text).ok())
+    crate::files::read_to_string(served_path(dir, &cert.fingerprint().to_hex())).ok().and_then(|text| toml::from_str::<Served>(&text).ok())
 }
 
 /// What a key kept without that file serves (before 19 October 2026, or
@@ -293,7 +295,7 @@ fn keep_others_for_their_addresses_at(root: &std::path::Path, mark: &std::path::
         #[serde(default)]
         format: u32,
     }
-    let done = std::fs::read_to_string(mark).ok().and_then(|text| toml::from_str::<Mark>(&text).ok()).unwrap_or_default();
+    let done = crate::files::read_to_string(mark).ok().and_then(|text| toml::from_str::<Mark>(&text).ok()).unwrap_or_default();
     if done.format >= OTHERS_FORMAT {
         return Ok(0);
     }
@@ -301,7 +303,7 @@ fn keep_others_for_their_addresses_at(root: &std::path::Path, mark: &std::path::
     let mut written = 0;
     for cert in read_certs(&dir) {
         let fingerprint = cert.fingerprint().to_hex();
-        if served_path(&dir, &fingerprint).exists() {
+        if served_path(&dir, &fingerprint).present() {
             continue;
         }
         let addresses = judged(&cert);
@@ -309,7 +311,7 @@ fn keep_others_for_their_addresses_at(root: &std::path::Path, mark: &std::path::
         written += 1;
     }
     if let Some(parent) = mark.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let text = format!(
         "# Sioul: others' keys say beside them what they serve (pgp/others/<fingerprint>.toml) since this format; never shared.\n{}",
@@ -568,7 +570,7 @@ pub fn summaries() -> Vec<KeySummary> {
         if let Some(card) = keys.all_cards().find(|c| c.cert.eq_ignore_ascii_case(&key.fingerprint)) {
             key.card = card.ident.clone();
         }
-        key.revocation = revocation_path(&key.fingerprint).is_file();
+        key.revocation = revocation_path(&key.fingerprint).present_file();
     }
     all
 }
@@ -583,7 +585,7 @@ fn store_from_elsewhere_at(root: &std::path::Path, cert: Cert, address: &str) ->
     let cert = for_its_address(cert.strip_secret_key_material(), address)?;
     let fingerprint = cert.fingerprint().to_hex();
     let yours = root.join("own").join(format!("{fingerprint}.asc"));
-    if let Some(known) = std::fs::read(&yours).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
+    if let Some(known) = crate::files::read(&yours).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
         let names: Vec<Vec<u8>> = known.userids().map(|u| u.userid().value().to_vec()).collect();
         let merged = known.merge_public(cert).ok()?.retain_userids(|u| names.iter().any(|n| n.as_slice() == u.userid().value()));
         return store_in(root, only_bound_subkeys(merged), true).ok();
@@ -611,7 +613,7 @@ fn only_bound_subkeys(cert: Cert) -> Cert {
 /// your security key's certificate: never kept among others' keys, from
 /// wherever it comes again (your own mail's Autocrypt header, a lookup).
 fn yours_at(root: &std::path::Path, fingerprint: &str) -> bool {
-    root.join("own").join(format!("{fingerprint}.asc")).exists()
+    root.join("own").join(format!("{fingerprint}.asc")).present()
         || securitykey::known_cards_in(&root.join("cards.toml")).iter().any(|card| card.cert.eq_ignore_ascii_case(fingerprint))
         || securitykey::shared_cards_in(&root.join(securitykey::SHARED_CARDS)).iter().any(|(card, _)| card.cert.eq_ignore_ascii_case(fingerprint))
 }
@@ -620,7 +622,7 @@ fn yours_at(root: &std::path::Path, fingerprint: &str) -> bool {
 /// (`pgp/`), merged with what was known of it. Secret parts go with yours,
 /// and so does a certificate of yours.
 fn store_at(root: &std::path::Path, cert: Cert) -> Result<KeySummary, String> {
-    let known_as_own = root.join("own").join(format!("{}.asc", cert.fingerprint().to_hex())).exists();
+    let known_as_own = root.join("own").join(format!("{}.asc", cert.fingerprint().to_hex())).present();
     let own = cert.is_tsk() || known_as_own;
     store_in(root, cert, own)
 }
@@ -631,9 +633,9 @@ fn store_in(root: &std::path::Path, cert: Cert, own: bool) -> Result<KeySummary,
         return store_others(root, cert, &learned);
     }
     let dir = root.join(if own { "own" } else { "others" });
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}.asc", cert.fingerprint().to_hex()));
-    let merged = match std::fs::read(&path).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
+    let merged = match crate::files::read(&path).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok()) {
         Some(known) => known.merge_public_and_secret(cert).map_err(|e| e.to_string())?,
         None => cert,
     };
@@ -656,10 +658,10 @@ fn store_in(root: &std::path::Path, cert: Cert, own: bool) -> Result<KeySummary,
 /// user IDs of an address it was learned for before stay.
 fn store_others(root: &std::path::Path, cert: Cert, learned: &[String]) -> Result<KeySummary, String> {
     let dir = root.join("others");
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let fingerprint = cert.fingerprint().to_hex();
     let path = dir.join(format!("{fingerprint}.asc"));
-    let kept = std::fs::read(&path).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok());
+    let kept = crate::files::read(&path).ok().and_then(|bytes| Cert::from_bytes(&bytes).ok());
     let mut served = match &kept {
         Some(kept) => record_of(&dir, kept).unwrap_or_else(|| {
             let addresses = judged(kept);
@@ -698,18 +700,17 @@ fn write_key(path: &std::path::Path, armored: &[u8]) -> Result<(), String> {
     // `.toml`) never share one; hidden, so that the sharing passes it over.
     let temporary = path.with_file_name(format!(".{}.tmp", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
     // A file left by an interrupted write keeps its permissions when truncated: it goes first.
-    let _ = std::fs::remove_file(&temporary);
-    let mut options = std::fs::OpenOptions::new();
+    let _ = crate::files::remove_file(&temporary);
+    let mut options = crate::files::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let mut file = options.open(&temporary).map_err(fail)?;
     file.write_all(armored).and_then(|()| file.sync_all()).map_err(fail)?;
     drop(file);
-    std::fs::rename(&temporary, path).map_err(fail)
+    crate::files::rename(&temporary, path).map_err(fail)
 }
 
 /// The certificates of `bytes` (armored or binary), read, not kept.
@@ -1026,13 +1027,13 @@ fn generate_at(root: &std::path::Path, name: &str, address: &str, passphrase: &s
         .map_err(|e| e.to_string())?;
     // The certificate first: a key is never kept without it.
     let own = root.join("own");
-    std::fs::create_dir_all(&own).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(&own).map_err(|e| e.to_string())?;
     let kept = own.join(format!("{}.rev", cert.fingerprint().to_hex()));
     write_key(&kept, revocation_text(&cert, revocation)?.as_bytes())?;
     match store_at(root, cert) {
         Ok(summary) => Ok(KeySummary { revocation: true, ..summary }),
         Err(e) => {
-            let _ = std::fs::remove_file(&kept);
+            let _ = crate::files::remove_file(&kept);
             Err(e)
         }
     }
@@ -1079,11 +1080,11 @@ pub fn save_revocation(fingerprint: &str, folder: &std::path::Path) -> Result<Pa
 
 /// [`save_revocation`] from the folder `root` (`pgp/`).
 fn save_revocation_at(root: &std::path::Path, fingerprint: &str, folder: &std::path::Path) -> Result<PathBuf, String> {
-    let text = std::fs::read(root.join("own").join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+    let text = crate::files::read(root.join("own").join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
     let path = (1..)
         .map(|n| folder.join(if n == 1 { format!("{fingerprint}.rev") } else { format!("{fingerprint}-{n}.rev") }))
-        .find(|p| !p.exists())
+        .find(|p| !p.present())
         .unwrap_or_else(|| folder.join(format!("{fingerprint}.rev")));
     write_key(&path, &text)?;
     Ok(path)
@@ -1106,20 +1107,20 @@ pub fn remove(fingerprint: &str) -> Result<(), String> {
 pub(crate) fn remove_in(root: &std::path::Path, fingerprint: &str) -> Result<(), String> {
     for (dir, own) in [(root.join("own"), true), (root.join("others"), false)] {
         let path = dir.join(format!("{fingerprint}.asc"));
-        if !path.exists() {
+        if !path.present() {
             continue;
         }
         if own {
             let aside = root.join("removed");
-            std::fs::create_dir_all(&aside).map_err(|e| e.to_string())?;
-            std::fs::rename(&path, aside.join(format!("{fingerprint}.asc"))).map_err(|e| e.to_string())?;
+            crate::files::create_dir_all(&aside).map_err(|e| e.to_string())?;
+            crate::files::rename(&path, aside.join(format!("{fingerprint}.asc"))).map_err(|e| e.to_string())?;
             let revocation = dir.join(format!("{fingerprint}.rev"));
-            if revocation.exists() {
-                std::fs::rename(&revocation, aside.join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
+            if revocation.present() {
+                crate::files::rename(&revocation, aside.join(format!("{fingerprint}.rev"))).map_err(|e| e.to_string())?;
             }
         } else {
-            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
-            let _ = std::fs::remove_file(served_path(&dir, fingerprint));
+            crate::files::remove_file(&path).map_err(|e| e.to_string())?;
+            let _ = crate::files::remove_file(served_path(&dir, fingerprint));
         }
     }
     Ok(())
@@ -1475,6 +1476,52 @@ impl DecryptionHelper for Helper<'_> {
         }
         Err(openpgp::Error::InvalidOperation("no key of yours opens this message".into()).into())
     }
+}
+
+// The sealed store's way back by a security key (docs/store.md, "Ways back"):
+// the store's root key encrypted to the card's encryption key, kept in clear
+// beside the store with the card's public certificate, so that the card alone
+// opens it when everything sealed is out of reach.
+
+/// Your security keys known here that can decrypt, each with its certificate
+/// stripped of its names and addresses (its user IDs and attributes: what a
+/// card's decryption needs is its keys alone), armored: what a way back by
+/// that key keeps in clear beside the store, and what it is sealed to
+/// (review-finish G9).
+pub fn cards_for_ways(keys: &Keys) -> Vec<(KnownCard, String)> {
+    keys.cards
+        .iter()
+        .filter(|card| !card.decrypt.is_empty())
+        .filter_map(|card| {
+            let cert = keys.cert(&card.cert)?;
+            key_of(cert, &card.decrypt)?;
+            let unnamed = cert.clone().strip_secret_key_material().retain_userids(|_| false).retain_user_attributes(|_| false);
+            let armored = unnamed.armored().to_vec().ok()?;
+            Some((card.clone(), String::from_utf8(armored).ok()?))
+        })
+        .collect()
+}
+
+/// `data` encrypted to the certificate `cert_armored` (its encryption keys), armored.
+pub fn seal_to_cert(data: &[u8], cert_armored: &str) -> Result<String, String> {
+    let cert = Cert::from_bytes(cert_armored.as_bytes()).map_err(|e| e.to_string())?;
+    encrypt(data, &[&cert], None)
+}
+
+/// A message sealed by `seal_to_cert`, opened by the security key `card` (as
+/// Sioul knew it, TOML) with its `pin`, through `readers`: an error when no
+/// such key is there, its PIN is refused, or it does not open the message.
+pub fn open_with_card(message: &str, cert_armored: &str, card: &str, readers: &dyn securitykey::Readers, pin: &str) -> Result<Vec<u8>, String> {
+    let cert = Cert::from_bytes(cert_armored.as_bytes()).map_err(|e| e.to_string())?;
+    let card: KnownCard = toml::from_str(card).map_err(|e| e.to_string())?;
+    let keys = Keys { own: vec![cert], cards: vec![card], ..Keys::default() };
+    let pin = Password::from(pin);
+    let touch = || {};
+    let access = CardAccess::new(readers, &pin, &touch);
+    let none = |_: &Fingerprint| None;
+    let sessions = SessionKeys::default();
+    let unlock = Unlock::new(&none, &sessions).with_card(&access);
+    decrypt(message.as_bytes(), &keys, &unlock).map(|opened| opened.data)
 }
 
 /// The most a decrypted message may hold: anyone can encrypt to your key, and

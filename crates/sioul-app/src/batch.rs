@@ -194,7 +194,7 @@ fn planned(shared: &Shared, things: &[Thing], asked: &Asked) -> Planned {
             }
         } else {
             let path = PathBuf::from(&thing.key);
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(text) = crate::files::read_to_string(&path) else { continue };
             let title = agenda::edit_of_text(&text, &zone).map(|e| e.title).filter(|t| !t.trim().is_empty()).unwrap_or_else(|| tr().text("agenda-untitled", None));
             // A meeting with others, yours to organize or not: never through the ordinary doors.
             if agenda::meeting_with_others(&text, &own) || agenda::organized_meeting(&text, &own) {
@@ -238,7 +238,7 @@ fn calendar_of(path: &Path) -> Option<Collection> {
 /// What one task becomes; None when nothing changes; Err the words' id of why it is left out.
 fn task_change(task: &Task, asked: &Asked, loaded: &sioul_core::links::Loaded, selected: &BTreeSet<&str>, zone: &jiff::tz::TimeZone, now: &jiff::Zoned) -> Result<Option<Written>, String> {
     let path = PathBuf::from(&task.key);
-    let before = std::fs::read_to_string(&path).map_err(|_| "batch-left-gone".to_string())?;
+    let before = crate::files::read_to_string(&path).map_err(|_| "batch-left-gone".to_string())?;
     let mut edit = TaskEdit::of(task);
     let none = sioul_core::thingsearch::NONE;
     if let Some(project) = &asked.project {

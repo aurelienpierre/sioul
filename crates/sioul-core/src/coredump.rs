@@ -63,7 +63,7 @@ fn keep_memory_off_disk(allowed: bool) -> Result<(), String> {
             }
         }
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if std::fs::read_to_string("/proc/sys/kernel/core_pattern").is_ok_and(|pattern| pattern.starts_with('@')) {
+        if crate::files::read_to_string("/proc/sys/kernel/core_pattern").is_ok_and(|pattern| pattern.starts_with('@')) {
             return Err("the system hands core files to a socket, whatever their limit: a crash collector still receives the memory".into());
         }
     }

@@ -377,7 +377,7 @@ use toml_edit::{Array, ArrayOfTables, DocumentMut, Item, Table, value};
 /// The budget file, empty when there is none yet; one that cannot be read
 /// is an error, never an empty file written over it.
 fn open(path: &std::path::Path) -> Result<DocumentMut, String> {
-    let text = match std::fs::read_to_string(path) {
+    let text = match crate::files::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -388,8 +388,8 @@ fn open(path: &std::path::Path) -> Result<DocumentMut, String> {
 fn write(path: &std::path::Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)
+    crate::files::write(&temporary, doc.to_string()).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)
 }
 
 fn tables<'a>(doc: &'a mut DocumentMut, name: &str) -> Result<&'a mut ArrayOfTables, String> {

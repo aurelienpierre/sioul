@@ -103,7 +103,7 @@ impl Peers {
 
     /// As kept at `path`; nothing known when the file is missing or does not read.
     pub fn load(path: &Path) -> Peers {
-        std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
     }
 }
 

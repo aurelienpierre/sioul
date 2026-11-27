@@ -208,7 +208,7 @@ pub struct Followed {
 impl Followed {
     /// The appointment of the event file `path`, as it is now; None when it does not read.
     pub fn read(path: &Path, zone: &TimeZone) -> Option<Followed> {
-        let text = std::fs::read_to_string(path).ok()?;
+        let text = crate::files::read_to_string(path).ok()?;
         Followed::of(&text, path, zone)
     }
 
@@ -413,20 +413,20 @@ pub fn leg_for_step(leg: &str, step: &crate::tasks::Task, step_text: &str, now: 
 /// `sioul mcp` too: no word written, not yet (an older Sioul on another
 /// device would take such a leg out once its step is done).
 pub fn steps_offered() -> bool {
-    std::fs::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == "yes")
+    crate::files::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == "yes")
 }
 
 /// `steps_offered` said, written only when it changes.
 pub fn say_steps_offered(offered: bool) {
     let word = if offered { "yes" } else { "no" };
-    if std::fs::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == word) {
+    if crate::files::read_to_string(steps_flag()).is_ok_and(|t| t.trim() == word) {
         return;
     }
     let path = steps_flag();
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        let _ = crate::files::create_dir_all(dir);
     }
-    let _ = std::fs::write(&path, format!("{word}\n"));
+    let _ = crate::files::write(&path, format!("{word}\n"));
 }
 
 fn steps_flag() -> PathBuf {
@@ -468,7 +468,7 @@ pub fn legs_seen_of(uid: &str, events: &[EventRef], zone: &TimeZone) -> Vec<LegS
         .into_iter()
         .filter(|leg| !leg.cancelled)
         .filter_map(|leg| {
-            let text = std::fs::read_to_string(&leg.key).ok()?;
+            let text = crate::files::read_to_string(&leg.key).ok()?;
             let (start, end) = agenda::first_times(&text, zone)?;
             Some(LegSeen { uid: leg.uid.clone(), key: leg.key.clone(), title: leg.summary.clone(), start, end, anchor: leg.anchor.clone()? })
         })
@@ -598,7 +598,7 @@ pub fn follow_legs(legs: &[&EventRef], appointment: &Followed, seen: Option<Inst
     let (mut settled, mut waits) = (true, Vec::new());
     for leg in legs {
         let path = PathBuf::from(&leg.key);
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(text) = crate::files::read_to_string(&path) else {
             settled = false;
             continue;
         };
@@ -629,7 +629,7 @@ pub fn with_moved(events: &[EventRef], uid: &str, was: Instants, appointment: &F
         .into_iter()
         .filter_map(|leg| {
             let path = PathBuf::from(&leg.key);
-            let text = std::fs::read_to_string(&path).ok()?;
+            let text = crate::files::read_to_string(&path).ok()?;
             agenda::guard(&path, agenda::Change::Write(&text)).ok()?;
             moved_with(&text, was, appointment, zone).map(|new| (path, new))
         })
@@ -680,7 +680,7 @@ pub fn to_come(uid: &str, events: &[EventRef], now: i64, zone: &TimeZone) -> Vec
         .into_iter()
         .map(|leg| PathBuf::from(&leg.key))
         .filter(|path| {
-            let Ok(text) = std::fs::read_to_string(path) else { return false };
+            let Ok(text) = crate::files::read_to_string(path) else { return false };
             agenda::guard(path, agenda::Change::Delete).is_ok() && agenda::first_times(&text, zone).is_some_and(|(start, _)| start > now)
         })
         .collect()

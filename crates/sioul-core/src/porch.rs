@@ -9,6 +9,8 @@
 //! (docs/porch.md). The core returns facts; the sentences are the
 //! translator's (`i18n`), in your language.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::Card;
 use crate::projects::{ProjectStore, RouteMatch};
 use crate::codes::{self, CodeKind, OneTimeCode};
@@ -412,7 +414,7 @@ impl SenderList {
 
     /// Reads the file; the list is empty when it does not exist yet.
     pub fn load(path: &Path) -> SenderList {
-        SenderList::parse(&std::fs::read_to_string(path).unwrap_or_default())
+        SenderList::parse(&crate::files::read_to_string(path).unwrap_or_default())
     }
 
     /// Every address and pattern: addresses, then patterns, each sorted.
@@ -431,7 +433,7 @@ impl SenderList {
     fn rewrite(path: &Path, gone: impl Fn(&str) -> bool) -> Result<(), String> {
         crate::filelock::with_lock(path, || {
             let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-            let text = match std::fs::read_to_string(path) {
+            let text = match crate::files::read_to_string(path) {
                 Ok(text) => text,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
                 Err(e) => return Err(fail(e)),
@@ -441,7 +443,7 @@ impl SenderList {
                 return Ok(());
             }
             let temporary = path.with_extension("txt.new");
-            std::fs::write(&temporary, kept.join("\n") + "\n").and_then(|()| std::fs::rename(&temporary, path)).map_err(fail)
+            crate::files::write(&temporary, kept.join("\n") + "\n").and_then(|()| crate::files::rename(&temporary, path)).map_err(fail)
         })
     }
 
@@ -450,9 +452,9 @@ impl SenderList {
         use std::io::Write;
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(fail)?;
+        let mut file = crate::files::OpenOptions::new().create(true).append(true).open(path).map_err(fail)?;
         writeln!(file, "{line}").map_err(fail)
     }
 
@@ -483,7 +485,7 @@ impl SenderList {
         }
         // Looked at and added under the file's lock, which the sharing takes too.
         crate::filelock::with_lock(path, || {
-            let text = std::fs::read_to_string(path).unwrap_or_default();
+            let text = crate::files::read_to_string(path).unwrap_or_default();
             if text.lines().filter(|l| !l.trim().starts_with('#')).any(|l| Entry::read(l, region).is_some_and(|e| e.same(entry))) {
                 return Ok(());
             }
@@ -848,7 +850,7 @@ impl Book {
             mix(book.dir.to_string_lossy().as_bytes());
             for item in book.items() {
                 mix(item.to_string_lossy().as_bytes());
-                if let Ok(meta) = std::fs::metadata(&item) {
+                if let Ok(meta) = crate::files::metadata(&item) {
                     mix(&meta.len().to_le_bytes());
                     let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
                     mix(&time.to_le_bytes());
@@ -1266,7 +1268,7 @@ pub fn set_standing(config: &crate::config::Config, entry: &str, standing: Stand
     // Blocked beats Always through, and one list takes them off the other (docs/attention.md, Q3).
     if standing == Standing::Blocked {
         let people = crate::everywhere::People::default_path();
-        if people.exists() {
+        if people.present() {
             let (addresses, numbers, card) = match &entry {
                 Entry::Address(address) => (vec![address.clone()], Vec::new(), String::new()),
                 Entry::Number(key) => (Vec::new(), vec![key.clone()], String::new()),
@@ -1290,7 +1292,7 @@ pub fn set_standing(config: &crate::config::Config, entry: &str, standing: Stand
 pub fn unblock_person(config: &crate::config::Config, addresses: &[String], numbers: &[String], card: &str) -> Result<bool, String> {
     let region = crate::reach::region(config);
     let path = config.blocked_senders_path();
-    let before = std::fs::read_to_string(&path).unwrap_or_default();
+    let before = crate::files::read_to_string(&path).unwrap_or_default();
     // An address as written ("Alice <alice@example.org>", "mailto:…"): its address part.
     let address = |a: &str| {
         let a = a.trim();
@@ -1305,7 +1307,7 @@ pub fn unblock_person(config: &crate::config::Config, addresses: &[String], numb
     for entry in &entries {
         SenderList::remove_entry(&path, entry, region)?;
     }
-    Ok(std::fs::read_to_string(&path).unwrap_or_default() != before)
+    Ok(crate::files::read_to_string(&path).unwrap_or_default() != before)
 }
 
 /// Takes an entry's own line out of every list: its card, its categories,
@@ -1634,7 +1636,7 @@ pub fn sent(card: &Card) -> Option<i64> {
     let arrived = card
         .path
         .as_ref()
-        .and_then(|path| std::fs::metadata(path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|path| crate::files::metadata(path).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok())
         .and_then(|since| i64::try_from(since.as_secs()).ok());
     match (card.date, arrived) {
         (Some(date), Some(arrived)) => Some(date.min(arrived)),
@@ -1769,7 +1771,7 @@ fn triage_seal(sources: &[Source], projects: Option<&ProjectStore>, own_addresse
         (&src.account, &src.address, &src.folder, &src.trusted_ids, src.shielded, format!("{:?}", src.priority)).hash(&mut hash);
         words_seal(&src.words).hash(&mut hash);
         format!("{:?}", src.spam).hash(&mut hash);
-        if let Some(meta) = src.spam.as_ref().and_then(|filter| std::fs::metadata(&filter.table).ok()) {
+        if let Some(meta) = src.spam.as_ref().and_then(|filter| crate::files::metadata(&filter.table).ok()) {
             (meta.len(), meta.modified().ok()).hash(&mut hash);
         }
     }
@@ -2000,13 +2002,13 @@ fn kept_card(path: &Path, key: &FileKey, stamp_id: &Option<String>, making: u64)
 fn triaged_in(dir: &Path, account: Option<&String>, keep: impl Fn(Option<crate::card::ImapOrigin>) -> bool, take: impl Fn(&Card) -> bool, ctx: &Context, seal: u64, making: u64) -> Vec<Triaged> {
     let stamp_id = trust::own_stamp_id();
     let maildir = [dir.join("new"), dir.join("cur")];
-    let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.is_dir()) { maildir.into_iter().filter(|d| d.is_dir()).collect() } else { vec![dir.to_path_buf()] };
+    let folders: Vec<PathBuf> = if maildir.iter().any(|d| d.present_dir()) { maildir.into_iter().filter(|d| d.present_dir()).collect() } else { vec![dir.to_path_buf()] };
     let mut out = Vec::new();
     for folder in folders {
-        for path in std::fs::read_dir(&folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()) {
+        for path in crate::files::read_dir(&folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()) {
             let hidden = path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('.'));
-            let Ok(meta) = std::fs::metadata(&path) else { continue };
-            if !meta.is_file() || hidden || !keep(maildir::origin_of(&path)) {
+            let Ok(meta) = crate::files::metadata(&path) else { continue };
+            if !meta.present_file() || hidden || !keep(maildir::origin_of(&path)) {
                 continue;
             }
             let key = file_key(&path, &meta);
@@ -2111,7 +2113,7 @@ fn stored_at(path: &Path) -> Option<i64> {
 /// The files of a Maildir folder, `new/` and `cur/`.
 fn files_in(dir: &Path) -> impl Iterator<Item = PathBuf> + use<> {
     let dir = dir.to_path_buf();
-    ["new", "cur"].into_iter().flat_map(move |sub| std::fs::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
+    ["new", "cur"].into_iter().flat_map(move |sub| crate::files::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()))
 }
 
 /// What your filter flagged in `src`'s inbox, closed on since: the review
@@ -2120,7 +2122,7 @@ fn files_in(dir: &Path) -> impl Iterator<Item = PathBuf> + use<> {
 fn flagged_since(src: &Source, ctx: &Context, state: &PorchState, senders: &Senders, now: i64) -> Vec<Triaged> {
     let account = src.account.as_deref();
     // Nothing flags without a table, nor when nothing is done with any verdict.
-    if ctx.spam.is_none_or(|filter| filter.actions.idle() || !filter.table.exists()) || account.is_none_or(|a| !state.done.contains_key(a)) {
+    if ctx.spam.is_none_or(|filter| filter.actions.idle() || !filter.table.present()) || account.is_none_or(|a| !state.done.contains_key(a)) {
         return Vec::new();
     }
     let since = now - REVIEW_DAYS * 86_400;
@@ -2274,7 +2276,7 @@ type FileKey = (PathBuf, u64, u128, u64, i128);
 /// writes it through `tmp/` and a rename, then sets its time back) is
 /// another file, its inode another; one rewritten without a rename changed
 /// its inode's time.
-fn file_key(path: &Path, meta: &std::fs::Metadata) -> FileKey {
+fn file_key(path: &Path, meta: &crate::files::Metadata) -> FileKey {
     let time = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
     let (inode, changed) = crate::filelock::identity(path, meta);
     (path.to_path_buf(), meta.len(), time, inode, changed)
@@ -2380,7 +2382,7 @@ impl Gate {
     /// when it cannot be read, or is in none of the accounts' folders.
     /// Remembered by the file's path, size, time and inode (`VERDICTS`).
     pub fn admission_of_file(&self, path: &Path) -> Option<Admission> {
-        let meta = std::fs::metadata(path).ok()?;
+        let meta = crate::files::metadata(path).ok()?;
         let key = file_key(path, &meta);
         if let Ok(kept) = VERDICTS.lock()
             && let Some((seal, verdicts)) = kept.as_ref()

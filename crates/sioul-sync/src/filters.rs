@@ -39,6 +39,8 @@
 //! own and acts, so that no message stays marked and unfiltered for good. An
 //! act that fails then is told and tried again, as any.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::SyncError;
 use crate::imap::{self, COMMAND, Imap, Server};
 use crate::mailbox;
@@ -145,7 +147,7 @@ pub fn inbox_files(account: &Account) -> Vec<PathBuf> {
     let root = account.maildir_path();
     ["new", "cur"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(root.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(root.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -497,7 +499,7 @@ fn follow_here(account: &Account, jobs: &[Job], moved: &[(PathBuf, String, Optio
             }
             // Not moved by this run's command: it goes, as before; the next fetch brings it into its folder.
             None => {
-                let _ = std::fs::remove_file(&file);
+                let _ = crate::files::remove_file(&file);
             }
         }
     }
@@ -548,7 +550,7 @@ impl Waiting {
     }
 
     fn load(path: &Path) -> Waiting {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// The files of `account`'s inbox due for another look at `now`, with
@@ -585,7 +587,7 @@ impl Waiting {
         let elsewhere: BTreeMap<(u32, u32), i64> = done.elsewhere.iter().filter_map(|job| Some((at(&job.file)?, job.claimed_since.unwrap_or(now)))).collect();
         let mut over: BTreeSet<(u32, u32)> = done.acted.iter().map(|j| &j.file).chain(&done.left).chain(never.iter().map(|(job, _)| &job.file)).filter_map(at).collect();
         over.extend(settled.iter().copied());
-        if failed.is_empty() && elsewhere.is_empty() && over.is_empty() && !path.exists() {
+        if failed.is_empty() && elsewhere.is_empty() && over.is_empty() && !path.present() {
             return;
         }
         sioul_core::filelock::with_lock(&path, || {
@@ -617,9 +619,9 @@ impl Waiting {
             waiting.messages.retain(|w| !(w.account == account.id && over.contains(&(w.validity, w.uid))) && (w.elsewhere || w.tries < TRIES) && now - w.since < WAITS);
             let text = toml::to_string(&waiting).unwrap_or_default();
             if let Some(parent) = path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+                let _ = crate::files::create_dir_all(parent);
             }
-            let _ = std::fs::write(&path, text);
+            let _ = crate::files::write(&path, text);
         });
     }
 }

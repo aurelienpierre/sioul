@@ -40,6 +40,8 @@
 //! The rules (the name's cleaning, programs, hosts, the memory per site) are
 //! the core's (`sioul_core::downloads`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::attachments::{Decision, Does, Found, System};
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::{Deserialize, Serialize};
@@ -211,11 +213,11 @@ fn hold_root() -> PathBuf {
 fn new_hold(root: &Path) -> std::io::Result<PathBuf> {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let hold = root.join(format!("{}-{}-{}", jiff::Timestamp::now().as_millisecond(), std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-    std::fs::create_dir_all(&hold)?;
+    crate::files::create_dir_all(&hold)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&hold, std::fs::Permissions::from_mode(0o700))?;
+        crate::files::set_permissions(&hold, crate::files::Permissions::from_mode(0o700))?;
     }
     Ok(hold)
 }
@@ -225,7 +227,7 @@ fn new_hold(root: &Path) -> std::io::Result<PathBuf> {
 fn held_in(root: &Path, hold: &str) -> Option<PathBuf> {
     let hold = PathBuf::from(hold.trim());
     let name = hold.file_name()?.to_string_lossy().to_string();
-    (hold.parent() == Some(root) && !name.is_empty() && !name.starts_with('.') && hold.is_dir()).then_some(hold)
+    (hold.parent() == Some(root) && !name.is_empty() && !name.starts_with('.') && hold.present_dir()).then_some(hold)
 }
 
 /// A file offered (JSON in: `Offered`; out: {hold, held, problem}): a folder
@@ -248,7 +250,7 @@ pub(crate) fn room(hold: &str) -> f64 {
 /// Whether `folder` is in one of Sioul's own folders (its data, state,
 /// configuration, cache), where a site's file could pass for Sioul's own.
 fn sioul_s_own_folder(folder: &Path) -> bool {
-    let inside = |root: PathBuf| folder.starts_with(&root) || std::fs::canonicalize(folder).ok().zip(std::fs::canonicalize(&root).ok()).is_some_and(|(f, r)| f.starts_with(r));
+    let inside = |root: PathBuf| folder.starts_with(&root) || crate::files::canonicalize(folder).ok().zip(crate::files::canonicalize(&root).ok()).is_some_and(|(f, r)| f.starts_with(r));
     [config::data_dir(), config::state_dir(), config::config_dir(), config::cache_dir()].into_iter().any(inside)
 }
 
@@ -342,7 +344,7 @@ struct Placed {
 /// numbering ("statement (2).pdf", "statement-2.pdf", "statement 2.pdf").
 /// `downloads`: the system's Downloads folder (a test's own, in tests).
 fn place_held(place: Place, file: &Path, name: &str, mime: &str, folder: &str, downloads: &Path, config: &Config) -> Result<Placed, String> {
-    let bytes = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+    let bytes = crate::files::metadata(file).map(|m| m.len()).unwrap_or(0);
     if let Some(problem) = refusal(config, place, name, mime, bytes) {
         return Err(problem);
     }
@@ -365,7 +367,7 @@ fn place_held(place: Place, file: &Path, name: &str, mime: &str, folder: &str, d
             into(folder, name).map(plain)
         }
         Place::Notes => {
-            let Some(root) = config.notes_root_path().filter(|r| r.is_dir()) else { return Err(tr().text("download-notes-none", None)) };
+            let Some(root) = config.notes_root_path().filter(|r| r.present_dir()) else { return Err(tr().text("download-notes-none", None)) };
             let sub = config.notes_folder.clone().filter(|f| !f.trim().is_empty()).unwrap_or_else(crate::work::notes_folder);
             let sub = sioul_core::notes::normalize(&sub).unwrap_or_default();
             // Links in the notes break on these: as a new note's name, they become "-".
@@ -505,7 +507,7 @@ pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
         let verdict = antivirus::scan(&file);
         let decision = decided(&verdict, &shown);
         if decision.does == Does::Refuse {
-            let _ = std::fs::remove_dir_all(&hold);
+            let _ = crate::files::remove_dir_all(&hold);
             let line = decision.said(decision.line);
             crate::backend::tell(&qt, &shared, line.clone());
             tell_notice(Notice::new(&about, Kind::Minor, say("download-not-kept", &[("file", shown)]), line), String::new());
@@ -522,7 +524,7 @@ pub(crate) fn done(qt: &QtThread, shared: &Arc<Shared>, asked: &str) {
                 return;
             }
         };
-        let _ = std::fs::remove_dir_all(&hold);
+        let _ = crate::files::remove_dir_all(&hold);
         crate::backend::mark_from_outside(&placed.path);
         let program = rules::is_program(&name, &asked.mime);
         let (notice, opens, line) = notice_of(&about, place, &placed, program, &verdict);
@@ -555,7 +557,7 @@ pub(crate) fn failed(qt: &QtThread, shared: &Shared, asked: &str) {
     let asked: Ended = serde_json::from_str(asked).unwrap_or_default();
     let hold = held_in(&hold_root(), &asked.hold);
     if let Some(hold) = &hold {
-        let _ = std::fs::remove_dir_all(hold);
+        let _ = crate::files::remove_dir_all(hold);
     }
     let shown = rules::shortened(&rules::clean_name(&asked.name), SHOWN_CHARS);
     let line = say(failed_why(asked.reason), &[("file", shown.clone())]);
@@ -569,7 +571,7 @@ pub(crate) fn failed(qt: &QtThread, shared: &Shared, asked: &str) {
 pub(crate) fn drop_held(asked: &str) {
     let asked: Ended = serde_json::from_str(asked).unwrap_or_default();
     if let Some(hold) = held_in(&hold_root(), &asked.hold) {
-        let _ = std::fs::remove_dir_all(&hold);
+        let _ = crate::files::remove_dir_all(&hold);
     }
 }
 
@@ -604,16 +606,16 @@ pub(crate) fn said(qt: &QtThread, shared: &Shared, what: &str, asked: &str) {
 pub(crate) fn at_start() {
     let root = hold_root();
     let aside = root.with_file_name(format!("downloads-gone-{}", std::process::id()));
-    let moved = std::fs::rename(&root, &aside).is_ok();
+    let moved = crate::files::rename(&root, &aside).is_ok();
     let cache = config::cache_dir();
     std::thread::spawn(move || {
         if moved {
-            let _ = std::fs::remove_dir_all(&aside);
+            let _ = crate::files::remove_dir_all(&aside);
         }
         // Left by an earlier start stopped while removing.
-        for entry in std::fs::read_dir(&cache).into_iter().flatten().filter_map(Result::ok) {
+        for entry in crate::files::read_dir(&cache).into_iter().flatten().filter_map(Result::ok) {
             if entry.file_name().to_string_lossy().starts_with("downloads-gone-") {
-                let _ = std::fs::remove_dir_all(entry.path());
+                let _ = crate::files::remove_dir_all(entry.path());
             }
         }
         let config = load_config();

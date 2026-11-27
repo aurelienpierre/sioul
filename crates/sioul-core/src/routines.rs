@@ -91,7 +91,7 @@ pub fn change(config_path: &std::path::Path, change: impl FnOnce(&mut Vec<Routin
     }
     crate::filelock::with_lock(config_path, || {
         let fail = |e: String| format!("{}: {e}", config_path.display());
-        let text = match std::fs::read_to_string(config_path) {
+        let text = match crate::files::read_to_string(config_path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(fail(e.to_string())),
@@ -112,7 +112,7 @@ fn save_locked(config_path: &std::path::Path, routines: &[Routine]) -> Result<()
     let fail = |e: String| format!("{}: {e}", config_path.display());
     // No configuration yet: it is made. One there but unreadable (its rights, an
     // encoding other than UTF-8) or not TOML is left alone: written over, every setting would go.
-    let text = match std::fs::read_to_string(config_path) {
+    let text = match crate::files::read_to_string(config_path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(fail(e.to_string())),
@@ -144,7 +144,7 @@ fn save_locked(config_path: &std::path::Path, routines: &[Routine]) -> Result<()
         doc.insert("routine", toml_edit::Item::ArrayOfTables(list));
     }
     let temporary = config_path.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, config_path)).map_err(|e| format!("{}: {e}", config_path.display()))
+    crate::files::write(&temporary, doc.to_string()).and_then(|()| crate::files::rename(&temporary, config_path)).map_err(|e| format!("{}: {e}", config_path.display()))
 }
 
 #[cfg(test)]

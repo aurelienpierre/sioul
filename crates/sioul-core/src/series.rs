@@ -215,7 +215,7 @@ impl HeldBefore {
     }
 
     pub fn load() -> HeldBefore {
-        std::fs::read_to_string(HeldBefore::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(HeldBefore::path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 }
 
@@ -297,7 +297,7 @@ impl Days {
         }
         let path = HeldBefore::path();
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         crate::filelock::replace(&path, toml::to_string(&kept).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }

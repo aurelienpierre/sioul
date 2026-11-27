@@ -18,6 +18,8 @@
 //! when one of the folders the shared files are in changed (`dirs_of`), and
 //! once a minute whatever, rather than every two seconds.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::share::{Shape, Store};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -107,14 +109,14 @@ impl Stamps {
     }
 
     fn add(&mut self, path: &Path) {
-        let Ok(meta) = std::fs::metadata(path) else { return };
-        if meta.is_file() {
+        let Ok(meta) = crate::files::metadata(path) else { return };
+        if meta.present_file() {
             self.0.insert(path.to_path_buf(), stamp(&meta));
             return;
         }
         let mut stack = vec![path.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+            for entry in crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
                 if self.0.len() >= LARGEST_WATCH {
                     return;
                 }
@@ -122,8 +124,8 @@ impl Stamps {
                     continue;
                 }
                 match entry.file_type() {
-                    Ok(kind) if kind.is_dir() => stack.push(entry.path()),
-                    Ok(kind) if kind.is_file() => {
+                    Ok(kind) if kind.present_dir() => stack.push(entry.path()),
+                    Ok(kind) if kind.present_file() => {
                         if let Ok(meta) = entry.metadata() {
                             self.0.insert(entry.path(), stamp(&meta));
                         }
@@ -143,17 +145,17 @@ impl Stamps {
         let mut out = BTreeSet::new();
         for store in stores.iter().filter(|s| watched(s)) {
             let mut at = store.path.as_path();
-            while !at.exists() {
+            while !at.present() {
                 let Some(parent) = at.parent() else { break };
                 at = parent;
             }
-            if at != store.path || !at.is_dir() {
+            if at != store.path || !at.present_dir() {
                 if at == store.path {
                     at = at.parent().unwrap_or(at);
                     // A file reached through a link (dotfiles kept elsewhere): its own folder too,
                     // where an editor writes it (the review of wt/perf, P5).
-                    if std::fs::symlink_metadata(&store.path).is_ok_and(|m| m.file_type().is_symlink())
-                        && let Some(folder) = std::fs::canonicalize(&store.path).ok().and_then(|real| real.parent().map(Path::to_path_buf))
+                    if crate::files::symlink_metadata(&store.path).is_ok_and(|m| m.file_type().is_symlink())
+                        && let Some(folder) = crate::files::canonicalize(&store.path).ok().and_then(|real| real.parent().map(Path::to_path_buf))
                     {
                         out.insert(folder);
                     }
@@ -166,8 +168,8 @@ impl Stamps {
                 if out.len() >= LARGEST_WATCH {
                     return out;
                 }
-                for entry in std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
-                    if !entry.file_name().to_string_lossy().starts_with('.') && entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                for entry in crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok) {
+                    if !entry.file_name().to_string_lossy().starts_with('.') && entry.file_type().is_ok_and(|kind| kind.present_dir()) {
                         stack.push(entry.path());
                     }
                 }
@@ -208,7 +210,7 @@ fn watched(store: &Store) -> bool {
     !(store.folder && matches!(store.shape, Shape::Files))
 }
 
-fn stamp(meta: &std::fs::Metadata) -> (u64, u128) {
+fn stamp(meta: &crate::files::Metadata) -> (u64, u128) {
     let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
     (meta.len(), modified)
 }

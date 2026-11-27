@@ -7,6 +7,8 @@
 //! switched on or off on this device; the versions kept before other devices'
 //! changes listed, and put back.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use cxx_qt_lib::QString;
 use serde::Serialize;
@@ -90,7 +92,7 @@ pub(crate) fn memory_path() -> PathBuf {
 /// This device's sharing (`share::Here`). The projects' switch was a setting
 /// every device followed (`share_projects`): the first time sharing is on
 /// here, what it said becomes this device's own choice.
-fn here() -> share::Here {
+pub(crate) fn here() -> share::Here {
     let state = state_dir();
     let mut here = share::Here::load(&state);
     if here.folder_path().is_some() && !here.parts.contains_key("projects") {
@@ -326,9 +328,9 @@ fn part_words(part: &str) -> (String, String) {
 /// Folders a sync carries: those named so in your home, and Nextcloud's own list.
 fn synced_roots() -> Vec<PathBuf> {
     let home = expand_home("~");
-    let mut roots: Vec<PathBuf> = ["Nextcloud", "Dropbox", "ownCloud", "Sync", "Syncthing", "OneDrive", "pCloudDrive", "Seafile"].iter().map(|n| home.join(n)).filter(|p| p.is_dir()).collect();
+    let mut roots: Vec<PathBuf> = ["Nextcloud", "Dropbox", "ownCloud", "Sync", "Syncthing", "OneDrive", "pCloudDrive", "Seafile"].iter().map(|n| home.join(n)).filter(|p| p.present_dir()).collect();
     let data = |name: &str, file: &str| std::env::var_os(name).map(|a| PathBuf::from(a).join(file)).unwrap_or_default();
-    let read = |paths: &[PathBuf]| paths.iter().filter_map(|c| std::fs::read_to_string(c).ok()).collect::<Vec<_>>();
+    let read = |paths: &[PathBuf]| paths.iter().filter_map(|c| crate::files::read_to_string(c).ok()).collect::<Vec<_>>();
     let mut found: Vec<PathBuf> = Vec::new();
     for text in read(&[home.join(".config/Nextcloud/nextcloud.cfg"), home.join("Library/Preferences/Nextcloud/nextcloud.cfg"), data("APPDATA", "Nextcloud/nextcloud.cfg")]) {
         found.extend(text.lines().filter_map(|line| line.split_once("localPath=")).map(|(_, path)| PathBuf::from(path.trim().trim_end_matches('/'))));
@@ -342,7 +344,7 @@ fn synced_roots() -> Vec<PathBuf> {
         found.extend(dropbox_folders(&text).into_iter().map(PathBuf::from));
     }
     for path in found {
-        if path.is_dir() && !roots.contains(&path) {
+        if path.present_dir() && !roots.contains(&path) {
             roots.push(path);
         }
     }
@@ -403,16 +405,16 @@ pub(crate) fn folders_in(path: &str) -> String {
     }
     let start = if cfg!(target_os = "android") { PathBuf::from("/storage/emulated/0") } else { expand_home("~") };
     let dir = if path.trim().is_empty() { start } else { expand_home(path.trim()) };
-    let entries = std::fs::read_dir(&dir);
+    let entries = crate::files::read_dir(&dir);
     let readable = entries.is_ok();
     let mut folders: Vec<Folder> = entries
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| e.file_type().is_ok_and(|t| t.present_dir()))
         .map(|e| (e.file_name().to_string_lossy().to_string(), e.path()))
         .filter(|(name, _)| !name.starts_with('.'))
-        .map(|(name, path)| Folder { sealed: path.join("seal.toml").is_file(), path: path.display().to_string(), name })
+        .map(|(name, path)| Folder { sealed: path.join("seal.toml").present_file(), path: path.display().to_string(), name })
         .collect();
     folders.sort_by_key(|f| f.name.to_lowercase());
     // Up to the storage's top on Android: above it, nothing an app may read.
@@ -426,15 +428,15 @@ fn look_for_seals(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
     if depth > 6 || found.len() >= 10 {
         return;
     }
-    if dir.join("seal.toml").is_file() {
+    if dir.join("seal.toml").present_file() {
         found.push(dir.to_path_buf());
         return;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = crate::files::read_dir(dir) else { return };
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
         let skip = name.starts_with('.') || matches!(name.as_str(), "DCIM" | "Pictures" | "Movies" | "Music" | "Podcasts" | "Ringtones" | "Alarms" | "Notifications" | "data" | "obb" | "node_modules" | "target");
-        if !skip && entry.file_type().is_ok_and(|t| t.is_dir()) {
+        if !skip && entry.file_type().is_ok_and(|t| t.present_dir()) {
             look_for_seals(&entry.path(), depth + 1, found);
         }
     }
@@ -450,7 +452,7 @@ fn carried(path: &Path, roots: &[PathBuf]) -> bool {
 /// notes folder when a sync carries it, else in a synced folder.
 fn suggested(roots: &[PathBuf]) -> String {
     let store = load_config().notes_root_path();
-    let documents = roots.iter().map(|root| root.join("Documents")).find(|d| d.is_dir());
+    let documents = roots.iter().map(|root| root.join("Documents")).find(|d| d.present_dir());
     let folder = match (&store, &documents, roots.first()) {
         (Some(store), _, _) if carried(store, roots) && in_documents(store) => store.join("sioul-shared"),
         (_, Some(documents), _) => documents.join("Sioul"),
@@ -471,7 +473,7 @@ fn in_documents(path: &Path) -> bool {
 /// A folder a sync carries, outside the Documents folder that sync has: a phone
 /// may not see it.
 fn beside_documents(path: &Path, roots: &[PathBuf]) -> bool {
-    roots.iter().any(|root| path.starts_with(root) && root.join("Documents").is_dir()) && !in_documents(path)
+    roots.iter().any(|root| path.starts_with(root) && root.join("Documents").present_dir()) && !in_documents(path)
 }
 
 /// A path with your home written `~`.
@@ -1313,15 +1315,15 @@ fn weight_row(weight: u64, leaving: &share::Leaving) -> Option<LeavingRow> {
 /// What the sharing folder holds on this device, in bytes: every file's
 /// size, its folders walked (sizes only, nothing opened).
 fn weight_of(folder: &Path) -> u64 {
-    let Ok(items) = std::fs::read_dir(folder) else { return 0 };
+    let Ok(items) = crate::files::read_dir(folder) else { return 0 };
     items
         .filter_map(Result::ok)
         .filter_map(|item| {
             let kind = item.file_type().ok()?;
-            if kind.is_dir() {
+            if kind.present_dir() {
                 Some(weight_of(&item.path()))
             } else {
-                kind.is_file().then(|| item.metadata().map_or(0, |m| m.len()))
+                kind.present_file().then(|| item.metadata().map_or(0, |m| m.len()))
             }
         })
         .sum()
@@ -1386,7 +1388,7 @@ fn still_on_the_server(folder: &Path, memory: &Path) -> (usize, u64) {
     if !sent.keys().any(|relative| relative.starts_with("blobs/")) {
         return (0, 0);
     }
-    let here: std::collections::BTreeSet<String> = std::fs::read_dir(folder.join("blobs")).into_iter().flatten().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    let here: std::collections::BTreeSet<String> = crate::files::read_dir(folder.join("blobs")).into_iter().flatten().filter_map(Result::ok).map(|e| e.file_name().to_string_lossy().to_string()).collect();
     sent.iter().filter(|(relative, _)| relative.strip_prefix("blobs/").is_some_and(|name| !here.contains(name))).fold((0, 0), |(n, size), (_, s)| (n + 1, size + s.size))
 }
 
@@ -1555,7 +1557,7 @@ fn never_refused(folder: &str, notes: Option<&Path>, before: &[String]) -> Optio
     if normal[0].trim_end_matches('/').eq_ignore_ascii_case(papers) || normal[0].to_lowercase().starts_with(&format!("{}/", papers.to_lowercase())) {
         return Some(say("share-never-papers", &[("folder", folder.to_string())]));
     }
-    let exists = notes.is_some_and(|notes| notes.join(normal[0].trim_end_matches('/')).is_dir());
+    let exists = notes.is_some_and(|notes| notes.join(normal[0].trim_end_matches('/')).present_dir());
     (!exists).then(|| say("share-never-no-folder", &[("folder", folder.to_string())]))
 }
 
@@ -1644,7 +1646,7 @@ fn shown_kept(root: &Path, part: &str, file: &str, versions: &[sioul_sync::histo
         return share::shown(file).to_string();
     }
     let text = versions.first().and_then(|v| match sioul_sync::history::version(root, part, file, &v.stamp) {
-        Some(sioul_sync::history::Kept::Copy(path)) => std::fs::read_to_string(path).ok(),
+        Some(sioul_sync::history::Kept::Copy(path)) => crate::files::read_to_string(path).ok(),
         _ => None,
     });
     let named = text.as_deref().and_then(|text| sioul_core::lines::unfold(text).iter().find(|l| matches!(sioul_core::lines::name(l).as_str(), "SUMMARY" | "FN")).map(|l| sioul_core::lines::value(l).trim().to_string())).filter(|n| !n.is_empty());
@@ -1691,7 +1693,7 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     let root = sioul_sync::history::root(&memory_path());
     let path = account_item(file).ok_or_else(|| format!("{file}?"))?;
     let Some(sioul_sync::history::Kept::Copy(version)) = sioul_sync::history::version(&root, part, file, stamp) else { return Err(format!("{file}: {stamp}: not kept")) };
-    let text = std::fs::read_to_string(&version).map_err(|e| e.to_string())?;
+    let text = crate::files::read_to_string(&version).map_err(|e| e.to_string())?;
     let (shown, kept) = (share::shown(file).to_string(), sioul_sync::history::kept_at(stamp).map(|at| when(at / 1000)).unwrap_or_default());
     // Refused (a calendar you only read): nothing kept nor written.
     if sioul_core::vdir::calendar_read_only(&path) == Some(true) {
@@ -1699,7 +1701,7 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     }
     let own = sioul_core::agenda::own_addresses();
     let meeting = |text: &str| sioul_core::agenda::meeting_with_others(text, &own);
-    let current = std::fs::read_to_string(&path).ok();
+    let current = crate::files::read_to_string(&path).ok();
     match &current {
         // A meeting: the version's lines of yours into your own time around it, the meeting as it is.
         // A version holding none (one the organizer's door wrote, as its guests read it) leaves your
@@ -1728,7 +1730,7 @@ pub(crate) fn put_back_item(part: &str, file: &str, stamp: &str) -> Result<(Stri
     let change = sioul_core::agenda::Change::Write(&written);
     sioul_core::agenda::guard(&path, change).map_err(|refusal| sioul_core::agenda::said(refusal, &change))?;
     let now = jiff::Timestamp::now().as_millisecond();
-    if path.is_file() {
+    if path.present_file() {
         sioul_sync::history::keep(&root, part, file, &path, now)?;
         // Its versions past what is kept: no exchange's lock held here, taken out now.
         sioul_sync::history::tidy_file(&root, part, file, now);
@@ -1774,10 +1776,10 @@ pub(crate) fn put_back_preview(part: &str, file: &str, stamp: &str) -> String {
         let meeting = |text: &str| sioul_core::agenda::meeting_with_others(text, &own);
         let root = sioul_sync::history::root(&memory_path());
         let version = match sioul_sync::history::version(&root, part, file, stamp) {
-            Some(sioul_sync::history::Kept::Copy(copy)) => std::fs::read_to_string(copy).ok(),
+            Some(sioul_sync::history::Kept::Copy(copy)) => crate::files::read_to_string(copy).ok(),
             _ => None,
         };
-        let current = path.and_then(|p| std::fs::read_to_string(p).ok());
+        let current = path.and_then(|p| crate::files::read_to_string(p).ok());
         let words = match (&current, &version) {
             (None, Some(version)) if meeting(version) => "share-put-back-meeting-gone",
             (Some(current), _) if meeting(current) => "share-put-back-meeting",
@@ -1845,7 +1847,7 @@ pub(crate) fn stop() -> String {
                     // Joined through the server's sign-in: its app password let go (`join::let_go`).
                     crate::join::let_go(&state);
                     sioul_sync::remote::forget(&memory, &folder);
-                    let _ = std::fs::remove_dir_all(sioul_sync::remote::mirror_of(&memory));
+                    let _ = crate::files::remove_dir_all(sioul_sync::remote::mirror_of(&memory));
                 });
             } else if sending_on(&here) {
                 // Beside a sync app: its entry saying it left sent too, then forgotten.
@@ -1863,10 +1865,10 @@ pub(crate) fn stop() -> String {
         here.folder = None;
         // Starting again later reads the others first, as the first time.
         let memory = memory_path();
-        let _ = std::fs::remove_file(memory.with_file_name("files.json"));
+        let _ = crate::files::remove_file(memory.with_file_name("files.json"));
         // What the last exchange wrote, noted (`share::journal`): of this sharing alone.
-        let _ = std::fs::remove_file(memory.with_file_name("journal.jsonl"));
-        let _ = std::fs::remove_file(&memory);
+        let _ = crate::files::remove_file(memory.with_file_name("journal.jsonl"));
+        let _ = crate::files::remove_file(&memory);
         here.save(&state).err().unwrap_or_default()
     })
 }
@@ -3565,7 +3567,7 @@ pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, pa
     let memory = memory_path();
     let mirror = sioul_sync::remote::mirror_of(&memory);
     // A copy of its own, new: what an earlier sharing left there goes.
-    let _ = std::fs::remove_dir_all(&mirror);
+    let _ = crate::files::remove_dir_all(&mirror);
     share::private_dirs(&mirror).map_err(|e| format!("{}: {e}", mirror.display()))?;
     let key = match &opened.seal {
         // Joining: the folder's seal, the passphrase chosen there.
@@ -3579,14 +3581,14 @@ pub(crate) fn begin_on_server(login: &sioul_sync::remote::Login, place: &str, pa
     let key = match key {
         Ok(key) => key,
         Err(share::Refused::WrongPassphrase) => {
-            let _ = std::fs::remove_dir_all(&mirror);
+            let _ = crate::files::remove_dir_all(&mirror);
             return Err(tr().text("share-wrong", None));
         }
         Err(share::Refused::Other(e)) => return Err(e),
     };
     if opened.seal.is_none() {
         sioul_sync::remote::create(login, &opened, &mirror).map_err(|code| {
-            let _ = std::fs::remove_dir_all(&mirror);
+            let _ = crate::files::remove_dir_all(&mirror);
             server_problem(&code)
         })?;
     }
@@ -3663,7 +3665,7 @@ fn nextcloud_configs() -> Vec<String> {
     }
     let home = expand_home("~");
     let windows = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Nextcloud/nextcloud.cfg"));
-    [Some(home.join(".config/Nextcloud/nextcloud.cfg")), Some(home.join("Library/Preferences/Nextcloud/nextcloud.cfg")), windows].into_iter().flatten().filter_map(|p| std::fs::read_to_string(p).ok()).collect()
+    [Some(home.join(".config/Nextcloud/nextcloud.cfg")), Some(home.join("Library/Preferences/Nextcloud/nextcloud.cfg")), windows].into_iter().flatten().filter_map(|p| crate::files::read_to_string(p).ok()).collect()
 }
 
 /// The backup's words for a phone's log (`adb logcat -s sioul`): what it did

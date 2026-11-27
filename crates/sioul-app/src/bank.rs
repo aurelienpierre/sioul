@@ -416,7 +416,7 @@ fn import_noting(file: &str, account: &str, paid: &mut Paid) -> (bool, String) {
         Err(e) => return (false, e),
     };
     let path = chosen.path().to_path_buf();
-    let bytes = match std::fs::read(&path) {
+    let bytes = match crate::files::read(&path) {
         Ok(bytes) => bytes,
         Err(e) => return (false, format!("{}: {e}", path.display())),
     };

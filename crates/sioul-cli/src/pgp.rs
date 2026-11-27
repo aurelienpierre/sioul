@@ -52,7 +52,7 @@ pub(crate) fn run(s: &Session, command: PgpCommand) -> Result<(), String> {
             Ok(())
         }
         PgpCommand::Import { file } => {
-            let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            let bytes = crate::files::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
             // Your keys before: one imported again with a mistyped passphrase stays yours.
             let had: Vec<String> = pgp::summaries().into_iter().filter(|k| k.own).map(|k| k.fingerprint).collect();
             for key in pgp::import(&bytes)? {

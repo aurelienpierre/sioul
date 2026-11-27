@@ -33,6 +33,8 @@
 //! {"at":1795435290000,"rule":"0b6c…","object":"mid:a@example.org","result":"sioul:task/5f…","taken":true}
 //! ```
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -184,12 +186,12 @@ impl Acts {
     /// Every log in `folder`, each line that reads (one cut by a crash, or
     /// written by a later Sioul, left out), oldest first.
     pub fn read(folder: &Path) -> Acts {
-        let mut files: Vec<PathBuf> = std::fs::read_dir(folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.is_file()).collect();
+        let mut files: Vec<PathBuf> = crate::files::read_dir(folder).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "jsonl") && p.present_file()).collect();
         files.sort();
         let mut all = Vec::new();
         for file in files {
             let device = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-            let Ok(text) = std::fs::read_to_string(&file) else { continue };
+            let Ok(text) = crate::files::read_to_string(&file) else { continue };
             all.extend(text.lines().filter_map(lenient).map(|act| Act { device: device.clone(), ..act }));
         }
         Acts::of(all)

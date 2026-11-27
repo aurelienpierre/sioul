@@ -4570,6 +4570,7 @@ dependencies = [
  "sioul-sync",
  "toml",
  "winresource",
+ "zeroize",
 ]
 
 [[package]]
@@ -4586,6 +4587,7 @@ dependencies = [
  "sioul-learn",
  "sioul-sync",
  "toml",
+ "zeroize",
 ]
 
 [[package]]
@@ -4593,13 +4595,17 @@ name = "sioul-core"
 version = "0.1.0"
 dependencies = [
  "ammonia",
+ "base64 0.22.1",
  "calcard",
+ "chacha20poly1305",
  "chrono",
  "chrono-tz",
  "directories",
  "flate2",
  "fluent-bundle",
  "fluent-syntax",
+ "hkdf",
+ "hmac",
  "icu_normalizer",
  "jiff",
  "krilla",
@@ -4622,6 +4628,7 @@ dependencies = [
  "toml_edit",
  "unic-langid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]

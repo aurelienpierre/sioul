@@ -44,6 +44,8 @@
 //! process reads them (the window, the listener of other apps, a phone's
 //! background step, `sioul remind --watch`, the calls' table).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::areas::{Area, Here, Time, Week, in_view};
 use crate::config::{Config, SettingValue};
 use crate::i18n::Translator;
@@ -2302,7 +2304,7 @@ fn older_notify(row: &str, column: Column) -> &'static str {
 /// what the caller read: the file is read again under the lock).
 pub fn apply(path: &Path, config: &Config, key: &str, value: &SettingValue) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
-        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let fresh = if path.present() { Config::load(path)? } else { config.clone() };
         apply_locked(path, &fresh, key, value)
     })
 }
@@ -2385,7 +2387,7 @@ fn apply_locked(path: &Path, config: &Config, key: &str, value: &SettingValue) -
 /// screening's rows are refused.
 pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9])]) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
-        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let fresh = if path.present() { Config::load(path)? } else { config.clone() };
         let mut attention = Attention::of(&fresh);
         for (row, cells) in rows {
             if screened(*row) {
@@ -2412,7 +2414,7 @@ pub fn apply_rows(path: &Path, config: &Config, rows: &[(Row, [Option<Level>; 9]
 /// The call screening's rows are left as they are.
 pub fn apply_back(path: &Path, config: &Config, rows: &[Row], to: &Attention) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
-        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let fresh = if path.present() { Config::load(path)? } else { config.clone() };
         let mut attention = Attention::of(&fresh);
         let rows: Vec<Row> = rows.iter().copied().filter(|r| !screened(*r)).collect();
         for row in &rows {
@@ -2448,7 +2450,7 @@ fn screened_refusal(key: &str) -> String {
 /// (`preset_sets`).
 pub fn apply_preset(path: &Path, config: &Config, preset: Preset) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
-        let fresh = if path.exists() { Config::load(path)? } else { config.clone() };
+        let fresh = if path.present() { Config::load(path)? } else { config.clone() };
         let now = Attention::of(&fresh);
         let mut matrix = preset.matrix();
         for row in Row::ALL.into_iter().filter(|r| !preset_sets(*r)) {
@@ -2551,21 +2553,21 @@ impl Slots {
 
     /// As kept; none when missing or unreadable.
     pub fn load(path: &Path) -> Slots {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written whole beside, then put in place, only when it changed.
     pub fn save(&self, path: &Path) -> Result<bool, String> {
-        if Slots::load(path) == *self && path.exists() {
+        if Slots::load(path) == *self && path.present() {
             return Ok(false);
         }
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let fresh = path.with_extension(format!("toml.{}", std::process::id()));
-        std::fs::write(&fresh, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&fresh, path).map_err(fail)?;
+        crate::files::write(&fresh, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        crate::files::rename(&fresh, path).map_err(fail)?;
         SAVED_HERE.with(|n| n.set(n.get() + 1));
         Ok(true)
     }

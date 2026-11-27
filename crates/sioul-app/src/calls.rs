@@ -36,6 +36,8 @@
 //! - **A person's calls** of the month, on their sheet (`history`).
 //! - **Settings ▸ Calls** (`setup`, `setup_change`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use serde_json::json;
@@ -118,7 +120,7 @@ pub(crate) fn screens_here() -> bool {
 type Inputs = (jiff::civil::Date, Vec<Option<SystemTime>>);
 
 fn changed(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    crate::files::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 fn inputs(config: &Config, now: &Zoned) -> Inputs {
@@ -170,7 +172,7 @@ pub(crate) fn refresh(now: bool) {
     let config = load_config();
     let at = sioul_core::zone::now();
     let stamp = at.timestamp().as_second();
-    let there = path(rules::TABLE).is_file();
+    let there = path(rules::TABLE).present_file();
     let before = inputs(&config, &at);
     let fresh = MADE.lock().ok().and_then(|made| made.as_ref().map(|(inputs, when, _)| *inputs == before && (0..REMAKE_EVERY).contains(&(stamp - when)))).unwrap_or(false);
     if !now && there && fresh {
@@ -527,7 +529,7 @@ pub(crate) fn before_exchange() {
     }
     carry_history(&root, &here, now);
     let java = path(rules::HELD);
-    let Some(stamp) = std::fs::metadata(&java).ok().map(|m| (m.len(), m.modified().ok())) else { return };
+    let Some(stamp) = crate::files::metadata(&java).ok().map(|m| (m.len(), m.modified().ok())) else { return };
     let mut copied = COPIED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if *copied == Some(stamp) {
         return;
@@ -624,7 +626,7 @@ fn call_back(fresh: &[rules::Logged], here: &str, config: &Config, senders: &Sen
         .iter()
         .filter(|list| !list.read_only)
         .flat_map(|list| list.items())
-        .filter_map(|file| std::fs::read_to_string(&file).ok().and_then(|text| Kept::read(&file, &text, &zone)))
+        .filter_map(|file| crate::files::read_to_string(&file).ok().and_then(|text| Kept::read(&file, &text, &zone)))
         .collect();
     let place = engine::Place::here(here);
     let record = acts::Acts::read(&place.acts);
@@ -821,7 +823,7 @@ pub(crate) fn view() -> String {
     let empty = || json!({ "lines": [] }).to_string();
     let root = rules::folder();
     // No phone ever shared a call with this computer: nothing to read.
-    if !phone() && !root.join(rules::LOG).is_dir() {
+    if !phone() && !root.join(rules::LOG).present_dir() {
         return empty();
     }
     if phone() {
@@ -908,7 +910,7 @@ pub(crate) type CardCalls = Box<dyn Fn(&sioul_core::attention::Now, &Zoned) -> V
 /// every frame of the card. None where no phone ever shared a call.
 pub(crate) fn for_card() -> Option<CardCalls> {
     let root = rules::folder();
-    if !phone() && !root.join(rules::LOG).is_dir() {
+    if !phone() && !root.join(rules::LOG).present_dir() {
         return None;
     }
     let config = load_config();
@@ -946,7 +948,7 @@ pub(crate) fn for_card() -> Option<CardCalls> {
 /// calls, and never a blocked caller's (their calls never leave their phone).
 pub(crate) fn history(numbers: &[String]) -> Vec<rules::SheetCall> {
     let root = rules::folder();
-    if numbers.is_empty() || !root.join(rules::LOG).is_dir() {
+    if numbers.is_empty() || !root.join(rules::LOG).present_dir() {
         return Vec::new();
     }
     let config = load_config();
@@ -976,7 +978,7 @@ pub(crate) fn history(numbers: &[String]) -> Vec<rules::SheetCall> {
 /// call by.
 pub(crate) fn titles() -> BTreeMap<String, String> {
     let root = rules::folder();
-    if !root.join(rules::LOG).is_dir() {
+    if !root.join(rules::LOG).present_dir() {
         return BTreeMap::new();
     }
     let config = load_config();
@@ -998,7 +1000,7 @@ pub(crate) fn titles() -> BTreeMap<String, String> {
 pub(crate) fn seen_calls(days: i64) -> Vec<sioul_core::wiring::call::Seen> {
     use sioul_core::wiring::call;
     let root = rules::folder();
-    if !root.join(rules::LOG).is_dir() {
+    if !root.join(rules::LOG).present_dir() {
         return Vec::new();
     }
     let config = load_config();
@@ -1118,10 +1120,10 @@ fn voicemails(config: &Config, region: Option<&'static sioul_core::phones::Regio
                 continue;
             }
             let mut here = Vec::new();
-            if let Ok(entries) = std::fs::read_dir(&folder) {
+            if let Ok(entries) = crate::files::read_dir(&folder) {
                 for entry in entries.flatten() {
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if name.starts_with('.') || entry.metadata().ok().filter(|m| m.is_file()).and_then(|m| m.modified().ok()).is_none_or(|m| m < oldest) {
+                    if name.starts_with('.') || entry.metadata().ok().filter(|m| m.present_file()).and_then(|m| m.modified().ok()).is_none_or(|m| m < oldest) {
                         continue;
                     }
                     let file = entry.path();
@@ -1148,11 +1150,11 @@ fn read_voicemail(words: &sioul_core::words::VoicemailWords, file: &Path, truste
     use std::io::Read;
     // The head first: most letters are not an operator's, and some are large.
     let mut head = Vec::with_capacity(16 * 1024);
-    std::fs::File::open(file).ok()?.take(16 * 1024).read_to_end(&mut head).ok()?;
+    crate::files::File::open(file).ok()?.take(16 * 1024).read_to_end(&mut head).ok()?;
     if !voicemail::may_be(&words.operators, &head) {
         return None;
     }
-    let raw = std::fs::read(file).ok()?;
+    let raw = crate::files::read(file).ok()?;
     voicemail::read(words, &raw, file, region, zone, trusted)
 }
 
@@ -1167,18 +1169,18 @@ fn listen(mail: &str, sound: u32) -> Result<String, String> {
     }
     let (_, bytes) = sioul_core::reading::attachment(&file, sound).ok_or_else(|| tr().text("calls-listen-gone", None))?;
     let dir = sioul_core::config::cache_dir().join(rules::FOLDER);
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // A name of its own per message: a player keeps what it read at an address.
     let name = format!("{}-{sound}.wav", sioul_core::maildir::unique_part(&file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()).replace(['/', '\\', ':'], "_"));
     let out = dir.join(name);
-    std::fs::write(&out, bytes).map_err(|e| e.to_string())?;
+    crate::files::write(&out, bytes).map_err(|e| e.to_string())?;
     // The older sounds go: those of the newest messages stay.
-    if let Ok(entries) = std::fs::read_dir(&dir) {
+    if let Ok(entries) = crate::files::read_dir(&dir) {
         let mut sounds: Vec<(SystemTime, PathBuf)> = entries.flatten().filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path()))).collect();
         sounds.sort();
         let extra = sounds.len().saturating_sub(SOUNDS_KEPT);
         for (_, old) in sounds.into_iter().take(extra) {
-            let _ = std::fs::remove_file(old);
+            let _ = crate::files::remove_file(old);
         }
     }
     Ok(format!("file://{}", out.display()))
@@ -1233,7 +1235,7 @@ pub(crate) fn act(verb: &str, json: &str) -> String {
 pub(crate) fn setup() -> String {
     forget_state();
     let state = state();
-    if state["held"] == true && !path(rules::TABLE).is_file() {
+    if state["held"] == true && !path(rules::TABLE).present_file() {
         std::thread::spawn(|| refresh(true));
     }
     json!({

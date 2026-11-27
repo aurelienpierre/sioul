@@ -108,7 +108,7 @@ fn listing(folder: &Path) -> BTreeMap<String, (u64, u64)> {
             if path.is_dir() {
                 stack.push(path);
             } else if let Ok(meta) = entry.metadata() {
-                out.insert(path.strip_prefix(folder).unwrap().to_string_lossy().to_string(), (meta.len(), modified_ns(&meta)));
+                out.insert(path.strip_prefix(folder).unwrap().to_string_lossy().to_string(), (meta.len(), modified_ns(&crate::files::Metadata::from(meta))));
             }
         }
     }

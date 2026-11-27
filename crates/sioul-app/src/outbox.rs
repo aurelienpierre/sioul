@@ -129,14 +129,14 @@ fn with_memory<R>(change: impl FnOnce(&mut Memory) -> R) -> R {
     static LOCK: Mutex<()> = Mutex::new(());
     let _held = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
     let path = memory_path();
-    let mut memory: Memory = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let mut memory: Memory = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
     let before = memory.clone();
     let out = change(&mut memory);
     if memory != before
         && let Ok(text) = toml::to_string(&memory)
     {
         if let Some(folder) = path.parent() {
-            let _ = std::fs::create_dir_all(folder);
+            let _ = crate::files::create_dir_all(folder);
         }
         let _ = sioul_core::filelock::replace(&path, text.as_bytes());
     }
@@ -267,7 +267,7 @@ fn sending_path(id: &str) -> PathBuf {
 /// The outbox's claimed messages (`<id>.sending`) another process left: not
 /// known to have left, never sent again by themselves.
 fn unsure() -> Vec<Draft> {
-    let Ok(entries) = std::fs::read_dir(Draft::outbox_folder()) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(Draft::outbox_folder()) else { return Vec::new() };
     let claimed = CLAIMED.lock().unwrap_or_else(PoisonError::into_inner).clone();
     entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "sending")).filter_map(|p| Draft::load(&p)).filter(|d| !claimed.contains(&d.id)).collect()
 }
@@ -275,7 +275,7 @@ fn unsure() -> Vec<Draft> {
 /// A message's file in the outbox given back from its claim, with why it waits.
 fn unclaim(draft: &mut Draft, why: Option<String>) {
     CLAIMED.lock().unwrap_or_else(PoisonError::into_inner).remove(&draft.id);
-    if std::fs::rename(sending_path(&draft.id), draft.path()).is_err() {
+    if crate::files::rename(sending_path(&draft.id), draft.path()).is_err() {
         return;
     }
     if let Some(why) = why.filter(|w| *w != draft.waiting) {
@@ -286,7 +286,7 @@ fn unclaim(draft: &mut Draft, why: Option<String>) {
 
 /// A claimed message done with (sent, or no longer holding).
 fn finished(id: &str) {
-    let _ = std::fs::remove_file(sending_path(id));
+    let _ = crate::files::remove_file(sending_path(id));
     CLAIMED.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
 }
 
@@ -317,12 +317,12 @@ fn send_due(now: i64, send: &dyn Fn(&Account, &Draft) -> Result<(), String>, nud
         }
         // Claimed: renamed out of every other reader's way; another pass got it first, skipped.
         CLAIMED.lock().unwrap_or_else(PoisonError::into_inner).insert(draft.id.clone());
-        if std::fs::rename(draft.path(), sending_path(&draft.id)).is_err() {
+        if crate::files::rename(draft.path(), sending_path(&draft.id)).is_err() {
             CLAIMED.lock().unwrap_or_else(PoisonError::into_inner).remove(&draft.id);
             continue;
         }
         if let Some(path) = draft.after_sync.clone() {
-            let Ok(text) = std::fs::read_to_string(&path) else {
+            let Ok(text) = crate::files::read_to_string(&path) else {
                 // Its meeting gone meanwhile (deleted, its cancellation told): it no longer holds.
                 finished(&draft.id);
                 continue;
@@ -411,7 +411,7 @@ fn check_served(now: i64, nudge: &dyn Fn(&str), scope: &dyn Fn(&str) -> bool) ->
     }
     let mut lines = Vec::new();
     for entry in watched {
-        let raw = std::fs::read_to_string(&entry.path).ok();
+        let raw = crate::files::read_to_string(&entry.path).ok();
         if raw.as_deref().is_some_and(|t| !scope(&uid_of(t))) {
             continue;
         }
@@ -535,7 +535,7 @@ fn take_over(path: &Path, text: &str, taken: &[String], cancelled: bool, nudge: 
 /// refusal (`take_over`), from the meeting as it is now. What the status line says.
 pub(crate) fn send_by_mail(path: &Path) -> Result<String, String> {
     let gone = || tr().text("agenda-gone", None);
-    let text = std::fs::read_to_string(path).map_err(|_| gone())?;
+    let text = crate::files::read_to_string(path).map_err(|_| gone())?;
     let entry = with_memory(|m| m.watched.iter().find(|w| w.path == path).cloned()).ok_or_else(gone)?;
     let clients = organizer::clients(&text);
     let silent: Vec<String> = entry.silent.iter().filter(|g| !clients.contains(*g)).cloned().collect();
@@ -582,7 +582,7 @@ fn outbox_of(uid: &str) -> Vec<Draft> {
 /// Nothing for another event.
 pub(crate) fn card_line(path: &Path) -> serde_json::Value {
     let none = serde_json::json!({ "line": "", "act": "" });
-    let Ok(text) = std::fs::read_to_string(path) else { return none };
+    let Ok(text) = crate::files::read_to_string(path) else { return none };
     if !agenda::organized_meeting(&text, &agenda::own_addresses()) {
         return none;
     }
@@ -612,13 +612,13 @@ pub(crate) fn card_line(path: &Path) -> serde_json::Value {
 /// in the outbox, sent at the next pass. What the status line says.
 pub(crate) fn send_again(path: &Path) -> Result<String, String> {
     let gone = || tr().text("agenda-gone", None);
-    let text = std::fs::read_to_string(path).map_err(|_| gone())?;
+    let text = crate::files::read_to_string(path).map_err(|_| gone())?;
     let uid = uid_of(&text);
     let lost: Vec<Draft> = unsure().into_iter().filter(|d| of_uid(d, &uid)).collect();
     let first = lost.first().ok_or_else(gone)?;
     let who = names(first);
     for mut draft in lost {
-        let _ = std::fs::remove_file(sending_path(&draft.id));
+        let _ = crate::files::remove_file(sending_path(&draft.id));
         draft.queued = now() - DELAY;
         draft.save()?;
     }
@@ -632,7 +632,7 @@ pub(crate) fn send_again(path: &Path) -> Result<String, String> {
 /// status line says.
 pub(crate) fn send_now(path: &Path) -> Result<String, String> {
     let gone = || tr().text("agenda-gone", None);
-    let text = std::fs::read_to_string(path).map_err(|_| gone())?;
+    let text = crate::files::read_to_string(path).map_err(|_| gone())?;
     let own = agenda::own_addresses();
     if !agenda::organized_meeting(&text, &own) {
         return Err(gone());

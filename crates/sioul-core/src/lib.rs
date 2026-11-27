@@ -344,6 +344,10 @@ pub mod reading;
 pub mod rules;
 pub mod stars;
 pub mod screening;
+// The sealed store: the one door through which Sioul's files are to be read and written, sealed (docs/store.md).
+pub mod sealed;
+/// Every file call goes through the sealed store's door through paths (docs/store.md, "Paths").
+pub(crate) use sealed::files;
 pub mod securitykey;
 pub mod settings;
 // A series that ends, and pauses during your vacations and holidays (docs/client.md).

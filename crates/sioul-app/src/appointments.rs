@@ -87,7 +87,7 @@ fn lost_sentence(intro: &str, lost: &[&str], waiting: usize) -> String {
 
 /// What an event cannot keep as a task, in a sentence; "" when everything goes along (F5).
 pub(crate) fn task_losses(key: &str) -> String {
-    pim::ours(key).and_then(|p| std::fs::read_to_string(p).ok()).map_or_else(String::new, |text| lost_sentence("task-not-kept", &appointments::event_losses(&text), 0))
+    pim::ours(key).and_then(|p| crate::files::read_to_string(p).ok()).map_or_else(String::new, |text| lost_sentence("task-not-kept", &appointments::event_losses(&text), 0))
 }
 
 
@@ -129,12 +129,12 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
         let config = load_config();
         let (mut change, path) = sioul_core::pairs::appointment_for(others, uid, &edit, &target, &sioul_core::pairs::links_kept(&config), &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
         // The block whose time the form took: the appointment is that time now (F14).
-        change.gone.extend(pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
+        change.gone.extend(pim::ours(block).filter(|p| crate::files::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only)));
         change.write()?;
         return Ok((Vec::new(), path, target.label(&config, tr())));
     }
     // Never a block given a guest: a meeting with others now, it stays as it is (`agenda::may_change`).
-    let opened = pim::ours(block).filter(|p| std::fs::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
+    let opened = pim::ours(block).filter(|p| crate::files::read_to_string(p).is_ok_and(|t| appointments::block_of(&t, uid) && !agenda::with_others(&t)) && pim::collection_of(p).is_some_and(|c| !c.read_only));
     let blocks: Vec<PathBuf> = opened.into_iter().chain(crate::blocks::with_task(uid).into_iter().map(|(_, p)| p)).collect();
     let plan = appointments::task_to_event(task, others, &blocks, &edit, &target, &sioul_core::zone::current()).map_err(|r| r.said(tr()))?;
     plan.write()?;
@@ -144,7 +144,7 @@ fn make_event(task: &Task, others: &[Task], block: &str, edit: &str, calendar: &
 /// An event's file, as the pairing reads it: its text, whether its calendar can be written.
 fn event_file(key: &str) -> Result<(PathBuf, String, bool), String> {
     let path = pim::ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
-    let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+    let text = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
     let writable = pim::collection_of(&path).is_some_and(|c| !c.read_only);
     Ok((path, text, writable))
 }
@@ -243,7 +243,7 @@ pub(crate) fn pairing(shared: &Shared, key: &str) -> String {
     } else {
         loaded.tasks.iter().filter(|t| t.status.is_open() && !t.read_only && keeps(&t.list_id) && sioul_core::pairs::appointment_of(t).is_none() && (names_it(t) || named.contains(&t.uid))).map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect()
     };
-    let block = std::fs::read_to_string(&event.key).is_ok_and(|text| sioul_core::appointments::block_of(&text, ""));
+    let block = crate::files::read_to_string(&event.key).is_ok_and(|text| sioul_core::appointments::block_of(&text, ""));
     // "Add steps and a list" makes the task in the usual list: offered when that list keeps the tie.
     let usual = work::target_list("").is_ok_and(|list| keeps(&format!("{}/{}", list.account, list.id)));
     serde_json::json!({
@@ -280,7 +280,7 @@ fn make_task(key: &str, list: &Collection) -> Result<(PathBuf, Vec<PathBuf>, Str
     if pim::collection_of(&path).is_none_or(|c| c.read_only) {
         return Err(tr().text("agenda-read-only", None));
     }
-    let busy = std::fs::read_to_string(&path).ok().and_then(|text| sioul_core::agenda::edit_of_text(&text, &sioul_core::zone::current())).is_some_and(|e| sioul_core::appointments::task_of(&e).busy);
+    let busy = crate::files::read_to_string(&path).ok().and_then(|text| sioul_core::agenda::edit_of_text(&text, &sioul_core::zone::current())).is_some_and(|e| sioul_core::appointments::task_of(&e).busy);
     let plan = appointments::event_to_task(&path, list, &crate::blocks::calendar_for, load_config().tasks.block_alarms, &sioul_core::zone::now()).map_err(|r| r.said(tr()))?;
     plan.write()?;
     let written: Vec<PathBuf> = std::iter::once(plan.to.clone()).chain(plan.made.iter().map(|(p, _)| p.clone())).collect();

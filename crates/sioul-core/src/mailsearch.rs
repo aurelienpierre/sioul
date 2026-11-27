@@ -154,7 +154,7 @@ fn place_holds(condition: &Condition, account: &str, folder: &Folder) -> bool {
 /// The headers of a message file: what comes before the first empty line,
 /// read a little at a time, at most 256 KB.
 pub fn read_header(path: &Path) -> Option<Vec<u8>> {
-    let mut file = std::fs::File::open(path).ok()?;
+    let mut file = crate::files::File::open(path).ok()?;
     let mut bytes: Vec<u8> = Vec::with_capacity(16 * 1024);
     let mut chunk = [0u8; 16 * 1024];
     loop {

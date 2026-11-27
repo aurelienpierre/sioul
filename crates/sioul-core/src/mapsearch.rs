@@ -88,7 +88,7 @@ fn wait_path(state: &Path) -> PathBuf {
 
 /// Whether the service at `address` refused on `today` (kept in `state`).
 pub fn waiting(state: &Path, today: Date, address: &str) -> bool {
-    let kept = std::fs::read_to_string(wait_path(state)).unwrap_or_default();
+    let kept = crate::files::read_to_string(wait_path(state)).unwrap_or_default();
     let (day, refused_by) = kept.trim().split_once(' ').unwrap_or((kept.trim(), ""));
     day.parse::<Date>().ok() == Some(today) && refused_by.trim() == address.trim()
 }
@@ -97,8 +97,8 @@ pub fn waiting(state: &Path, today: Date, address: &str) -> bool {
 /// nothing more before the next local day, whatever asks and whether Sioul
 /// restarts. Another address chosen meanwhile is asked.
 pub fn refused(state: &Path, today: Date, address: &str) -> std::io::Result<()> {
-    std::fs::create_dir_all(state)?;
-    std::fs::write(wait_path(state), format!("{today} {}\n", address.trim()))
+    crate::files::create_dir_all(state)?;
+    crate::files::write(wait_path(state), format!("{today} {}\n", address.trim()))
 }
 
 /// Whether an answer's status is the service's refusal (403: blocked; 429: too many).

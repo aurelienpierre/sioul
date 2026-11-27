@@ -11,6 +11,8 @@
 //! the command line numbers only while this computer's window holds the
 //! invoices' claim, which it renews with the new number at once.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::{Session, one_line};
 use jiff::civil::Date;
 use sioul_core::invoice::{self, Invoice, Kind, Payment, Status, life};
@@ -106,7 +108,7 @@ pub(crate) fn run(s: &Session, command: Option<InvoicesCommand>) -> Result<(), S
                 // Before November 2026 the window printed it; it is where it went, or not there.
                 let path = invoice::pdf_path(&found, &s.config.invoice.folder, &s.tr.text("invoice-folder-name", None));
                 println!("{}", path.display());
-                if !path.is_file() {
+                if !path.present_file() {
                     println!("{}", s.tr.text("invoice-cli-no-pdf", None));
                 }
                 return Ok(());
@@ -392,7 +394,7 @@ fn issue(s: &Session, id: &str) -> Result<(), String> {
     let root = s.config.records_root();
     let loaded = sioul_core::links::Loaded::read(&s.config);
     let project = loaded.projects.iter().find(|p| p.id == draft.project);
-    let ledger = root.as_ref().map(|r| r.join(sioul_core::budget::LEDGER)).filter(|l| l.is_file());
+    let ledger = root.as_ref().map(|r| r.join(sioul_core::budget::LEDGER)).filter(|l| l.present_file());
     let budget = project.and_then(|p| p.budget.clone()).unwrap_or_default();
     let clients = root.as_ref().and_then(|r| sioul_core::clients::Clients::load(r).ok()).unwrap_or_default();
     let steps = life::Steps { time: None, ledger: ledger.as_deref().map(|l| (l, budget.as_str())), clients: Some((&clients, &loaded.contacts)) };

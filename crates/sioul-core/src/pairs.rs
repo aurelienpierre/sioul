@@ -161,11 +161,11 @@ pub fn switched_off_events(zone: &TimeZone) -> Vec<EventRef> {
     static READ: std::sync::Mutex<Option<(Key, Vec<EventRef>)>> = std::sync::Mutex::new(None);
     let mut listing: Vec<(PathBuf, u64, Option<std::time::SystemTime>)> = crate::vdir::switched_off_dirs(crate::vdir::Kind::Calendars)
         .iter()
-        .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok))
+        .flat_map(|dir| crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok))
         .filter(|e| e.path().extension().is_some_and(|x| x == "ics"))
         .map(|e| {
             let meta = e.metadata().ok();
-            (e.path(), meta.as_ref().map_or(0, std::fs::Metadata::len), meta.and_then(|m| m.modified().ok()))
+            (e.path(), meta.as_ref().map_or(0, crate::files::Metadata::len), meta.and_then(|m| m.modified().ok()))
         })
         .collect();
     listing.sort();
@@ -176,7 +176,7 @@ pub fn switched_off_events(zone: &TimeZone) -> Vec<EventRef> {
     {
         return events.clone();
     }
-    let events: Vec<EventRef> = key.0.iter().filter_map(|(p, _, _)| std::fs::read_to_string(p).ok().and_then(|t| agenda::event_ref(&t, &p.display().to_string(), zone))).collect();
+    let events: Vec<EventRef> = key.0.iter().filter_map(|(p, _, _)| crate::files::read_to_string(p).ok().and_then(|t| agenda::event_ref(&t, &p.display().to_string(), zone))).collect();
     *cache = Some((key, events.clone()));
     events
 }
@@ -189,11 +189,11 @@ pub fn switched_off_tasks(zone: &TimeZone) -> Vec<Task> {
     static READ: std::sync::Mutex<Option<(Key, Vec<Task>)>> = std::sync::Mutex::new(None);
     let mut listing: Vec<(PathBuf, u64, Option<std::time::SystemTime>)> = crate::vdir::switched_off_dirs(crate::vdir::Kind::Calendars)
         .iter()
-        .flat_map(|dir| std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok))
+        .flat_map(|dir| crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok))
         .filter(|e| e.path().extension().is_some_and(|x| x == "ics"))
         .map(|e| {
             let meta = e.metadata().ok();
-            (e.path(), meta.as_ref().map_or(0, std::fs::Metadata::len), meta.and_then(|m| m.modified().ok()))
+            (e.path(), meta.as_ref().map_or(0, crate::files::Metadata::len), meta.and_then(|m| m.modified().ok()))
         })
         .collect();
     listing.sort();
@@ -204,7 +204,7 @@ pub fn switched_off_tasks(zone: &TimeZone) -> Vec<Task> {
     {
         return found.clone();
     }
-    let found: Vec<Task> = key.0.iter().filter_map(|(p, _, _)| std::fs::read_to_string(p).ok().filter(|t| t.contains("BEGIN:VTODO")).and_then(|t| tasks::task_of_text(&t, zone)).map(|t| Task { key: p.display().to_string(), read_only: true, ..t })).collect();
+    let found: Vec<Task> = key.0.iter().filter_map(|(p, _, _)| crate::files::read_to_string(p).ok().filter(|t| t.contains("BEGIN:VTODO")).and_then(|t| tasks::task_of_text(&t, zone)).map(|t| Task { key: p.display().to_string(), read_only: true, ..t })).collect();
     *cache = Some((key, found.clone()));
     found
 }
@@ -281,7 +281,7 @@ pub fn untied_for_list(task: &Task, events: &[EventRef], now: &Zoned) -> Change 
     let Some(uid) = appointment_of(task) else { return Change::default() };
     let found = events.iter().find(|e| e.uid == uid && e.anchor.is_none()).and_then(|e| {
         let path = PathBuf::from(&e.key);
-        let text = std::fs::read_to_string(&path).ok()?;
+        let text = crate::files::read_to_string(&path).ok()?;
         let writable = path.parent().is_some_and(|dir| crate::vdir::collections(crate::vdir::Kind::Calendars).iter().any(|c| c.dir == dir && !c.read_only));
         Some((path, text, writable))
     });
@@ -301,7 +301,7 @@ pub fn moved_into(family: &[&Task], target: &Path, events: &[EventRef], untie: b
         if from.parent() == Some(target) {
             continue;
         }
-        let mut text = std::fs::read_to_string(&from).map_err(|e| e.to_string())?;
+        let mut text = crate::files::read_to_string(&from).map_err(|e| e.to_string())?;
         if untie {
             for (path, untied) in untied_for_list(task, events, now).written {
                 if path == from {
@@ -524,7 +524,7 @@ pub fn attach(all: &[Task], uid: &str, event: &EventFile, refs: &[EventRef], kee
 /// rule. On a one-time event, `rid` says nothing.
 pub fn attach_turn(all: &[Task], uid: &str, event: &EventFile, rid: Option<&str>, refs: &[EventRef], keeps_links: &dyn Fn(&str) -> bool, now: &Zoned) -> Result<Change, Refused> {
     let task = all.iter().find(|t| t.uid == uid).ok_or(Refused("task-gone"))?;
-    let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
     let (text, event_text) = paired(all, task, &current, event, rid, refs, keeps_links, now)?;
     // Tied again as it is: nothing written (the MCP's tool is idempotent).
     let mut change = Change { written: (text != current).then(|| (PathBuf::from(&task.key), text)).into_iter().collect(), ..Change::default() };
@@ -536,7 +536,7 @@ pub fn attach_turn(all: &[Task], uid: &str, event: &EventFile, rid: Option<&str>
     let new_uid = agenda::event_ref(event.text, &event.path.display().to_string(), zone).map(|r| r.uid).unwrap_or_default();
     if let Some(old) = tasks::task_of_text(&current, zone).and_then(|t| appointment_of(&t)).filter(|old| *old != new_uid)
         && let Some(old_ref) = refs.iter().find(|e| e.uid == old)
-        && let Ok(old_text) = std::fs::read_to_string(&old_ref.key)
+        && let Ok(old_text) = crate::files::read_to_string(&old_ref.key)
     {
         let path = PathBuf::from(&old_ref.key);
         let writable = path.parent().is_some_and(|dir| crate::vdir::collections(crate::vdir::Kind::Calendars).iter().any(|c| c.dir == dir && !c.read_only));
@@ -682,7 +682,7 @@ pub fn untie(task: &Task, event_uid: &str, event: Option<&EventFile>, now: &Zone
     if task.read_only {
         return Err(Refused("task-read-only"));
     }
-    let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
     let tied = tasks::task_of_text(&current, now.time_zone()).and_then(|t| appointment_of(&t)).as_deref() == Some(event_uid);
     let names_it = |l: &str| pair_line(l, PREPARATION) && tasks::link_of(l).uri == links::task_uri(&task.uid);
     let lined = event.is_some_and(|e| crate::lines::unfold(e.text).iter().any(|l| names_it(l)));
@@ -865,7 +865,7 @@ pub fn closing_with(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned,
         let Some(uid) = appointment_of(preparation) else { continue };
         let Some(event) = events.iter().find(|e| e.uid == uid && e.anchor.is_none() && !e.recurring && !e.cancelled) else { continue };
         let path = Path::new(&event.key);
-        let Ok(event_text) = std::fs::read_to_string(path) else { continue };
+        let Ok(event_text) = crate::files::read_to_string(path) else { continue };
         if agenda::with_others(&event_text) || agenda::edit_of_text(&event_text, zone).is_none_or(|e| e.all_day) {
             continue;
         }
@@ -894,7 +894,7 @@ pub fn closing_with(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned,
         let (mut open_left, mut all_done) = (false, true);
         for step in &steps {
             // Its file as it is now: a mark set since the tasks were read counts.
-            let Some((text, fresh)) = std::fs::read_to_string(&step.key).ok().and_then(|t| tasks::task_of_text(&t, zone).map(|f| (t, f))) else {
+            let Some((text, fresh)) = crate::files::read_to_string(&step.key).ok().and_then(|t| tasks::task_of_text(&t, zone).map(|f| (t, f))) else {
                 open_left = true;
                 continue;
             };
@@ -932,7 +932,7 @@ pub fn closing_with(tasks: &[Task], events: &[EventRef], from: i64, now: &Zoned,
         let pinned = events.iter().any(|e| e.task == preparation.uid && e.anchor.is_none() && !e.cancelled && e.start > stamp) || pinned_beyond(preparation, events, stamp, zone);
         if !open_left
             && !pinned
-            && let Ok(text) = std::fs::read_to_string(&preparation.key)
+            && let Ok(text) = crate::files::read_to_string(&preparation.key)
         {
             // Done when every step was done: completed, never marked (later 1).
             let closed = if all_done { tasks::set_status(&text, Status::Completed, zone, &at).ok() } else { set_aside(&text) };
@@ -953,7 +953,7 @@ fn pinned_beyond(task: &Task, events: &[EventRef], stamp: i64, zone: &TimeZone) 
     }
     let calendars = crate::vdir::collections(crate::vdir::Kind::Calendars);
     uids.iter().any(|uid| {
-        calendars.iter().filter_map(|c| std::fs::read_to_string(c.dir.join(format!("{uid}.ics"))).ok()).any(|text| {
+        calendars.iter().filter_map(|c| crate::files::read_to_string(c.dir.join(format!("{uid}.ics"))).ok()).any(|text| {
             let block = agenda::event_ref(&text, "", zone);
             block.is_some_and(|b| b.task == task.uid && b.anchor.is_none() && !b.cancelled) && agenda::first_times(&text, zone).is_some_and(|(start, _)| start > stamp)
         })
@@ -995,7 +995,7 @@ fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<
             continue;
         }
         // Its file as it is now.
-        let Some((text, fresh)) = std::fs::read_to_string(&task.key).ok().and_then(|t| tasks::task_of_text(&t, zone).map(|f| (t, f))) else { continue };
+        let Some((text, fresh)) = crate::files::read_to_string(&task.key).ok().and_then(|t| tasks::task_of_text(&t, zone).map(|f| (t, f))) else { continue };
         let end = appointment.instants.end;
         if fresh.status != Status::Cancelled || fresh.set_aside != task.set_aside || fresh.brought_back || end <= fresh.set_aside_end || end <= stamp {
             continue;
@@ -1019,7 +1019,7 @@ fn given_back_by_moves(tasks: &[Task], events: &[EventRef], now: &Zoned) -> Vec<
 /// its task when that was set aside with it (the same mark, not brought
 /// back). Empty when it is not set aside so, or is read-only.
 pub fn bringing_back(all: &[Task], uid: &str, now: &Zoned) -> Vec<(PathBuf, String)> {
-    let back = |task: &Task| std::fs::read_to_string(&task.key).ok().and_then(|text| brought_back(&text, now)).map(|t| (PathBuf::from(&task.key), t));
+    let back = |task: &Task| crate::files::read_to_string(&task.key).ok().and_then(|text| brought_back(&text, now)).map(|t| (PathBuf::from(&task.key), t));
     let Some(task) = all.iter().find(|t| t.uid == uid).filter(|t| !t.read_only) else { return Vec::new() };
     let mut written: Vec<(PathBuf, String)> = back(task).into_iter().collect();
     if written.is_empty() {
@@ -1081,7 +1081,7 @@ pub fn appointment_for(all: &[Task], uid: &str, edit: &agenda::EventEdit, calend
         return Err(Refused("event-no-title"));
     }
     let task = all.iter().find(|t| t.uid == uid).ok_or(Refused("task-gone"))?;
-    let current = std::fs::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|_| Refused("task-gone"))?;
     let text = agenda::new_event(edit, &zone).map_err(|_| Refused("event-no-title"))?;
     let path = agenda::new_path(calendar);
     let event = EventFile { path: &path, text: &text, writable: true };

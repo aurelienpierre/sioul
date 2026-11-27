@@ -65,6 +65,8 @@
 //!   line. While the service does not change a person, their card is left as
 //!   it is, whatever the person did to it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::reply::{ContactSet, Person};
 use crate::phones::Region;
 use crate::{contacts, lines, vdir};
@@ -189,7 +191,7 @@ impl Trust {
 /// person's own that can be written, its folder there, its server not
 /// having refused to make it.
 pub fn writable(book: &vdir::Collection) -> bool {
-    book.kind == vdir::Kind::Contacts && !book.read_only && book.dir.is_dir() && !vdir::State::load(&book.state_path()).refused
+    book.kind == vdir::Kind::Contacts && !book.read_only && book.dir.present_dir() && !vdir::State::load(&book.state_path()).refused
 }
 
 /// The address book a place names ("account/id"), when this device holds it.
@@ -223,10 +225,10 @@ fn name_words(name: &str) -> Vec<String> {
 
 /// A card's lines, when its file is one this door reads.
 fn read_card(path: &Path) -> Option<Vec<String>> {
-    if std::fs::metadata(path).map_or(true, |m| !m.is_file() || m.len() > READ_MOST) {
+    if crate::files::metadata(path).map_or(true, |m| !m.present_file() || m.len() > READ_MOST) {
         return None;
     }
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     let card = lines::unfold(&text);
     card.iter().any(|l| lines::name(l) == "BEGIN").then_some(card)
 }
@@ -425,7 +427,7 @@ pub fn noted_path(extension: &str) -> PathBuf {
 }
 
 fn load_noted(extension: &str) -> Noted {
-    std::fs::read_to_string(noted_path(extension)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+    crate::files::read_to_string(noted_path(extension)).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
 }
 
 /// The notes written, `MOST_NOTED` at most (beyond, the cards' own lines stand alone).
@@ -434,7 +436,7 @@ fn save_noted(extension: &str, noted: &Noted) -> Result<(), String> {
     let kept = Noted { cards: noted.cards.iter().take(MOST_NOTED).map(|(k, v)| (k.clone(), v.clone())).collect() };
     let text = toml::to_string(&kept).map_err(|e| e.to_string())?;
     if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     }
     crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -664,7 +666,7 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
             if found.candidates[at].special { Act::MarkAlone(at) } else { Act::Bind(at) }
         } else {
             let path = book.dir.join(super::card_file(&mark));
-            if path.exists() {
+            if path.present() {
                 Act::Clash
             } else {
                 let (text, note) = new_card(person, &mark, &hash, &category, region);
@@ -700,7 +702,7 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
             // made plain later is completed at a later refresh.
             Act::MarkAlone(at) => {
                 let path = &found.candidates[at].path;
-                match std::fs::read_to_string(path).ok().and_then(|text| with_mark_alone(&text, &mark)).ok_or_else(|| "a card that does not read".to_string()).and_then(|text| vdir::write_item(path, &text)) {
+                match crate::files::read_to_string(path).ok().and_then(|text| with_mark_alone(&text, &mark)).ok_or_else(|| "a card that does not read".to_string()).and_then(|text| vdir::write_item(path, &text)) {
                     Ok(()) => done.recognised += 1,
                     Err(why) => {
                         eprintln!("sioul: extensions: {extension}: a card not bound: {why}");
@@ -726,7 +728,7 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
             Act::Update(path) => (path, false),
             Act::Bind(at) => (found.candidates[at].path.clone(), true),
         };
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(text) = crate::files::read_to_string(&path) else {
             done.refused += 1;
             continue;
         };
@@ -778,7 +780,7 @@ pub fn move_made(from: &vdir::Collection, to: &vdir::Collection, extension: &str
             continue;
         }
         let target = to.dir.join(super::card_file(&uid));
-        if target.exists() || uids.contains(&uid) {
+        if target.present() || uids.contains(&uid) {
             refused += 1;
             continue;
         }
@@ -841,7 +843,7 @@ pub fn uids_by_mark(extension: &str, local: bool) -> BTreeMap<String, String> {
 
 /// Remove: this device's notes of the extension's cards go; every card stays as it is.
 pub fn forget(extension: &str) {
-    let _ = std::fs::remove_file(noted_path(extension));
+    let _ = crate::files::remove_file(noted_path(extension));
 }
 
 #[cfg(test)]

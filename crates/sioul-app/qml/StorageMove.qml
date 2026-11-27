@@ -197,6 +197,19 @@ SafeDialog {
                             onClicked: move.choose(folder.modelData)
                         }
                     }
+                    // A folder inside Sioul's own: sealed with the rest, which other programs no longer read (docs/store.md, "Your folders inside Sioul's").
+                    Label {
+                        objectName: "storageMoveSealed:" + folder.modelData
+                        readonly property string said: move.sioul.folderSealed(folder.modelData === "papers" ? move.papersShown : move.lettersShown)
+
+                        visible: said !== ""
+                        Layout.fillWidth: true
+                        text: said
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                        lineHeight: 1.25
+                        color: move.theme.text
+                    }
                     // A sync program known to carry that folder: its files would travel there too, unsealed.
                     Label {
                         objectName: "storageMoveCarried:" + folder.modelData

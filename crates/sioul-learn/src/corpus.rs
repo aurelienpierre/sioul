@@ -67,6 +67,8 @@
 //!
 //! The corpus is private: never shared, never shown to an AI agent.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::consent::{Consent, MicrosoftIds};
 use crate::{Cancel, Dirs, LearnError, Progress, Stage, io_error, now};
 use async_imap::imap_proto::{BodyStructure, ContentEncoding, SectionPath};
@@ -549,7 +551,7 @@ struct FolderState {
 
 impl AccountState {
     fn load(path: &Path) -> AccountState {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written beside, then moved: never half a state.
@@ -562,11 +564,11 @@ impl AccountState {
 /// Writes a file beside its place, then moves it there.
 pub(crate) fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), LearnError> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
+        crate::files::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
     }
     let temporary = path.with_extension("new");
-    std::fs::write(&temporary, bytes).map_err(|e| io_error(&temporary, e))?;
-    std::fs::rename(&temporary, path).map_err(|e| io_error(path, e))
+    crate::files::write(&temporary, bytes).map_err(|e| io_error(&temporary, e))?;
+    crate::files::rename(&temporary, path).map_err(|e| io_error(path, e))
 }
 
 /// "1:5,7,9:12" for a set of UIDs; read back by `read_ranges`.
@@ -618,13 +620,13 @@ fn append<T: Serialize>(path: &Path, committed: u64, records: &[T]) -> Result<u6
     encoder.write_all(&lines).map_err(|e| io_error(path, e))?;
     let member = encoder.finish().map_err(|e| io_error(path, e))?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
+        crate::files::create_dir_all(parent).map_err(|e| io_error(parent, e))?;
     }
-    let mut file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(path).map_err(|e| io_error(path, e))?;
+    let mut file = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(path).map_err(|e| io_error(path, e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = file.set_permissions(std::fs::Permissions::from_mode(0o600));
+        let _ = file.set_permissions(crate::files::Permissions::from_mode(0o600));
     }
     if file.metadata().map_err(|e| io_error(path, e))?.len() != committed {
         file.set_len(committed).map_err(|e| io_error(path, e))?;
@@ -638,7 +640,7 @@ fn append<T: Serialize>(path: &Path, committed: u64, records: &[T]) -> Result<u6
 /// Reads a folder's records, up to `committed` bytes (all when None); a
 /// line that cannot be read is skipped, a member cut short ends the reading.
 pub fn read_file(path: &Path, committed: Option<u64>, mut each: impl FnMut(Record)) -> Result<(), LearnError> {
-    let file = std::fs::File::open(path).map_err(|e| io_error(path, e))?;
+    let file = crate::files::File::open(path).map_err(|e| io_error(path, e))?;
     let limit = committed.unwrap_or(u64::MAX);
     let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(limit))));
     for line in reader.split(b'\n') {
@@ -654,8 +656,8 @@ pub fn read_file(path: &Path, committed: Option<u64>, mut each: impl FnMut(Recor
 /// each with Sioul's checks of it, made as it was fetched or later (`verify`).
 pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Record)) -> Result<(), LearnError> {
     let root = dirs.corpus();
-    let Ok(accounts) = std::fs::read_dir(&root) else { return Ok(()) };
-    let mut accounts: Vec<PathBuf> = accounts.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let Ok(accounts) = crate::files::read_dir(&root) else { return Ok(()) };
+    let mut accounts: Vec<PathBuf> = accounts.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_dir()).collect();
     accounts.sort();
     // A Microsoft account's records, only while your consent covers its address; a work one's never.
     let consent = Consent::load(dirs);
@@ -677,7 +679,7 @@ pub fn read_all(dirs: &Dirs, microsoft: &MicrosoftIds, mut each: impl FnMut(Reco
         }
         for (file, committed) in files {
             let path = dir.join(&file);
-            if path.exists() {
+            if path.present() {
                 read_file(&path, Some(committed), |mut record| {
                     // Made later: those of a record kept unchecked, and those made again (`Checked::before_tags`).
                     if !checks.is_empty()
@@ -728,7 +730,7 @@ fn read_fields(dir: &Path, committed: u64) -> HashMap<(String, u32, u32), String
     if committed == 0 {
         return fields;
     }
-    let Ok(file) = std::fs::File::open(dir.join(FIELDS_FILE)) else { return fields };
+    let Ok(file) = crate::files::File::open(dir.join(FIELDS_FILE)) else { return fields };
     let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(committed))));
     for line in reader.split(b'\n') {
         let Ok(line) = line else { break };
@@ -747,7 +749,7 @@ fn wanted_fields(dir: &Path, state: &AccountState) -> Result<BTreeMap<(String, u
     let done: HashSet<(String, u32, u32)> = {
         let mut done = HashSet::new();
         if state.fields > 0
-            && let Ok(file) = std::fs::File::open(dir.join(FIELDS_FILE))
+            && let Ok(file) = crate::files::File::open(dir.join(FIELDS_FILE))
         {
             let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(state.fields))));
             for line in reader.split(b'\n') {
@@ -763,7 +765,7 @@ fn wanted_fields(dir: &Path, state: &AccountState) -> Result<BTreeMap<(String, u
     let files: BTreeSet<(String, u64)> = state.folders.values().map(|f| (f.file.clone(), f.committed)).collect();
     for (file, committed) in files {
         let path = dir.join(&file);
-        if path.exists() {
+        if path.present() {
             read_file(&path, Some(committed), |record| {
                 if record.header_cut() && record.fields.is_none() && !done.contains(&(record.folder.clone(), record.uidvalidity, record.uid)) {
                     wanted.entry((record.folder, record.uidvalidity)).or_default().push(record.uid);
@@ -896,7 +898,7 @@ fn read_checks(dir: &Path, committed: u64) -> HashMap<(String, u32, u32), Checke
     if committed == 0 {
         return checks;
     }
-    let Ok(file) = std::fs::File::open(&path) else { return checks };
+    let Ok(file) = crate::files::File::open(&path) else { return checks };
     let reader = BufReader::new(flate2::read::MultiGzDecoder::new(BufReader::new(file.take(committed))));
     for line in reader.split(b'\n') {
         let Ok(line) = line else { break };
@@ -1142,8 +1144,8 @@ fn status_path(dirs: &Dirs) -> PathBuf {
 
 /// What the corpus holds and how its last download went.
 pub fn status(dirs: &Dirs) -> Status {
-    let mut status: Status = std::fs::read_to_string(status_path(dirs)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
-    let mut dirs_found: Vec<PathBuf> = std::fs::read_dir(dirs.corpus()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).collect();
+    let mut status: Status = crate::files::read_to_string(status_path(dirs)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let mut dirs_found: Vec<PathBuf> = crate::files::read_dir(dirs.corpus()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_dir()).collect();
     dirs_found.sort();
     for dir in dirs_found {
         let state = AccountState::load(&dir.join("state.toml"));
@@ -1153,7 +1155,7 @@ pub fn status(dirs: &Dirs) -> Status {
             .map(|(name, f)| FolderStatus { name: name.clone(), role: f.role, records: f.records, on_server: f.total, recorded: read_ranges(&f.done).len() as u64 })
             .collect();
         let files: BTreeSet<&String> = state.folders.values().map(|f| &f.file).collect();
-        let bytes = files.iter().filter_map(|f| std::fs::metadata(dir.join(f)).ok()).map(|m| m.len()).sum();
+        let bytes = files.iter().filter_map(|f| crate::files::metadata(dir.join(f)).ok()).map(|m| m.len()).sum();
         let id = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         status.accounts.push(AccountStatus { id, folders, bytes });
     }
@@ -1384,18 +1386,18 @@ async fn update_account(
     update: &mut Update,
 ) -> Result<(), Stop> {
     let dir = dirs.corpus().join(&account.id);
-    if !download && !dir.join("state.toml").exists() {
+    if !download && !dir.join("state.toml").present() {
         return Ok(());
     }
-    std::fs::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
+    crate::files::create_dir_all(&dir).map_err(|e| io_error(&dir, e))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(dirs.corpus(), std::fs::Permissions::from_mode(0o700));
+        let _ = crate::files::set_permissions(dirs.corpus(), crate::files::Permissions::from_mode(0o700));
     }
     // One download per account at a time, across processes (the window and the command line).
     let lock_path = dir.join("lock");
-    let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(|e| io_error(&lock_path, e))?;
+    let lock = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(|e| io_error(&lock_path, e))?;
     if lock.try_lock().is_err() {
         return Err(LearnError::Io(format!("{}: being updated by another Sioul", account.id)).into());
     }
@@ -1452,10 +1454,10 @@ async fn update_account(
 fn record_kinds(dirs: &Dirs, accounts: &[Account]) {
     for account in accounts.iter().filter(|a| a.is_microsoft()) {
         let dir = dirs.corpus().join(&account.id);
-        if !dir.join("state.toml").is_file() {
+        if !dir.join("state.toml").present_file() {
             continue;
         }
-        let Ok(lock) = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("lock")) else { continue };
+        let Ok(lock) = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join("lock")) else { continue };
         if lock.try_lock().is_ok() {
             let _ = record_account(&dir, account);
         }
@@ -1896,7 +1898,7 @@ async fn check_kept(session: &mut Imap, account: &Account, dir: &Path, checker: 
     let files: BTreeSet<(String, u64)> = state.folders.values().map(|f| (f.file.clone(), f.committed)).collect();
     for (file, committed) in files {
         let path = dir.join(&file);
-        if path.exists() {
+        if path.present() {
             read_file(&path, Some(committed), |record| {
                 let place = (record.folder.clone(), record.uidvalidity, record.uid);
                 let checked = known.get(&place).filter(|later| record.checked.as_ref().is_none_or(|c| later.at > c.at || (later.tags && !c.tags))).or(record.checked.as_ref());

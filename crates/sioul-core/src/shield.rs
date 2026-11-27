@@ -245,15 +245,15 @@ impl AiCache {
     }
 
     pub fn load(account: &str) -> AiCache {
-        std::fs::read_to_string(AiCache::path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(AiCache::path(account)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Every account's answers together, under `ai_key`.
     pub fn load_all() -> std::collections::BTreeMap<String, Assessment> {
-        let Ok(entries) = std::fs::read_dir(AiCache::folder()) else { return Default::default() };
+        let Ok(entries) = crate::files::read_dir(AiCache::folder()) else { return Default::default() };
         entries
             .filter_map(Result::ok)
-            .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+            .filter_map(|e| crate::files::read_to_string(e.path()).ok())
             .filter_map(|t| toml::from_str::<AiCache>(&t).ok())
             .flat_map(|c| c.messages)
             .collect()
@@ -263,11 +263,11 @@ impl AiCache {
         let path = AiCache::path(account);
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, &path).map_err(fail)
+        crate::files::write(&temporary, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)?;
+        crate::files::rename(&temporary, &path).map_err(fail)
     }
 }
 

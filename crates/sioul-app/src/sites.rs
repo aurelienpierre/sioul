@@ -645,7 +645,7 @@ pub(crate) fn bitwarden_state(shared: &Shared) -> String {
         && let Ok(mut vault) = shared.bitwarden.lock()
         && vault.is_none()
     {
-        let list: Vec<serde_json::Value> = std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let list: Vec<serde_json::Value> = crate::files::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
         let items = list
             .iter()
             .map(|l| {
@@ -811,7 +811,7 @@ fn chosen_path() -> std::path::PathBuf {
 }
 
 fn chosen() -> std::collections::BTreeMap<String, String> {
-    std::fs::read_to_string(chosen_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(chosen_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 #[derive(Serialize)]
@@ -950,8 +950,8 @@ pub(crate) fn login(shared: &Shared, url: &str, id: &str) -> Result<Login, &'sta
         if all.get(&host).map(String::as_str) != Some(id) {
             all.insert(host, id.to_string());
             if let Ok(text) = serde_json::to_string_pretty(&all) {
-                let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
-                let _ = std::fs::write(chosen_path(), text);
+                let _ = crate::files::create_dir_all(sioul_core::config::state_dir());
+                let _ = crate::files::write(chosen_path(), text);
             }
         }
     }

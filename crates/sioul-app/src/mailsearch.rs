@@ -16,6 +16,8 @@
 //! labels). The page reads `mailSearch`: the sentence, what the servers said,
 //! the rows. A row seen on its server only is brought here when opened.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, offline, say, tell, tr};
 use cxx_qt::Threading;
 use cxx_qt_lib::QString;
@@ -184,7 +186,7 @@ fn scan(search: &Search, generation: u64, hidden: &BTreeSet<PathBuf>) -> Option<
             let Some(dir) = kept_dir(account, &folder) else { continue };
             let place = Arc::new((account.id.clone(), folder));
             for sub in ["cur", "new"] {
-                for entry in std::fs::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok) {
+                for entry in crate::files::read_dir(dir.join(sub)).into_iter().flatten().filter_map(Result::ok) {
                     let path = entry.path();
                     let hidden_file = path.file_name().and_then(|n| n.to_str()).is_none_or(|n| n.starts_with('.'));
                     if !hidden_file && !hidden.contains(&path) {
@@ -526,7 +528,7 @@ pub(crate) fn clear(qt: &QtThread, shared: &Arc<Shared>) {
 /// A message whose file is gone (moved, renamed by a sync) has the mail kept
 /// here looked through again, without asking the servers again.
 pub(crate) fn changed(qt: &QtThread, shared: &Arc<Shared>) {
-    let (active, gone, search, generation) = with_state(|s| (s.active, s.local.iter().any(|h| !Path::new(&h.row.item.key).exists()), s.search.clone(), s.generation));
+    let (active, gone, search, generation) = with_state(|s| (s.active, s.local.iter().any(|h| !Path::new(&h.row.item.key).present()), s.search.clone(), s.generation));
     if !active {
         return;
     }

@@ -89,13 +89,13 @@ fn cache_path() -> PathBuf {
 
 impl Cache {
     fn load() -> Cache {
-        std::fs::read_to_string(cache_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(cache_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
     fn save(&self) {
         if let Ok(text) = serde_json::to_string(self) {
-            let _ = std::fs::create_dir_all(state_dir());
-            let _ = std::fs::write(cache_path(), text);
+            let _ = crate::files::create_dir_all(state_dir());
+            let _ = crate::files::write(cache_path(), text);
         }
     }
 }

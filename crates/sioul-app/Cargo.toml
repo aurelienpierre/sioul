@@ -50,6 +50,9 @@ jiff.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
+# The store's key handed by the screen before the window, zeroed once read
+# (storegate.rs); already in the core's and the sync's.
+zeroize = "1"
 # The spam filter's and the topics' training ("Train here" and "Train now" in
 # the mail settings): every device trains its own, phones included.
 sioul-learn = { path = "../sioul-learn" }

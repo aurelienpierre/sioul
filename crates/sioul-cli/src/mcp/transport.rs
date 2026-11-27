@@ -92,6 +92,7 @@ impl Stdio {
             // on to the program that takes over, with what the pipe holds unread.
             use std::os::fd::AsFd;
             let copy = std::io::stdin().as_fd().try_clone_to_owned().map_err(|e| format!("standard input: {e}"))?;
+            // The standard input itself, not a file of Sioul's: the system's.
             std::io::BufReader::new(std::fs::File::from(copy))
         };
         #[cfg(not(unix))]

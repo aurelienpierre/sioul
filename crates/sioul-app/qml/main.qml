@@ -646,7 +646,8 @@ SioulWindow {
             Qt.openUrlExternally(url.slice(0, url.lastIndexOf("/") + 1))
             return
         }
-        Qt.openUrlExternally(url)
+        // A sealed file (placed inside Sioul's folders) opens through a copy in clear.
+        Qt.openUrlExternally(url.endsWith("/") ? url : sioul.openableUrl(url))
     }
 
     // What a download's notice opens (`sioul:download/<id>`), as this session kept it (downloads.rs).

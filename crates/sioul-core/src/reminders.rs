@@ -41,6 +41,8 @@ pub struct Money<'a> {
     pub aheads: &'a [crate::ahead::Ahead],
 }
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::agenda::Occurrence;
 use crate::attention::{self, Attention, Level};
 use crate::budget::Ledger;
@@ -396,7 +398,7 @@ fn asked_date(text: &str, zone: &TimeZone) -> Option<(Date, i64)> {
 }
 
 fn modified(path: &str) -> i64 {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64)
+    crate::files::metadata(path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs() as i64)
 }
 
 /// When Sioul reminds of an event before it (Unix seconds): its own time
@@ -942,7 +944,7 @@ pub fn gather_events(config: &Config, tr: &Translator, now: &Zoned) -> (Vec<Remi
     let mode = crate::quiet::mode(&config.week_hours(), &crate::vacations::DaysOff::of(&config), &overrides, &blocks, now);
     // The tasks for what an outing's preparation says to bring (`leaving`), never their own
     // reminders: those preparations and their steps alone made tasks, the others left as text.
-    let files: Vec<(PathBuf, crate::vdir::Collection, String)> = crate::tasks::lists().into_iter().flat_map(|list| list.items().into_iter().filter_map(|path| std::fs::read_to_string(&path).ok().map(|text| (path, list.clone(), text))).collect::<Vec<_>>()).collect();
+    let files: Vec<(PathBuf, crate::vdir::Collection, String)> = crate::tasks::lists().into_iter().flat_map(|list| list.items().into_iter().filter_map(|path| crate::files::read_to_string(&path).ok().map(|text| (path, list.clone(), text))).collect::<Vec<_>>()).collect();
     let zone = now.time_zone();
     let tasks = outing_tasks(&files, &events, &|path, list, text| crate::tasks::of_file(path, text, list, zone));
     let reminders = event_reminders(config, tr, now, &events, &tasks);
@@ -994,7 +996,7 @@ pub fn watcher_wanted() -> bool {
 
 /// Whether the entry at `path` starts the watcher with the session (`watcher_wanted`).
 pub fn entry_on(path: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else { return false };
+    let Ok(text) = crate::files::read_to_string(path) else { return false };
     if text.contains("<plist") {
         let squeezed: String = text.split_whitespace().collect();
         return !squeezed.contains("<key>Disabled</key><true/>");
@@ -1026,8 +1028,8 @@ fn fnv(text: &str) -> u64 {
 /// Marks a reminder told: true for whoever marks it first, the window or
 /// `sioul remind`, so it is told once whichever runs.
 pub fn claim(dir: &Path, key: &str) -> bool {
-    let _ = std::fs::create_dir_all(dir);
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(dir.join(format!("{:016x}", fnv(key)))) {
+    let _ = crate::files::create_dir_all(dir);
+    match crate::files::OpenOptions::new().write(true).create_new(true).open(dir.join(format!("{:016x}", fnv(key)))) {
         Ok(mut file) => {
             let _ = file.write_all(key.as_bytes());
             true
@@ -1038,16 +1040,16 @@ pub fn claim(dir: &Path, key: &str) -> bool {
 
 /// Whether a reminder was told already.
 pub fn told(dir: &Path, key: &str) -> bool {
-    dir.join(format!("{:016x}", fnv(key))).exists()
+    dir.join(format!("{:016x}", fnv(key))).present()
 }
 
 /// Marks older than two months forgotten: their dates are past. The mark of
 /// the waits settled stays (`settle_waits`).
 pub fn forget_old(dir: &Path) {
     let limit = std::time::SystemTime::now() - std::time::Duration::from_secs(60 * 86_400);
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+    for entry in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
         if entry.file_name() != WAITS_SETTLED && entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| t < limit) {
-            let _ = std::fs::remove_file(entry.path());
+            let _ = crate::files::remove_file(entry.path());
         }
     }
 }
@@ -1064,16 +1066,16 @@ const WAITS_SETTLED: &str = "waits-settled";
 /// (the check of ef8c0ca, must-fix 1). Only waits that end after it are told.
 fn settle_waits(reminders: &[Reminder], dir: &Path, now: i64) {
     let mark = dir.join(WAITS_SETTLED);
-    if mark.exists() {
+    if mark.present() {
         return;
     }
-    if std::fs::create_dir_all(dir).is_err() {
+    if crate::files::create_dir_all(dir).is_err() {
         return;
     }
     for reminder in reminders.iter().filter(|r| r.kind == Kind::Wait && r.at <= now) {
         let _ = claim(dir, &reminder.key);
     }
-    let _ = std::fs::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n");
+    let _ = crate::files::write(&mark, "The waits ended before this Sioul first gathered reminders here: marked told, not told.\n");
 }
 
 /// What is due now: those ready, not told yet, none marked. A teller marks

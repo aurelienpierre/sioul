@@ -11,6 +11,8 @@
 //! ETag, lives apart in the state folder: the data folders hold only your
 //! contacts and events.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::{data_dir, state_dir};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -115,7 +117,7 @@ impl Collection {
 impl Collection {
     /// Its contacts or events, by file.
     pub fn items(&self) -> Vec<PathBuf> {
-        let Ok(entries) = std::fs::read_dir(&self.dir) else { return Vec::new() };
+        let Ok(entries) = crate::files::read_dir(&self.dir) else { return Vec::new() };
         let mut items: Vec<PathBuf> = entries
             .filter_map(Result::ok)
             .map(|e| e.path())
@@ -152,11 +154,11 @@ pub fn set_account_off(account: &str, off: bool) {
     for kind in [Kind::Contacts, Kind::Calendars] {
         let dir = kind.root().join(account);
         if off {
-            if dir.is_dir() {
-                let _ = std::fs::write(dir.join(OFF), "Switched off in Sioul's Accounts: these collections wait here.\n");
+            if dir.present_dir() {
+                let _ = crate::files::write(dir.join(OFF), "Switched off in Sioul's Accounts: these collections wait here.\n");
             }
         } else {
-            let _ = std::fs::remove_file(dir.join(OFF));
+            let _ = crate::files::remove_file(dir.join(OFF));
         }
     }
 }
@@ -173,8 +175,8 @@ pub fn follow_switches(on: &[String], off: &[String]) -> bool {
         for (accounts, wanted) in [(on, false), (off, true)] {
             for account in accounts.iter().filter(|a| one_folder(a)) {
                 let dir = kind.root().join(account);
-                let marked = dir.join(OFF).exists();
-                if marked != wanted && (wanted || marked) && dir.is_dir() {
+                let marked = dir.join(OFF).present();
+                if marked != wanted && (wanted || marked) && dir.present_dir() {
                     set_account_off(account, wanted);
                     changed = true;
                 }
@@ -213,17 +215,17 @@ fn moves_path() -> PathBuf {
 }
 
 fn moves_load() -> Moves {
-    std::fs::read_to_string(moves_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(moves_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn moves_save(moves: &Moves) -> Result<(), String> {
     let path = moves_path();
     if moves.moves.is_empty() {
-        let _ = std::fs::remove_file(&path);
+        let _ = crate::files::remove_file(&path);
         return Ok(());
     }
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     crate::filelock::replace(&path, toml::to_string(moves).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| e.to_string())
 }
@@ -255,7 +257,7 @@ pub fn move_item(from: &Path, to: &Path) -> Result<(), String> {
     // Read under the journal's lock, never before it: a sync writing it in
     // between is moved as it wrote it (the review of 22 October 2026, F8).
     crate::filelock::with_lock(&moves_path(), || {
-        let text = std::fs::read_to_string(from).map_err(|e| e.to_string())?;
+        let text = crate::files::read_to_string(from).map_err(|e| e.to_string())?;
         // An event's: through the one rule (`agenda::guard`), as it is now, before anything is noted.
         guarded(from, crate::agenda::Change::Move)?;
         guarded(to, crate::agenda::Change::Write(&text))?;
@@ -313,11 +315,11 @@ fn replace_locked(from: &Path, also: &[PathBuf], made: &[(PathBuf, String)], to:
     // collection, the same name (a plan's task become its event, the review
     // of 22 October 2026, F1: both were lost).
     if from != to {
-        std::fs::remove_file(from).map_err(|e| e.to_string())?;
+        crate::files::remove_file(from).map_err(|e| e.to_string())?;
         counted(from);
     }
     for path in also.iter().filter(|p| p.as_path() != to) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
         counted(path);
     }
     if crashed(4) {
@@ -343,18 +345,18 @@ fn finish_moves_now() {
         return;
     }
     for m in &moves.moves {
-        if m.to.exists() {
+        if m.to.present() {
             // Never the item made, when it took the old one's place (one collection, one name: F1).
             for path in std::iter::once(&m.from).chain(&m.also).filter(|p| **p != m.to) {
-                if path.exists() {
-                    let _ = std::fs::remove_file(path);
+                if path.present() {
+                    let _ = crate::files::remove_file(path);
                 }
                 // Its deletion on its server waits for the new item to be there (F6).
                 note_moved(path, &m.to);
             }
         } else {
             for path in &m.made {
-                let _ = std::fs::remove_file(path);
+                let _ = crate::files::remove_file(path);
             }
         }
     }
@@ -383,15 +385,15 @@ fn moved_path() -> PathBuf {
 fn moved_change<T>(f: impl FnOnce(&mut Moved) -> T) -> T {
     let path = moved_path();
     crate::filelock::with_lock(&path, || {
-        let mut moved: Moved = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let mut moved: Moved = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         let before = moved.moved.clone();
         let out = f(&mut moved);
         if moved.moved != before {
             if moved.moved.is_empty() {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_file(&path);
             } else if let Ok(text) = toml::to_string(&moved) {
                 if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                    let _ = crate::files::create_dir_all(parent);
                 }
                 let _ = crate::filelock::replace(&path, text.as_bytes());
             }
@@ -433,13 +435,13 @@ pub fn deletion_waits_for(old: &Path) -> Option<PathBuf> {
 /// old copy on its server finds its place here: the move holds, never a copy
 /// in both calendars (`dav`, review of round 4, R4-F).
 pub fn moved_away(old: &Path) -> Option<PathBuf> {
-    moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone())).filter(|new| new.exists())
+    moved_change(|m| m.moved.iter().find(|i| i.old == old).map(|i| i.new.clone())).filter(|new| new.present())
 }
 
 /// Whether the new item of a move is on its server, or needs not be: gone
 /// since, kept on this device alone, or in the old one's own collection.
 fn new_is_there(old: &Path, new: &Path) -> bool {
-    if !new.exists() || new.parent() == old.parent() {
+    if !new.present() || new.parent() == old.parent() {
         return true;
     }
     let found = [Kind::Calendars, Kind::Contacts].into_iter().find_map(|kind| {
@@ -475,26 +477,26 @@ pub fn moved_here(new: &Path) -> bool {
 /// The folders of the collections of accounts switched off (`set_account_off`):
 /// out of the pages, their items still here.
 pub fn switched_off_dirs(kind: Kind) -> Vec<PathBuf> {
-    let Ok(accounts) = std::fs::read_dir(kind.root()) else { return Vec::new() };
+    let Ok(accounts) = crate::files::read_dir(kind.root()) else { return Vec::new() };
     accounts
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_dir() && p.join(OFF).exists())
-        .flat_map(|account| std::fs::read_dir(account).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()))
+        .filter(|p| p.present_dir() && p.join(OFF).present())
+        .flat_map(|account| crate::files::read_dir(account).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_dir()))
         .collect()
 }
 
 /// Every collection kept here, those deleted and not yet gone from the server included.
 pub fn every_collection(kind: Kind) -> Vec<Collection> {
     let mut found = Vec::new();
-    let Ok(accounts) = std::fs::read_dir(kind.root()) else { return found };
+    let Ok(accounts) = crate::files::read_dir(kind.root()) else { return found };
     // An account switched off keeps its folders, out of the pages (`set_account_off`).
-    for account in accounts.filter_map(Result::ok).filter(|e| e.path().is_dir() && !e.path().join(OFF).exists()) {
+    for account in accounts.filter_map(Result::ok).filter(|e| e.path().present_dir() && !e.path().join(OFF).present()) {
         let account_id = account.file_name().to_string_lossy().to_string();
-        let Ok(dirs) = std::fs::read_dir(account.path()) else { continue };
-        for dir in dirs.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()) {
+        let Ok(dirs) = crate::files::read_dir(account.path()) else { continue };
+        for dir in dirs.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.present_dir()) {
             let id = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let read = |name: &str| std::fs::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+            let read = |name: &str| crate::files::read_to_string(dir.join(name)).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
             let mut state = State::load(&state_path(&account_id, kind, &id));
             if kind == Kind::Calendars && account_id == LOCAL && state.components.is_empty() {
                 settle_kinds(&dir, &mut state, &state_path(&account_id, kind, &id));
@@ -532,8 +534,8 @@ pub fn every_collection(kind: Kind) -> Vec<Collection> {
 /// when its list of files changed (its time and count), else as last read.
 fn kinds_held(dir: &Path) -> Vec<&'static str> {
     static SEEN: std::sync::Mutex<Option<std::collections::HashMap<PathBuf, (Option<std::time::SystemTime>, usize, Vec<&'static str>)>>> = std::sync::Mutex::new(None);
-    let items: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
-    let time = std::fs::metadata(dir).and_then(|m| m.modified()).ok();
+    let items: Vec<PathBuf> = crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")).collect();
+    let time = crate::files::metadata(dir).and_then(|m| m.modified()).ok();
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let known = seen.get_or_insert_with(Default::default);
     if let Some((t, n, held)) = known.get(dir)
@@ -544,7 +546,7 @@ fn kinds_held(dir: &Path) -> Vec<&'static str> {
     }
     let (mut events, mut tasks) = (false, false);
     for item in &items {
-        let text = std::fs::read_to_string(item).unwrap_or_default().to_ascii_uppercase();
+        let text = crate::files::read_to_string(item).unwrap_or_default().to_ascii_uppercase();
         events |= text.contains("BEGIN:VEVENT");
         tasks |= text.contains("BEGIN:VTODO");
     }
@@ -561,8 +563,8 @@ fn kinds_held(dir: &Path) -> Vec<&'static str> {
 /// RFC 4791 §5.2.3 has it).
 fn settle_kinds(dir: &Path, state: &mut State, path: &Path) {
     let (mut events, mut tasks) = (false, false);
-    for item in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")) {
-        let text = std::fs::read_to_string(&item).unwrap_or_default().to_ascii_uppercase();
+    for item in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|e| e == "ics")) {
+        let text = crate::files::read_to_string(&item).unwrap_or_default().to_ascii_uppercase();
         events |= text.contains("BEGIN:VEVENT");
         tasks |= text.contains("BEGIN:VTODO");
     }
@@ -610,7 +612,7 @@ pub fn recolour_collection(collection: &Collection, colour: &str) -> Result<(), 
         return Err(format!("{colour}: a colour as #rrggbb"));
     }
     if colour.is_empty() {
-        let _ = std::fs::remove_file(collection.dir.join("color"));
+        let _ = crate::files::remove_file(collection.dir.join("color"));
     } else {
         crate::filelock::replace(&collection.dir.join("color"), colour.to_ascii_lowercase().as_bytes()).map_err(|e| e.to_string())?;
     }
@@ -648,7 +650,7 @@ pub fn collection_as_vcf(collection: &Collection) -> String {
 pub fn cards_as_vcf(paths: &[PathBuf]) -> String {
     let mut out = String::new();
     for path in paths {
-        let Ok(text) = std::fs::read_to_string(path) else { continue };
+        let Ok(text) = crate::files::read_to_string(path) else { continue };
         if !text.to_ascii_uppercase().contains("BEGIN:VCARD") {
             continue;
         }
@@ -665,7 +667,7 @@ pub fn collection_as_ics(collection: &Collection) -> String {
     let mut zones: Vec<(String, Vec<String>)> = Vec::new();
     let mut parts: Vec<String> = Vec::new();
     for path in collection.items() {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         let mut block: Vec<String> = Vec::new();
         let mut depth = 0usize;
         let mut zone: Option<String> = None;
@@ -729,15 +731,15 @@ pub fn remove_collection(collection: &Collection) -> Result<PathBuf, String> {
         Kind::Calendars => (removed_copies(), "ics", collection_as_ics(collection)),
         Kind::Contacts => (removed_books(), "vcf", collection_as_vcf(collection)),
     };
-    std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    crate::files::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let stamp = crate::zone::now().strftime("%Y-%m-%d-%H%M%S").to_string();
     let copy = folder.join(format!("{}-{}-{stamp}.{extension}", collection.account, collection.id));
     crate::filelock::replace(&copy, copied.as_bytes()).map_err(|e| format!("{}: {e}", copy.display()))?;
     let path = collection.state_path();
     let mut state = State::load(&path);
     if collection.account == LOCAL || state.pending {
-        let _ = std::fs::remove_dir_all(&collection.dir);
-        let _ = std::fs::remove_file(&path);
+        let _ = crate::files::remove_dir_all(&collection.dir);
+        let _ = crate::files::remove_file(&path);
         collection_said(collection.kind);
         return Ok(copy);
     }
@@ -768,7 +770,7 @@ pub fn stop_showing(collection: &Collection) -> Result<(), String> {
 
 /// The items a collection holds here: events, tasks or contacts.
 pub fn holds_items(collection: &Collection) -> bool {
-    std::fs::read_dir(&collection.dir).into_iter().flatten().filter_map(Result::ok).any(|e| {
+    crate::files::read_dir(&collection.dir).into_iter().flatten().filter_map(Result::ok).any(|e| {
         let name = e.file_name().to_string_lossy().to_lowercase();
         name.ends_with(".ics") || name.ends_with(".vcf")
     })
@@ -786,8 +788,8 @@ pub fn delete_collection(collection: &Collection) -> Result<(), String> {
     let path = collection.state_path();
     let mut state = State::load(&path);
     if collection.account == LOCAL || state.pending {
-        let _ = std::fs::remove_dir_all(&collection.dir);
-        let _ = std::fs::remove_file(&path);
+        let _ = crate::files::remove_dir_all(&collection.dir);
+        let _ = crate::files::remove_file(&path);
         return Ok(());
     }
     state.deleted = true;
@@ -813,7 +815,7 @@ pub fn restore_collection(kind: Kind, account: &str, id: &str, name: &str) -> Re
 /// shown again (the Undo of "Delete them with it"). Gone already, an error.
 pub fn unremove_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
     let path = state_path(account, kind, id);
-    if !kind.root().join(account).join(id).is_dir() {
+    if !kind.root().join(account).join(id).present_dir() {
         return Err(format!("{account}/{id}: gone"));
     }
     let mut state = State::load(&path);
@@ -829,7 +831,7 @@ pub fn unremove_collection(kind: Kind, account: &str, id: &str) -> Result<(), St
 /// again (the Undo of a merge): its deletion forgotten. Gone already, an error.
 pub fn undelete_collection(kind: Kind, account: &str, id: &str) -> Result<(), String> {
     let path = state_path(account, kind, id);
-    if !kind.root().join(account).join(id).is_dir() {
+    if !kind.root().join(account).join(id).present_dir() {
         return Err(format!("{account}/{id}: gone"));
     }
     let mut state = State::load(&path);
@@ -853,21 +855,21 @@ pub fn prepare(kind: Kind, account: &str, id: &str, name: &str, color: Option<&s
         return Err(std::io::Error::other(format!("{account}/{id}: not a folder's name")));
     }
     let dir = kind.root().join(account).join(id);
-    std::fs::create_dir_all(&dir)?;
+    crate::files::create_dir_all(&dir)?;
     // Written beside, then renamed: the sharing (local lists) never reads them
     // empty. Only when they differ: each sync prepares every collection, and a
     // name written again would change its folder's time, which says a calendar
     // changed (`calendars_stamp`: the plan as last made would read as older
     // after every sync; review of 85da7f0, later 5).
-    let same = |file: &str, value: &str| std::fs::read(dir.join(file)).is_ok_and(|bytes| bytes == value.as_bytes());
+    let same = |file: &str, value: &str| crate::files::read(dir.join(file)).is_ok_and(|bytes| bytes == value.as_bytes());
     if !same("displayname", name) {
         crate::filelock::replace(&dir.join("displayname"), name.as_bytes())?;
     }
     match color {
         Some(color) if !same("color", color) => crate::filelock::replace(&dir.join("color"), color.as_bytes())?,
         Some(_) => {}
-        None if dir.join("color").exists() => {
-            let _ = std::fs::remove_file(dir.join("color"));
+        None if dir.join("color").present() => {
+            let _ = crate::files::remove_file(dir.join("color"));
         }
         None => {}
     }
@@ -923,11 +925,11 @@ fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, S
     finish_subscribed_now(id);
     let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
     let (next, old) = (subscribed_aside("next", id), subscribed_aside("old", id));
-    if next.exists() {
-        std::fs::remove_dir_all(&next).map_err(|e| fail(&next, e))?;
+    if next.present() {
+        crate::files::remove_dir_all(&next).map_err(|e| fail(&next, e))?;
     }
-    std::fs::create_dir_all(&next).map_err(|e| fail(&next, e))?;
-    std::fs::create_dir_all(live.parent().unwrap_or(&live)).map_err(|e| fail(&live, e))?;
+    crate::files::create_dir_all(&next).map_err(|e| fail(&next, e))?;
+    crate::files::create_dir_all(live.parent().unwrap_or(&live)).map_err(|e| fail(&live, e))?;
     // Each file on the disk before the mark that says the copy is whole, and
     // the mark before the renames: a power cut never leaves a copy of empty
     // files in place, with no old one to come back to (F12).
@@ -944,15 +946,15 @@ fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, S
     if crashed(5) {
         return Ok(());
     }
-    if live.exists() {
-        std::fs::create_dir_all(old.parent().unwrap_or(&old)).map_err(|e| fail(&old, e))?;
-        std::fs::rename(&live, &old).map_err(|e| fail(&live, e))?;
+    if live.present() {
+        crate::files::create_dir_all(old.parent().unwrap_or(&old)).map_err(|e| fail(&old, e))?;
+        crate::files::rename(&live, &old).map_err(|e| fail(&live, e))?;
         folder_through(old.parent().unwrap_or(&old));
     }
     if crashed(6) {
         return Ok(());
     }
-    std::fs::rename(&next, &live).map_err(|e| fail(&next, e))?;
+    crate::files::rename(&next, &live).map_err(|e| fail(&next, e))?;
     // The renames on the disk before the last copy is taken out.
     folder_through(live.parent().unwrap_or(&live));
     folder_through(next.parent().unwrap_or(&next));
@@ -968,7 +970,7 @@ fn replace_whole(id: &str, name: &str, colour: Option<&str>, items: &[(String, S
 /// A file written and flushed to the disk (`File::sync_all`).
 fn written_through(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let mut file = std::fs::File::create(path)?;
+    let mut file = crate::files::File::create(path)?;
     file.write_all(bytes)?;
     file.sync_all()
 }
@@ -976,7 +978,7 @@ fn written_through(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// A folder's entries flushed to the disk, where the system lets a folder be
 /// opened so (not Windows, whose renames go through its journal).
 fn folder_through(dir: &Path) {
-    if let Ok(folder) = std::fs::File::open(dir) {
+    if let Ok(folder) = crate::files::File::open(dir) {
         let _ = folder.sync_all();
     }
 }
@@ -995,27 +997,27 @@ pub fn finish_subscribed(id: &str) {
 fn finish_subscribed_now(id: &str) {
     let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
     let (next, old) = (subscribed_aside("next", id), subscribed_aside("old", id));
-    if next.join(WHOLE).exists() {
-        if live.exists() && !old.exists() {
-            let _ = std::fs::create_dir_all(old.parent().unwrap_or(&old));
-            let _ = std::fs::rename(&live, &old);
+    if next.join(WHOLE).present() {
+        if live.present() && !old.present() {
+            let _ = crate::files::create_dir_all(old.parent().unwrap_or(&old));
+            let _ = crate::files::rename(&live, &old);
         }
-        if !live.exists() {
-            let _ = std::fs::rename(&next, &live);
+        if !live.present() {
+            let _ = crate::files::rename(&next, &live);
         }
     }
-    if next.exists() && !next.join(WHOLE).exists() {
-        let _ = std::fs::remove_dir_all(&next);
+    if next.present() && !next.join(WHOLE).present() {
+        let _ = crate::files::remove_dir_all(&next);
     }
-    if old.exists() {
-        if live.exists() {
-            let _ = std::fs::remove_dir_all(&old);
+    if old.present() {
+        if live.present() {
+            let _ = crate::files::remove_dir_all(&old);
         } else {
-            let _ = std::fs::rename(&old, &live);
+            let _ = crate::files::rename(&old, &live);
         }
     }
-    if live.join(WHOLE).exists() {
-        let _ = std::fs::remove_file(live.join(WHOLE));
+    if live.join(WHOLE).present() {
+        let _ = crate::files::remove_file(live.join(WHOLE));
     }
 }
 
@@ -1034,9 +1036,9 @@ pub fn prepare_subscribed(id: &str, name: &str, colour: Option<&str>) -> Result<
             changed = true;
         }
         let dir = Kind::Calendars.root().join(SUBSCRIBED).join(id);
-        let same = |file: &str, value: Option<&str>| std::fs::read_to_string(dir.join(file)).ok().as_deref() == value;
+        let same = |file: &str, value: Option<&str>| crate::files::read_to_string(dir.join(file)).ok().as_deref() == value;
         let colour = colour.filter(|c| c.len() == 7 && c.starts_with('#'));
-        changed |= !dir.is_dir() || !same("displayname", Some(name.trim())) || (colour.is_some() && !same("color", colour));
+        changed |= !dir.present_dir() || !same("displayname", Some(name.trim())) || (colour.is_some() && !same("color", colour));
         prepare(Kind::Calendars, SUBSCRIBED, id, name.trim(), colour).map_err(|e| e.to_string())?;
         if changed {
             collection_said(Kind::Calendars);
@@ -1053,10 +1055,10 @@ pub fn remove_subscribed(id: &str) -> Result<(), String> {
     crate::filelock::with_lock(&subscribed_aside("lock", id), || {
         finish_subscribed_now(id);
         let live = Kind::Calendars.root().join(SUBSCRIBED).join(id);
-        if live.exists() {
-            std::fs::remove_dir_all(&live).map_err(|e| format!("{}: {e}", live.display()))?;
+        if live.present() {
+            crate::files::remove_dir_all(&live).map_err(|e| format!("{}: {e}", live.display()))?;
         }
-        let _ = std::fs::remove_file(state_path(SUBSCRIBED, Kind::Calendars, id));
+        let _ = crate::files::remove_file(state_path(SUBSCRIBED, Kind::Calendars, id));
         collection_said(Kind::Calendars);
         Ok(())
     })
@@ -1078,7 +1080,7 @@ pub fn create_as(kind: Kind, account: &str, id: &str, name: &str, color: Option<
         return Err(format!("{account}: not an account"));
     }
     let base = if id.trim().is_empty() { "list".to_string() } else { folder_id(id) };
-    let taken = |id: &str| kind.root().join(account).join(id).exists() || state_path(account, kind, id).exists();
+    let taken = |id: &str| kind.root().join(account).join(id).present() || state_path(account, kind, id).present();
     let id = std::iter::once(base.clone()).chain((2..100).map(|n| format!("{base}-{n}"))).find(|id| !taken(id)).ok_or_else(|| format!("{name}: no free name"))?;
     // "local": kept here only, no server to create it on. Its state first,
     // what it takes with it: a folder never shows without them, which a
@@ -1236,14 +1238,14 @@ pub struct ItemState {
 
 impl State {
     pub fn load(path: &Path) -> State {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written next to its place, then moved: an interruption never leaves half a state.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         // A name of its own beside it: two writers at once never share one (22 October 2026).
@@ -1271,7 +1273,7 @@ pub fn agreed_hash(path: &Path) -> Option<String> {
 pub fn server_copy(path: &Path) -> bool {
     let (Some(dir), Some(file)) = (path.parent(), path.file_name().and_then(|f| f.to_str())) else { return false };
     let Some(collection) = collections(Kind::Calendars).into_iter().find(|c| c.dir == dir) else { return false };
-    let Ok(text) = std::fs::read(path) else { return false };
+    let Ok(text) = crate::files::read(path) else { return false };
     State::load(&collection.state_path()).items.into_iter().find(|i| i.file == file).is_some_and(|i| !i.etag.is_empty() && i.sent.is_empty() && i.hash == content_hash(&text))
 }
 
@@ -1301,7 +1303,7 @@ pub fn write_item(path: &Path, text: &str) -> Result<(), String> {
 /// meeting with others (its server would cancel or decline it for them).
 pub fn remove_item(path: &Path) -> Result<(), String> {
     guarded(path, crate::agenda::Change::Delete)?;
-    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
     counted(path);
     Ok(())
 }
@@ -1324,7 +1326,7 @@ pub fn write_organized(path: &Path, text: &str) -> Result<(), String> {
 /// cancellation is drafted for them.
 pub fn remove_organized(path: &Path) -> Result<(), String> {
     organized(path, None)?;
-    std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::files::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
     counted(path);
     Ok(())
 }
@@ -1450,7 +1452,7 @@ pub fn calendar_server(account: &str, id: &str) -> crate::agendas::Server {
 /// at once, before the next listing reads it back.
 pub fn note_calendar_mark(account: &str, id: &str, transparent: bool) -> Result<(), String> {
     let path = state_path(account, Kind::Calendars, id);
-    if !path.exists() {
+    if !path.present() {
         return Err(format!("{account}/{id}: no sync state"));
     }
     let mut state = State::load(&path);
@@ -1476,8 +1478,8 @@ struct Marks {
 fn marks_of(state: &Path) -> Marks {
     type Seen = std::collections::BTreeMap<PathBuf, (Option<std::time::SystemTime>, u64, Marks)>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(std::collections::BTreeMap::new());
-    let meta = std::fs::metadata(state).ok();
-    let (when, size) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, std::fs::Metadata::len));
+    let meta = crate::files::metadata(state).ok();
+    let (when, size) = (meta.as_ref().and_then(|m| m.modified().ok()), meta.as_ref().map_or(0, crate::files::Metadata::len));
     let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((at, length, marks)) = seen.get(state)
         && (*at, *length) == (when, size)
@@ -1486,7 +1488,7 @@ fn marks_of(state: &Path) -> Marks {
     }
     // A state that does not read now is never kept for its stamp (the check
     // of ef8c0ca, low 21): the marks last read meanwhile, read again next time.
-    match std::fs::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
+    match crate::files::read_to_string(state).ok().and_then(|text| toml::from_str::<State>(&text).ok()) {
         Some(read) => {
             let marks = Marks { read_only: read.read_only, components: read.components, transparent: read.transparent, transp_known: read.transp_known, owned: read.owned };
             seen.insert(state.to_path_buf(), (when, size, marks.clone()));
@@ -1508,11 +1510,11 @@ fn marks_of(state: &Path) -> Marks {
 pub fn store_item(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let temporary = path.with_extension("tmp");
-    std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)?;
+    crate::files::write(&temporary, text).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)?;
     counted(path);
     Ok(())
 }
@@ -1526,9 +1528,9 @@ pub fn store_item(path: &Path, text: &str) -> Result<(), String> {
 pub fn calendars_stamp() -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    let time = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let time = |path: &Path| crate::files::metadata(path).and_then(|m| m.modified()).ok();
     let sorted = |dir: &Path| {
-        let mut entries: Vec<PathBuf> = std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let mut entries: Vec<PathBuf> = crate::files::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).filter(|p| p.present_dir()).collect();
         entries.sort();
         entries
     };

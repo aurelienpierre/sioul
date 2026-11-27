@@ -487,7 +487,7 @@ Item {
 
     function seeScan(letter) {
         if (letter.file)
-            Qt.openUrlExternally(page.theme.fileUrl(letter.file))
+            Qt.openUrlExternally(typeof page.sioul.openableUrl === "function" ? page.sioul.openableUrl(letter.file) : page.theme.fileUrl(letter.file))
     }
 
     // A letter's own actions (its row's menu): a task for its date, its

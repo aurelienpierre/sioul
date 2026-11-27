@@ -255,12 +255,12 @@ impl Journal {
     /// (the records and the claims still count). A file that does not read
     /// counts for nothing.
     pub fn load(dir: &Path) -> Journal {
-        let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        let mut paths: Vec<std::path::PathBuf> = crate::files::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
         paths.sort();
         paths.push(dir.join(OLD_JOURNAL));
         let mut out = Journal::default();
         // A newer Sioul's journal read where it can be: its last numbers count all the same.
-        for journal in paths.iter().filter_map(|p| std::fs::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Journal>(&t).ok()) {
+        for journal in paths.iter().filter_map(|p| crate::files::read_to_string(p).ok()).filter_map(|t| toml::from_str::<Journal>(&t).ok()) {
             for (sequence, last) in journal.series {
                 if out.series.get(&sequence).is_none_or(|kept| kept.last < last.last) {
                     out.series.insert(sequence, last);
@@ -283,14 +283,14 @@ impl Journal {
 
     /// This device's own journal: what it gave.
     pub fn own(dir: &Path, device: &str) -> Option<Journal> {
-        std::fs::read_to_string(Journal::own_path(dir, device)).ok().and_then(|t| toml::from_str(&t).ok())
+        crate::files::read_to_string(Journal::own_path(dir, device)).ok().and_then(|t| toml::from_str(&t).ok())
     }
 
     /// Written as this device's own journal, whole, through a file beside
     /// it; never over one a newer Sioul wrote.
     pub fn save(&self, dir: &Path, device: &str) -> Result<(), String> {
         let path = Journal::own_path(dir, device);
-        if std::fs::read_to_string(&path).is_ok_and(|t| super::lives::format_of(&t) > FORMAT) {
+        if crate::files::read_to_string(&path).is_ok_and(|t| super::lives::format_of(&t) > FORMAT) {
             return Err(format!("{}: written by a newer Sioul; update Sioul on this device to issue invoices here.", path.display()));
         }
         let text = toml::to_string(&Journal { format: FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
@@ -301,9 +301,9 @@ impl Journal {
 
     /// The journals of `dir` a newer Sioul wrote: read where they can be, never written here.
     pub fn newer(dir: &Path) -> Vec<std::path::PathBuf> {
-        let mut paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
+        let mut paths: Vec<std::path::PathBuf> = crate::files::read_dir(dir.join(FOLDER)).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
         paths.push(dir.join(OLD_JOURNAL));
-        paths.retain(|p| std::fs::read_to_string(p).is_ok_and(|t| super::lives::format_of(&t) > FORMAT));
+        paths.retain(|p| crate::files::read_to_string(p).is_ok_and(|t| super::lives::format_of(&t) > FORMAT));
         paths.sort();
         paths
     }

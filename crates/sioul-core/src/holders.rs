@@ -973,13 +973,13 @@ impl Asked {
     }
 
     pub fn load(path: &Path) -> Asked {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         }
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }

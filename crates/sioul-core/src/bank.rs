@@ -621,7 +621,7 @@ impl Bank {
 
     pub fn load(root: &Path) -> Result<Bank, String> {
         let path = root.join(MANIFEST);
-        let text = match std::fs::read_to_string(&path) {
+        let text = match crate::files::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Bank { root: root.to_path_buf(), ..Bank::default() }),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -731,7 +731,7 @@ impl Bank {
         doc.insert("movement", toml_edit::Item::ArrayOfTables(movements));
         let path = self.root.join(MANIFEST);
         let temporary = self.root.join(format!("{MANIFEST}.new"));
-        std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
+        crate::files::write(&temporary, doc.to_string()).and_then(|()| crate::files::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
     }
 
     /// The balance of every account together, and the newest day among them,

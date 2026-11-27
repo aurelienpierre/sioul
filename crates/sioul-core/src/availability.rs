@@ -772,7 +772,7 @@ pub fn health_events(events: &[Occurrence], errands: &BTreeSet<String>) -> BTree
     let mut child_health: BTreeSet<String> = BTreeSet::new();
     for event in events.iter().filter(|e| e.child && !e.key.is_empty()) {
         let health = *read.entry(event.key.as_str()).or_insert_with(|| {
-            std::fs::read_to_string(&event.key).ok().and_then(|text| crate::holders::kind_of(&text)).is_some_and(|k| matches!(k, crate::holders::Kind::Health | crate::holders::Kind::Dentist))
+            crate::files::read_to_string(&event.key).ok().and_then(|text| crate::holders::kind_of(&text)).is_some_and(|k| matches!(k, crate::holders::Kind::Health | crate::holders::Kind::Dentist))
         });
         if health {
             child_health.insert(event.uid.clone());

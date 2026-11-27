@@ -217,13 +217,13 @@ pub(crate) fn format_of(text: &str) -> u32 {
 /// Every device's file of `dir`, in their names' order, and those a newer
 /// Sioul wrote (read where they could be).
 fn read_books(dir: &Path) -> (Vec<Book>, Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir.join(FOLDER)) else { return (Vec::new(), Vec::new()) };
+    let Ok(entries) = crate::files::read_dir(dir.join(FOLDER)) else { return (Vec::new(), Vec::new()) };
     let mut paths: Vec<PathBuf> = entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "toml")).collect();
     paths.sort();
     let mut books = Vec::new();
     let mut newer = Vec::new();
     for path in paths {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         if format_of(&text) > FORMAT {
             eprintln!("Sioul: {}: written by a newer Sioul, read where it can be, never written here", path.display());
             newer.push(path.clone());
@@ -462,7 +462,7 @@ pub fn latest_declared(dir: &Path, key: &str) -> i64 {
 pub fn change_own<R>(dir: &Path, device: &str, change: impl FnOnce(&mut Book) -> R) -> Result<R, String> {
     let path = device_file(dir, device);
     crate::filelock::with_lock(&path, || {
-        let mut book = match std::fs::read_to_string(&path) {
+        let mut book = match crate::files::read_to_string(&path) {
             Ok(text) if format_of(&text) > FORMAT => return Err(format!("{}: written by a newer Sioul; update Sioul on this device to change it.", path.display())),
             Ok(text) => toml::from_str::<Book>(&text).map_err(|e| format!("{}: {e}", path.display()))?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Book::default(),

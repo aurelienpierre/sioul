@@ -57,7 +57,7 @@ fn view_path() -> PathBuf {
 }
 
 fn kept_view(path: &std::path::Path) -> ProjectsView {
-    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// The view written back, only when it changed; its folder made first.
@@ -66,7 +66,7 @@ fn write_view(path: &std::path::Path, view: &ProjectsView) {
         && let Ok(text) = toml::to_string(view)
     {
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         let _ = sioul_core::filelock::replace(path, text.as_bytes());
     }
@@ -317,7 +317,7 @@ pub(crate) fn export_time_csv(shared: &Shared, project: &str, from: &str, to: &s
     let french = tr().text("qt-locale", None).starts_with("fr");
     let words = ["time-csv-what", "time-csv-hours", "time-csv-rate", "time-csv-amount", "time-csv-total"].map(|w| tr().text(w, None));
     let csv = timereport::billable_csv(&all, found, from, to, config.invoice.rate, french, [&words[0], &words[1], &words[2], &words[3], &words[4]]);
-    crate::chosen::save(target, "time.csv", csv.as_bytes(), |path| std::fs::write(path, &csv).map_err(|e| format!("{}: {e}", path.display())))
+    crate::chosen::save(target, "time.csv", csv.as_bytes(), |path| crate::files::write(path, &csv).map_err(|e| format!("{}: {e}", path.display())))
 }
 
 /// A file address's path with its %-escapes undone ("Mes%20factures" → "Mes factures").

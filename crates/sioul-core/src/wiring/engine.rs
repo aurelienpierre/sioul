@@ -44,6 +44,8 @@
 //!   (`for_already_here`) acts once on each, never where a rule doing the
 //!   same acted already.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::agentwrites::{FileChange, Said};
 use crate::card::Card;
 use crate::config::Config;
@@ -234,7 +236,7 @@ pub fn has_work(rules: &Rules, record: &Acts, device: &str, more: impl FnOnce() 
 /// else its Date: what "it came before the rule" is judged by, and what a
 /// rule stamps what it makes with, the same on every device.
 pub fn arrived_at(card: &Card) -> Option<i64> {
-    let file = card.path.as_ref().and_then(|p| std::fs::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok());
+    let file = card.path.as_ref().and_then(|p| crate::files::metadata(p).ok()?.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok());
     file.or(card.date)
 }
 
@@ -845,7 +847,7 @@ impl<'a> Engine<'a> {
         let task = links::task_uri(&uid);
         let path = list.dir.join(format!("{uid}.ics"));
         let tied = work.ties.links.iter().chain(&work.new_ties).any(|e| e.how == MADE && (e.from == task || e.to == task));
-        let found = (self.known)(&uid) || path.exists() || tied;
+        let found = (self.known)(&uid) || path.present() || tied;
         let stamp = self.stamp(arrived);
         let due = self.workdays.date_asked(stamp.date(), days);
         let ties = if tied { Vec::new() } else { vec![Edge { from: task.clone(), to: base.object.clone(), how: MADE.into() }] };
@@ -929,7 +931,7 @@ impl<'a> Engine<'a> {
     fn papers(&self, rule: &Rule, seen: &Seen, base: Act, arrived: Option<i64>, mode: Mode, work: &mut Work, tr: &Translator) -> Result<Vec<Doing>, &'static str> {
         let places = self.places.as_ref().ok_or("rules-refused-no-papers")?;
         let card = seen.card();
-        let raw = card.path.as_ref().and_then(|p| std::fs::read(p).ok()).ok_or("rules-refused-no-attachment")?;
+        let raw = card.path.as_ref().and_then(|p| crate::files::read(p).ok()).ok_or("rules-refused-no-attachment")?;
         let wanted = Self::fixed(rule, "type").unwrap_or_else(|| "pdf".to_string());
         let named = Self::fixed(rule, "name").map(|n| crate::rules::fold(&n)).filter(|n| !n.is_empty());
         let names_it = |name: &str| named.as_ref().is_some_and(|n| crate::rules::fold(name).contains(n.as_str()));
@@ -996,7 +998,7 @@ impl<'a> Engine<'a> {
                 continue;
             }
             let file = folder.join(kept_name(name, sum));
-            if let Err(e) = std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, bytes)) {
+            if let Err(e) = crate::files::create_dir_all(&folder).and_then(|()| crate::files::write(&file, bytes)) {
                 work.problems.push(format!("{}: {e}", file.display()));
                 clear(&scratch);
                 return Err("rules-refused-write");
@@ -1047,8 +1049,8 @@ impl<'a> Engine<'a> {
             let title = self.paper_title(rule, seen, name, arrived, tr);
             let kind = Self::fixed(rule, "kind").map(|k| crate::papers::Kind::of(&k)).or_else(|| crate::papers::Kind::guess(&self.words, name)).or_else(|| Self::shown_subject(seen).and_then(|s| crate::papers::Kind::guess(&self.words, &s))).unwrap_or_default();
             let file = folder.join(kept_name(name, sum));
-            if !file.exists()
-                && let Err(e) = std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(&file, bytes))
+            if !file.present()
+                && let Err(e) = crate::files::create_dir_all(&folder).and_then(|()| crate::files::write(&file, bytes))
             {
                 work.problems.push(format!("{}: {e}", file.display()));
                 failed = true;
@@ -1079,7 +1081,7 @@ impl<'a> Engine<'a> {
             doings.push(Doing { act: Act { act: "paper".into(), result: links::paper_uri(&id), wrote: true, digest: sum.clone(), unchecked, ..base.clone() }, ties, ..Doing::default() });
         }
         clear(&scratch);
-        let _ = std::fs::remove_dir(&folder);
+        let _ = crate::files::remove_dir(&folder);
         work.papers = None;
         if failed {
             // Nothing of a message kept by halves: what this pass kept goes out again, and the act waits.
@@ -1113,8 +1115,8 @@ impl<'a> Engine<'a> {
         let (mut out, mut off) = (Vec::new(), Vec::new());
         for paper in wallet.papers.iter().filter(|p| p.unchecked) {
             let Some(file) = wallet.file_path(paper) else { continue };
-            let Ok(meta) = std::fs::metadata(&file) else { continue };
-            if !meta.is_file() {
+            let Ok(meta) = crate::files::metadata(&file) else { continue };
+            if !meta.present_file() {
                 continue;
             }
             let changed = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis());
@@ -1167,7 +1169,7 @@ impl<'a> Engine<'a> {
                 continue;
             }
             let Some(paper) = wallet.get(&id).filter(|p| !p.unchecked) else { continue };
-            let Some(bytes) = wallet.file_path(paper).and_then(|file| std::fs::read(file).ok()) else { continue };
+            let Some(bytes) = wallet.file_path(paper).and_then(|file| crate::files::read(file).ok()) else { continue };
             if digest(&bytes) == act.digest {
                 back.push(id);
             } else {
@@ -1191,8 +1193,8 @@ impl<'a> Engine<'a> {
 
     /// The paper whose file holds these bytes (its digest), among those kept here.
     fn paper_with(&self, wallet: &crate::papers::Wallet, sum: &str, size: u64, work: &mut Work) -> Option<String> {
-        let files = work.papers.get_or_insert_with(|| wallet.papers.iter().filter_map(|p| wallet.file_path(p).map(|path| (p.id.clone(), std::fs::metadata(&path).map_or(0, |m| m.len()), path))).collect());
-        files.iter().filter(|(_, len, _)| *len == size).find(|(_, _, path)| std::fs::read(path).is_ok_and(|bytes| digest(&bytes) == sum)).map(|(id, _, _)| id.clone())
+        let files = work.papers.get_or_insert_with(|| wallet.papers.iter().filter_map(|p| wallet.file_path(p).map(|path| (p.id.clone(), crate::files::metadata(&path).map_or(0, |m| m.len()), path))).collect());
+        files.iter().filter(|(_, len, _)| *len == size).find(|(_, _, path)| crate::files::read(path).is_ok_and(|bytes| digest(&bytes) == sum)).map(|(id, _, _)| id.clone())
     }
 
     /// The movement the money reader joined this message to, when it did.
@@ -1271,7 +1273,7 @@ fn remove_paper(places: &Places, id: &str) -> Result<Option<String>, String> {
     let file = wallet.file_path(&paper);
     let shared = wallet.papers.iter().any(|p| p.id != id && p.file == paper.file);
     crate::papers::Wallet::change_at(places, |w| w.remove(id))?;
-    if let Some(file) = file.filter(|f| f.exists() && !shared) {
+    if let Some(file) = file.filter(|f| f.present() && !shared) {
         crate::filelock::remove_wiping(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     }
     Ok(Some(paper.title))
@@ -1298,7 +1300,7 @@ pub fn attachments(raw: &[u8]) -> Vec<(String, String, Vec<u8>)> {
 fn keep_named(wallet: &crate::papers::Wallet, file: &Path, name: &str, sum: &str) -> Result<String, String> {
     let named = kept_name(name, sum);
     let there = wallet.docs.folder.join(&named);
-    if std::fs::read(&there).is_ok_and(|bytes| digest(&bytes) == sum) {
+    if crate::files::read(&there).is_ok_and(|bytes| digest(&bytes) == sum) {
         return Ok(wallet.docs.named(&there));
     }
     wallet.keep_file(file, &named)
@@ -1315,7 +1317,7 @@ pub fn recent_files(index: &crate::mailindex::MailIndex, now: i64, days: u32) ->
 /// (moved since).
 fn task_file(uid: &str, list: &str, find_list: &dyn Fn(&str) -> Option<Collection>, all_lists: &dyn Fn() -> Vec<Collection>) -> Option<PathBuf> {
     let name = format!("{uid}.ics");
-    find_list(list).map(|l| l.dir.join(&name)).filter(|p| p.exists()).or_else(|| all_lists().into_iter().map(|l| l.dir.join(&name)).find(|p| p.exists()))
+    find_list(list).map(|l| l.dir.join(&name)).filter(|p| p.present()).or_else(|| all_lists().into_iter().map(|l| l.dir.join(&name)).find(|p| p.present()))
 }
 
 /// What one act wrote, put back while it is as the rule left it: a task
@@ -1331,7 +1333,7 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
             match task_file(&uid, &act.list, find_list, all_lists) {
                 None => true,
                 Some(path) => {
-                    let as_left = std::fs::read(&path).is_ok_and(|bytes| digest(&bytes) == act.digest);
+                    let as_left = crate::files::read(&path).is_ok_and(|bytes| digest(&bytes) == act.digest);
                     if as_left {
                         crate::vdir::remove_item(&path)?;
                         LocalLinks::change(&place.ties, |local| {
@@ -1351,7 +1353,7 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
             match task_file(&uid, &act.list, find_list, all_lists) {
                 None => true,
                 Some(path) => {
-                    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                    let text = crate::files::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
                     let as_left = digest(text.as_bytes()) == act.digest;
                     if as_left {
                         let zone = crate::zone::current();
@@ -1405,12 +1407,12 @@ fn put_back(act: &Act, place: &Place, places: Option<&Places>, find_list: &dyn F
                             let file = wallet.file_path(&paper);
                             // Filled in since (its dates, a note, a renewal planned): yours now, it stays.
                             let filled = paper.issued.is_some() || paper.until.is_some() || !paper.notes.trim().is_empty() || !paper.renewal.is_empty();
-                            let as_left = !filled && file.as_ref().is_none_or(|f| !f.exists() || std::fs::read(f).is_ok_and(|bytes| digest(&bytes) == act.digest));
+                            let as_left = !filled && file.as_ref().is_none_or(|f| !f.present() || crate::files::read(f).is_ok_and(|bytes| digest(&bytes) == act.digest));
                             if as_left {
                                 let shared = wallet.papers.iter().any(|p| p.id != id && p.file == paper.file);
                                 crate::papers::Wallet::change_at(places, |w| w.remove(&id))?;
-                                if let Some(file) = file.filter(|f| f.exists() && !shared) {
-                                    std::fs::remove_file(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+                                if let Some(file) = file.filter(|f| f.present() && !shared) {
+                                    crate::files::remove_file(&file).map_err(|e| format!("{}: {e}", file.display()))?;
                                 }
                                 LocalLinks::change(&place.ties, |local| {
                                     let before = local.links.len();

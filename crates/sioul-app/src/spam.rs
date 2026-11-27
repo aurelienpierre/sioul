@@ -32,6 +32,8 @@
 //! you chose "Flag only" for is written in this device's log of its flags,
 //! which the training reads (`after_fetch`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, say, tr};
 use serde::Serialize;
 use sioul_core::config::Account;
@@ -59,7 +61,7 @@ pub(crate) fn after_fetch(account: &Account, new: &[PathBuf], first: bool) -> us
     let config = crate::backend::load_config();
     let filter = sioul_core::spam::Filter::of(&config);
     // Nothing judged without a table, nor when nothing is done with any class.
-    if filter.actions.idle() || !filter.table.exists() {
+    if filter.actions.idle() || !filter.table.present() {
         return 0;
     }
     let ties = sioul_core::links::LocalLinks::load(&sioul_core::links::LocalLinks::default_path());
@@ -304,7 +306,7 @@ fn minutes_of(seconds: u64) -> String {
 fn table_lines(path: &Path, trains: bool) -> (String, String, String) {
     type Said = Option<(Vec<Option<(u64, std::time::SystemTime)>>, (String, String, String))>;
     static SAID: Mutex<Said> = Mutex::new(None);
-    let seal = |path: &Path| std::fs::metadata(path).ok().and_then(|m| Some((m.len(), m.modified().ok()?)));
+    let seal = |path: &Path| crate::files::metadata(path).ok().and_then(|m| Some((m.len(), m.modified().ok()?)));
     let sealed = vec![seal(path), seal(&table::previous(path))];
     let mut said = SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((known, lines)) = said.as_ref()
@@ -322,7 +324,7 @@ fn read_table_lines(path: &Path, trains: bool) -> (String, String, String) {
     // one before it when this one is refused.
     let (used, refused) = match Table::read(path) {
         Ok(table) => (Some(table), None),
-        Err(why) if path.exists() => (Table::read(&table::previous(path)).ok(), Some(why)),
+        Err(why) if path.present() => (Table::read(&table::previous(path)).ok(), Some(why)),
         Err(_) => (None, None),
     };
     let refused = refused.map_or(String::new(), |why| {
@@ -756,20 +758,20 @@ mod training {
 
     /// A lock of this process's in the jobs' folder (`jobs/<name>`), held
     /// while it trains: the others see a training runs (`auto::a_job_runs`).
-    fn lock(dirs: &Dirs, name: &str) -> Option<std::fs::File> {
+    fn lock(dirs: &Dirs, name: &str) -> Option<crate::files::File> {
         let jobs = dirs.state.join("jobs");
-        let mut folder = std::fs::DirBuilder::new();
+        let mut folder = crate::files::DirBuilder::new();
         folder.recursive(true);
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
+        folder.mode(0o700);
         folder.create(&jobs).ok()?;
-        let file = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(jobs.join(name)).ok()?;
+        let file = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(jobs.join(name)).ok()?;
         file.lock().ok()?;
         Some(file)
     }
 
     /// The window's own lock while it trains, beside the jobs' (`jobs/window.lock`).
-    fn window_lock(dirs: &Dirs) -> Option<std::fs::File> {
+    fn window_lock(dirs: &Dirs) -> Option<crate::files::File> {
         lock(dirs, "window.lock")
     }
 

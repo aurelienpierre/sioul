@@ -580,7 +580,7 @@ pub fn own_file(root: &Path, store: &str, device: &str) -> PathBuf {
 
 /// Every line of a file that opens and reads, in order; the rest passed over.
 pub fn read_file<T: for<'de> Deserialize<'de>>(path: &Path, sealer: &dyn Sealer) -> Vec<T> {
-    read_lines(&std::fs::read_to_string(path).unwrap_or_default(), sealer)
+    read_lines(&crate::files::read_to_string(path).unwrap_or_default(), sealer)
 }
 
 /// Every line of a file's text that opens and reads, in order; the rest passed over.
@@ -684,10 +684,9 @@ struct Stamp {
 }
 
 impl Stamp {
-    fn of(meta: &std::fs::Metadata) -> Stamp {
+    fn of(meta: &crate::files::Metadata) -> Stamp {
         #[cfg(unix)]
         {
-            use std::os::unix::fs::MetadataExt;
             Stamp { len: meta.len(), modified: meta.modified().ok(), inode: meta.ino(), changed: i128::from(meta.ctime()) * 1_000_000_000 + i128::from(meta.ctime_nsec()) }
         }
         #[cfg(not(unix))]
@@ -768,7 +767,7 @@ impl Logs {
 /// is not that file grown; only whole lines. Whether its lines changed.
 fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> bool {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(meta) = std::fs::metadata(path) else {
+    let Ok(meta) = crate::files::metadata(path) else {
         let had = !read.lines.is_empty();
         *read = LogRead::default();
         return had;
@@ -777,7 +776,7 @@ fn grow(path: &Path, device: &str, read: &mut LogRead, sealer: &dyn Sealer) -> b
     if seen == read.seen {
         return false;
     }
-    let Ok(mut file) = std::fs::File::open(path) else { return false };
+    let Ok(mut file) = crate::files::File::open(path) else { return false };
     // The bytes before the place it was read to, as they were: the same file, grown.
     let from = read.upto - read.before.len() as u64;
     let mut before = vec![0u8; read.before.len()];
@@ -1316,7 +1315,7 @@ impl Ledger {
     /// before now are refused).
     pub fn open(dir: &Path, now_ms: i64) -> Result<Ledger, String> {
         let mark_path = dir.join(MARK);
-        let mark = match std::fs::read_to_string(&mark_path).ok().and_then(|t| serde_json::from_str::<Mark>(&t).ok()) {
+        let mark = match crate::files::read_to_string(&mark_path).ok().and_then(|t| serde_json::from_str::<Mark>(&t).ok()) {
             Some(mark) if mark.writers > 0 => mark,
             // A mark of an older Sioul: its time kept, writers checked from now.
             Some(older) => {
@@ -1330,7 +1329,7 @@ impl Ledger {
                 mark
             }
         };
-        let claims: Vec<Claim> = std::fs::read_to_string(dir.join(LEDGER)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+        let claims: Vec<Claim> = crate::files::read_to_string(dir.join(LEDGER)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
         let keys = claims.iter().map(|c| c.key.clone()).collect();
         Ok(Ledger { mark, claims, keys })
     }
@@ -1383,9 +1382,9 @@ fn write_flushed(path: &Path, text: &str, append: bool) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(fail)?;
+        crate::files::create_dir_all(dir).map_err(fail)?;
     }
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).write(true);
     if append {
         options.append(true);
@@ -1393,7 +1392,7 @@ fn write_flushed(path: &Path, text: &str, append: bool) -> Result<(), String> {
         options.truncate(true);
     }
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     let mut file = options.open(path).map_err(fail)?;
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
@@ -1404,7 +1403,7 @@ fn write_flushed(path: &Path, text: &str, append: bool) -> Result<(), String> {
 fn replace_flushed(path: &Path, text: &str) -> Result<(), String> {
     let beside = path.with_extension("new");
     write_flushed(&beside, text, false)?;
-    std::fs::rename(&beside, path).map_err(|e| format!("{}: {e}", path.display()))
+    crate::files::rename(&beside, path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// The ledger's old keys taken out, `LEDGER_KEPT_MS` on (any request expired
@@ -1722,7 +1721,7 @@ pub fn arriving_now(outcomes: &[Outcome], now_ms: i64) -> Vec<(i64, &Arriving)> 
 pub fn new_key() -> String {
     use std::io::Read;
     let mut bytes = [0u8; 16];
-    let read = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes));
+    let read = crate::files::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes));
     if read.is_err() {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         bytes = (now ^ u128::from(std::process::id()).rotate_left(64)).to_le_bytes();

@@ -160,7 +160,7 @@ impl Choices {
 
     /// As kept; what does not read is no choice at all (each app as usual).
     pub fn load(path: &Path) -> Choices {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written whole beside, then put in place, yours alone.
@@ -168,10 +168,10 @@ impl Choices {
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
-        let _ = std::fs::remove_file(&fresh);
+        let _ = crate::files::remove_file(&fresh);
         calls::append_private(&fresh, &text)?;
-        std::fs::rename(&fresh, path).map_err(|e| {
-            let _ = std::fs::remove_file(&fresh);
+        crate::files::rename(&fresh, path).map_err(|e| {
+            let _ = crate::files::remove_file(&fresh);
             format!("{}: {e}", path.display())
         })
     }

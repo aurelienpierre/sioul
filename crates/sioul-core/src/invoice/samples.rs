@@ -338,11 +338,11 @@ fn write_fixtures() {
     let Some(root) = std::env::var_os("SIOUL_INVOICE_FIXTURES").map(std::path::PathBuf::from) else { return };
     let write = |folder: &str, sample: &Sample| {
         let dir = root.join(folder);
-        std::fs::create_dir_all(&dir).unwrap();
+        crate::files::create_dir_all(&dir).unwrap();
         let rendered = pdf::render(&sample.invoice, &Options { qr: sample.settings.qr != Some(false) }).unwrap_or_else(|e| panic!("{}: {e}", sample.name));
-        std::fs::write(dir.join(format!("{}.pdf", sample.name)), &rendered.pdf).unwrap();
+        crate::files::write(dir.join(format!("{}.pdf", sample.name)), &rendered.pdf).unwrap();
         if let Some(xml) = &rendered.xml {
-            std::fs::write(dir.join(format!("{}.xml", sample.name)), xml).unwrap();
+            crate::files::write(dir.join(format!("{}.xml", sample.name)), xml).unwrap();
         }
         rendered
     };
@@ -353,7 +353,7 @@ fn write_fixtures() {
     assert!(write("without-xml", &without_xml()).xml.is_none());
     assert!(write("invalid", &broken()).xml.is_some());
     // The rule the broken one breaks, for the validator to find it failed for that one.
-    std::fs::write(root.join("invalid").join("broken-totals.rule"), "BR-CO-15").unwrap();
+    crate::files::write(root.join("invalid").join("broken-totals.rule"), "BR-CO-15").unwrap();
     // The kinds: invoices, a credit note, a deposit invoice.
     assert!(valid().iter().any(|s| s.invoice.kind == Kind::CreditNote) && valid().iter().any(|s| s.invoice.kind == Kind::Deposit));
 }

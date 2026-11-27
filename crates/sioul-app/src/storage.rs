@@ -311,7 +311,7 @@ pub(crate) fn view_json() -> String {
                 Some(storage::Kind::Letter) => view.letters_files += 1,
                 _ => view.lists += 1,
             }
-            view.bytes += std::fs::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
+            view.bytes += crate::files::metadata(notes.join(&entry.from)).map_or(0, |m| m.len());
         }
     }
     view.begun = !view.moved && (storage::begun(&sioul_core::config::state_dir()) || !view.said.is_empty());

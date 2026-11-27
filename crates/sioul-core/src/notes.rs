@@ -17,6 +17,8 @@
 //! The folder is yours (the notes folder, docs/notes-folder.md). Sioul reads it,
 //! and writes only the notes you write or make from it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -151,16 +153,16 @@ pub fn trash(root: &Path, path: &str) -> Result<String, String> {
     let path = normalize(path).ok_or_else(|| format!("{path}: outside the notes"))?;
     let mut target = format!(".trash/{path}");
     let mut n = 2;
-    while root.join(&target).exists() {
+    while root.join(&target).present() {
         let (stem, extension) = path.rsplit_once('.').unwrap_or((&path, ""));
         target = if extension.is_empty() { format!(".trash/{stem} {n}") } else { format!(".trash/{stem} {n}.{extension}") };
         n += 1;
     }
     let to = root.join(&target);
     if let Some(parent) = to.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    std::fs::rename(root.join(&path), &to).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::rename(root.join(&path), &to).map_err(|e| format!("{path}: {e}"))?;
     Births::moved(&root.join(&path), &to);
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(target)
@@ -171,10 +173,10 @@ pub fn untrash(root: &Path, trashed: &str, path: &str) -> Result<(), String> {
     let to = root.join(normalize(path).ok_or_else(|| format!("{path}: outside the notes"))?);
     // Only from the vault's own trash.
     let from = normalize(trashed).filter(|t| t.starts_with(".trash/")).ok_or_else(|| format!("{trashed}: outside the notes"))?;
-    if to.exists() {
+    if to.present() {
         return Err(format!("{path}: taken again"));
     }
-    std::fs::rename(root.join(&from), &to).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::rename(root.join(&from), &to).map_err(|e| format!("{path}: {e}"))?;
     Births::moved(&root.join(&from), &to);
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(())
@@ -200,10 +202,10 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
     if new_path == path {
         return Ok((new_path, Vec::new()));
     }
-    if vault.root.join(&new_path).exists() {
+    if vault.root.join(&new_path).present() {
         return Err(format!("{new_path}: taken"));
     }
-    std::fs::rename(vault.root.join(path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::rename(vault.root.join(path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
     Births::moved(&vault.root.join(path), &vault.root.join(&new_path));
     crate::changes::said(crate::changes::Kind::Notes);
     // The ways other notes name it, and what they say now.
@@ -212,7 +214,7 @@ pub fn rename(vault: &Vault, path: &str, name: &str) -> Result<(String, Vec<Stri
     let new_stem = if note.kind == NoteKind::Text { clean.as_str() } else { file.as_str() };
     let mut changed = Vec::new();
     for other in vault.notes.iter().filter(|n| n.kind == NoteKind::Text && n.path != path) {
-        let Ok(text) = std::fs::read_to_string(vault.root.join(&other.path)) else { continue };
+        let Ok(text) = crate::files::read_to_string(vault.root.join(&other.path)) else { continue };
         let mut next = text.clone();
         for (old, new) in [
             (format!("[[{old_stem}]]"), format!("[[{new_stem}]]")),
@@ -256,10 +258,10 @@ pub fn make_folder(root: &Path, parent: &str, name: &str) -> Result<String, Stri
     let name = folder_name(name)?;
     let parent = normalize(parent).unwrap_or_default();
     let path = if parent.is_empty() { name } else { format!("{parent}/{name}") };
-    if root.join(&path).exists() {
+    if root.join(&path).present() {
         return Err(format!("{path}: taken"));
     }
-    std::fs::create_dir_all(root.join(&path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::create_dir_all(root.join(&path)).map_err(|e| format!("{path}: {e}"))?;
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(path)
 }
@@ -277,17 +279,17 @@ pub fn rename_folder(vault: &Vault, path: &str, name: &str) -> Result<(String, V
     if new_path == path {
         return Ok((new_path, Vec::new()));
     }
-    if vault.root.join(&new_path).exists() {
+    if vault.root.join(&new_path).present() {
         return Err(format!("{new_path}: taken"));
     }
-    std::fs::rename(vault.root.join(&path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::rename(vault.root.join(&path), vault.root.join(&new_path)).map_err(|e| format!("{path}: {e}"))?;
     Births::moved(&vault.root.join(&path), &vault.root.join(&new_path));
     crate::changes::said(crate::changes::Kind::Notes);
     let prefix = format!("{path}/");
     let moved: Vec<(String, String)> = vault.notes.iter().filter_map(|n| n.path.strip_prefix(&prefix).map(|rest| (n.path.clone(), format!("{new_path}/{rest}")))).collect();
     for other in vault.notes.iter().filter(|n| n.kind == NoteKind::Text) {
         let here = moved.iter().find(|(from, _)| *from == other.path).map_or(other.path.clone(), |(_, to)| to.clone());
-        let Ok(text) = std::fs::read_to_string(vault.root.join(&here)) else { continue };
+        let Ok(text) = crate::files::read_to_string(vault.root.join(&here)) else { continue };
         let mut next = text.clone();
         for (from, to) in &moved {
             for (old, new) in [
@@ -310,11 +312,11 @@ pub fn rename_folder(vault: &Vault, path: &str, name: &str) -> Result<(String, V
 pub fn remove_folder(root: &Path, path: &str) -> Result<(), String> {
     let path = normalize(path).filter(|p| !p.is_empty()).ok_or_else(|| format!("{path}: outside the notes"))?;
     let full = root.join(&path);
-    let empty = std::fs::read_dir(&full).map_err(|e| format!("{path}: {e}"))?.next().is_none();
+    let empty = crate::files::read_dir(&full).map_err(|e| format!("{path}: {e}"))?.next().is_none();
     if !empty {
         return Err(format!("{path}: not empty"));
     }
-    std::fs::remove_dir(&full).map_err(|e| format!("{path}: {e}"))?;
+    crate::files::remove_dir(&full).map_err(|e| format!("{path}: {e}"))?;
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(())
 }
@@ -333,7 +335,7 @@ fn relative(from_folder: &str, to: &str) -> String {
 pub fn image_size(path: &Path) -> Option<(u32, u32)> {
     use std::io::Read;
     let mut head = Vec::with_capacity(64 * 1024);
-    std::fs::File::open(path).ok()?.take(256 * 1024).read_to_end(&mut head).ok()?;
+    crate::files::File::open(path).ok()?.take(256 * 1024).read_to_end(&mut head).ok()?;
     let be16 = |b: &[u8], at: usize| b.get(at..at + 2).map(|x| u32::from(u16::from_be_bytes([x[0], x[1]])));
     let le16 = |b: &[u8], at: usize| b.get(at..at + 2).map(|x| u32::from(u16::from_le_bytes([x[0], x[1]])));
     let be32 = |b: &[u8], at: usize| b.get(at..at + 4).map(|x| u32::from_be_bytes([x[0], x[1], x[2], x[3]]));
@@ -563,7 +565,7 @@ pub fn front_made(front: &BTreeMap<String, Vec<String>>, zone: &jiff::tz::TimeZo
 /// When a file was made on this device, as its system says it (Linux's
 /// `statx`, Windows, macOS); None where it does not know it (Android, some
 /// folders). Unix seconds.
-pub fn born(metadata: &std::fs::Metadata) -> Option<i64> {
+pub fn born(metadata: &crate::files::Metadata) -> Option<i64> {
     metadata.created().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok()).filter(|s| *s > 0)
 }
 
@@ -593,7 +595,7 @@ impl Births {
 
     /// As kept, or none.
     pub fn read() -> Births {
-        std::fs::read_to_string(Births::path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(Births::path()).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// The day `file` was made, as kept.
@@ -610,13 +612,13 @@ impl Births {
             let mut births = Births::read();
             let before = births.clone();
             change(&mut births);
-            births.made.retain(|file, _| Path::new(file).exists());
+            births.made.retain(|file, _| Path::new(file).present());
             if births != before {
                 if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                    let _ = crate::files::create_dir_all(parent);
                 }
                 if let Ok(text) = toml::to_string(&births) {
-                    let _ = std::fs::write(&path, text);
+                    let _ = crate::files::write(&path, text);
                 }
             }
         });
@@ -625,7 +627,7 @@ impl Births {
     /// `file` is about to be replaced by a new one: the day it was made is
     /// kept, or an earlier one already kept.
     fn keep(file: &Path) {
-        let Some(day) = std::fs::metadata(file).ok().as_ref().and_then(born) else { return };
+        let Some(day) = crate::files::metadata(file).ok().as_ref().and_then(born) else { return };
         let key = file.to_string_lossy().to_string();
         Births::change(|births| {
             let kept = births.made.entry(key).or_insert(day);
@@ -636,7 +638,7 @@ impl Births {
     /// A file or a folder moved from `from` to `to`: the days kept follow.
     fn moved(from: &Path, to: &Path) {
         let (from, to) = (from.to_string_lossy().to_string(), to.to_string_lossy().to_string());
-        if !Births::path().exists() {
+        if !Births::path().present() {
             return;
         }
         Births::change(|births| {
@@ -786,7 +788,7 @@ impl Vault {
         let mut folders = Vec::new();
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+            let Ok(entries) = crate::files::read_dir(&dir) else { continue };
             for entry in entries.filter_map(Result::ok) {
                 let path = entry.path();
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -794,13 +796,13 @@ impl Vault {
                     continue;
                 }
                 let Ok(kind) = entry.file_type() else { continue };
-                if kind.is_dir() {
+                if kind.present_dir() {
                     folders.push(path.strip_prefix(root).unwrap_or(&path).components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/"));
                     stack.push(path);
-                } else if kind.is_file() && let Some(file_kind) = kind_of_file(&name) {
+                } else if kind.present_file() && let Some(file_kind) = kind_of_file(&name) {
                     let relative = path.strip_prefix(root).unwrap_or(&path).components().map(|c| c.as_os_str().to_string_lossy().to_string()).collect::<Vec<_>>().join("/");
                     let mut note = if file_kind == NoteKind::Text {
-                        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                        let Ok(text) = crate::files::read_to_string(&path) else { continue };
                         read(&relative, &text)
                     } else {
                         let title = name.rsplit_once('.').map_or(name.as_str(), |(stem, _)| stem).to_string();
@@ -1082,7 +1084,7 @@ pub fn query_words(query: &str) -> Vec<String> {
 pub fn search_text(file: &Path) -> Option<String> {
     use std::io::Read;
     let mut bytes = Vec::new();
-    std::fs::File::open(file).ok()?.take(TEXT_NOTE_BYTES).read_to_end(&mut bytes).ok()?;
+    crate::files::File::open(file).ok()?.take(TEXT_NOTE_BYTES).read_to_end(&mut bytes).ok()?;
     Some(String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
 }
 
@@ -1323,16 +1325,16 @@ pub fn write(root: &Path, path: &str, text: &str) -> Result<PathBuf, String> {
     }
     let target = root.join(&relative);
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     let extension = target.extension().and_then(|e| e.to_str()).unwrap_or("md");
     let temporary = target.with_extension(format!("{extension}.new"));
-    std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
+    crate::files::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
     // A new file takes its place: the day the one it replaces was made is kept (`Births`).
-    if target.exists() {
+    if target.present() {
         Births::keep(&target);
     }
-    std::fs::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
+    crate::files::rename(&temporary, &target).map_err(|e| format!("{}: {e}", target.display()))?;
     // A note's writes, its links among them: every view of notes and ties reads them again.
     crate::changes::said(crate::changes::Kind::Notes);
     Ok(target)
@@ -1377,7 +1379,7 @@ pub fn free_path(root: &Path, folder: &str, title: &str) -> String {
     let join = |file: &str| if folder.is_empty() { file.to_string() } else { format!("{}/{file}", folder.trim_matches('/')) };
     let mut path = join(&name);
     let mut n = 2;
-    while root.join(&path).exists() {
+    while root.join(&path).present() {
         path = join(&format!("{stem} {n}.md"));
         n += 1;
     }

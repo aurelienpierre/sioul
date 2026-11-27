@@ -618,13 +618,13 @@ impl Posted {
     }
 
     pub fn load(path: &Path) -> Posted {
-        std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = serde_json::to_string(self).map_err(|e| e.to_string())?;
         if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            crate::files::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         }
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }
@@ -639,7 +639,7 @@ pub fn message_unread(file: &Path) -> bool {
     let Some(folder) = file.parent().and_then(Path::parent) else { return false };
     let mut found = BTreeSet::new();
     for sub in ["new", "cur"] {
-        for entry in std::fs::read_dir(folder.join(sub)).into_iter().flatten().filter_map(Result::ok) {
+        for entry in crate::files::read_dir(folder.join(sub)).into_iter().flatten().filter_map(Result::ok) {
             let entry = entry.file_name().to_string_lossy().to_string();
             if crate::maildir::unique_part(&entry) == unique {
                 found.insert(entry);

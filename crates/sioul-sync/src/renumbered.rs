@@ -40,6 +40,8 @@
 //! (folder → old UIDVALIDITIES), which no older Sioul reads or writes; a
 //! numbering is forgotten once the folder holds no file of it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use serde::{Deserialize, Serialize};
 use sioul_core::card::ImapOrigin;
 use sioul_core::maildir;
@@ -59,11 +61,11 @@ pub struct Removal {
 fn numbered(root: &Path) -> Vec<(PathBuf, ImapOrigin)> {
     let mut out: Vec<(PathBuf, ImapOrigin)> = ["new", "cur"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(root.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(root.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file())
+        .filter(|p| p.present_file())
         .filter_map(|p| maildir::origin_of(&p).map(|o| (p, o)))
         .collect();
     out.sort_by_key(|(_, origin)| *origin);
@@ -171,7 +173,7 @@ fn resolved(path: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut head = path;
     loop {
-        if let Ok(real) = std::fs::canonicalize(head) {
+        if let Ok(real) = crate::files::canonicalize(head) {
             return rest.iter().rev().fold(real, |path, part| path.join(part));
         }
         match (head.file_name(), head.parent()) {
@@ -210,18 +212,18 @@ pub struct Left {
 impl Left {
     /// The record; empty without one, or when it does not read.
     pub fn load(path: &Path) -> Left {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// Written whole beside, then put in place.
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::files::create_dir_all(parent)?;
         }
         let text = format!("# Sioul: the numberings (UIDVALIDITY) each folder left on this device, for removing their old copies.\n{}", toml::to_string(self).unwrap_or_default());
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text)?;
-        std::fs::rename(&temporary, path)
+        crate::files::write(&temporary, text)?;
+        crate::files::rename(&temporary, path)
     }
 
     /// `folder` left the numbering `validity`; whether that is new here.
@@ -255,7 +257,7 @@ impl Left {
 pub fn remove(removals: &[Removal], folder: &str, log: &Path) -> usize {
     let mut removed = 0;
     for removal in removals {
-        if std::fs::remove_file(&removal.path).is_err() {
+        if crate::files::remove_file(&removal.path).is_err() {
             continue;
         }
         removed += 1;
@@ -270,13 +272,12 @@ pub fn remove(removals: &[Removal], folder: &str, log: &Path) -> usize {
 fn append(log: &Path, line: &str) {
     use std::io::Write;
     if let Some(parent) = log.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = crate::files::create_dir_all(parent);
     }
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.append(true).create(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     if let Ok(mut file) = options.open(log) {

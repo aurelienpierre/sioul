@@ -15,6 +15,8 @@
 //! already here, said as a count before anything is written; then one batch
 //! (`contactbatch::start`), undone as a whole.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, load_config, say, tr};
 use crate::backend::qobject::Sioul;
 use cxx_qt_lib::QString;
@@ -73,8 +75,8 @@ pub(crate) fn is_contacts_file(path: &Path) -> bool {
 
 /// A file's bytes, `MAX_BYTES` and one at most (what is more is too large).
 fn read_at_most(path: &Path) -> std::io::Result<Vec<u8>> {
-    let file = std::fs::File::open(path)?;
-    if !file.metadata()?.is_file() {
+    let file = crate::files::File::open(path)?;
+    if !file.metadata()?.present_file() {
         return Err(std::io::Error::other("not a file"));
     }
     let mut bytes = Vec::new();
@@ -88,7 +90,7 @@ pub(crate) fn keep_all(paths: &[PathBuf]) {
     for path in paths {
         let kept = read_at_most(path).and_then(|bytes| {
             let dir = folder();
-            std::fs::create_dir_all(&dir)?;
+            crate::files::create_dir_all(&dir)?;
             let extension = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("csv")) { "csv" } else { "vcf" };
             sioul_core::filelock::replace(&dir.join(format!("{}.{extension}", sioul_core::vdir::new_name())), &bytes)
         });
@@ -108,11 +110,11 @@ pub(crate) fn take(sioul: Pin<&mut Sioul>) {
     if SHOWN.lock().map_or(true, |shown| shown.is_some()) || READING.load(Ordering::Acquire) {
         return;
     }
-    let mut waiting: Vec<PathBuf> = std::fs::read_dir(folder()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| is_contacts_file(p)).collect();
+    let mut waiting: Vec<PathBuf> = crate::files::read_dir(folder()).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| is_contacts_file(p)).collect();
     waiting.sort();
     let Some(next) = waiting.into_iter().next() else { return };
     let taken = next.with_file_name(format!("{}.taken", next.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
-    if std::fs::rename(&next, &taken).is_err() {
+    if crate::files::rename(&next, &taken).is_err() {
         return;
     }
     read(&sioul.qt_thread(), &sioul.shared(), &taken.display().to_string(), true);
@@ -153,7 +155,7 @@ pub(crate) fn read(qt: &QtThread, shared: &Arc<Shared>, path: &str, handed: bool
         // A handed file's name, as it was handed: "people.csv.taken" → "people.csv".
         let named = if handed { path.with_extension("") } else { path.clone() };
         if handed {
-            let _ = std::fs::remove_file(&path);
+            let _ = crate::files::remove_file(&path);
         }
         let name = named.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let bytes = match bytes {

@@ -111,7 +111,7 @@ impl Card {
     /// The whole text of the message, read again from disk: plain text only,
     /// HTML converted by mail-parser, so nothing remote loads and nothing runs.
     pub fn full_text(&self) -> Option<String> {
-        let raw = std::fs::read(self.path.as_ref()?).ok()?;
+        let raw = crate::files::read(self.path.as_ref()?).ok()?;
         let message = MessageParser::default().parse(&raw)?;
         Some(message.body_text(0).map(|b| b.into_owned()).unwrap_or_default())
     }

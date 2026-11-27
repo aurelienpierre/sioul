@@ -22,6 +22,8 @@
 //! `health-state.toml` (`taken`, `not_taken`) are still written beside the
 //! answers, for it, and read here as answers of a device not named.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::health::{HealthState, Problem, Unsound};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -181,7 +183,7 @@ impl DoseRecords {
     /// given, and written back empty, the sharing would take it out everywhere.
     /// Of no bytes, or gone, though written before (`health::witnessed`): lost.
     pub fn read(path: &Path) -> Result<DoseRecords, Unsound> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() && crate::health::witnessed(path) => Err(Unsound::Lost),
             Ok(text) => toml::from_str(&text).map_err(|_| Unsound::Unreadable),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -213,14 +215,14 @@ impl DoseRecords {
     pub fn set_aside(path: &Path, now: i64) -> Result<Option<PathBuf>, String> {
         crate::filelock::with_lock(path, || {
             for witness in crate::health::witnesses(path) {
-                let _ = std::fs::remove_file(witness);
+                let _ = crate::files::remove_file(witness);
             }
-            if !path.exists() {
+            if !path.present() {
                 return Ok(None);
             }
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             let aside = path.with_file_name(format!("{name}.unreadable-{now}"));
-            std::fs::rename(path, &aside).map_err(|e| format!("{}: {e}", path.display()))?;
+            crate::files::rename(path, &aside).map_err(|e| format!("{}: {e}", path.display()))?;
             Ok(Some(aside))
         })
     }

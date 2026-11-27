@@ -9,6 +9,8 @@
 //! rest goes to no server, except sealed to your other computers when you
 //! share with them (docs/database.md).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, say, tell, tr};
 use crate::work;
 use cxx_qt_lib::QString;
@@ -191,10 +193,10 @@ fn keep_last_read(path: &std::path::Path, bytes: &[u8]) {
     let hash = sioul_core::vdir::content_hash(bytes);
     let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let copy = last_read_path(path);
-    if kept.as_deref() == Some(hash.as_str()) && copy.exists() {
+    if kept.as_deref() == Some(hash.as_str()) && copy.present() {
         return;
     }
-    if std::fs::read(&copy).ok().as_deref() != Some(bytes) && sioul_core::health::write_synced(&copy, bytes).is_err() {
+    if crate::files::read(&copy).ok().as_deref() != Some(bytes) && sioul_core::health::write_synced(&copy, bytes).is_err() {
         return;
     }
     *kept = Some(hash);
@@ -203,7 +205,7 @@ fn keep_last_read(path: &std::path::Path, bytes: &[u8]) {
 /// The health file as last read here (`keep_last_read`); none kept yet, and
 /// never a copy of no bytes read as no medicines.
 fn last_read(path: &std::path::Path) -> Option<Health> {
-    let text = std::fs::read_to_string(last_read_path(path)).ok()?;
+    let text = crate::files::read_to_string(last_read_path(path)).ok()?;
     if text.trim().is_empty() {
         return None;
     }
@@ -2630,14 +2632,14 @@ fn record_doubt_path() -> std::path::PathBuf {
 }
 
 fn record_doubt() -> Option<i64> {
-    let doubt: RecordDoubt = toml::from_str(&std::fs::read_to_string(record_doubt_path()).ok()?).ok()?;
+    let doubt: RecordDoubt = toml::from_str(&crate::files::read_to_string(record_doubt_path()).ok()?).ok()?;
     Some(doubt.since)
 }
 
 fn write_record_doubt(since: i64, aside: &str) {
     let doubt = RecordDoubt { since, aside: aside.to_string() };
     if let Ok(text) = toml::to_string(&doubt) {
-        let _ = std::fs::write(record_doubt_path(), text);
+        let _ = crate::files::write(record_doubt_path(), text);
     }
 }
 
@@ -3024,7 +3026,7 @@ fn newest_of(kept: &Peers) -> Vec<sioul_sync::devices::Entry> {
 }
 
 fn load_peers() -> Peers {
-    std::fs::read_to_string(peers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(peers_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// Written whole beside its place, then renamed over it (`share::write_atomically`):

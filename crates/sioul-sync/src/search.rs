@@ -331,7 +331,7 @@ async fn with_message_id_in(session: &mut Imap, id: &str, folders: &[Folder]) ->
 
 /// The copy here of a message of a folder, if there is one.
 fn here(root: &std::path::Path, origin: ImapOrigin) -> Option<PathBuf> {
-    ["cur", "new"].iter().filter_map(|sub| std::fs::read_dir(root.join(sub)).ok()).flatten().filter_map(Result::ok).map(|e| e.path()).find(|p| maildir::origin_of(p) == Some(origin))
+    ["cur", "new"].iter().filter_map(|sub| crate::files::read_dir(root.join(sub)).ok()).flatten().filter_map(Result::ok).map(|e| e.path()).find(|p| maildir::origin_of(p) == Some(origin))
 }
 
 /// Where a folder's copies are kept here, as a sync keeps them: the inbox in
@@ -349,7 +349,7 @@ pub fn kept_uids(account: &Account, folder: &Folder) -> BTreeSet<(u32, u32)> {
     let Some(root) = kept_root(account, folder) else { return BTreeSet::new() };
     ["cur", "new"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(root.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(root.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .filter_map(|e| maildir::origin_of(&e.path()))

@@ -25,6 +25,8 @@
 //!   made from the sharing key (`sioul_sync::textseal`): no sharing key here,
 //!   nothing is read or written.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, load_config, tr};
 use cxx_qt_lib::QString;
 use serde::{Deserialize, Serialize};
@@ -122,12 +124,12 @@ fn now_ms() -> i64 {
 fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(fail)?;
+        crate::files::create_dir_all(dir).map_err(fail)?;
     }
     let fresh = path.with_extension(format!("{}.new", std::process::id()));
-    std::fs::write(&fresh, bytes).map_err(fail)?;
-    std::fs::rename(&fresh, path).map_err(|e| {
-        let _ = std::fs::remove_file(&fresh);
+    crate::files::write(&fresh, bytes).map_err(fail)?;
+    crate::files::rename(&fresh, path).map_err(|e| {
+        let _ = crate::files::remove_file(&fresh);
         fail(e)
     })
 }
@@ -155,7 +157,7 @@ fn choice_path() -> PathBuf {
 }
 
 fn choice() -> Choice {
-    std::fs::read_to_string(choice_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(choice_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// The sizes offered for the largest media file (MB): the blobs take 64 MB at most.
@@ -310,7 +312,7 @@ impl Reader {
 
     fn load_at(path: &Path) -> Reader {
         let fresh = || Reader { version: READER_VERSION, ..Reader::default() };
-        match std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Reader>(&t).ok()) {
+        match crate::files::read_to_string(path).ok().and_then(|t| serde_json::from_str::<Reader>(&t).ok()) {
             Some(reader) if reader.version == READER_VERSION => reader,
             // Its rows known by their ids alone: at the next step the log
             // tells which it holds, and what it lacks is read as a history.
@@ -319,7 +321,7 @@ impl Reader {
                 // The first version's stores, in the state folder then: sealed copies of 30 days, read again whole now.
                 if let Some(dir) = path.parent() {
                     for old in ["log", "send", "outcome", "ask", "answer"] {
-                        let _ = std::fs::remove_dir_all(dir.join(old));
+                        let _ = crate::files::remove_dir_all(dir.join(old));
                     }
                 }
                 eprintln!("sioul: texts: the reader starts again from the first text, for the archive");
@@ -511,7 +513,7 @@ fn bring_media(android: &dyn Android, incoming: &Path, text: &mut Text, vault: &
             continue;
         }
         let put = sioul_sync::blobs::hash_file(&copy).map_err(|e| e.to_string()).and_then(|(hash, size)| sioul_sync::blobs::put(folder, key, &copy, &hash).map(|_| (hash, size)));
-        let _ = std::fs::remove_file(&copy);
+        let _ = crate::files::remove_file(&copy);
         match put {
             Ok((hash, size)) => {
                 part.hash = hash;
@@ -901,7 +903,7 @@ const RESULTS_ASIDE: &str = "results-aside.jsonl";
 fn results_of(private: &Path, now: i64) -> Vec<PartResult> {
     [rules::RESULTS, RESULTS_ASIDE]
         .iter()
-        .flat_map(|name| std::fs::read_to_string(private.join(name)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str::<PartResult>(l).ok()).collect::<Vec<_>>())
+        .flat_map(|name| crate::files::read_to_string(private.join(name)).unwrap_or_default().lines().filter_map(|l| serde_json::from_str::<PartResult>(l).ok()).collect::<Vec<_>>())
         .filter(|r| now - r.at <= rules::KEPT_DAYS * DAY_MS)
         .collect()
 }
@@ -922,17 +924,17 @@ fn trim_results(private: &Path, now: i64) -> std::io::Result<()> {
             return Ok(());
         }
         use std::io::Write;
-        let mut file = std::fs::OpenOptions::new().create(true).append(true).open(&current)?;
+        let mut file = crate::files::OpenOptions::new().create(true).append(true).open(&current)?;
         file.write_all(lines.iter().map(|l| format!("{l}\n")).collect::<String>().as_bytes())?;
         file.sync_all()
     };
-    if let Ok(text) = std::fs::read_to_string(&aside) {
-        let there: BTreeSet<String> = std::fs::read_to_string(&current).unwrap_or_default().lines().map(str::to_string).collect();
+    if let Ok(text) = crate::files::read_to_string(&aside) {
+        let there: BTreeSet<String> = crate::files::read_to_string(&current).unwrap_or_default().lines().map(str::to_string).collect();
         append(&kept(&text).into_iter().filter(|l| !there.contains(l)).collect::<Vec<_>>())?;
-        std::fs::remove_file(&aside)?;
+        crate::files::remove_file(&aside)?;
     }
-    match std::fs::rename(&current, &aside) {
-        Ok(()) => append(&kept(&std::fs::read_to_string(&aside)?)),
+    match crate::files::rename(&current, &aside) {
+        Ok(()) => append(&kept(&crate::files::read_to_string(&aside)?)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
@@ -950,7 +952,7 @@ const ANDROID_MAX: u64 = 300 * 1024;
 /// or the copy fetched from its server beside it), not opened.
 fn sealed_here(vault: &Vault, hash: &str) -> bool {
     let (folder, key) = vault;
-    let there = |dir: &Path| std::fs::metadata(dir.join("blobs").join(sioul_sync::blobs::name(key, hash))).is_ok_and(|m| m.len() > 0);
+    let there = |dir: &Path| crate::files::metadata(dir.join("blobs").join(sioul_sync::blobs::name(key, hash))).is_ok_and(|m| m.len() > 0);
     there(folder) || sioul_sync::remote::overlay(folder).is_some_and(|copy| there(&copy))
 }
 
@@ -1058,7 +1060,7 @@ impl Step<'_> {
             if ledger.as_ref().is_some_and(|l| l.state(&o.key) != Some("done")) {
                 self.record(&Claim { key: o.key.clone(), at: now, state: "done".into(), ..Claim::default() });
             }
-            let _ = std::fs::remove_file(self.pdu_path(&o.key));
+            let _ = crate::files::remove_file(self.pdu_path(&o.key));
         }
         changed
     }
@@ -1100,14 +1102,14 @@ impl Step<'_> {
             return Prepared::Refused("too-large");
         }
         let (folder, key) = vault;
-        let _ = std::fs::create_dir_all(self.private.join(OUTGOING));
+        let _ = crate::files::create_dir_all(self.private.join(OUTGOING));
         let opened = self.private.join(OUTGOING).join(format!("{}.media", self.pdu_path(&r.key).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default()));
         let mut bytes = Vec::new();
         let mut missing = Vec::new();
         for medium in &r.media {
             let ok = sioul_sync::blobs::get(folder, key, &medium.hash, &opened).is_ok();
-            let read = if ok { std::fs::read(&opened).ok() } else { None };
-            let _ = std::fs::remove_file(&opened);
+            let read = if ok { crate::files::read(&opened).ok() } else { None };
+            let _ = crate::files::remove_file(&opened);
             match read {
                 Some(read) if read.len() as u64 == medium.size => bytes.push(read),
                 Some(_) => return Prepared::Refused("media-kind"),
@@ -1248,14 +1250,14 @@ impl Step<'_> {
         // Made ready and not claimed (refused, or decided meanwhile): its file goes.
         for (key, prepared) in &ready {
             if !to_send_mms.iter().any(|(r, _)| &r.key == key) && *prepared != Prepared::Waiting {
-                let _ = std::fs::remove_file(self.pdu_path(key));
+                let _ = crate::files::remove_file(self.pdu_path(key));
             }
         }
         if let Err(e) = claimed {
             // A claim not flushed: nothing is handed to Android.
             eprintln!("sioul: texts: {e}");
             for (r, _) in &to_send_mms {
-                let _ = std::fs::remove_file(self.pdu_path(&r.key));
+                let _ = crate::files::remove_file(self.pdu_path(&r.key));
             }
             return self.say(&said);
         }
@@ -1293,7 +1295,7 @@ impl Step<'_> {
                 let reason = answer["reason"].as_str().unwrap_or("other").to_string();
                 self.record(&Claim { key: r.key.clone(), at: now_ms(), state: "done".into(), ..Claim::default() });
                 said.push(Outcome { key: r.key.clone(), state: "failed".into(), at: now_ms(), reason, ..Outcome::default() });
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_file(&path);
             }
         }
         self.say(&said)
@@ -1338,7 +1340,7 @@ impl Step<'_> {
             let found = if looked(&answer) { sent_row(&answer) } else { None };
             if let Some(outcome) = rules::doubt_after(claim, found, now) {
                 self.record(&Claim { key: claim.key.clone(), at: now, state: "done".into(), ..Claim::default() });
-                let _ = std::fs::remove_file(self.pdu_path(&claim.key));
+                let _ = crate::files::remove_file(self.pdu_path(&claim.key));
                 said.push(outcome);
             }
         }
@@ -1406,7 +1408,7 @@ impl Step<'_> {
     /// outcome written by another way): gone once its key is done, or an
     /// hour old with no claim.
     fn sweep_outgoing(&self, now: i64) {
-        let Ok(entries) = std::fs::read_dir(self.private.join(OUTGOING)) else { return };
+        let Ok(entries) = crate::files::read_dir(self.private.join(OUTGOING)) else { return };
         let ledger = rules::Ledger::open(&self.private, now).ok();
         for entry in entries.filter_map(Result::ok) {
             let name = entry.file_name().to_string_lossy().to_string();
@@ -1414,7 +1416,7 @@ impl Step<'_> {
             let state = ledger.as_ref().and_then(|l| l.state(key).map(str::to_string));
             let old = entry.metadata().ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 3600);
             if state.as_deref() == Some("done") || (state.is_none() && old) || (state.as_deref().is_some_and(|s| !matches!(s, "claimed" | "handed")) && old) {
-                let _ = std::fs::remove_file(entry.path());
+                let _ = crate::files::remove_file(entry.path());
             }
         }
     }
@@ -1434,17 +1436,17 @@ fn write_flushed(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(fail)?;
+        crate::files::create_dir_all(dir).map_err(fail)?;
     }
     let beside = path.with_extension("part");
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).write(true).truncate(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     let mut file = options.open(&beside).map_err(fail)?;
     file.write_all(bytes).map_err(fail)?;
     file.sync_all().map_err(fail)?;
-    std::fs::rename(&beside, path).map_err(fail)
+    crate::files::rename(&beside, path).map_err(fail)
 }
 
 /// When the carriers' limits were last asked in this process (ms): once an hour at most.
@@ -1790,7 +1792,7 @@ fn media_path(hash: &str) -> PathBuf {
 }
 
 fn here_media(hash: &str) -> bool {
-    !hash.is_empty() && media_path(hash).exists()
+    !hash.is_empty() && media_path(hash).present()
 }
 
 /// The phones' logs as last seen by `fetch_media` (each file's size and
@@ -1803,9 +1805,9 @@ static FETCHED: Mutex<(Vec<(u64, u128)>, bool)> = Mutex::new((Vec::new(), true))
 /// Whether one was brought.
 fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
     let (folder, key) = vault;
-    let mut logs: Vec<(u64, u128)> = std::fs::read_dir(root().join(rules::LOG))
+    let mut logs: Vec<(u64, u128)> = crate::files::read_dir(root().join(rules::LOG))
         .into_iter()
-        .chain(std::fs::read_dir(root().join(rules::SEND)))
+        .chain(crate::files::read_dir(root().join(rules::SEND)))
         .flatten()
         .filter_map(|entry| entry.ok()?.metadata().ok())
         .map(|m| (m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos())))
@@ -1835,7 +1837,7 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
         }
         let incoming = private().join("incoming").join(&hash);
         if let Some(dir) = incoming.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            let _ = crate::files::create_dir_all(dir);
         }
         if sioul_sync::blobs::get(folder, key, &hash, &incoming).is_err() {
             if asking {
@@ -1847,8 +1849,8 @@ fn fetch_media(seal: &Seal, vault: &Vault) -> bool {
         if asking {
             have.push(sioul_sync::blobs::name(key, &hash));
         }
-        let bytes = std::fs::read(&incoming);
-        let _ = std::fs::remove_file(&incoming);
+        let bytes = crate::files::read(&incoming);
+        let _ = crate::files::remove_file(&incoming);
         let Ok(bytes) = bytes else {
             left = true;
             continue;
@@ -1911,11 +1913,11 @@ fn open_media(hash: &str, ct: &str) -> Option<PathBuf> {
     let extension = ct.split('/').nth(1).and_then(|s| s.split(['+', ';', '.', '-']).next()).filter(|e| !e.is_empty() && e.chars().all(|c| c.is_ascii_alphanumeric())).unwrap_or("bin");
     let target = opened_folder().join(format!("{}.{extension}", path.file_name()?.to_string_lossy()));
     // Opened already for the page: not read and opened again each time a row shows it.
-    if target.exists() {
+    if target.present() {
         return Some(target);
     }
     let (_, seal, _) = sealed()?;
-    let plain = seal.open_bytes(&std::fs::read(&path).ok()?)?;
+    let plain = seal.open_bytes(&crate::files::read(&path).ok()?)?;
     write_whole(&target, &plain).ok()?;
     Some(target)
 }
@@ -1961,7 +1963,7 @@ fn measure_clock() {
         *looked = now;
     }
     let Some(phone) = sending_phone() else { return };
-    let mut clock: Clock = std::fs::read_to_string(Clock::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut clock: Clock = crate::files::read_to_string(Clock::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let gap = clock.phones.entry(phone.id.clone()).or_default();
     if phone.exported <= 0 || phone.exported == gap.seen {
         return;
@@ -1979,7 +1981,7 @@ fn measure_clock() {
 
 /// How far this clock may run ahead of a phone's (ms): the least gap of the last day, 0 unknown.
 pub(crate) fn ahead_of(phone: &str) -> i64 {
-    let clock: Clock = std::fs::read_to_string(Clock::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let clock: Clock = crate::files::read_to_string(Clock::path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     clock.phones.get(phone).filter(|g| now_ms() - g.at <= 86_400_000).map_or(0, |g| g.least.max(0))
 }
 
@@ -2021,7 +2023,7 @@ thread_local! {
 /// The settings and your senders for the page's looks (`LOOKS`): each
 /// opening of a conversation read them twice, on the window's thread.
 fn looks() -> (std::rc::Rc<Config>, std::rc::Rc<Senders>) {
-    let stamp = std::fs::metadata(config_dir().join("config.toml")).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+    let stamp = crate::files::metadata(config_dir().join("config.toml")).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
     LOOKS.with(|cell| {
         let mut kept = cell.borrow_mut();
         if let Some((s, at, config, senders)) = kept.as_ref()
@@ -2065,7 +2067,7 @@ static KEPT: Mutex<Option<Kept>> = Mutex::new(None);
 fn stamps(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
     let mut all = Vec::new();
     for store in [rules::SEND, rules::OUTCOME] {
-        for entry in std::fs::read_dir(root.join(store)).into_iter().flatten().flatten() {
+        for entry in crate::files::read_dir(root.join(store)).into_iter().flatten().flatten() {
             if let Ok(meta) = entry.metadata() {
                 all.push((entry.path(), meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH)));
             }
@@ -2275,7 +2277,7 @@ fn forget_hidden_media(here: &str, seal: &Seal) {
     let (marks, all) = marked(here, seal);
     let shown: BTreeSet<&str> = all.iter().filter(|t| !marks.hides(t)).flat_map(|t| t.parts.iter().map(|p| p.hash.as_str())).collect();
     for hash in all.iter().filter(|t| marks.hides(t)).flat_map(|t| t.parts.iter().map(|p| p.hash.as_str())).filter(|h| !h.is_empty() && !shown.contains(h)) {
-        let _ = std::fs::remove_file(media_path(hash));
+        let _ = crate::files::remove_file(media_path(hash));
     }
 }
 
@@ -2461,7 +2463,7 @@ pub(crate) fn send_mms(to: &str, words: &str, media: &[(String, Vec<u8>)], from:
     for (i, (ct, bytes)) in media.iter().enumerate() {
         let source = staging.join(i.to_string());
         let hashed = write_whole(&source, bytes).and_then(|()| sioul_sync::blobs::hash_file(&source).map_err(|e| format!("{}: {e}", source.display())));
-        let _ = std::fs::remove_file(&source);
+        let _ = crate::files::remove_file(&source);
         match hashed {
             Ok((hash, size)) => named.push(rules::Medium { hash, ct: ct.clone(), size }),
             Err(e) => return (json!({ "said": e, "shared": false }), false),
@@ -2474,7 +2476,7 @@ pub(crate) fn send_mms(to: &str, words: &str, media: &[(String, Vec<u8>)], from:
     for ((_, bytes), medium) in media.iter().zip(&named) {
         let source = staging.join(&medium.hash);
         let sealed_there = write_whole(&source, bytes).and_then(|()| sioul_sync::blobs::put(&folder, &key, &source, &medium.hash).map(|_| ()));
-        let _ = std::fs::remove_file(&source);
+        let _ = crate::files::remove_file(&source);
         if let Err(e) = sealed_there {
             return (json!({ "said": e, "shared": false }), false);
         }
@@ -2538,8 +2540,8 @@ fn attached_folder() -> PathBuf {
 /// Whether `path` is a file in `folder` (the files attached, made fit),
 /// its links and `..` resolved: none elsewhere is sent as a medium.
 fn made_in(folder: &Path, path: &Path) -> bool {
-    match (std::fs::canonicalize(folder), std::fs::canonicalize(path)) {
-        (Ok(folder), Ok(path)) => path.starts_with(&folder) && path != folder && path.is_file(),
+    match (crate::files::canonicalize(folder), crate::files::canonicalize(path)) {
+        (Ok(folder), Ok(path)) => path.starts_with(&folder) && path != folder && path.present_file(),
         _ => false,
     }
 }
@@ -2562,7 +2564,7 @@ pub(crate) fn at_start() {
 /// The files attached let go, and any attaching under way told so: the window's thread never waits.
 fn let_attached_go() {
     ATTACH_TURN.fetch_add(1, Ordering::SeqCst);
-    let _ = std::fs::remove_dir_all(attached_folder());
+    let _ = crate::files::remove_dir_all(attached_folder());
 }
 
 /// The files chosen on the page (`sources`, files or their addresses) made
@@ -2592,7 +2594,7 @@ pub(crate) fn attach(json: &str) -> String {
     let made = attach_made(&sources, max, side, round);
     // Let go while it was made: nothing of it stays.
     if passed() {
-        let _ = std::fs::remove_dir_all(attached_folder());
+        let _ = crate::files::remove_dir_all(attached_folder());
     }
     made
 }
@@ -2619,7 +2621,7 @@ fn attach_limit(phone: Option<&sioul_sync::devices::Entry>, id: &str) -> Result<
 fn attach_made(sources: &[PathBuf], max: u64, side: u32, round: i64) -> String {
     let tr = tr();
     let folder = attached_folder();
-    let _ = std::fs::remove_dir_all(&folder);
+    let _ = crate::files::remove_dir_all(&folder);
     let (made, left) = crate::attach::make(sources, max, side, &folder);
     let media: Vec<Value> = made
         .iter()
@@ -2775,7 +2777,7 @@ pub(crate) fn media_to_send() -> BTreeMap<String, u64> {
         }
         for medium in &r.media {
             let name = sioul_sync::blobs::name(&key, &medium.hash);
-            if let Ok(meta) = std::fs::metadata(folder.join("blobs").join(&name)) {
+            if let Ok(meta) = crate::files::metadata(folder.join("blobs").join(&name)) {
                 out.insert(name, meta.len());
             }
         }
@@ -2933,7 +2935,7 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
                 .filter_map(|m| {
                     let path = crate::backend::local_path(m["path"].as_str()?);
                     made_in(&folder, &path).then_some(())?;
-                    Some((m["ct"].as_str()?.to_string(), std::fs::read(&path).ok()?))
+                    Some((m["ct"].as_str()?.to_string(), crate::files::read(&path).ok()?))
                 })
                 .collect();
             if media.len() == asked_media.len() {
@@ -2983,20 +2985,20 @@ pub(crate) fn call(verb: &str, json: &str) -> (String, bool) {
         }
         // Where the dialog said: a path, or a tablet's document Android made there, through its writer (`chosen::save`).
         "save-media" => {
-            let bytes = open_media(&text("hash"), &text("ct")).and_then(|p| std::fs::read(p).ok());
+            let bytes = open_media(&text("hash"), &text("ct")).and_then(|p| crate::files::read(p).ok());
             let saved = bytes.is_some_and(|bytes| {
                 crate::chosen::save(&text("path"), "media", &bytes, |target| {
                     if target.as_os_str().is_empty() {
                         return Err(String::new());
                     }
-                    std::fs::write(target, &bytes).map_err(|e| e.to_string())
+                    crate::files::write(target, &bytes).map_err(|e| e.to_string())
                 })
                 .is_ok()
             });
             (json!({ "saved": saved }), false)
         }
         "close" => {
-            let _ = std::fs::remove_dir_all(opened_folder());
+            let _ = crate::files::remove_dir_all(opened_folder());
             let_attached_go();
             (json!({}), false)
         }
@@ -3040,7 +3042,7 @@ pub(crate) fn sends_texts(phone_id: &str) -> bool {
     if demo() && !phone() {
         return phone_id == "demo-phone";
     }
-    !phone_id.is_empty() && sealed().is_some() && rules::own_file(&root(), rules::LOG, phone_id).is_file()
+    !phone_id.is_empty() && sealed().is_some() && rules::own_file(&root(), rules::LOG, phone_id).present_file()
 }
 
 /// The texts this computer wrote from a phone to a number (`dial`) since a

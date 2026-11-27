@@ -16,6 +16,8 @@
 //! (`share::put_back`): the file as it is then is kept first, and the next
 //! exchange sends what was put back as a change made here.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use std::path::{Path, PathBuf};
 
 /// Versions kept of each file, however old.
@@ -93,7 +95,7 @@ fn below(root: &Path, part: &str, file: &str) -> Option<PathBuf> {
 /// A name for a new version in `dir`, none taken.
 fn new_stamp(dir: &Path, now_ms: i64) -> String {
     let mut ms = now_ms;
-    while dir.join(stamp(ms)).exists() || dir.join(format!("{}{SEALED}", stamp(ms))).exists() {
+    while dir.join(stamp(ms)).present() || dir.join(format!("{}{SEALED}", stamp(ms))).present() {
         ms += 1;
     }
     stamp(ms)
@@ -107,7 +109,7 @@ fn new_stamp(dir: &Path, now_ms: i64) -> String {
 /// `tidy_file`; the check of ef8c0ca, low 24).
 pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<(), String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
-    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    let size = crate::files::metadata(path).map_or(0, |m| m.len());
     if !crate::disk::fits(root, size) {
         return Err(format!("share-no-room:{file}"));
     }
@@ -116,8 +118,8 @@ pub fn keep(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Re
     // Copied under a hidden name, yours alone, then renamed: never half a version.
     let temporary = crate::share::temporary(&target);
     slow_copy();
-    crate::share::copy_private(path, &temporary).and_then(|()| std::fs::rename(&temporary, &target)).map_err(|e| {
-        let _ = std::fs::remove_file(&temporary);
+    crate::share::copy_private(path, &temporary).and_then(|()| crate::files::rename(&temporary, &target)).map_err(|e| {
+        let _ = crate::files::remove_file(&temporary);
         format!("{}: {e}", target.display())
     })?;
     Ok(())
@@ -138,9 +140,9 @@ pub fn tidy_file(root: &Path, part: &str, file: &str, now_ms: i64) {
 /// alike: a note of the same size written again meanwhile was seen only by
 /// its index (CI's Windows job of 11 November 2026 kept the text before it).
 fn standing(path: &Path) -> Option<(u64, Option<std::time::SystemTime>, u64)> {
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     #[cfg(unix)]
-    let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+    let inode = meta.ino();
     #[cfg(not(unix))]
     let inode = sioul_core::filelock::identity(path, &meta).0;
     Some((meta.len(), meta.modified().ok(), inode))
@@ -166,7 +168,7 @@ pub struct Prepared {
 /// back's time). Refused as `keep` refuses: no room for it.
 pub fn prepare(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<Prepared, String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
-    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    let size = crate::files::metadata(path).map_or(0, |m| m.len());
     if !crate::disk::fits(root, size) {
         return Err(format!("share-no-room:{file}"));
     }
@@ -175,13 +177,13 @@ pub fn prepare(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) ->
     let temporary = crate::share::temporary(&dir.join("prepared"));
     slow_copy();
     if let Err(e) = crate::share::copy_private(path, &temporary) {
-        let _ = std::fs::remove_file(&temporary);
+        let _ = crate::files::remove_file(&temporary);
         return Err(format!("{}: {e}", temporary.display()));
     }
     // Its bytes on the disk here, outside the lock: the rename that keeps it
     // under the lock never leaves a kept copy of no bytes after a crash (the
     // check of 36002ea, low 22; a write handle: Windows flushes no other).
-    let _ = std::fs::OpenOptions::new().write(true).open(&temporary).and_then(|copy| copy.sync_all());
+    let _ = crate::files::OpenOptions::new().write(true).open(&temporary).and_then(|copy| copy.sync_all());
     let _ = crate::share::set_time(&temporary, std::time::SystemTime::now());
     // What one more version makes too many, listed here, outside the lock (the check of ef8c0ca, low 24).
     let too_many = to_prune_with(&dir, now_ms, false, 1);
@@ -222,7 +224,7 @@ impl Prepared {
             return None;
         }
         let target = self.dir.join(new_stamp(&self.dir, now_ms));
-        if std::fs::rename(&self.temporary, &target).is_err() {
+        if crate::files::rename(&self.temporary, &target).is_err() {
             return None;
         }
         Some(std::mem::take(&mut self.too_many))
@@ -231,7 +233,7 @@ impl Prepared {
 
 impl Drop for Prepared {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.temporary);
+        let _ = crate::files::remove_file(&self.temporary);
     }
 }
 
@@ -281,13 +283,13 @@ fn slow_copy() {
 pub fn keep_moved(root: &Path, part: &str, file: &str, path: &Path, now_ms: i64) -> Result<u64, String> {
     let dir = below(root, part, file).ok_or_else(|| format!("{file}: not a file's name"))?;
     crate::share::private_dirs(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let size = std::fs::metadata(path).map_or(0, |m| m.len());
+    let size = crate::files::metadata(path).map_or(0, |m| m.len());
     #[cfg(unix)]
-    let linked = std::fs::metadata(path).is_ok_and(|m| std::os::unix::fs::MetadataExt::nlink(&m) > 1);
+    let linked = crate::files::metadata(path).is_ok_and(|m| m.nlink() > 1);
     #[cfg(not(unix))]
     let linked = false;
     let target = dir.join(new_stamp(&dir, now_ms));
-    if linked || std::fs::rename(path, &target).is_err() {
+    if linked || crate::files::rename(path, &target).is_err() {
         return keep(root, part, file, path, now_ms).map(|()| size);
     }
     // Yours alone, as a copy is.
@@ -340,7 +342,7 @@ pub fn keep_sealed(root: &Path, part: &str, file: &str, hash: &str, size: u64, n
 /// those kept by reference past `SEALED_DAYS`.
 fn prune_file(dir: &Path, now_ms: i64, gone: bool) {
     for path in to_prune(dir, now_ms, gone) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
     }
 }
 
@@ -368,11 +370,11 @@ fn name_of(version: &Version) -> String {
 
 /// The versions in a file's folder, the newest first.
 fn versions_in(dir: &Path) -> Vec<Version> {
-    let mut out: Vec<Version> = std::fs::read_dir(dir)
+    let mut out: Vec<Version> = crate::files::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
+        .filter(|e| e.file_type().is_ok_and(|t| t.present_file()))
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
             match name.strip_suffix(SEALED) {
@@ -414,8 +416,8 @@ fn walk(top: &Path, dir: &Path, out: &mut Vec<(String, Vec<Version>)>) {
     {
         out.push((relative.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"), versions));
     }
-    for entry in std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
-        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+    for entry in crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok) {
+        if entry.file_type().is_ok_and(|t| t.present_dir()) {
             walk(top, &entry.path(), out);
         }
     }
@@ -445,7 +447,7 @@ pub fn draft_copies(root: &Path) -> Vec<PathBuf> {
 pub fn version(root: &Path, part: &str, file: &str, stamp: &str) -> Option<Kept> {
     kept_at(stamp)?;
     let dir = below(root, part, file)?;
-    if dir.join(stamp).is_file() {
+    if dir.join(stamp).present_file() {
         return Some(Kept::Copy(dir.join(stamp)));
     }
     versions_in(&dir).into_iter().find(|v| v.stamp == stamp).and_then(|v| v.sealed.map(|hash| Kept::Sealed { hash, size: v.size }))
@@ -459,7 +461,7 @@ pub fn version(root: &Path, part: &str, file: &str, stamp: &str) -> Option<Kept>
 pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bool) {
     let mut copies: Vec<(i64, PathBuf, u64)> = Vec::new();
     let mut set_aside: Vec<(i64, PathBuf, u64)> = Vec::new();
-    for entry in std::fs::read_dir(root).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.is_dir())) {
+    for entry in crate::files::read_dir(root).into_iter().flatten().filter_map(Result::ok).filter(|e| e.file_type().is_ok_and(|t| t.present_dir())) {
         let part = entry.file_name().to_string_lossy().to_string();
         let mut listed = Vec::new();
         walk(&entry.path(), &entry.path(), &mut listed);
@@ -488,7 +490,7 @@ pub fn prune(root: &Path, now_ms: i64, cap: u64, here: &dyn Fn(&str, &str) -> bo
             if total <= cap {
                 break;
             }
-            if std::fs::remove_file(&path).is_ok() {
+            if crate::files::remove_file(&path).is_ok() {
                 total -= size;
             }
         }

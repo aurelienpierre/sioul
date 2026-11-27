@@ -33,6 +33,8 @@
 //!   at or under `low_at` and none is open for that supply, its UID the same
 //!   on every device, its file named by it, so that two devices write one.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::areas::Area;
 use crate::tasks::{Status, Task};
 use serde::{Deserialize, Serialize};
@@ -281,7 +283,7 @@ impl List {
     /// or is no TOML: a supply that does not read is passed over (`skipped`).
     pub fn load(root: &Path) -> Result<List, String> {
         let path = file_in(root);
-        let text = match std::fs::read_to_string(&path) {
+        let text = match crate::files::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(List::default()),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -397,7 +399,7 @@ impl Refused {
 pub fn change(root: &Path, id: &str, change: &Change) -> Result<String, Refused> {
     let file = file_in(root);
     crate::filelock::with_lock(&file, || {
-        let text = match std::fs::read_to_string(&file) {
+        let text = match crate::files::read_to_string(&file) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(Refused::new("supplies-unreadable", format!("{}: {e}", file.display()))),
@@ -480,11 +482,11 @@ fn put(table: &mut toml_edit::Table, key: &str, item: Item) {
 /// A file written beside then renamed over its place: never half a file.
 fn write_whole(file: &Path, text: &str) -> Result<(), String> {
     if let Some(dir) = file.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     let temporary = file.with_extension("toml.new");
-    std::fs::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
-    std::fs::rename(&temporary, file).map_err(|e| format!("{}: {e}", file.display()))
+    crate::files::write(&temporary, text).map_err(|e| format!("{}: {e}", temporary.display()))?;
+    crate::files::rename(&temporary, file).map_err(|e| format!("{}: {e}", file.display()))
 }
 
 // ---------------------------------------------------------------- the movements
@@ -576,12 +578,12 @@ pub fn device_file(device: &str) -> String {
 pub fn read_moves(root: &Path, device: &str) -> Moves {
     let mut moves = Moves::default();
     let own = device_file(device);
-    let Ok(dir) = std::fs::read_dir(moves_dir(root)) else { return moves };
+    let Ok(dir) = crate::files::read_dir(moves_dir(root)) else { return moves };
     let mut files: Vec<String> = dir.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n.ends_with(".toml") && !n.starts_with('.')).collect();
     files.sort();
     for name in files {
         let path = moves_dir(root).join(&name);
-        let parsed = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|text| toml::from_str::<toml::Table>(&text).map_err(|e| e.to_string()));
+        let parsed = crate::files::read_to_string(&path).map_err(|e| e.to_string()).and_then(|text| toml::from_str::<toml::Table>(&text).map_err(|e| e.to_string()));
         let Ok(table) = parsed else {
             moves.own_unreadable |= name == own;
             moves.unreadable.push(name);
@@ -635,7 +637,7 @@ pub fn record(root: &Path, device: &str, lines: &[Move], made: &[Made]) -> Resul
     }
     let file = moves_dir(root).join(device_file(device));
     crate::filelock::with_lock(&file, || {
-        let text = match std::fs::read_to_string(&file) {
+        let text = match crate::files::read_to_string(&file) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(format!("{}: {e}", file.display())),
@@ -817,7 +819,7 @@ pub fn with_used(text: &str, uses: &[Use], now: &jiff::Zoned) -> Result<String, 
 pub fn settle(root: &Path, device: &str, tasks: &[Task], now: i64) -> Result<Vec<Move>, String> {
     // Nothing of supplies anywhere: nothing read, nothing written.
     let concerned = tasks.iter().any(|t| !t.supplies.is_empty() || t.used_said || !t.resupply.is_empty());
-    if !concerned && !moves_dir(root).is_dir() {
+    if !concerned && !moves_dir(root).present_dir() {
         return Ok(Vec::new());
     }
     let moves = read_moves(root, device);
@@ -1025,7 +1027,7 @@ pub fn make_resupplies(root: &Path, device: &str, tasks: &[Task], list: &crate::
     let mut uids = Vec::new();
     for resupply in to_resupply(&supplies, &moves, tasks) {
         let path = list.dir.join(format!("{}.ics", resupply.uid));
-        if !path.exists() {
+        if !path.present() {
             let text = resupply_text(&resupply, &title(&resupply.supply), zone, now)?;
             crate::vdir::write_item(&path, &text)?;
             uids.push(resupply.uid.clone());

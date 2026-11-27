@@ -355,7 +355,7 @@ impl Wallet {
     pub fn load_at(places: &crate::storage::Places) -> Result<Wallet, String> {
         let root = places.records.as_path();
         let path = root.join(MANIFEST);
-        let papers = match std::fs::read_to_string(&path) {
+        let papers = match crate::files::read_to_string(&path) {
             Ok(text) => {
                 let mut papers = toml::from_str::<File>(&text).map_err(|e| format!("{}: {e}", path.display()))?.papers;
                 for paper in papers.iter_mut().filter(|p| p.kind == Kind::Other) {
@@ -410,7 +410,7 @@ impl Wallet {
     /// notes folder's layout, `<name>` in a folder of its own).
     pub fn keep_file(&self, source: &Path, name: &str) -> Result<String, String> {
         let folder = self.docs.folder.clone();
-        std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+        crate::files::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
         if source.starts_with(&folder) {
             return Ok(self.docs.named(source));
         }
@@ -469,7 +469,7 @@ impl Wallet {
         doc.insert("paper", toml_edit::Item::ArrayOfTables(list));
         let path = self.root.join(MANIFEST);
         let temporary = self.root.join(format!("{MANIFEST}.new"));
-        std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
+        crate::files::write(&temporary, doc.to_string()).and_then(|()| crate::files::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 

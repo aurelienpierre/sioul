@@ -32,6 +32,8 @@
 //!   ([`phone`]); the card's own code shared by both ([`ocard`]).
 //! - **Logs**: [`cap_logging`], as each program starts.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::SyncError;
 use sioul_core::i18n::Translator;
 use sioul_core::pgp;
@@ -197,7 +199,7 @@ impl Released {
 /// Asks GnuPG to let the security key go: `gpgconf --kill scdaemon`. Run only
 /// when you press "Let GnuPG release it", never by itself.
 pub fn release_gnupg() -> Released {
-    if Path::new("/.flatpak-info").exists() {
+    if Path::new("/.flatpak-info").present() {
         return Released::Sandboxed;
     }
     for program in gpgconf_places() {
@@ -310,7 +312,7 @@ pub fn status_of(line: &str) -> Option<Status> {
 /// Whether the process `pid` still runs (its pinentry): on Linux, as /proc
 /// says; elsewhere not known, taken as running until GnuPG answers.
 fn running(pid: u32) -> bool {
-    if cfg!(target_os = "linux") { Path::new(&format!("/proc/{pid}")).exists() } else { true }
+    if cfg!(target_os = "linux") { Path::new(&format!("/proc/{pid}")).present() } else { true }
 }
 
 /// While Sioul's own GnuPG works with the security key, Sioul's own looks at
@@ -347,7 +349,7 @@ impl Gnupg {
         if cfg!(target_os = "android") {
             return Err(GnupgProblem::Missing);
         }
-        if Path::new("/.flatpak-info").exists() {
+        if Path::new("/.flatpak-info").present() {
             return Err(GnupgProblem::Sandboxed);
         }
         let name = if cfg!(windows) { "gpg.exe" } else { "gpg" };
@@ -359,7 +361,7 @@ impl Gnupg {
         } else {
             vec![PathBuf::from("/usr/bin/gpg")]
         };
-        on_path.chain(known).find(|p| p.is_file()).map(|program| Gnupg { program, home: None }).ok_or(GnupgProblem::Missing)
+        on_path.chain(known).find(|p| p.present_file()).map(|program| Gnupg { program, home: None }).ok_or(GnupgProblem::Missing)
     }
 
     /// This `gpg` with its home in `home` (`--homedir`): tests, never yours.
@@ -548,7 +550,7 @@ impl Gnupg {
     /// when it needs the key. GnuPG's settings stay as they are.
     pub fn release(&self) -> Released {
         let gpgconf = self.program.with_file_name(if cfg!(windows) { "gpgconf.exe" } else { "gpgconf" });
-        let program = if gpgconf.is_file() { gpgconf } else { PathBuf::from(if cfg!(windows) { "gpgconf.exe" } else { "gpgconf" }) };
+        let program = if gpgconf.present_file() { gpgconf } else { PathBuf::from(if cfg!(windows) { "gpgconf.exe" } else { "gpgconf" }) };
         release_at(&program, self.home.as_deref())
     }
 }

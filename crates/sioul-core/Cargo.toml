@@ -58,6 +58,17 @@ quick-xml = "0.42"
 # The EPC payment QR code (invoice/epc.rs): Nayuki's reference encoder,
 # error correction and version fixed as EPC069-12 asks; MIT, no dependency.
 qrcodegen = "1.8"
+# The sealed store (sealed/, docs/store.md): the sharing's own construction,
+# XChaCha20-Poly1305 in pieces, keys made by HKDF-SHA-256, names by
+# HMAC-SHA-256, lines in base64, keys zeroed when let go. The same versions
+# sioul-sync builds for every target, the phone included: nothing new is
+# compiled. The keyring stays in sioul-sync (storekey.rs): the core takes a
+# key, never fetches one.
+chacha20poly1305 = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+zeroize = "1"
+base64 = "0.22"
 
 # No core file of a crash (coredump.rs): setrlimit, on every Unix. Already
 # built for every target through the other crates: nothing new is compiled.
@@ -79,3 +90,8 @@ fluent-syntax.workspace = true
 # thread (`agenda::own_addresses_here`, `open_organizer_door_here`). Never
 # enabled in Sioul's builds: `cargo tree -e features` shows it in test builds alone.
 test-hooks = []
+# The sealed store's fixed test key (`sealed::RootKey::test`), for the tests
+# of the crates built on this one and the store's bench: never a real key.
+# Never enabled in Sioul's builds; it leaves the mark SIOUL_TEST_STORE_KEY in
+# a binary, which tools/check-test-marks.sh refuses in anything about to ship.
+test-store-key = []

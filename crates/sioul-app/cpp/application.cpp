@@ -101,3 +101,4 @@ extern "C" void sioul_set_activation_token(const char *token)
 {
     qputenv("XDG_ACTIVATION_TOKEN", QByteArray(token));
 }
+

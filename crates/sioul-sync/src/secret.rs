@@ -190,7 +190,8 @@ fn held<T>(path: &std::path::Path, wait: std::time::Duration, f: impl FnOnce() -
     if HOLDING.with(Cell::get) {
         return Ok(f());
     }
-    let file = path.parent().and_then(|folder| std::fs::create_dir_all(folder).ok()).and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).mode(0o600).open(path).ok());
+    // A lock's file, empty: the system's own (it stays in clear by rule, `files::stays_plain`), which `flock` needs.
+    let file = path.parent().and_then(|folder| crate::files::create_dir_all(folder).ok()).and_then(|()| std::fs::OpenOptions::new().create(true).truncate(false).write(true).mode(0o600).open(path).ok());
     let until = std::time::Instant::now() + wait;
     let locked = match &file {
         None => false,
@@ -492,6 +493,64 @@ pub fn save_named_bytes(name: &str, secret: &[u8]) -> Result<(), SyncError> {
     guarded_write(move || Entry::new(SERVICE, &name).and_then(|e| e.set_secret(&secret))).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
+/// What the keyring holds under a name of Sioul's, asked without ever
+/// asking the person to open it (`named_bytes_quietly`): the sealed store's
+/// key, read by the watcher started at login before the keyring opens
+/// (docs/store.md, "At start").
+#[derive(Debug, PartialEq, Eq)]
+pub enum Quiet {
+    Found(Vec<u8>),
+    /// Nothing kept under that name.
+    None,
+    /// The keyring is there and not open yet, its service starting, or it did
+    /// not answer in time (`limited`): wait, never "none kept".
+    Locked,
+    /// No keyring service on this system: a passphrase stands in.
+    NoService,
+    Failed(String),
+}
+
+/// The secret kept as bytes under a name of Sioul's, never prompting: on
+/// Linux and the BSDs, an item that is locked, a Secret Service that is not
+/// running yet but can be started, or a keyring that does not answer within
+/// `KEYRING_LIMIT` (or while an earlier call has not answered) is `Locked`,
+/// and nothing is unlocked; a session with no Secret Service at all is
+/// `NoService`. A late keyring is never "none kept": the store's key is then
+/// waited for, never taken as lost (no "Start again"). Elsewhere the system's
+/// keyring opens with the session (the Credential Manager, the Keychain,
+/// Android's KeyStore after the first unlock): an ordinary read, its error
+/// (a busy or late keyring) `Failed`, never `None`.
+pub fn named_bytes_quietly(name: &str) -> Quiet {
+    if testing() {
+        return Quiet::None;
+    }
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+    {
+        let name = name.to_string();
+        quiet_within(KEYRING_LIMIT, move || kept::quietly(&name))
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+    match named_bytes(name) {
+        Ok(Some(bytes)) => Quiet::Found(bytes),
+        Ok(None) => Quiet::None,
+        Err(e) => Quiet::Failed(e.to_string()),
+    }
+}
+
+/// A quiet read waited for `limit` at most (`limited`): one the keyring did
+/// not answer in time, or asked while an earlier call has not answered, is
+/// `Locked` (wait), never `None` (the store's key never read as lost).
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+fn quiet_within(limit: std::time::Duration, read: impl FnOnce() -> Quiet + Send + 'static) -> Quiet {
+    quiet_or_wait(limited(limit, move || Ok::<_, Late>(read())))
+}
+
+/// A quiet read's answer, or `Locked` (wait) when the keyring was late.
+#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")), allow(dead_code))]
+fn quiet_or_wait(read: Result<Quiet, Late>) -> Quiet {
+    read.unwrap_or(Quiet::Locked)
+}
+
 /// Forgets the account's password; nothing to do if there was none.
 pub fn forget(account: &Account) -> Result<(), SyncError> {
     if testing() {
@@ -649,9 +708,14 @@ mod kept {
         Read::Elsewhere
     }
 
+    /// The one way a session is made here: encrypted (Diffie–Hellman).
+    fn connect() -> Result<SecretService<'static>, Error> {
+        SecretService::connect(EncryptionType::Dh)
+    }
+
     /// A session, its connection to ask the owner, and the owner's unique name.
     fn make() -> Option<Session> {
-        let service = SecretService::connect(EncryptionType::Dh).ok()?;
+        let service = connect().ok()?;
         let bus = crate::bus::session().ok()?;
         let owner = owner(&bus)?;
         Some(Session { service, bus, owner })
@@ -687,6 +751,57 @@ mod kept {
     /// from the library's own (a reply it could not read, a crypto fault).
     fn on_the_bus(e: &Error) -> bool {
         matches!(e, Error::Zbus(_) | Error::ZbusFdo(_))
+    }
+
+    /// `user`'s secret, never unlocking anything (`super::named_bytes_quietly`,
+    /// within its time limit). The bus starts a Secret Service that is not
+    /// running (a call to it starts it, and asks nothing); none to start is
+    /// `NoService`. Nothing found while a collection is locked is `Locked` (a
+    /// closed wallet may hide its items), never `None`; so is a call the bus
+    /// or the service did not answer.
+    pub(super) fn quietly(user: &str) -> super::Quiet {
+        use super::Quiet;
+        let service = match connect() {
+            Ok(service) => service,
+            Err(e) if no_service(&e) => return Quiet::NoService,
+            // Not reached now (starting, late): waited for, never "none kept".
+            Err(_) => return Quiet::Locked,
+        };
+        match service.search_items(HashMap::from([("target", "default"), ("service", super::SERVICE), ("username", user)])) {
+            Ok(found) => match (found.unlocked.as_slice(), found.locked.len()) {
+                ([item], 0) => match item.get_secret() {
+                    Ok(secret) => Quiet::Found(secret),
+                    Err(e) if on_the_bus(&e) => Quiet::Locked,
+                    Err(e) => Quiet::Failed(e.to_string()),
+                },
+                ([], 0) => {
+                    let locked = service.get_all_collections().map(|all| all.iter().any(|c| c.is_locked().unwrap_or(true)));
+                    match locked {
+                        Ok(false) => Quiet::None,
+                        _ => Quiet::Locked,
+                    }
+                }
+                ([], _) => Quiet::Locked,
+                _ => Quiet::Failed("several entries under one name".to_string()),
+            },
+            Err(Error::Locked) => Quiet::Locked,
+            Err(e) if no_service(&e) => Quiet::NoService,
+            // The bus or the service not answering, or answering an error: wait.
+            Err(e) if on_the_bus(&e) => Quiet::Locked,
+            Err(e) => Quiet::Failed(e.to_string()),
+        }
+    }
+
+    /// Whether a failure says there is no Secret Service on this session at all.
+    fn no_service(e: &Error) -> bool {
+        const UNKNOWN: &str = "org.freedesktop.DBus.Error.ServiceUnknown";
+        match e {
+            Error::Unavailable => true,
+            Error::Zbus(zbus::Error::MethodError(name, _, _)) => name.as_str() == UNKNOWN,
+            Error::Zbus(zbus::Error::FDO(e)) => matches!(**e, zbus::fdo::Error::ServiceUnknown(_)),
+            Error::ZbusFdo(zbus::fdo::Error::ServiceUnknown(_)) => true,
+            _ => false,
+        }
     }
 
     /// `user`'s item where the `keyring` crate looks for it (its
@@ -781,6 +896,18 @@ mod tests {
         assert_eq!(held(&path, KEYRING_WAIT, || 1), Ok(1), "let go: taken");
         assert!(KEYRING_WAIT <= std::time::Duration::from_secs(5), "under Android's five seconds of a window that does not answer");
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The store's key read quietly from a keyring that does not answer in
+    /// time (`limited` gives `Late`, its own test below) is "wait"
+    /// (`Locked`), never "none kept": the window then waits for it and never
+    /// offers to start again (`storekey::begin`). Told without a call made
+    /// late here: a late call holds every other keyring call of the process.
+    #[test]
+    fn a_late_keyring_is_wait_never_absent_for_the_store_s_key() {
+        assert_eq!(quiet_or_wait(Err(Late)), Quiet::Locked, "late: wait, never none kept");
+        assert_eq!(quiet_or_wait(Ok(Quiet::None)), Quiet::None, "in time: its answer");
+        assert_eq!(quiet_or_wait(Ok(Quiet::Found(vec![1]))), Quiet::Found(vec![1]));
     }
 
     /// Every call to the keyring has a time limit (`limited`, the Secret

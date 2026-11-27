@@ -6,6 +6,8 @@
 //! few resources made by the same tools. One message in, at most one out;
 //! the transport only carries them.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::tools::{self, Answer, Tool};
 use super::{log, mask};
 use crate::Session;
@@ -112,7 +114,7 @@ impl Server {
     fn session(&self) -> Result<Session, String> {
         let config = match Config::load(&self.config_path) {
             Ok(config) => config,
-            Err(_) if !self.config_path.exists() => Config::default(),
+            Err(_) if !self.config_path.present() => Config::default(),
             Err(e) => return Err(format!("Sioul's configuration cannot be read; the person can mend it: {e}")),
         };
         sioul_core::words::set_current(sioul_core::words::Words::of(&config));

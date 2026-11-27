@@ -208,7 +208,7 @@ pub(crate) fn synced(collection: &Collection, problems: &std::collections::BTree
     if problems.contains(&collection.account) {
         return Synced { short: short("agenda-synced-problem"), full: say("agenda-synced-problem-full", &[]), warn: true };
     }
-    let written = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok());
+    let written = crate::files::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).and_then(|d| i64::try_from(d.as_secs()).ok());
     let at = SYNCED.lock().ok().and_then(|s| s.get(&collection.account).copied()).or(written);
     let short = at.map(|at| crate::mirrors::when(at, now)).unwrap_or_else(|| short("agenda-synced-not-yet"));
     Synced { full: short.clone(), short, warn: false }

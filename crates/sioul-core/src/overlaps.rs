@@ -191,7 +191,7 @@ impl SetAside {
     }
 
     pub fn load(path: &Path) -> SetAside {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Whether an overlap is set aside: its pair, or one of its events whole.
@@ -214,9 +214,9 @@ impl SetAside {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
-        std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)
+        crate::files::write(path, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)
     }
 }
 
@@ -261,13 +261,13 @@ impl Notices {
     }
 
     pub fn load(path: &Path) -> Notices {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::filelock::replace(path, text.as_bytes()).map_err(fail)

@@ -18,6 +18,8 @@
 //!   their senders and subjects, masked: kept no longer than that.
 //! - One job of each kind at a time.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::Session;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -133,19 +135,19 @@ pub(crate) fn valid(id: &str) -> bool {
 /// The folder, made yours alone.
 fn private_folder() -> Result<(), String> {
     let folder = folder();
-    let mut builder = std::fs::DirBuilder::new();
+    let mut builder = crate::files::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.mode(0o700);
     builder.create(&folder).map_err(|e| format!("{}: {e}", folder.display()))
 }
 
 /// A file of the folder opened to write, yours alone.
-fn private_file(path: &std::path::Path, truncate: bool) -> Result<std::fs::File, String> {
-    let mut options = std::fs::OpenOptions::new();
+fn private_file(path: &std::path::Path, truncate: bool) -> Result<crate::files::File, String> {
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).write(true).truncate(truncate);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     options.open(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
@@ -156,19 +158,19 @@ fn write(job: &Job) -> Result<(), String> {
     let beside = file(&job.id, "json.new");
     let text = serde_json::to_string_pretty(job).map_err(|e| e.to_string())?;
     private_file(&beside, true)?.write_all(text.as_bytes()).map_err(|e| format!("{}: {e}", beside.display()))?;
-    std::fs::rename(&beside, &path).map_err(|e| format!("{}: {e}", path.display()))
+    crate::files::rename(&beside, &path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// A job's file as written.
 fn read(id: &str) -> Result<Job, String> {
     let path = file(id, "json");
-    let text = std::fs::read_to_string(&path).map_err(|_| format!("No job “{id}”."))?;
+    let text = crate::files::read_to_string(&path).map_err(|_| format!("No job “{id}”."))?;
     serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Whether a process holds the job's lock: it runs.
 fn held(id: &str) -> bool {
-    let Ok(lock) = std::fs::OpenOptions::new().read(true).open(file(id, "lock")) else { return false };
+    let Ok(lock) = crate::files::OpenOptions::new().read(true).open(file(id, "lock")) else { return false };
     match lock.try_lock() {
         Ok(()) => {
             let _ = lock.unlock();
@@ -180,7 +182,7 @@ fn held(id: &str) -> bool {
 
 /// The last lines its process printed, on one line each (an error's words).
 fn log_tail(id: &str) -> String {
-    let text = std::fs::read_to_string(file(id, "log")).unwrap_or_default();
+    let text = crate::files::read_to_string(file(id, "log")).unwrap_or_default();
     let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     lines[lines.len().saturating_sub(3)..].iter().map(|l| crate::one_line(l)).collect::<Vec<_>>().join(" / ")
 }
@@ -198,13 +200,13 @@ pub(crate) fn look(id: &str) -> Result<Job, String> {
         let tail = log_tail(id);
         job.error = Some(if tail.is_empty() { "Its process ended without a word: killed, or the computer stopped.".to_string() } else { tail });
     }
-    job.stop_asked |= file(id, "stop").exists();
+    job.stop_asked |= file(id, "stop").present();
     Ok(job)
 }
 
 /// Every job kept, the newest first.
 pub(crate) fn list() -> Vec<Job> {
-    let mut jobs: Vec<Job> = std::fs::read_dir(folder())
+    let mut jobs: Vec<Job> = crate::files::read_dir(folder())
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -226,7 +228,7 @@ fn prune() {
     let before = now() - KEPT_DAYS * 86_400;
     for job in list().into_iter().filter(|j| j.state.ended() && j.ended.unwrap_or(j.updated) < before) {
         for extension in ["json", "lock", "log", "stop", "json.new"] {
-            let _ = std::fs::remove_file(file(&job.id, extension));
+            let _ = crate::files::remove_file(file(&job.id, extension));
         }
     }
 }
@@ -291,7 +293,8 @@ pub(crate) fn spawn(s: &Session, job: Job) -> Result<Job, String> {
         let program = std::env::current_exe().map_err(|e| e.to_string())?;
         let mut command = std::process::Command::new(program);
         command.arg("--config").arg(&s.config_path).arg("--language").arg(s.tr.language()).args(["spam", job.kind.as_str(), "--job", job.id.as_str()]).args(&job.args);
-        let log = private_file(&file(&job.id, "log"), true)?;
+        // The child's error output goes to this file itself: one of the system's (a log stays in clear by rule, `files::stays_plain`).
+        let log = private_file(&file(&job.id, "log"), true)?.into_plain().map_err(|_| "the job's log is not a file of the system".to_string())?;
         command.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(log);
         detach(&mut command);
         command.spawn().map_err(|e| e.to_string())
@@ -339,7 +342,7 @@ pub(crate) fn stop(id: &str) -> Result<Job, String> {
 pub(crate) struct Running {
     job: Job,
     /// Held while the process lives: the lock says it runs.
-    _lock: std::fs::File,
+    _lock: crate::files::File,
     said: Option<Instant>,
     cancel: Cancel,
 }
@@ -364,7 +367,7 @@ impl Running {
         let (watched, stop) = (cancel.clone(), file(id, "stop"));
         let _ = std::thread::Builder::new().name("spam-job-stop".into()).spawn(move || {
             while !watched.cancelled() {
-                if stop.exists() {
+                if stop.present() {
                     watched.cancel();
                 }
                 std::thread::sleep(Duration::from_millis(500));
@@ -403,7 +406,7 @@ impl Running {
         self.job.stop_asked |= self.cancel.cancelled();
         // The watcher of the stop file ends with it.
         self.cancel.cancel();
-        let _ = std::fs::remove_file(file(&self.job.id, "stop"));
+        let _ = crate::files::remove_file(file(&self.job.id, "stop"));
         write(&self.job)
     }
 }

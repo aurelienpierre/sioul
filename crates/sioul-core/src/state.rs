@@ -34,7 +34,7 @@ impl PorchState {
 
     /// The saved state; an empty one when there is none yet or it cannot be read.
     pub fn load(path: &Path) -> PorchState {
-        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let text = crate::files::read_to_string(path).unwrap_or_default();
         let mut state: PorchState = toml::from_str(&text).unwrap_or_default();
         state.read = crate::filelock::Read::of(&text);
         state
@@ -111,7 +111,7 @@ impl MoneyState {
     }
 
     pub fn load(path: &Path) -> MoneyState {
-        let text = std::fs::read_to_string(path).unwrap_or_default();
+        let text = crate::files::read_to_string(path).unwrap_or_default();
         let mut state: MoneyState = toml::from_str(&text).unwrap_or_default();
         state.read = crate::filelock::Read::of(&text);
         state

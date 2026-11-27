@@ -80,6 +80,8 @@ cat > "$bus_conf" <<CONF || exit 1
     <allow send_destination="*" eavesdrop="true"/>
     <allow eavesdrop="true"/>
     <allow own="*"/>
+    <!-- Replies too: without it this bus rejects every reply, and dbus-send waits for ever. -->
+    <allow receive_sender="*"/>
   </policy>
 </busconfig>
 CONF
@@ -203,6 +205,11 @@ status=$?
 echo "$(date +%H:%M:%S) check-messages exit $status"
 tail -3 "$out/check-messages.log"
 [[ $status -eq 0 ]] || failed+=(check-messages)
+# No new direct file call outside the sealed store's door (docs/store.md).
+python3 tools/check-store-door.py > "$out/store-door.log" 2>&1
+status=$?
+echo "$(date +%H:%M:%S) $(tail -1 "$out/store-door.log")"
+[[ $status -eq 0 ]] || { head -5 "$out/store-door.log"; failed+=(store-door); }
 
 # 5. The QML.
 python3 tools/check-plain-text.py > "$out/plain-text.log" 2>&1

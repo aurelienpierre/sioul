@@ -8,7 +8,17 @@
 //! advisory lock on a hidden file beside it (`.<name>.lock`, which the
 //! sharing never carries), held while the file is read, changed and written.
 
+use crate::files::{self, Metadata};
 use std::path::{Path, PathBuf};
+
+// This module keeps the system's own calls (`std::fs`): it is what a file of
+// the system needs (written beside and renamed, overwritten before it goes,
+// read through its descriptor). A file inside the sealed store (`files`)
+// takes the door's way at each entry below: written whole and atomically by
+// the store, purged rather than overwritten, its lock opaque. A file of the
+// system inside Sioul's folders (one the move has not taken yet) is written
+// under the profile's lock (`files::while_plain`), its route asked again
+// there, so that the move never removes it under the write (review-finish G3).
 
 /// What tells a file from another of the same name, size and time: on Unix
 /// its inode and its inode's change time; on Windows its file index and its
@@ -18,7 +28,16 @@ use std::path::{Path, PathBuf};
 /// change time is in nanoseconds since 1970: any write moves it, whatever the
 /// file's own time is set back to, and a rename moves it too. On Windows the
 /// file is opened for its attributes alone, shared every way.
-pub fn identity(path: &Path, meta: &std::fs::Metadata) -> (u64, i128) {
+pub fn identity(path: &Path, meta: &Metadata) -> (u64, i128) {
+    match (meta.identity(), meta.plain()) {
+        (Some(sealed), _) => sealed,
+        (None, Some(plain)) => identity_plain(path, plain),
+        (None, None) => (0, 0),
+    }
+}
+
+/// [`identity`] of a file of the system, from what the system says of it.
+pub fn identity_plain(path: &Path, meta: &std::fs::Metadata) -> (u64, i128) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -69,14 +88,24 @@ fn windows_identity(path: &Path) -> Option<(u64, i128)> {
 /// reads without the lock), and a full disk leaves the file as it was rather
 /// than empty (review of 5 October 2026, F10).
 pub fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
-    let written = std::fs::write(&temporary, bytes).and_then(|()| rename_over(&temporary, path));
-    if written.is_err() {
-        let _ = std::fs::remove_file(&temporary);
+    // Sealed: the store writes beside and renames itself.
+    if files::is_sealed(path) {
+        return files::write(path, bytes);
     }
-    written
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let written = files::while_plain(path, |path| {
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        let written = std::fs::write(&temporary, bytes).and_then(|()| rename_over(&temporary, path));
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        written
+    })?;
+    match written {
+        Some(()) => Ok(()),
+        None => files::write(path, bytes),
+    }
 }
 
 /// `source`'s bytes as a new file in `folder`, under the first name of
@@ -89,6 +118,25 @@ pub fn place_new(source: &Path, folder: &Path, names: &dyn Fn(u32) -> String, mo
     let first = names(1);
     if !plain_name(&first) {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{first}: not one file name")));
+    }
+    // A folder placed inside Sioul's (sealed): the first free name, the bytes sealed there, the source taken away if moved.
+    if files::is_sealed(folder) || files::is_sealed(source) {
+        for n in 1..=u32::MAX {
+            let name = names(n);
+            if !plain_name(&name) {
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("{name}: not one file name")));
+            }
+            let target = folder.join(&name);
+            if files::exists(&target) {
+                continue;
+            }
+            files::create_dir_all(folder)?;
+            files::copy(source, &target)?;
+            if moved {
+                files::remove_file(source)?;
+            }
+            return Ok(target);
+        }
     }
     Pending::prepare(source, folder, moved)?.name(names)
 }
@@ -272,6 +320,9 @@ fn no_links(e: &std::io::Error) -> bool {
 /// in Sioul's own places (the papers' folder, where scans arrive); nothing
 /// else is touched.
 pub fn sweep_parts(folder: &Path) {
+    if files::is_sealed(folder) {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(folder) else { return };
     for entry in entries.filter_map(Result::ok) {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -317,6 +368,10 @@ fn rename_over(from: &Path, to: &Path) -> std::io::Result<()> {
 /// readers take a lock for is replaced in those three steps, the place alone
 /// under that lock (`draftcopies`: the sharing's exchange lock).
 pub fn replace_wiping(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    // Sealed: nothing of the old bytes is in clear on the disk to overwrite.
+    if files::is_sealed(path) {
+        return files::write(path, bytes);
+    }
     if let Some(placed) = Prepared::new(path, bytes)?.place(None)? {
         placed.finish();
     }
@@ -336,18 +391,21 @@ pub struct FileStamp {
 
 impl FileStamp {
     /// What `meta` says of a file (a descriptor's, after reading through it).
-    pub fn of(meta: &std::fs::Metadata) -> FileStamp {
-        #[cfg(unix)]
-        let (dev, ino) = (std::os::unix::fs::MetadataExt::dev(meta), std::os::unix::fs::MetadataExt::ino(meta));
-        #[cfg(not(unix))]
-        let (dev, ino) = (0, 0);
+    pub fn of(meta: &Metadata) -> FileStamp {
+        // Sealed: its generation stands for the file's number (it changes at every write).
+        let (dev, ino) = match (meta.identity(), meta.plain()) {
+            (Some((generation, _)), _) => (0, generation),
+            #[cfg(unix)]
+            (None, Some(plain)) => (std::os::unix::fs::MetadataExt::dev(plain), std::os::unix::fs::MetadataExt::ino(plain)),
+            _ => (0, 0),
+        };
         let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
         FileStamp { dev, ino, len: meta.len(), modified }
     }
 
     /// The file `path` names now; none when there is none.
     pub fn now(path: &Path) -> Option<FileStamp> {
-        std::fs::metadata(path).ok().map(|meta| FileStamp::of(&meta))
+        files::metadata(path).ok().map(|meta| FileStamp::of(&meta))
     }
 }
 
@@ -360,6 +418,8 @@ pub struct Prepared {
     path: PathBuf,
     temporary: PathBuf,
     placed: bool,
+    /// A sealed file's new bytes, held until they take its place (the store writes beside itself).
+    sealed: Option<Vec<u8>>,
     /// The new file as written: the same once it takes the path's place (a
     /// rename keeps its device, number, size and time).
     stamp: Option<FileStamp>,
@@ -371,16 +431,19 @@ impl Prepared {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let temporary = path.with_file_name(format!(".{name}.{}-{}.new", std::process::id(), NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        if files::is_sealed(path) {
+            return Ok(Prepared { path: path.to_path_buf(), temporary, placed: false, sealed: Some(bytes.to_vec()), stamp: None });
+        }
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         // Made first, so that a failure below takes it out (`Drop`).
-        let mut prepared = Prepared { path: path.to_path_buf(), temporary, placed: false, stamp: None };
+        let mut prepared = Prepared { path: path.to_path_buf(), temporary, placed: false, sealed: None, stamp: None };
         let mut file = options.open(&prepared.temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;
-        prepared.stamp = file.metadata().ok().map(|meta| FileStamp::of(&meta));
+        prepared.stamp = file.metadata().ok().map(|meta| FileStamp::of(&Metadata::from(meta)));
         Ok(prepared)
     }
 
@@ -398,27 +461,48 @@ impl Prepared {
         {
             return Ok(None);
         }
-        // Held for its overwrite; a file yours but read-only (a message copied
-        // with its mode) made writable first, else its old bytes would stay
-        // (review of 19 October 2026, F17).
-        #[cfg(unix)]
-        let old = std::fs::OpenOptions::new().write(true).open(&self.path).ok().or_else(|| {
-            let mut permissions = std::fs::metadata(&self.path).ok()?.permissions();
-            std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o600);
-            std::fs::set_permissions(&self.path, permissions).ok()?;
-            std::fs::OpenOptions::new().write(true).open(&self.path).ok()
-        });
-        #[cfg(not(unix))]
-        let old: Option<std::fs::File> = None;
-        std::fs::rename(&self.temporary, &self.path)?;
-        self.placed = true;
-        Ok(Some(Placed { path: self.path.clone(), old, stamp: self.stamp }))
+        if let Some(bytes) = self.sealed.take() {
+            files::write(&self.path, &bytes)?;
+            self.placed = true;
+            return Ok(Some(Placed { path: self.path.clone(), old: None, stamp: FileStamp::now(&self.path) }));
+        }
+        let temporary = self.temporary.clone();
+        let placed = files::while_plain(&self.path.clone(), |path| {
+            // Held for its overwrite; a file yours but read-only (a message copied
+            // with its mode) made writable first, else its old bytes would stay
+            // (review of 19 October 2026, F17).
+            #[cfg(unix)]
+            let old = std::fs::OpenOptions::new().write(true).open(path).ok().or_else(|| {
+                let mut permissions = std::fs::metadata(path).ok()?.permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o600);
+                std::fs::set_permissions(path, permissions).ok()?;
+                std::fs::OpenOptions::new().write(true).open(path).ok()
+            });
+            #[cfg(not(unix))]
+            let old: Option<std::fs::File> = None;
+            std::fs::rename(&temporary, path)?;
+            Ok(old)
+        })?;
+        match placed {
+            Some(old) => {
+                self.placed = true;
+                Ok(Some(Placed { path: self.path.clone(), old, stamp: self.stamp }))
+            }
+            None => {
+                // The move sealed the file meanwhile (and maybe the new bytes waiting beside it): written through the door.
+                let bytes = files::read(&self.temporary)?;
+                files::write(&self.path, &bytes)?;
+                self.placed = true;
+                let _ = files::purge(&self.temporary);
+                Ok(Some(Placed { path: self.path.clone(), old: None, stamp: FileStamp::now(&self.path) }))
+            }
+        }
     }
 }
 
 impl Drop for Prepared {
     fn drop(&mut self) {
-        if !self.placed {
+        if !self.placed && self.sealed.is_none() {
             let _ = std::fs::remove_file(&self.temporary);
         }
     }
@@ -451,6 +535,9 @@ impl Placed {
     /// blocks until they are reused: only the disk's encryption makes those
     /// unreadable.
     pub fn finish(mut self) {
+        if files::is_sealed(&self.path) {
+            return;
+        }
         #[cfg(unix)]
         if let Some(folder) = self.path.parent().and_then(|p| std::fs::File::open(if p.as_os_str().is_empty() { Path::new(".") } else { p }).ok()) {
             let _ = folder.sync_all();
@@ -467,6 +554,17 @@ impl Placed {
 /// (docs/client.md, "What a disk keeps"). A link is taken away alone, never
 /// what it points to; a file with another name is left whole for that name.
 pub fn remove_wiping(path: &Path) -> std::io::Result<()> {
+    // Sealed: purged, every version and copy with it.
+    if files::is_sealed(path) {
+        return files::purge(path);
+    }
+    match files::while_plain(path, remove_wiping_plain)? {
+        Some(()) => Ok(()),
+        None => files::purge(path),
+    }
+}
+
+fn remove_wiping_plain(path: &Path) -> std::io::Result<()> {
     if !std::fs::symlink_metadata(path)?.file_type().is_file() {
         return std::fs::remove_file(path);
     }
@@ -498,6 +596,9 @@ pub fn remove_wiping(path: &Path) -> std::io::Result<()> {
 /// the same swap (review of wt/mail, F9). A file with another name is left
 /// whole for that name.
 pub fn remove_dir_wiping(dir: &Path) -> std::io::Result<()> {
+    if files::is_sealed(dir) {
+        return files::purge_dir(dir);
+    }
     if !std::fs::symlink_metadata(dir)?.file_type().is_dir() {
         return std::fs::remove_file(dir);
     }
@@ -627,8 +728,12 @@ pub fn read_whole(path: &Path) -> std::io::Result<Vec<u8>> {
 
 /// [`read_whole`], with what the descriptor said of the file read, after the
 /// read: its size and time are those of the bytes returned.
-pub fn read_whole_with(path: &Path) -> std::io::Result<(Vec<u8>, std::fs::Metadata)> {
-    read_through(path, &mut |path| std::fs::File::open(path))
+pub fn read_whole_with(path: &Path) -> std::io::Result<(Vec<u8>, Metadata)> {
+    // Sealed: a read is of one generation whole already.
+    if files::is_sealed(path) {
+        return files::read_with_metadata(path);
+    }
+    read_through(path, &mut |path| std::fs::File::open(path)).map(|(bytes, meta)| (bytes, Metadata::from(meta)))
 }
 
 /// [`read_whole_with`], each file opened by `open` (a test replaces the file
@@ -652,6 +757,9 @@ fn read_through(path: &Path, open: &mut dyn FnMut(&Path) -> std::io::Result<std:
 /// when the file copied lost its name meanwhile or `from` names another one.
 /// `to` is made yours alone (on Unix). Returns the bytes copied.
 pub fn copy_whole(from: &Path, to: &Path) -> std::io::Result<u64> {
+    if files::is_sealed(from) || files::is_sealed(to) {
+        return files::copy(from, to);
+    }
     for _ in 0..READ_AGAIN {
         let mut source = std::fs::File::open(from)?;
         let mut options = std::fs::OpenOptions::new();
@@ -691,7 +799,12 @@ pub fn has_lock(path: &Path) -> bool {
     lock_path(path).exists()
 }
 
+/// Where `path`'s lock is: beside it (`.<name>.lock`), or, for a sealed file,
+/// under its store's `sealed/.locks/` with an opaque name.
 fn lock_path(path: &Path) -> PathBuf {
+    if let Some(place) = files::lock_place(path) {
+        return place;
+    }
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     path.with_file_name(format!(".{name}.lock"))
 }
@@ -791,7 +904,7 @@ pub fn save_merged_by<T: serde::Serialize + serde::de::DeserializeOwned>(path: &
         _ => None,
     });
     with_lock(path, || {
-        let current = std::fs::read_to_string(path).ok().and_then(|text| text.parse::<toml::Table>().ok());
+        let current = files::read_to_string(path).ok().and_then(|text| text.parse::<toml::Table>().ok());
         let mut table = match (&read.0, &current) {
             (Some(base), Some(current)) => {
                 let mut merged = current.clone();
@@ -802,11 +915,22 @@ pub fn save_merged_by<T: serde::Serialize + serde::de::DeserializeOwned>(path: &
         };
         settle(&mut table, current.as_ref());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            files::create_dir_all(parent).map_err(fail)?;
         }
-        let temporary = path.with_file_name(format!(".{}.sioul.tmp", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
-        std::fs::write(&temporary, toml::to_string(&table).map_err(|e| e.to_string())?).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        let text = toml::to_string(&table).map_err(|e| e.to_string())?;
+        if files::is_sealed(path) {
+            return files::write(path, text).map_err(fail);
+        }
+        let written = files::while_plain(path, |path| {
+            let temporary = path.with_file_name(format!(".{}.sioul.tmp", path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+            std::fs::write(&temporary, &text)?;
+            std::fs::rename(&temporary, path)
+        })
+        .map_err(fail)?;
+        match written {
+            Some(()) => Ok(()),
+            None => files::write(path, text).map_err(fail),
+        }
     })
 }
 

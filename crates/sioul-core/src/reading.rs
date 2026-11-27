@@ -74,7 +74,7 @@ pub struct Html {
 
 /// Reads a message file for the reading pane.
 pub fn read(path: &Path) -> Option<Reading> {
-    read_bytes(&std::fs::read(path).ok()?)
+    read_bytes(&crate::files::read(path).ok()?)
 }
 
 /// A message laid out for reading, from its bytes (a decrypted message lives only in memory).
@@ -403,7 +403,7 @@ fn escape(text: &str) -> String {
 /// The iCalendar a message carries, inline or attached (an invitation, RFC 6047):
 /// the part with a METHOD first, as Gmail and Outlook send both.
 pub fn calendar(path: &Path) -> Option<String> {
-    let raw = std::fs::read(path).ok()?;
+    let raw = crate::files::read(path).ok()?;
     let message = MessageParser::default().parse(&raw)?;
     calendar_in(&message)
 }
@@ -431,7 +431,7 @@ pub fn calendar_in(message: &mail_parser::Message<'_>) -> Option<String> {
 }
 
 pub fn attachment(path: &Path, index: u32) -> Option<(String, Vec<u8>)> {
-    attachment_from(&std::fs::read(path).ok()?, index)
+    attachment_from(&crate::files::read(path).ok()?, index)
 }
 
 /// An attachment from a message's bytes: its name and content.

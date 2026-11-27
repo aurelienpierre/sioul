@@ -16,6 +16,8 @@
 //! Every answer is JSON for a page, its sentences in your language; what
 //! went wrong is {"error"}.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, config_path, load_config, say, tr};
 use crate::projects;
 use crate::work::{self, loaded};
@@ -939,7 +941,7 @@ pub(crate) fn write_mail(shared: &Shared, number: &str) -> String {
     let Some(found) = invoice::find_in(&folder, number) else { return refused(tr().text("invoice-gone", None)) };
     let attached = if found.file.is_empty() {
         let copy = projects::pdf_path(&found);
-        if !copy.is_file() {
+        if !copy.present_file() {
             return refused(say("invoices-mail-print-first", &[("path", copy.display().to_string())]));
         }
         copy

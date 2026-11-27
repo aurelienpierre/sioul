@@ -7,6 +7,8 @@
 //! written to the configuration file in place, its comments kept
 //! (`config::set_value`), or to the senders' lists.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::{Config, SettingValue, WindowValue, set_value};
 use crate::i18n::Translator;
 use crate::porch::SenderList;
@@ -1255,7 +1257,7 @@ pub fn change(config_path: &Path, key: &str, shown: Option<&SettingValue>, value
     if key.starts_with("attention.") || key.starts_with("notify.") {
         return crate::attention::apply_change(config_path, key, shown, value);
     }
-    let config = || if config_path.exists() { Config::load(config_path) } else { Ok(Config::default()) };
+    let config = || if config_path.present() { Config::load(config_path) } else { Ok(Config::default()) };
     let kept_in = match key {
         "known" | "safe" | "neutral" | "restricted" | "blocked" => {
             let config = config()?;

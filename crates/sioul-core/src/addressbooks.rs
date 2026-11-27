@@ -322,7 +322,7 @@ pub fn told_path() -> std::path::PathBuf {
 /// told on this device for them (review V3): each with its writers. At the
 /// update, a book already shared to write is one of them, once.
 pub fn groups_to_tell(config: &Config) -> Vec<(Collection, Vec<String>)> {
-    let told: std::collections::BTreeMap<String, Vec<String>> = std::fs::read_to_string(told_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let told: std::collections::BTreeMap<String, Vec<String>> = crate::files::read_to_string(told_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
     vdir::collections(Kind::Contacts)
         .into_iter()
         .filter_map(|c| {
@@ -337,11 +337,11 @@ pub fn groups_to_tell(config: &Config) -> Vec<(Collection, Vec<String>)> {
 pub fn mark_groups_told(collection: &Collection, writers: &[String]) -> Result<(), String> {
     let path = told_path();
     crate::filelock::with_lock(&path, || {
-        let mut told: std::collections::BTreeMap<String, Vec<String>> = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let mut told: std::collections::BTreeMap<String, Vec<String>> = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         told.insert(format!("{}/{}", collection.account, collection.id), writers.to_vec());
         let text = toml::to_string(&told).map_err(|e| e.to_string())?;
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         crate::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     })

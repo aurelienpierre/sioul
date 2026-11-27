@@ -200,7 +200,7 @@ impl Reviews {
     /// Every month kept in `dir`. A file that does not read is left out, and
     /// said on the error output; it is never written over (`save`).
     pub fn load(dir: &Path) -> Reviews {
-        let mut months: Vec<PathBuf> = std::fs::read_dir(dir)
+        let mut months: Vec<PathBuf> = crate::files::read_dir(dir)
             .map(|entries| entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| month_of(p).is_some()).collect())
             .unwrap_or_default();
         months.sort();
@@ -314,7 +314,7 @@ fn day_of(table: &toml::Table) -> Day {
 
 /// One month's days; none when the file is not there.
 fn read_month(path: &Path) -> Result<BTreeMap<Date, Day>, String> {
-    let text = match std::fs::read_to_string(path) {
+    let text = match crate::files::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(BTreeMap::new()),
         Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -330,7 +330,7 @@ fn change(dir: &Path, date: Date, edit: impl FnOnce(&mut toml_edit::Table)) -> R
     let path = month_path(dir, date);
     crate::filelock::with_lock(&path, || {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-        let text = match std::fs::read_to_string(&path) {
+        let text = match crate::files::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(fail(e)),
@@ -348,11 +348,11 @@ fn change(dir: &Path, date: Date, edit: impl FnOnce(&mut toml_edit::Table)) -> R
         }
         let table = item.as_table_mut().ok_or_else(|| format!("{}: {key} is not a table", path.display()))?;
         edit(table);
-        std::fs::create_dir_all(dir).map_err(fail)?;
+        crate::files::create_dir_all(dir).map_err(fail)?;
         // Hidden while written: the sharing and sync apps leave it alone.
         let temporary = dir.join(format!(".{}.new", path.file_name().and_then(|n| n.to_str()).unwrap_or("month.toml")));
-        std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-        std::fs::rename(&temporary, &path).map_err(fail)
+        crate::files::write(&temporary, doc.to_string()).map_err(fail)?;
+        crate::files::rename(&temporary, &path).map_err(fail)
     })
 }
 

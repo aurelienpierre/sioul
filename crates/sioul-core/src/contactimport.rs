@@ -172,7 +172,7 @@ impl Mappings {
     }
 
     pub fn load(path: &Path) -> Mappings {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// The mapping kept for these headings, compared as headings are.
@@ -192,7 +192,7 @@ impl Mappings {
         all.kept.retain(|k| !k.name.eq_ignore_ascii_case(name) && k.headings.iter().map(|h| heading_key(h)).collect::<Vec<_>>() != keys);
         all.kept.push(Kept { name: name.to_string(), headings: headings.to_vec(), fields: fields.to_vec() });
         if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            crate::files::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         }
         let text = toml::to_string(&all).map_err(|e| e.to_string())?;
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
@@ -688,7 +688,7 @@ pub fn plan(cards: &Cards, existing: &[Contact], target: &Collection, options: &
     let mut planned: Vec<Planned> = Vec::new();
     let mut index = Index::default();
     for contact in existing {
-        let Ok(text) = std::fs::read_to_string(&contact.key) else { continue };
+        let Ok(text) = crate::files::read_to_string(&contact.key) else { continue };
         let at = planned.len();
         index.add(contact, &text, at, region);
         planned.push(Planned { path: PathBuf::from(&contact.key), before: Some(text.clone()), after: text, read_only: contact.read_only, name: contact.name.clone() });

@@ -30,7 +30,7 @@ impl Stopped {
 
     /// The line left, if there is one.
     pub fn load(path: &Path) -> Option<Stopped> {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str::<Stopped>(&t).ok()).filter(|s| !s.text.trim().is_empty())
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str::<Stopped>(&t).ok()).filter(|s| !s.text.trim().is_empty())
     }
 
     /// A line left (an empty one takes it away: done).
@@ -38,10 +38,10 @@ impl Stopped {
         let stopped = Stopped { text: text.trim().to_string(), at, task: task.to_string() };
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         if stopped.text.is_empty() {
-            return match std::fs::remove_file(path) {
+            return match crate::files::remove_file(path) {
                 Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(fail(e)),
                 _ => Ok(()),
             };

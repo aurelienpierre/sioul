@@ -107,7 +107,7 @@ pub fn message_key(t: &Triaged) -> String {
 /// When a message file reached its server: the file's time (`maildir::store`
 /// sets it to the server's INTERNALDATE), Unix seconds; 0 unknown.
 pub fn arrived_at(file: &Path) -> i64 {
-    std::fs::metadata(file).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
+    crate::files::metadata(file).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(0))
 }
 
 /// What a notice of new mail opens, one per letter it names (`openers`): its
@@ -188,7 +188,7 @@ impl Watch {
 
     /// As kept; none (a first look) when missing, unreadable or of another format.
     pub fn load(path: &Path) -> Watch {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str::<Watch>(&t).ok()).filter(|w| w.format == WATCH_FORMAT).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str::<Watch>(&t).ok()).filter(|w| w.format == WATCH_FORMAT).unwrap_or_default()
     }
 
     /// The moment (`moment`'s words) looked at `now`: since when it has been
@@ -441,19 +441,19 @@ impl Ledger {
     /// As kept; empty when missing or unreadable (nothing then is told twice
     /// but what was waiting, which waits no more).
     pub fn load(path: &Path) -> Ledger {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Written whole under another name, then renamed: never half a ledger.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = toml::to_string(&Ledger { format: LEDGER_FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
         let temporary = path.with_extension(format!("toml.{}", std::process::id()));
-        std::fs::write(&temporary, text).map_err(fail)?;
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::write(&temporary, text).map_err(fail)?;
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 
     /// Whether a message was dealt with already: told, or waiting.

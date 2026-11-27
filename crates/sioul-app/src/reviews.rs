@@ -321,12 +321,12 @@ fn told_path() -> std::path::PathBuf {
 }
 
 fn told(date: Date) -> bool {
-    std::fs::read_to_string(told_path()).ok().and_then(|t| t.parse::<toml::Table>().ok()).and_then(|t| t.get("work").and_then(|v| v.as_str()).map(str::to_string)).is_some_and(|d| d == date.to_string())
+    crate::files::read_to_string(told_path()).ok().and_then(|t| t.parse::<toml::Table>().ok()).and_then(|t| t.get("work").and_then(|v| v.as_str()).map(str::to_string)).is_some_and(|d| d == date.to_string())
 }
 
 fn mark_told(date: Date) {
-    let _ = std::fs::create_dir_all(sioul_core::config::state_dir());
-    if let Err(e) = std::fs::write(told_path(), format!("work = \"{date}\"\n")) {
+    let _ = crate::files::create_dir_all(sioul_core::config::state_dir());
+    if let Err(e) = crate::files::write(told_path(), format!("work = \"{date}\"\n")) {
         eprintln!("{}: {e}", told_path().display());
     }
 }

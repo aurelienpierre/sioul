@@ -286,12 +286,12 @@ impl Mirror {
     /// As kept; empty when missing or unreadable (nothing then is removed
     /// that this device placed before: its copies stay, never a draft lost).
     pub fn load(path: &Path) -> Mirror {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         let text = toml::to_string(&Mirror { format: FORMAT, ..self.clone() }).map_err(|e| e.to_string())?;
         crate::filelock::replace(path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
@@ -449,13 +449,13 @@ pub fn discarded(draft: &Draft) {
 /// read from: a draft saved meanwhile is read whole next time, never its
 /// words under another version's mark.
 pub fn drafts_here() -> Vec<(Draft, String)> {
-    let Ok(entries) = std::fs::read_dir(Draft::folder()) else { return Vec::new() };
+    let Ok(entries) = crate::files::read_dir(Draft::folder()) else { return Vec::new() };
     entries
         .filter_map(Result::ok)
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "toml"))
         .filter_map(|path| {
-            let bytes = std::fs::read(&path).ok()?;
+            let bytes = crate::files::read(&path).ok()?;
             let draft: Draft = toml::from_str(std::str::from_utf8(&bytes).ok()?).ok()?;
             Some((draft, rev(&bytes)))
         })

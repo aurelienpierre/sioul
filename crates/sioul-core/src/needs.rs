@@ -167,8 +167,8 @@ impl Needs {
             needs: Needs,
         }
         let parse = |text: &str| toml::from_str::<Only>(text).ok().map(|only| only.needs);
-        let last_read = || std::fs::read_to_string(crate::health::Health::last_read_path(path)).ok().filter(|text| !text.trim().is_empty()).and_then(|text| parse(&text));
-        match std::fs::read_to_string(path) {
+        let last_read = || crate::files::read_to_string(crate::health::Health::last_read_path(path)).ok().filter(|text| !text.trim().is_empty()).and_then(|text| parse(&text));
+        match crate::files::read_to_string(path) {
             Ok(text) if text.trim().is_empty() => last_read(),
             Ok(text) => parse(&text).or_else(last_read),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !crate::health::witnessed(path) => Some(Needs::default()),
@@ -350,11 +350,11 @@ impl Days {
     /// reads (edited by hand) is copied aside first (`health-days.toml.unreadable`):
     /// saving over it then loses nothing.
     pub fn load(path: &Path) -> Days {
-        match std::fs::read_to_string(path).map(|t| toml::from_str::<Days>(&t)) {
+        match crate::files::read_to_string(path).map(|t| toml::from_str::<Days>(&t)) {
             Ok(Ok(days)) => days,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Days::default(),
             _ => {
-                let _ = std::fs::copy(path, path.with_extension("toml.unreadable"));
+                let _ = crate::files::copy(path, path.with_extension("toml.unreadable"));
                 Days::default()
             }
         }
@@ -396,13 +396,13 @@ impl Days {
         });
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let text = format!("{DAYS_HEADER}\n{}", toml::to_string(&kept).map_err(|e| e.to_string())?);
         let temporary = path.with_extension("toml.new");
-        std::fs::write(&temporary, text).map_err(fail)?;
+        crate::files::write(&temporary, text).map_err(fail)?;
         crate::health::keep_private(&temporary);
-        std::fs::rename(&temporary, path).map_err(fail)
+        crate::files::rename(&temporary, path).map_err(fail)
     }
 
     /// A block's change on a day, if any.
@@ -555,7 +555,7 @@ impl Today {
 
     /// Today's, or nothing when it was written another day.
     pub fn load(path: &Path, date: Date) -> Today {
-        let today: Today = std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let today: Today = crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         if today.day == Some(date) { today } else { Today { day: Some(date), ..Today::default() } }
     }
 
@@ -581,9 +581,9 @@ impl Today {
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let fail = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
-        std::fs::write(path, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)
+        crate::files::write(path, toml::to_string(self).map_err(|e| e.to_string())?).map_err(fail)
     }
 }
 

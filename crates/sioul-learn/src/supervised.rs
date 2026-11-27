@@ -71,13 +71,13 @@ struct LearnFile(PathBuf);
 
 impl Drop for LearnFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.0);
+        let _ = crate::files::remove_file(&self.0);
     }
 }
 
 /// Writes the learning file of some messages, one line each, shuffled (the same seed, the same order).
 fn write_learning(path: &Path, ids: &[usize], text: &dyn Fn(usize) -> String, messages: &[Message], seed: u64) -> Result<LearnFile, LearnError> {
-    let file = std::fs::File::create(path).map_err(|e| io_error(path, e))?;
+    let file = crate::files::File::create(path).map_err(|e| io_error(path, e))?;
     let guard = LearnFile(path.to_path_buf());
     let mut out = BufWriter::new(file);
     let mut order: Vec<usize> = ids.to_vec();
@@ -246,7 +246,7 @@ pub(crate) fn train(dirs: &Dirs, read: train::Read, options: &Options, word_ngra
     let check = || if cancel.cancelled() { Err(LearnError::Cancelled) } else { Ok(()) };
     let train::Parts { order, train: train_ids, test: test_ids, held } = train::parts(&messages, sources.len());
     let text = |i: usize| text_of(&words[i], &messages[i]);
-    std::fs::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
+    crate::files::create_dir_all(&dirs.cache).map_err(|e| io_error(&dirs.cache, e))?;
     let path = dirs.cache.join(format!("classifier-{}.txt", std::process::id()));
     // The table reads no word pairs: with them, a trial scored by fastText itself.
     let exact = word_ngrams <= 1;
@@ -314,10 +314,10 @@ pub(crate) fn train(dirs: &Dirs, read: train::Read, options: &Options, word_ngra
         check()?;
         // Written whole or not at all; the table it replaces is kept as table.prev.bin.
         written.write(&dirs.table()).map_err(|e| io_error(&dirs.table(), e))?;
-        table_bytes = std::fs::metadata(dirs.table()).map_or(table_bytes, |m| m.len());
+        table_bytes = crate::files::metadata(dirs.table()).map_or(table_bytes, |m| m.len());
         let fresh = dirs.language().with_extension("bin.new");
         model.save_model(&fresh).map_err(|e| io_error(&fresh, e))?;
-        std::fs::rename(&fresh, dirs.language()).map_err(|e| io_error(&dirs.language(), e))?;
+        crate::files::rename(&fresh, dirs.language()).map_err(|e| io_error(&dirs.language(), e))?;
         step(3, progress);
         Some(Refit { ham: all.train_ham, spam: all.train_spam, platt_a: sigmoid.a, platt_b: sigmoid.b, calibration_scores, fold_error: refit_error })
     } else {

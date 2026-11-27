@@ -187,7 +187,7 @@ fn notes_made_by_their_files() {
     std::fs::create_dir_all(dir.join("a")).unwrap();
     std::fs::write(dir.join("a/Plain.md"), "# Plain\n").unwrap();
     std::fs::write(dir.join("Dated.md"), "---\ncreated: 2020-01-02\n---\n# Dated\n").unwrap();
-    let first = std::fs::metadata(dir.join("a/Plain.md")).ok().as_ref().and_then(born);
+    let first = std::fs::metadata(dir.join("a/Plain.md")).ok().map(crate::files::Metadata::from).as_ref().and_then(born);
     let vault = Vault::open(&dir);
     assert_eq!(vault.note("a/Plain.md").unwrap().created, first, "the system's day, or none where it does not know it");
     assert_eq!(vault.note("Dated.md").unwrap().created, front_moment("2020-01-02", &crate::zone::current()), "the front matter first");
@@ -195,7 +195,7 @@ fn notes_made_by_their_files() {
     // A second later, Sioul writes it again: a new file takes its place; its first day stays.
     std::thread::sleep(std::time::Duration::from_millis(1100));
     write(&dir, "a/Plain.md", "# Plain\n\nMore.\n").unwrap();
-    let again = std::fs::metadata(dir.join("a/Plain.md")).ok().as_ref().and_then(born).unwrap();
+    let again = std::fs::metadata(dir.join("a/Plain.md")).ok().map(crate::files::Metadata::from).as_ref().and_then(born).unwrap();
     assert!(again > first, "the system dates the new file now");
     let vault = Vault::open(&dir);
     let plain = vault.note("a/Plain.md").unwrap();

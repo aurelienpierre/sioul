@@ -204,8 +204,8 @@ fn send_list_changes(api: &Api, account: &str) -> Result<(), SyncError> {
             }
             match api.call("DELETE", &format!("/users/@me/lists/{id}"), None)? {
                 (200..=299 | 404, _) => {
-                    let _ = std::fs::remove_dir_all(&collection.dir);
-                    let _ = std::fs::remove_file(&path);
+                    let _ = crate::files::remove_dir_all(&collection.dir);
+                    let _ = crate::files::remove_file(&path);
                 }
                 (status, _) => return Err(SyncError::Server(format!("DELETE list {id}: {status}"))),
             }
@@ -227,17 +227,17 @@ fn forget_gone(account: &str, kept: &BTreeSet<String>) {
         if unsent {
             continue;
         }
-        let _ = std::fs::remove_dir_all(&collection.dir);
-        let _ = std::fs::remove_file(collection.state_path());
+        let _ = crate::files::remove_dir_all(&collection.dir);
+        let _ = crate::files::remove_file(collection.state_path());
     }
 }
 
 fn files(dir: &Path) -> BTreeSet<String> {
-    std::fs::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok()).filter(|n| n.ends_with(".ics") && !n.starts_with('.')).collect()
+    crate::files::read_dir(dir).into_iter().flatten().filter_map(Result::ok).filter_map(|e| e.file_name().into_string().ok()).filter(|n| n.ends_with(".ics") && !n.starts_with('.')).collect()
 }
 
 fn hash_of(path: &Path) -> Option<String> {
-    std::fs::read(path).ok().map(|bytes| vdir::content_hash(&bytes))
+    crate::files::read(path).ok().map(|bytes| vdir::content_hash(&bytes))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -282,7 +282,7 @@ fn sync_list(api: &Api, account: &str, id: &str, local: &str, title: &str, zone:
 
 /// The UID in a task's file.
 fn uid_in(path: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     lines::unfold(&text).iter().find(|l| lines::name(l) == "UID").map(|l| lines::value(l).trim().to_string())
 }
 
@@ -309,7 +309,7 @@ fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path,
             i += 1;
             continue;
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| SyncError::Disk(e.to_string()))?;
+        let text = crate::files::read_to_string(&path).map_err(|e| SyncError::Disk(e.to_string()))?;
         let Some(task) = tasks::task_of_text(&text, zone) else {
             i += 1;
             continue;
@@ -337,7 +337,7 @@ fn push(api: &Api, list: &str, dir: &Path, state: &mut State, state_path: &Path,
         .into_iter()
         .filter(|f| !known.contains(f))
         .filter_map(|file| {
-            let text = std::fs::read_to_string(dir.join(&file)).ok()?;
+            let text = crate::files::read_to_string(dir.join(&file)).ok()?;
             let task = tasks::task_of_text(&text, zone)?;
             Some((file, text, task))
         })
@@ -388,7 +388,7 @@ fn pull(api: &Api, list: &str, dir: &Path, state: &mut State, report: &mut Repor
         let position = state.items.iter().position(|i| i.href == id);
         if task["deleted"].as_bool() == Some(true) {
             if let Some(i) = position {
-                let _ = std::fs::remove_file(dir.join(&state.items[i].file));
+                let _ = crate::files::remove_file(dir.join(&state.items[i].file));
                 state.items.remove(i);
                 report.removed += 1;
             }
@@ -401,7 +401,7 @@ fn pull(api: &Api, list: &str, dir: &Path, state: &mut State, report: &mut Repor
         // The parent by its UID here: one made here has its own.
         let parent = task["parent"].as_str().map(|p| state.items.iter().find(|i| i.href == p).and_then(|i| uid_in(&dir.join(&i.file))).unwrap_or_else(|| p.to_string()));
         let (file, before) = match position {
-            Some(i) => (state.items[i].file.clone(), std::fs::read_to_string(dir.join(&state.items[i].file)).unwrap_or_else(|_| skeleton(id))),
+            Some(i) => (state.items[i].file.clone(), crate::files::read_to_string(dir.join(&state.items[i].file)).unwrap_or_else(|_| skeleton(id))),
             None => {
                 let taken: BTreeSet<String> = state.items.iter().map(|i| i.file.clone()).chain(files(dir)).collect();
                 let stem = vdir::folder_id(id);
@@ -430,7 +430,7 @@ fn pull(api: &Api, list: &str, dir: &Path, state: &mut State, report: &mut Repor
             here
         });
         for file in gone {
-            let _ = std::fs::remove_file(dir.join(file));
+            let _ = crate::files::remove_file(dir.join(file));
             report.removed += 1;
         }
     }

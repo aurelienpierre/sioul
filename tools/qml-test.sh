@@ -123,6 +123,8 @@ with_accessibility() {
     <allow send_destination="*" eavesdrop="true"/>
     <allow eavesdrop="true"/>
     <allow own="*"/>
+    <!-- Replies too: without it this bus rejects every reply, and dbus-send waits for ever. -->
+    <allow receive_sender="*"/>
   </policy>
 </busconfig>
 CONF

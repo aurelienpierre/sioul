@@ -18,6 +18,8 @@
 //! Each change is said in the window, with Undo, for as long as its files
 //! stay as the agent left them (`agentwrites`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use super::access;
 use super::mask;
 use super::read::{self, Desk};
@@ -55,7 +57,7 @@ pub(super) fn find_event(consent: &Consent, wanted: &str) -> Result<Found, Strin
     calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
     for calendar in calendars {
         for path in calendar.items() {
-            let Ok(text) = std::fs::read_to_string(&path) else { continue };
+            let Ok(text) = crate::files::read_to_string(&path) else { continue };
             if !text.contains("BEGIN:VEVENT") || appointments::uid_in(&path) != uid {
                 continue;
             }
@@ -191,7 +193,7 @@ pub fn get_event(s: &Session, args: &Args) -> Result<Answer, String> {
 
 /// A leg as get_event gives it: its address, title, times, side, and whether its timetable was not checked.
 fn leg_json(leg: &sioul_core::agenda::EventRef, zone: &TimeZone) -> Option<Value> {
-    let text = std::fs::read_to_string(&leg.key).ok()?;
+    let text = crate::files::read_to_string(&leg.key).ok()?;
     let edit = agenda::on_zone(agenda::edit_of_text(&text, zone)?, zone);
     let anchor = sioul_core::anchors::parse(&text)?;
     Some(json!({ "uri": links::event_uri(&leg.uid), "title": edit.title, "start": edit.start, "end": edit.end, "side": anchor.side, "timetable": anchor.timetable, "unconfirmed": anchor.unconfirmed.is_some() }))
@@ -328,7 +330,7 @@ pub fn update_event(s: &Session, args: &Args) -> Result<Answer, String> {
                 .filter(|leg| allowed(Path::new(&leg.key)))
                 .filter_map(|leg| {
                     let path = PathBuf::from(&leg.key);
-                    let leg_text = std::fs::read_to_string(&path).ok()?;
+                    let leg_text = crate::files::read_to_string(&path).ok()?;
                     sioul_core::anchors::set_by_hand(&leg_text, instants?, &zone).map(|t| (path, t))
                 })
                 .collect()
@@ -601,7 +603,7 @@ impl Holder {
                 if provider.is_some_and(|p| sioul_core::capabilities::notes_too_long(p, notes)) {
                     return Err(s.tr.text("notes-google-too-long", None));
                 }
-                let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+                let current = crate::files::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
                 let edit = TaskEdit { notes: notes.to_string(), ..TaskEdit::of(task) };
                 let text = tasks::apply(&current, &edit, &zone, &sioul_core::zone::now())?;
                 (PathBuf::from(&task.key), current, text)
@@ -863,7 +865,7 @@ pub fn add_steps(s: &Session, args: &Args) -> Result<Answer, String> {
         let edit = TaskEdit { title: title.clone(), estimate: *estimate, parent: whole.uid.clone(), sort_order: Some(place), ..TaskEdit::default() };
         place = place.saturating_add(tasks::SEQUENCE_GAP);
         let mut path = tasks::new_path(&list);
-        while path.exists() {
+        while path.present() {
             path = tasks::new_path(&list);
         }
         let text = tasks::new_task(&edit, &vdir::new_name(), &zone, &now)?;
@@ -913,7 +915,7 @@ pub fn move_step(s: &Session, args: &Args) -> Result<Answer, String> {
     let mut files = Vec::new();
     for (uid, place) in &writes {
         let Some(other) = file_of(uid) else { continue };
-        let current = std::fs::read_to_string(&other.key).map_err(|e| format!("{}: {e}", other.key))?;
+        let current = crate::files::read_to_string(&other.key).map_err(|e| format!("{}: {e}", other.key))?;
         let text = tasks::set_sequence(&current, *place, &sioul_core::zone::now())?;
         if text != current {
             vdir::write_item(Path::new(&other.key), &text)?;
@@ -964,7 +966,7 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let zone = sioul_core::zone::current();
     let now = sioul_core::zone::now();
-    let current = std::fs::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
+    let current = crate::files::read_to_string(&task.key).map_err(|e| format!("{}: {e}", task.key))?;
     let mut edit = TaskEdit::of(&task);
     if let Some(title) = args.line("title")? {
         edit.title = title;
@@ -1056,7 +1058,7 @@ pub fn update_task(s: &Session, args: &Args) -> Result<Answer, String> {
         // The task and its steps, each through the move journal, in one change; into a list that
         // keeps no link (Google Tasks), a tie to an appointment undone in that same change (part
         // E0.9): a move that fails unties nothing (review of ab7daa4, later 5).
-        let was: Vec<(PathBuf, String)> = family.iter().filter_map(|t| Some((PathBuf::from(&t.key), if t.uid == task.uid { current.clone() } else { std::fs::read_to_string(&t.key).ok()? }))).collect();
+        let was: Vec<(PathBuf, String)> = family.iter().filter_map(|t| Some((PathBuf::from(&t.key), if t.uid == task.uid { current.clone() } else { crate::files::read_to_string(&t.key).ok()? }))).collect();
         let change = sioul_core::pairs::moved_into(&family, &target.dir, &desk.loaded.events, provider == sioul_core::capabilities::Provider::GoogleTasks, &now)?;
         let mut written = change.write()?;
         // As a move: there before (the task as it was before this call), the old file gone.
@@ -1115,7 +1117,7 @@ pub fn delete_task(s: &Session, args: &Args) -> Result<Answer, String> {
     }
     let mut files = Vec::new();
     for path in gone {
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         vdir::remove_item(&path)?;
         files.push(FileChange { path, before: Some(text), after: None });
     }
@@ -1132,13 +1134,13 @@ fn naming(tasks: &[Task], old: &str) -> Vec<(PathBuf, Option<String>)> {
     tasks
         .iter()
         .filter(|t| t.uid != old)
-        .filter_map(|t| std::fs::read_to_string(&t.key).ok().filter(|text| sioul_core::lines::unfold(text).iter().any(|line| line.contains(old))).map(|text| (PathBuf::from(&t.key), Some(text))))
+        .filter_map(|t| crate::files::read_to_string(&t.key).ok().filter(|text| sioul_core::lines::unfold(text).iter().any(|line| line.contains(old))).map(|text| (PathBuf::from(&t.key), Some(text))))
         .collect()
 }
 
 /// Every file a replacement touches, before it is written: to say it and undo it.
 fn before_of(plan: &appointments::Replacement) -> Vec<(PathBuf, Option<String>)> {
-    plan.files().into_iter().map(|p| (p.clone(), std::fs::read_to_string(&p).ok())).collect()
+    plan.files().into_iter().map(|p| (p.clone(), crate::files::read_to_string(&p).ok())).collect()
 }
 
 fn after_of(before: Vec<(PathBuf, Option<String>)>) -> Vec<FileChange> {
@@ -1231,7 +1233,7 @@ pub fn task_to_event(s: &Session, args: &Args) -> Result<Answer, String> {
         // from (part E0.8): its block to come at the very same times; never one repeating, nor one
         // with guests (`blocks::to_come_of` gives neither).
         let times = agenda::first_times(&change.made.iter().map(|(_, t)| t.clone()).next().unwrap_or_default(), &zone);
-        change.gone.extend(blocks.iter().filter(|b| std::fs::read_to_string(b).ok().and_then(|t| agenda::first_times(&t, &zone)) == times && times.is_some()).cloned());
+        change.gone.extend(blocks.iter().filter(|b| crate::files::read_to_string(b).ok().and_then(|t| agenda::first_times(&t, &zone)) == times && times.is_some()).cloned());
         let files = change.write()?;
         let new_uid = appointments::uid_in(&path);
         let line = s.say("agent-attached", &[("title", one_line(&task.title)), ("event", one_line(&edit.title))]);

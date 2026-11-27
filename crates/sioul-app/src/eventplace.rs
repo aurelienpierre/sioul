@@ -95,15 +95,15 @@ fn said_path() -> std::path::PathBuf {
 /// true the first time, which is then kept on this device.
 pub(crate) fn first_time(which: &str) -> bool {
     let path = said_path();
-    let mut said: Vec<String> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut said: Vec<String> = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     if said.iter().any(|s| s == which) {
         return false;
     }
     said.push(which.to_string());
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        let _ = crate::files::create_dir_all(dir);
     }
-    let _ = std::fs::write(&path, serde_json::to_string(&said).unwrap_or_default());
+    let _ = crate::files::write(&path, serde_json::to_string(&said).unwrap_or_default());
     true
 }
 

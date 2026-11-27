@@ -5,6 +5,8 @@
 //! the Contacts page (« Proches »), a person's page, their form, their
 //! cards, and the persons a paper is for.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{json, load_config, say, tr};
 use serde::{Deserialize, Serialize};
 use sioul_core::config::Config;
@@ -80,7 +82,7 @@ fn keep_made(made: Vec<MadeOne>) {
     }
     let path = made_path();
     let _ = sioul_core::filelock::with_lock(&path, || {
-        let mut kept: Made = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let mut kept: Made = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         for one in made {
             if !kept.persons.iter().any(|p| p.id == one.id) {
                 kept.persons.push(one);
@@ -128,7 +130,7 @@ fn note_made(before: &Persons, after: &Persons, config: &Config, papers: &[Paper
 /// made and what named each, `[{"id", "name", "from"}]`; `[]` when there is
 /// none, outside admin hours, or once said.
 pub(crate) fn made_card() -> String {
-    let kept: Made = std::fs::read_to_string(made_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+    let kept: Made = crate::files::read_to_string(made_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
     if kept.persons.is_empty() || !admin_now(&load_config()) {
         return "[]".into();
     }
@@ -141,7 +143,7 @@ pub(crate) fn made_card() -> String {
 /// The card said: not shown again, on this device.
 pub(crate) fn made_said() {
     let path = made_path();
-    let _ = sioul_core::filelock::with_lock(&path, || std::fs::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }));
+    let _ = sioul_core::filelock::with_lock(&path, || crate::files::remove_file(&path).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) }));
 }
 
 /// "You" (« Vous »).
@@ -814,14 +816,14 @@ pub(crate) fn end(id: &str, ending: &str) -> String {
     {
         let theirs: Vec<Paper> = wallet.papers.iter().filter(|p| store.holders_of(p, &local, &own).persons == [id.to_string()]).cloned().collect();
         let folder = crate::backend::local_path(ending.folder.trim()).join(&person.name);
-        if let Err(e) = std::fs::create_dir_all(&folder) {
+        if let Err(e) = crate::files::create_dir_all(&folder) {
             return fail(format!("{}: {e}", folder.display()));
         }
         let mut copied: Vec<String> = Vec::new();
         for paper in &theirs {
-            if let Some(file) = wallet.file_path(paper).filter(|f| f.is_file()) {
+            if let Some(file) = wallet.file_path(paper).filter(|f| f.present_file()) {
                 let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                if let Err(e) = std::fs::copy(&file, folder.join(&name)) {
+                if let Err(e) = crate::files::copy(&file, folder.join(&name)) {
                     return fail(format!("{}: {e}", file.display()));
                 }
                 saved += 1;
@@ -863,15 +865,15 @@ pub(crate) fn keeps(id: &str, folder: &str) -> String {
     let name = shown["name"].as_str().unwrap_or_default().to_string();
     let target = crate::backend::local_path(folder.trim()).join(sioul_core::papers::portable_name_of(&name));
     let papers_dir = target.join(sioul_core::papers::portable_name_of(&tr().text("person-keeps-papers", None)));
-    if let Err(e) = std::fs::create_dir_all(&papers_dir) {
+    if let Err(e) = crate::files::create_dir_all(&papers_dir) {
         return fail(format!("{}: {e}", papers_dir.display()));
     }
     let mut files = 0usize;
     for paper in shown["papers"].as_array().into_iter().flatten() {
         let file = std::path::PathBuf::from(paper["file"].as_str().unwrap_or_default());
-        if file.is_file() {
+        if file.present_file() {
             let name = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            if let Err(e) = std::fs::copy(&file, papers_dir.join(&name)) {
+            if let Err(e) = crate::files::copy(&file, papers_dir.join(&name)) {
                 return fail(format!("{}: {e}", file.display()));
             }
             files += 1;

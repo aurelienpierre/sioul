@@ -360,7 +360,7 @@ impl Persons {
     /// an error, never an empty store (a change would otherwise take everyone
     /// out on every device).
     pub fn read(path: &Path) -> Result<Persons, String> {
-        match std::fs::read_to_string(path) {
+        match crate::files::read_to_string(path) {
             Ok(text) => toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Persons::default()),
             Err(e) => Err(format!("{}: {e}", path.display())),
@@ -379,13 +379,13 @@ impl Persons {
         out.format = out.format.max(FORMAT);
         let text = format!("# The people your admin is done for (docs/persons.md).\n\n{}", toml::to_string(&out).map_err(|e| e.to_string())?);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(fail)?;
+            crate::files::create_dir_all(parent).map_err(fail)?;
         }
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
-        std::fs::write(&fresh, text).map_err(fail)?;
-        std::fs::rename(&fresh, path).map_err(|e| {
-            let _ = std::fs::remove_file(&fresh);
+        crate::files::write(&fresh, text).map_err(fail)?;
+        crate::files::rename(&fresh, path).map_err(|e| {
+            let _ = crate::files::remove_file(&fresh);
             fail(e)
         })?;
         // Every view of a person reads them again (the household, a person's page, the choosers).
@@ -766,7 +766,7 @@ impl Persons {
         use std::sync::Mutex;
         static CACHE: Mutex<Option<(PathBuf, Option<(u64, std::time::SystemTime)>, Persons)>> = Mutex::new(None);
         let path = Persons::default_path();
-        let stamp = std::fs::metadata(&path).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
+        let stamp = crate::files::metadata(&path).ok().map(|m| (m.len(), m.modified().unwrap_or(std::time::UNIX_EPOCH)));
         let Ok(mut cache) = CACHE.lock() else { return Persons::load(&path) };
         if let Some((at, was, persons)) = cache.as_ref()
             && *at == path

@@ -15,6 +15,8 @@
 //! brings the copy. Changes made elsewhere (read on the phone, deleted in the
 //! webmail) come back at each sync (`reconcile`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::{SyncError, said};
 use crate::imap::{self, COMMAND, Imap, Server};
 use async_imap::imap_proto::rfc4315::UidSetMember;
@@ -136,7 +138,7 @@ pub fn delete_folder(account: &Account, password: &str, name: &str) -> Result<()
     })?;
     // Its empty copy here goes too, and where its sync stopped.
     if let Some(dir) = own_dir(account, &folder) {
-        let _ = std::fs::remove_dir_all(dir);
+        let _ = crate::files::remove_dir_all(dir);
     }
     crate::fetch::forget_folder_state(account, name)
 }
@@ -148,8 +150,8 @@ pub fn forget_folder(account: &Account, name: &str) -> Result<(), SyncError> {
     let _ = mailmoved::forget_account(&account.id, Some(name));
     if let Some(root) = folders(&account.id).into_iter().find(|f| f.name == name && f.role != Role::Inbox).and_then(|f| own_dir(account, &f)) {
         for sub in ["cur", "new"] {
-            for entry in std::fs::read_dir(root.join(sub)).into_iter().flatten().filter_map(Result::ok) {
-                let _ = std::fs::remove_file(entry.path());
+            for entry in crate::files::read_dir(root.join(sub)).into_iter().flatten().filter_map(Result::ok) {
+                let _ = crate::files::remove_file(entry.path());
             }
         }
     }
@@ -171,10 +173,10 @@ pub(crate) fn save(account: &str, list: &[Folder]) -> Result<(), SyncError> {
     let path = folders_path(account);
     let fail = |e: std::io::Error| SyncError::Disk(format!("{}: {e}", path.display()));
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let text = toml::to_string(&Saved { folders: list.to_vec() }).map_err(|e| SyncError::Disk(e.to_string()))?;
-    std::fs::write(&path, text).map_err(fail)
+    crate::files::write(&path, text).map_err(fail)
 }
 
 /// The account's folders as last listed: the inbox alone before the first sync.
@@ -192,8 +194,8 @@ pub fn folder_of(account: &Account, file: &Path) -> Option<Folder> {
         return Some(folder.clone());
     }
     // Each path as the system resolves it, where a folder sits behind a link (as `Config::account_of`).
-    let directory = std::fs::canonicalize(directory).ok()?;
-    all.into_iter().find(|f| std::fs::canonicalize(root.join(&f.local)).is_ok_and(|d| d == directory))
+    let directory = crate::files::canonicalize(directory).ok()?;
+    all.into_iter().find(|f| crate::files::canonicalize(root.join(&f.local)).is_ok_and(|d| d == directory))
 }
 
 /// Brings back what changed on the server since the last sync, for the
@@ -218,7 +220,7 @@ pub(crate) async fn reconcile(session: &mut Imap, root: &Path, validity: u32) ->
     for (origin, path) in local.into_iter().filter(|(o, _)| o.validity == validity) {
         match server.get(&origin.uid) {
             None => {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::files::remove_file(&path);
             }
             Some(flags) if sorted(flags) != sorted(&maildir::flags_of(&path)) => {
                 let _ = maildir::set_flags(&path, flags);
@@ -240,7 +242,7 @@ fn sorted(flags: &str) -> String {
 fn local_files(root: &Path) -> Vec<(ImapOrigin, PathBuf)> {
     ["new", "cur"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(root.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(root.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -363,7 +365,7 @@ pub fn act(account: &Account, password: &str, file: &Path, action: &Action) -> R
             }
         }
         (None, None) => {
-            let _ = std::fs::remove_file(&file);
+            let _ = crate::files::remove_file(&file);
         }
     }
     logged.map(|()| followed)
@@ -483,7 +485,7 @@ fn said(action: &Action) -> Option<labels::Source> {
 /// Done, its file follows it into `to`'s Maildir, under the APPENDUID that
 /// server gave (`follow`); returns where it went.
 pub fn move_across(from: &Account, from_password: &str, file: &Path, to: &Account, to_password: &str, folder: &str) -> Result<Moved, SyncError> {
-    let raw = std::fs::read(file).map_err(|e| SyncError::Disk(format!("{}: {e}", file.display())))?;
+    let raw = crate::files::read(file).map_err(|e| SyncError::Disk(format!("{}: {e}", file.display())))?;
     let origin = maildir::origin_of(file).ok_or_else(|| SyncError::Said(said::NOT_FETCHED, String::new()))?;
     let source = folder_of(from, file).ok_or_else(|| SyncError::Said(said::UNKNOWN_FOLDER, String::new()))?;
     let flags = maildir::flags_of(file);
@@ -695,7 +697,7 @@ pub fn act_many(account: &Account, password: &str, files: &[PathBuf], remote: &[
                 }
                 (None, Some(went)) => moving.push(Following { place: went.place_of(uid), flags: moved_flags(action, &flags), address: addresses.get(&asked).cloned(), file }),
                 (None, None) => {
-                    let _ = std::fs::remove_file(&file);
+                    let _ = crate::files::remove_file(&file);
                 }
             }
         }
@@ -1102,7 +1104,7 @@ pub(crate) struct Following {
 pub(crate) fn follow_all(to: &Account, folder: &str, moved: Vec<Following>) -> Moved {
     // Another address's Maildir covering `to`'s (`renumbered::shared_with_others`, which
     // counts a configuration that does not read as shared); without a configuration file, none.
-    follow_all_with(to, folder, moved, || sioul_core::config::default_path().exists() && crate::renumbered::shared_with_others(to))
+    follow_all_with(to, folder, moved, || sioul_core::config::default_path().present() && crate::renumbered::shared_with_others(to))
 }
 
 fn follow_all_with(to: &Account, folder: &str, moved: Vec<Following>, shared: impl FnOnce() -> bool) -> Moved {
@@ -1112,7 +1114,7 @@ fn follow_all_with(to: &Account, folder: &str, moved: Vec<Following>, shared: im
         }
     };
     let leave = |file: &Path| {
-        let _ = std::fs::remove_file(file);
+        let _ = crate::files::remove_file(file);
     };
     let Some(dir) = kept_dir(to, folder) else {
         for one in &moved {
@@ -1144,7 +1146,7 @@ fn follow_all_with(to: &Account, folder: &str, moved: Vec<Following>, shared: im
     // What the folder holds already, by place: read once.
     let mut there: BTreeMap<ImapOrigin, PathBuf> = ["cur", "new"]
         .iter()
-        .filter_map(|sub| std::fs::read_dir(dir.join(sub)).ok())
+        .filter_map(|sub| crate::files::read_dir(dir.join(sub)).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())

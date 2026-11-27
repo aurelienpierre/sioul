@@ -27,6 +27,8 @@
 //! Only libdbus's own record of that name is not kept (`unique_name` says
 //! none), which nothing in Sioul reads.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use dbus::Message;
 use dbus::channel::Channel;
 use std::sync::Mutex;
@@ -65,8 +67,7 @@ fn refused(under_way: &[Setup], address: &str, socket: Option<(u64, u64)>, now: 
 /// its device and inode; none for another kind of address (an abstract
 /// socket's name, TCP), or no file there.
 fn socket_of(address: &str) -> Option<(u64, u64)> {
-    use std::os::unix::fs::MetadataExt;
-    let found = std::fs::metadata(unix_path(address)?).ok()?;
+    let found = crate::files::metadata(unix_path(address)?).ok()?;
     Some((found.dev(), found.ino()))
 }
 
@@ -158,7 +159,7 @@ pub fn session_address() -> Option<String> {
         return Some(address);
     }
     let bus = std::path::PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?).join("bus");
-    bus.exists().then(|| format!("unix:path={}", escaped(&bus)))
+    bus.present().then(|| format!("unix:path={}", escaped(&bus)))
 }
 
 /// The system's bus as libdbus finds it: `DBUS_SYSTEM_BUS_ADDRESS`, else its usual socket.
@@ -192,8 +193,8 @@ impl StandIns {
     /// A scratch folder named after `name` and this process.
     pub(crate) fn new(name: &str) -> StandIns {
         let dir = std::env::temp_dir().join(format!("sioul-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let _ = crate::files::remove_dir_all(&dir);
+        crate::files::create_dir_all(&dir).unwrap();
         StandIns { dir, daemons: Vec::new() }
     }
 
@@ -203,19 +204,19 @@ impl StandIns {
     pub(crate) fn start(&mut self, name: &str) -> (u32, String) {
         use std::process::{Command, Stdio};
         let socket = self.dir.join(name);
-        let _ = std::fs::remove_file(&socket);
+        let _ = crate::files::remove_file(&socket);
         let address = format!("unix:path={}", escaped(&socket));
         let config = self.dir.join(format!("{name}.conf"));
         let policy = "<allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/>";
-        std::fs::write(&config, format!("<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n<busconfig><type>session</type><listen>{address}</listen><auth>EXTERNAL</auth><policy context=\"default\">{policy}</policy></busconfig>\n")).unwrap();
+        crate::files::write(&config, format!("<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n<busconfig><type>session</type><listen>{address}</listen><auth>EXTERNAL</auth><policy context=\"default\">{policy}</policy></busconfig>\n")).unwrap();
         let daemon = Command::new("dbus-daemon").arg(format!("--config-file={}", config.display())).arg("--nofork").stdout(Stdio::null()).stderr(Stdio::null()).spawn().expect("dbus-daemon");
         let pid = daemon.id();
         self.daemons.push(daemon);
         let until = Instant::now() + Duration::from_secs(5);
-        while !socket.exists() && Instant::now() < until {
+        while !socket.present() && Instant::now() < until {
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(socket.exists(), "{name}: no socket");
+        assert!(socket.present(), "{name}: no socket");
         (pid, address)
     }
 
@@ -233,7 +234,7 @@ impl Drop for StandIns {
             let _ = daemon.kill();
             let _ = daemon.wait();
         }
-        let _ = std::fs::remove_dir_all(&self.dir);
+        let _ = crate::files::remove_dir_all(&self.dir);
     }
 }
 

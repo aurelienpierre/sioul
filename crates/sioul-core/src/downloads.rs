@@ -388,13 +388,13 @@ pub fn site_key(site: &str, host: &str) -> String {
 impl Memory {
     /// Read from `path`; empty when it is not there or does not read.
     pub fn load(path: &Path) -> Memory {
-        std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default()
     }
 
     /// Written whole beside `path`, then renamed over it.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         let text = toml::to_string(self).map_err(|e| e.to_string())?;
         crate::filelock::replace(path, format!("# The place a file from each site went last (docs/sites.md, \"Downloads\").\n\n{text}").as_bytes()).map_err(|e| format!("{}: {e}", path.display()))

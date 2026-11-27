@@ -27,7 +27,7 @@ pub(crate) fn watch(qt: &QtThread, shared: &Arc<Shared>) {
         let (_, mut offset) = agentwrites::since(u64::MAX);
         loop {
             std::thread::sleep(EVERY);
-            let len = std::fs::metadata(agentwrites::path()).map_or(0, |m| m.len());
+            let len = crate::files::metadata(agentwrites::path()).map_or(0, |m| m.len());
             if len == offset {
                 continue;
             }

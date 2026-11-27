@@ -39,6 +39,8 @@
 //! a change of the page whole, with what Undo puts back): an older Sioul
 //! reads every one of them as it always did.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::appnotes::{AppKind, Choices, Through};
 use crate::areas::Area;
 use crate::attention::{self, Attention, Column, Kind, Level, Person, Preset, Row};
@@ -333,7 +335,7 @@ pub const SWITCHES: [(&str, bool); 3] = [("reminders.mail", true), ("reminders.m
 /// A switch as the file writes it: none where it says nothing (Sioul's own value holds).
 fn switch_written(path: &std::path::Path, key: &str) -> Option<bool> {
     let (table, field) = key.split_once('.')?;
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     text.parse::<toml::Table>().ok()?.get(table)?.get(field)?.as_bool()
 }
 
@@ -1090,7 +1092,7 @@ pub struct Paths {
 /// The writes made, in order, each under its file's lock as the stores of
 /// today are written. `to` is the start a row goes back to.
 pub fn apply(paths: &Paths, writes: &[Write], to: Preset) -> Result<(), String> {
-    let config = || if paths.config.exists() { Config::load(&paths.config) } else { Ok(Config::default()) };
+    let config = || if paths.config.present() { Config::load(&paths.config) } else { Ok(Config::default()) };
     for write in writes {
         match write {
             Write::Rows(rows) => {
@@ -1187,7 +1189,7 @@ pub enum Refusal {
 /// none (`stored_start`), so that it never moves under the exceptions.
 pub fn save(paths: &Paths, old: Option<&Exception>, new: Option<&Exception>, devices: &[Device]) -> Result<Option<Kept>, Refusal> {
     let failed = |e: String| Refusal::Failed(e);
-    let config = if paths.config.exists() { Config::load(&paths.config).map_err(failed)? } else { Config::default() };
+    let config = if paths.config.present() { Config::load(&paths.config).map_err(failed)? } else { Config::default() };
     let attention = Attention::of(&config);
     let start = start_of(&config, &attention);
     // The card sends what it shows: an exception saved as it was changes nothing.
@@ -1269,7 +1271,7 @@ fn attention_keys(store: &Store) -> Vec<String> {
 
 /// What `stores` hold now, and `rows` of the matrix besides (a start's).
 pub fn keep(paths: &Paths, stores: &[Store], rows: &[Row]) -> Kept {
-    let config = if paths.config.exists() { Config::load(&paths.config).unwrap_or_default() } else { Config::default() };
+    let config = if paths.config.present() { Config::load(&paths.config).unwrap_or_default() } else { Config::default() };
     // Never written: the rows as the older keys seed them, which its first write takes in.
     let seeded = config.attention.is_none().then(|| Attention::of(&config));
     let usual = Attention::usual();
@@ -1312,7 +1314,7 @@ pub fn keep(paths: &Paths, stores: &[Store], rows: &[Row]) -> Kept {
 
 /// The stores put back as `keep` found them.
 pub fn put_back(paths: &Paths, kept: &Kept) -> Result<(), String> {
-    let config = if paths.config.exists() { Config::load(&paths.config)? } else { Config::default() };
+    let config = if paths.config.present() { Config::load(&paths.config)? } else { Config::default() };
     // `[attention]` not written by the change (a switch, a list): left unwritten, the older keys still seeding it.
     if !kept.attention.is_empty() && config.attention.is_some() {
         let items: Vec<(String, Option<toml_edit::Item>)> = kept

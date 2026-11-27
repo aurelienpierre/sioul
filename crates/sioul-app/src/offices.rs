@@ -281,7 +281,7 @@ struct Written {
 /// first time, its open calls and outings are ticked (`work::tick_for_office`).
 /// Nothing written when nothing changes. No window needed: the tests run it.
 fn card_saved(shared: &Shared, path: &Path, contact: &Contact, hours: &CardHours) -> Result<Written, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let text = crate::files::read_to_string(path).map_err(|e| e.to_string())?;
     let Some(written) = contacts::with_hours(&text, hours) else { return Ok(Written::default()) };
     vdir::write_item(path, &written)?;
     if let Some(account) = pim::account_of(path) {
@@ -358,7 +358,7 @@ fn marked(shared: &Shared, key: &str) -> Result<Option<(String, String)>, String
     if contact.read_only {
         return Err(tr().text("hours-read-only", None));
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let text = crate::files::read_to_string(&path).map_err(|e| e.to_string())?;
     let Some(written) = contacts::as_office(&text) else { return Ok(None) };
     let change = sioul_core::duplicates::Change { path: path.clone(), before: Some(text), after: Some(written) };
     let done = sioul_core::duplicates::apply(&sioul_core::duplicates::undo_dir(), MARKED, vec![contact.name.clone()], vec![change], jiff::Timestamp::now().as_second())?;
@@ -596,7 +596,7 @@ fn added(shared: &Shared, key: &str, what: &str, value: &str) -> Result<bool, St
     if contact.read_only {
         return Err(tr().text("hours-read-only", None));
     }
-    let text = std::fs::read_to_string(&path).map_err(|_| tr().text("contact-gone", None))?;
+    let text = crate::files::read_to_string(&path).map_err(|_| tr().text("contact-gone", None))?;
     let property = if what == "address" { "ADR" } else { "TEL" };
     let Some(written) = contacts::with_value(&text, property, value) else { return Ok(false) };
     vdir::write_item(&path, &written)?;

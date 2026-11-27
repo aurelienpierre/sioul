@@ -4,6 +4,8 @@
 //! The papers wallet, for the window (docs/papers.md): the page, its form,
 //! a paper kept from a mail's attachment or a file, its renewal planned as a task.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, say, tr};
 use serde::{Deserialize, Serialize};
 use sioul_core::papers::{Kind, Paper, Standing, Wallet};
@@ -97,7 +99,7 @@ fn view_of(wallet: &Wallet, paper: &Paper, holders: &sioul_core::persons::Holder
         texts: holders.texts.clone(),
         notes: paper.notes.clone(),
         file_name: file.as_ref().and_then(|f| f.file_name()).map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-        file_there: file.as_ref().is_some_and(|f| f.is_file()),
+        file_there: file.as_ref().is_some_and(|f| f.present_file()),
         file: file.map(|f| f.display().to_string()).unwrap_or_default(),
         issued: paper.issued.map(|d| d.to_string()).unwrap_or_default(),
         until: paper.until.map(|d| d.to_string()).unwrap_or_default(),
@@ -196,7 +198,7 @@ fn save_edit(id: &str, edit: &PaperEdit) -> Result<String, String> {
         let inside = wallet.file_path(&old).is_some_and(|f| f == path) || path.starts_with(&wallet.docs.folder);
         if inside {
             wallet.docs.named(path)
-        } else if path.is_file() {
+        } else if path.present_file() {
             let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
             wallet.keep_file(path, &name)?
         } else {

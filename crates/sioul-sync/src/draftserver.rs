@@ -31,6 +31,8 @@
 //! connection lost or too slow: the round ends there, its connection
 //! dropped, and that version waits its turn too.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::SyncError;
 use crate::imap::{self, COMMAND};
 use async_imap::Session;
@@ -73,7 +75,7 @@ pub(crate) fn work_for(account: &Account, attachments: bool) -> Option<draftserv
     let now = jiff::Timestamp::now().as_second();
     let mut work = Mirror::load(&Mirror::default_path()).work(&account.id, &draftserver::drafts_here(), now);
     if !attachments {
-        work.place.retain(|(draft, _, _)| !draft.attachments.iter().any(|path| path.is_file()));
+        work.place.retain(|(draft, _, _)| !draft.attachments.iter().any(|path| path.present_file()));
     }
     Some(work).filter(|w| !w.is_empty())
 }
@@ -87,7 +89,7 @@ pub fn has_work(account: &Account, attachments: bool) -> bool {
 /// The account's drafts round's own lock, across processes (the window and
 /// a phone's background step, `sioul sync`): one round at a time, the others
 /// skip theirs, so that two never place versions over each other.
-pub(crate) fn lock(account: &Account) -> Option<std::fs::File> {
+pub(crate) fn lock(account: &Account) -> Option<crate::files::File> {
     let path = sioul_core::config::state_dir().join("sync").join(format!("{}.drafts.lock", account.id));
     crate::fetch::lock_within(&path, Duration::ZERO)
 }

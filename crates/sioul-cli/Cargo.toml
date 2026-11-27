@@ -19,6 +19,8 @@ sioul-sync = { path = "../sioul-sync" }
 clap.workspace = true
 jiff.workspace = true
 rpassword.workspace = true
+# A passphrase, a code or a PIN typed to reopen what Sioul set aside, zeroed once used.
+zeroize = "1"
 serde.workspace = true
 # The MCP server's JSON-RPC (`sioul mcp`); the core is built with it already.
 serde_json.workspace = true
@@ -36,7 +38,9 @@ libc = "0.2"
 [dev-dependencies]
 # No test reaches a keyring (review of 19 October 2026, F11): resolver 3 keeps
 # this feature out of the release builds.
-sioul-sync = { path = "../sioul-sync", features = ["no-keyring"] }
+sioul-sync = { path = "../sioul-sync", features = ["no-keyring", "test-store-key"] }
+# The sealed store's fixed test key for the tests of `sioul store` (SIOUL_TEST_STORE_KEY).
+sioul-core = { path = "../sioul-core", features = ["test-store-key"] }
 
 [features]
 # For tests against a local mail server only (see sioul-sync's feature of the same name).

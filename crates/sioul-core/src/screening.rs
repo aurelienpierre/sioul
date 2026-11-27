@@ -43,6 +43,8 @@
 //! (`attention::screened`). An older Sioul keeps the section as it is. The
 //! numbers known by their kind: `data/screening-numbers.toml`.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::attention::{Attention, Column, Level, Person, Row};
 use crate::config::{Config, SettingValue};
 use crate::reach::Channel;
@@ -269,7 +271,7 @@ pub fn set(path: &Path, key: &str, value: &SettingValue) -> Result<(), String> {
     };
     // The first setting written fixes unknown and hidden numbers at their
     // first values: the Calls rows they come from move them no more.
-    if path.exists() {
+    if path.present() {
         let config = Config::load(path)?;
         let now = Screening::of(&config);
         for (unsaid, rule) in [("unknown", now.unknown), ("hidden", now.hidden)] {

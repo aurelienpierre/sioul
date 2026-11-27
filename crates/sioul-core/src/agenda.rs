@@ -617,7 +617,7 @@ pub fn file_occurrences_marked(path: &Path, calendar: &Collection, marks: &crate
     let now = Timestamp::now().as_second();
     let day = now - now.rem_euclid(86_400);
     let (first, last) = (day - KEPT_BEFORE, day + KEPT_AFTER);
-    let Ok(meta) = std::fs::metadata(path) else { return Vec::new() };
+    let Ok(meta) = crate::files::metadata(path) else { return Vec::new() };
     let file = (meta.len(), meta.modified().ok());
     // A file written within two seconds is not trusted to have a time of its
     // own: two writings of one length within a tick of the clock look alike.
@@ -651,7 +651,7 @@ pub fn file_occurrences_marked(path: &Path, calendar: &Collection, marks: &crate
 
 /// `file_occurrences_as` from the file itself, read and parsed now, without your own time laid over it.
 fn read_occurrences(path: &Path, calendar: &Collection, marks: &crate::agendas::Marks, from: i64, to: i64, zone: &TimeZone, own: &[String]) -> Vec<Occurrence> {
-    let Some(text) = std::fs::read_to_string(path).ok() else { return Vec::new() };
+    let Some(text) = crate::files::read_to_string(path).ok() else { return Vec::new() };
     // What its agenda is to you (`agendas`): for its availability only, nothing but its times.
     let busy = marks.busy;
     let with_others = !busy && meeting_with_others(&text, own);
@@ -1076,7 +1076,7 @@ pub fn addresses_of(config: &crate::config::Config) -> Vec<String> {
         }
     }
     for account in config.every_account() {
-        let said: Said = std::fs::read_to_string(scheduling_path(&account.id)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        let said: Said = crate::files::read_to_string(scheduling_path(&account.id)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
         for address in &said.addresses {
             add(address);
         }
@@ -1093,7 +1093,7 @@ fn own() -> (Vec<String>, String) {
     type Kept = Option<(Times, std::time::Instant, Vec<String>, String)>;
     static OWN: std::sync::Mutex<Kept> = std::sync::Mutex::new(None);
     const SERVERS_EVERY: std::time::Duration = std::time::Duration::from_secs(5);
-    let time = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let time = |path: &Path| crate::files::metadata(path).and_then(|m| m.modified()).ok();
     let path = crate::config::default_path();
     let mut kept = OWN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((times, looked, addresses, language)) = kept.as_mut()
@@ -1386,7 +1386,7 @@ pub fn guard_organized(path: &Path, new: Option<&str>) -> Result<(), Refusal> {
     {
         return Err(Refusal::TasksOnly);
     }
-    let old = std::fs::read_to_string(path).ok();
+    let old = crate::files::read_to_string(path).ok();
     may_organize(old.as_deref(), new, read_only, &own_addresses())
 }
 
@@ -1419,7 +1419,7 @@ pub fn guard(path: &Path, change: Change) -> Result<(), Refusal> {
             return Err(Refusal::EventsOnly);
         }
     }
-    let old = std::fs::read_to_string(path).ok().filter(|text| holds_event(text));
+    let old = crate::files::read_to_string(path).ok().filter(|text| holds_event(text));
     let new_event = matches!(change, Change::Write(new) if holds_event(new));
     if old.is_none() && !new_event {
         // A task too stays as it is in a calendar or a list you only read, by its
@@ -1765,7 +1765,7 @@ fn remind_of(ical: &ICalendar, component: &ICalendarComponent) -> String {
 
 /// An event as the form shows it, from its file, in your time zone.
 pub fn edit_of(path: &Path) -> Option<EventEdit> {
-    edit_of_text(&std::fs::read_to_string(path).ok()?, &crate::zone::current())
+    edit_of_text(&crate::files::read_to_string(path).ok()?, &crate::zone::current())
 }
 
 /// An event as the form shows it, from its text, in `zone`.
@@ -3252,7 +3252,7 @@ pub fn event_refs() -> Vec<EventRef> {
         .iter()
         .flat_map(|c| c.items())
         .filter_map(|path| {
-            let text = std::fs::read_to_string(&path).ok()?;
+            let text = crate::files::read_to_string(&path).ok()?;
             text.to_ascii_uppercase().contains("BEGIN:VEVENT").then(|| event_ref(&text, &path.display().to_string(), &zone)).flatten()
         })
         .collect()
@@ -4152,7 +4152,7 @@ impl CalendarFile {
         let wanted: BTreeSet<&str> = self.objects.iter().map(|(uid, _)| uid.as_str()).collect();
         let mut out = BTreeMap::new();
         for item in calendar.items() {
-            let Ok(text) = std::fs::read_to_string(&item) else { continue };
+            let Ok(text) = crate::files::read_to_string(&item) else { continue };
             for line in lines::unfold(&text).iter().filter(|l| lines::name(l) == "UID") {
                 let uid = lines::value(line).trim();
                 if wanted.contains(uid) {
@@ -4182,7 +4182,7 @@ impl CalendarFile {
                 Some(path) => (path.clone(), true),
                 None => (new_path(calendar), false),
             };
-            let current = std::fs::read_to_string(&path).ok();
+            let current = crate::files::read_to_string(&path).ok();
             // Written over: the categories it was given before stay.
             let mut given: Vec<String> = current.as_deref().map(|text| crate::contacts::categories_of(&lines::unfold(text))).unwrap_or_default();
             given.extend(categories.iter().cloned());
@@ -4819,10 +4819,10 @@ mod tests {
         // Each door: its guard calls, with the change each makes and the `?` that stops it, before what it lets through.
         let doors: [(&str, &[&str], &str); 9] = [
             ("pub fn write_item(", &["guarded(path, crate::agenda::Change::Write(text))?;"], "store_item(path, text)"),
-            ("pub fn remove_item(", &["guarded(path, crate::agenda::Change::Delete)?;"], "std::fs::remove_file(path)"),
+            ("pub fn remove_item(", &["guarded(path, crate::agenda::Change::Delete)?;"], "crate::files::remove_file(path)"),
             // The organizer's door, its own rule first (`guard_organized`).
             ("pub fn write_organized(", &["organized(path, Some(text))?;"], "store_item(path, text)"),
-            ("pub fn remove_organized(", &["organized(path, None)?;"], "std::fs::remove_file(path)"),
+            ("pub fn remove_organized(", &["organized(path, None)?;"], "crate::files::remove_file(path)"),
             ("fn organized(", &["crate::agenda::guard_organized(path, text).map_err(|refusal| crate::agenda::said(refusal, &change))\n"], ""),
             ("pub fn move_item(", &["guarded(from, crate::agenda::Change::Move)?;", "guarded(to, crate::agenda::Change::Write(&text))?;"], "replace_locked(from, &[], &[], to, &text)"),
             (
@@ -4872,6 +4872,14 @@ mod tests {
             "fs::write(",
             "fs::rename(",
             "fs::copy(",
+            // The same through the sealed store's door through paths (`crate::files`).
+            "files::write(",
+            "files::write_only_here(",
+            "files::rename(",
+            "files::copy(",
+            "files::hard_link(",
+            "files::purge(",
+            "files::purge_dir(",
             "remove_file(",
             "remove_dir(",
             "remove_dir_all(",

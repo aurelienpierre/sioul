@@ -45,6 +45,8 @@
 //! remove = ["Banque Exemple"]
 //! ```
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -740,7 +742,7 @@ fn newest() -> &'static [Pack] {
             .map(|pack| {
                 let mut best = pack.clone();
                 for place in &places {
-                    if let Some(found) = std::fs::read_to_string(place.join(&pack.file)).ok().and_then(|t| Pack::parse(&pack.file, &t))
+                    if let Some(found) = crate::files::read_to_string(place.join(&pack.file)).ok().and_then(|t| Pack::parse(&pack.file, &t))
                         && found.checked > best.checked
                     {
                         best = found;
@@ -1294,7 +1296,7 @@ pub fn write_setting(config_path: &Path, key: &str, values: &[String]) -> Result
 pub fn keep_first(config_path: &Path) -> Result<bool, String> {
     // Looked at and written under the file's lock, which the sharing takes too.
     crate::filelock::with_lock(config_path, || {
-        let Ok(text) = std::fs::read_to_string(config_path) else { return Ok(false) };
+        let Ok(text) = crate::files::read_to_string(config_path) else { return Ok(false) };
         let doc: toml_edit::DocumentMut = text.parse().map_err(|e| format!("{}: {e}", config_path.display()))?;
         if doc.contains_key("words") {
             return Ok(false);
@@ -1310,14 +1312,14 @@ pub fn keep_first(config_path: &Path) -> Result<bool, String> {
 /// one made afterwards (a new person's, by this Sioul) is left to its
 /// interface's language and English (`languages`). `marker` says it was done.
 pub fn keep_first_once(config_path: &Path, marker: &Path) -> Result<bool, String> {
-    if marker.exists() {
+    if marker.present() {
         return Ok(false);
     }
     let wrote = keep_first(config_path)?;
     if let Some(parent) = marker.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
-    std::fs::write(marker, b"").map_err(|e| format!("{}: {e}", marker.display()))?;
+    crate::files::write(marker, b"").map_err(|e| format!("{}: {e}", marker.display()))?;
     Ok(wrote)
 }
 

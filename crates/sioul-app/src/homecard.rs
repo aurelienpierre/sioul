@@ -1373,10 +1373,10 @@ static WRITING: Mutex<()> = Mutex::new(());
 fn write(text: &str) -> bool {
     let path = path();
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        let _ = crate::files::create_dir_all(parent);
     }
     let beside = path.with_extension("json.new");
-    std::fs::write(&beside, text).and_then(|()| std::fs::rename(&beside, &path)).is_ok()
+    crate::files::write(&beside, text).and_then(|()| crate::files::rename(&beside, &path)).is_ok()
 }
 
 /// Android asked to draw the card again: an explicit broadcast to Sioul's
@@ -1525,7 +1525,7 @@ pub(crate) fn weather_seen() {
 fn weather_input() -> WeatherInput {
     let config = load_config();
     let place = config.weather.place.as_deref().is_some_and(|p| !p.trim().is_empty()) && config.weather.latitude.is_some() && config.weather.longitude.is_some();
-    let forecast = place.then(|| std::fs::read_to_string(crate::backend::weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok())).flatten();
+    let forecast = place.then(|| crate::files::read_to_string(crate::backend::weather_cache()).ok().and_then(|t| serde_json::from_str(&t).ok())).flatten();
     WeatherInput { place, forecast }
 }
 
@@ -1575,7 +1575,7 @@ pub(crate) fn dnd_seen(moment: serde_json::Value) {
         return;
     }
     let _writing = WRITING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(mut card) = std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
+    let Some(mut card) = crate::files::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
     if patch_dnd(&mut card, Dnd::of(&moment).as_ref(), Timestamp::now().as_millisecond()) && write(&card.to_string()) {
         draw();
     }
@@ -1691,7 +1691,7 @@ pub(crate) fn doses_changed() {
         return;
     }
     let _writing = WRITING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(mut card) = std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
+    let Some(mut card) = crate::files::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
     let details = details();
     let now = Zoned::now();
     let doses = if details { crate::health::card_doses(&now) } else { Vec::new() };
@@ -1728,7 +1728,7 @@ pub(crate) fn mail_came() {
     let blocks = crate::hours::blocks(&now);
     let moment = Moment { now: &now, config: &config, overrides: &overrides, blocks: &blocks, tr: tr(), details: details(), dnd: None };
     let _writing = WRITING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let Some(mut card) = std::fs::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
+    let Some(mut card) = crate::files::read_to_string(path()).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).filter(serde_json::Value::is_object) else { return };
     if patch_mail(&mut card, &moment, &input) && write(&card.to_string()) {
         draw();
     }
@@ -1782,8 +1782,8 @@ fn patch_mail(card: &mut serde_json::Value, m: &Moment, input: &PorchInput) -> b
 /// five minutes is let go.
 pub(crate) fn opened() -> Option<(&'static str, String, String)> {
     let path = sioul_core::config::state_dir().join(OPENED);
-    let text = std::fs::read_to_string(&path).ok()?;
-    let _ = std::fs::remove_file(&path);
+    let text = crate::files::read_to_string(&path).ok()?;
+    let _ = crate::files::remove_file(&path);
     tap(&text, Timestamp::now().as_millisecond())
 }
 

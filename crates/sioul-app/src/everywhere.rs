@@ -80,8 +80,8 @@ pub(crate) fn note_gone(folder: &std::path::Path, key: &[u8; 32], here: &str) {
     {
         let path = rules::gone_path();
         let fresh = path.with_extension(format!("json.{}", std::process::id()));
-        if std::fs::write(&fresh, text).and_then(|()| std::fs::rename(&fresh, &path)).is_err() {
-            let _ = std::fs::remove_file(&fresh);
+        if crate::files::write(&fresh, text).and_then(|()| crate::files::rename(&fresh, &path)).is_err() {
+            let _ = crate::files::remove_file(&fresh);
         }
     }
 }
@@ -242,9 +242,9 @@ pub(crate) fn now() -> Now {
 type FileSeen = Option<(std::time::SystemTime, u64, u64)>;
 
 fn seen(path: &std::path::Path) -> FileSeen {
-    let meta = std::fs::metadata(path).ok()?;
+    let meta = crate::files::metadata(path).ok()?;
     #[cfg(unix)]
-    let inode = std::os::unix::fs::MetadataExt::ino(&meta);
+    let inode = meta.ino();
     #[cfg(not(unix))]
     let inode = 0;
     Some((meta.modified().ok()?, meta.len(), inode))
@@ -271,7 +271,7 @@ pub(crate) fn files_cleared() {
     // Deletes where Sioul reads: never the person's own (review of 36002ea's check, A2).
     sioul_core::config::stand_ins_only();
     for path in [Switch::default_path(), Overrides::default_path(), rules::gone_path(), sioul_core::appnotes::Ledger::default_path(), sioul_core::appnotes::Choices::default_path()] {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::files::remove_file(path);
     }
     if let Ok(mut kept) = REACHABLE_KEPT.lock() {
         *kept = None;

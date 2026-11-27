@@ -62,6 +62,8 @@
 //! of its own (`calls/through-here.json`) that Java reads at once and Rust
 //! carries into the switch (`merge_local`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::attention::{self, Attention, Level, Person};
 use crate::everywhere::{Device, People, Switch};
 use crate::i18n::Translator;
@@ -836,13 +838,13 @@ pub fn write(path: &Path, table: &Table) -> Result<(), String> {
 fn write_whole(path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
-    std::fs::write(&fresh, text).map_err(fail)?;
-    std::fs::rename(&fresh, path).map_err(|e| {
-        let _ = std::fs::remove_file(&fresh);
+    crate::files::write(&fresh, text).map_err(fail)?;
+    crate::files::rename(&fresh, path).map_err(|e| {
+        let _ = crate::files::remove_file(&fresh);
         fail(e)
     })
 }
@@ -1082,7 +1084,7 @@ fn spam(screening: &screening::TablePart, key: &str, verified: &str) -> Option<&
 /// of part 2, 19 October 2026, F5). Java prunes it at each call; this, at each
 /// table made, so that nothing stays its days out while no call comes.
 pub fn prune_called(path: &Path, now_ms: i64, days: i64) -> std::io::Result<()> {
-    let gone = || match std::fs::remove_file(path) {
+    let gone = || match crate::files::remove_file(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         other => other,
     };
@@ -1090,7 +1092,7 @@ pub fn prune_called(path: &Path, now_ms: i64, days: i64) -> std::io::Result<()> 
     if days == 0 {
         return gone();
     }
-    let text = match std::fs::read_to_string(path) {
+    let text = match crate::files::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(e),
@@ -1105,8 +1107,8 @@ pub fn prune_called(path: &Path, now_ms: i64, days: i64) -> std::io::Result<()> 
         return Ok(());
     }
     let fresh = path.with_extension(format!("json.{}", std::process::id()));
-    std::fs::write(&fresh, serde_json::Value::Object(kept).to_string())?;
-    std::fs::rename(&fresh, path)
+    crate::files::write(&fresh, serde_json::Value::Object(kept).to_string())?;
+    crate::files::rename(&fresh, path)
 }
 
 /// The later of this phone's own press and your devices' latest (by when each was pressed).
@@ -1314,7 +1316,7 @@ pub fn set_screens(switch: &mut Switch, here: &str, screens: bool) -> bool {
 
 /// A small JSON file of Java's; none when it is not there or does not read.
 pub fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    serde_json::from_str(&crate::files::read_to_string(path).ok()?).ok()
 }
 
 // ---------------------------------------------------------------- the calls screened
@@ -1403,7 +1405,7 @@ pub fn read_held(path: &Path) -> Vec<Held> {
 /// Every line of a file of JSON lines that reads; a line cut by a crash, or
 /// written by a later Sioul in a shape this one does not know, is passed over.
 pub(crate) fn read_lines<T: serde::de::DeserializeOwned>(path: &Path) -> Vec<T> {
-    std::fs::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str(l).ok()).collect()
+    crate::files::read_to_string(path).unwrap_or_default().lines().filter(|l| !l.trim().is_empty()).filter_map(|l| serde_json::from_str(l).ok()).collect()
 }
 
 /// A device's own file in one of the calls' shared folders (`LOG`,
@@ -1421,12 +1423,12 @@ pub(crate) fn file_safe(device: &str) -> String {
 
 /// Every device's file of a shared folder (`*.jsonl`), each with its device's name, by name.
 pub(crate) fn device_files(folder: &Path) -> Vec<(String, PathBuf)> {
-    let mut files: Vec<(String, PathBuf)> = std::fs::read_dir(folder)
+    let mut files: Vec<(String, PathBuf)> = crate::files::read_dir(folder)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "jsonl") && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
+        .filter(|p| p.present_file() && p.extension().is_some_and(|e| e == "jsonl") && !p.file_name().is_some_and(|n| n.to_string_lossy().starts_with('.')))
         .filter_map(|p| Some((p.file_stem()?.to_string_lossy().to_string(), p)))
         .collect();
     files.sort();
@@ -1486,19 +1488,19 @@ pub fn append_private(path: &Path, text: &str) -> Result<(), String> {
     use std::io::Write;
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     if let Some(folder) = path.parent() {
-        let mut builder = std::fs::DirBuilder::new();
+        let mut builder = crate::files::DirBuilder::new();
         builder.recursive(true);
         #[cfg(unix)]
-        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.mode(0o700);
         builder.create(folder).map_err(fail)?;
     }
     if let Some(whole) = unfinished(path) {
-        std::fs::OpenOptions::new().write(true).open(path).and_then(|file| file.set_len(whole)).map_err(fail)?;
+        crate::files::OpenOptions::new().write(true).open(path).and_then(|file| file.set_len(whole)).map_err(fail)?;
     }
-    let mut options = std::fs::OpenOptions::new();
+    let mut options = crate::files::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.mode(0o600);
     options.open(path).and_then(|mut file| file.write_all(text.as_bytes())).map_err(fail)
 }
 
@@ -1507,7 +1509,7 @@ pub fn append_private(path: &Path, text: &str) -> Result<(), String> {
 /// line, or is empty or not there.
 fn unfinished(path: &Path) -> Option<u64> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut file = std::fs::File::open(path).ok()?;
+    let mut file = crate::files::File::open(path).ok()?;
     let size = file.metadata().ok()?.len();
     let mut last = [0u8];
     file.seek(SeekFrom::Start(size.checked_sub(1)?)).ok()?;
@@ -1534,18 +1536,18 @@ fn unfinished(path: &Path) -> Option<u64> {
 /// Returns how many lines went.
 pub(crate) fn rewrite_lines(path: &Path, drop: impl Fn(&str) -> bool) -> Result<usize, String> {
     crate::filelock::with_lock(path, || {
-        let Ok(text) = std::fs::read_to_string(path) else { return Ok(0) };
+        let Ok(text) = crate::files::read_to_string(path) else { return Ok(0) };
         let (kept, gone): (Vec<&str>, Vec<&str>) = text.lines().filter(|l| !l.trim().is_empty()).partition(|l| !drop(l));
         if gone.is_empty() {
             return Ok(0);
         }
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let fresh = path.with_file_name(format!(".{name}.{}.new", std::process::id()));
-        let _ = std::fs::remove_file(&fresh);
+        let _ = crate::files::remove_file(&fresh);
         let body: String = kept.iter().map(|l| format!("{l}\n")).collect();
         append_private(&fresh, &body).and_then(|()| {
-            std::fs::rename(&fresh, path).map_err(|e| {
-                let _ = std::fs::remove_file(&fresh);
+            crate::files::rename(&fresh, path).map_err(|e| {
+                let _ = crate::files::remove_file(&fresh);
                 format!("{}: {e}", path.display())
             })
         })?;
@@ -1602,7 +1604,7 @@ pub struct Seen {
 impl Seen {
     /// This phone's file from before Seen was shared (`SEEN`).
     pub fn load(path: &Path) -> Seen {
-        std::fs::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     /// Those calls marked seen; ids older than the list forgotten (`now` in ms).
@@ -1647,14 +1649,14 @@ pub fn unmark_seen(root: &Path, device: &str, at: i64) -> Result<bool, String> {
 /// own seen log, then the older file goes. Nothing to do once it is gone.
 pub fn adopt_older_seen(root: &Path, device: &str, now_ms: i64) -> Result<(), String> {
     let older = root.join(SEEN);
-    if !older.exists() {
+    if !older.present() {
         return Ok(());
     }
     let ids: Vec<String> = Seen::load(&older).seen.into_iter().collect();
     if !ids.is_empty() {
         mark_seen(root, device, &ids, now_ms)?;
     }
-    std::fs::remove_file(&older).map_err(|e| format!("{}: {e}", older.display()))
+    crate::files::remove_file(&older).map_err(|e| format!("{}: {e}", older.display()))
 }
 
 /// A voicemail left, as the list says it (`voicemail::Voicemail`, linked).

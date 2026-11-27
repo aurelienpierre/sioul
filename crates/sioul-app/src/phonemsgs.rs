@@ -24,6 +24,8 @@
 //! - **The phone's choices**, Settings ▸ Other apps ▸ On your computers
 //!   (`setup`, the "set" and "part" verbs of `call`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{load_config, tr};
 use jiff::Zoned;
 use serde_json::{Value, json};
@@ -110,7 +112,7 @@ pub(crate) fn note(json: &str, posted: &Posted, kind: &Kind, who: Option<Who>, c
 pub(crate) fn read_here(notice: &str) -> bool {
     let here = here_id();
     let root = rules::folder();
-    if here.is_empty() || !root.join(rules::LOG).is_dir() {
+    if here.is_empty() || !root.join(rules::LOG).present_dir() {
         return false;
     }
     let now = jiff::Timestamp::now().as_millisecond();
@@ -135,7 +137,7 @@ pub(crate) fn read_here(notice: &str) -> bool {
 /// default SMS app may change the SMS provider.
 pub(crate) fn withdraw_read(here: &str) {
     let root = rules::folder();
-    if here.is_empty() || !root.join(rules::LOG).is_dir() {
+    if here.is_empty() || !root.join(rules::LOG).present_dir() {
         return;
     }
     let now = jiff::Timestamp::now().as_millisecond();
@@ -176,7 +178,7 @@ static TRIMMED: Mutex<i64> = Mutex::new(0);
 /// phone gone for good never takes its own out).
 pub(crate) fn before_exchange() {
     let root = rules::folder();
-    if !root.is_dir() {
+    if !root.present_dir() {
         return;
     }
     let now = jiff::Timestamp::now().as_millisecond();
@@ -222,7 +224,7 @@ pub(crate) fn tell_codes() {
         return;
     }
     let root = rules::folder();
-    if !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
+    if !root.join(rules::LOG).present_dir() || !crate::share::shares(rules::PART) {
         return;
     }
     let Ok(_one) = TELLING.try_lock() else { return };
@@ -236,7 +238,7 @@ pub(crate) fn tell_codes() {
 /// the codes told kept in the file `path`, at `now` (ms): each notice handed
 /// to `tell` with what settles it. Whether a notice was handed.
 fn tell_codes_in(root: &std::path::Path, here: &str, path: &std::path::Path, now: i64, tell: &mut dyn FnMut(sioul_core::notice::Notice, crate::tell::Settled)) -> bool {
-    let mut told: std::collections::BTreeMap<String, i64> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let mut told: std::collections::BTreeMap<String, i64> = crate::files::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
     let all = rules::read_logs(root, now);
     let notice_of = notices_of(&all);
     let seen = crate::notices::seen_of(NoticeKind::Phone, &notice_of).seen;
@@ -301,7 +303,7 @@ pub(crate) fn view() -> String {
     // The notices of texts not read yet, whether or not the phone's notifications come here.
     let empty = || json!({ "lines": [], "texts": crate::texts::readable(), "notices": crate::texts::notices() }).to_string();
     let root = rules::folder();
-    if cfg!(target_os = "android") || !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
+    if cfg!(target_os = "android") || !root.join(rules::LOG).present_dir() || !crate::share::shares(rules::PART) {
         return empty();
     }
     let now = sioul_core::zone::now();
@@ -328,7 +330,7 @@ pub(crate) fn view() -> String {
 /// deleted, in Texts. The last week's, which is all a phone keeps.
 pub(crate) fn seen_for(keys: &[String]) {
     let root = rules::folder();
-    if keys.is_empty() || !root.join(rules::LOG).is_dir() {
+    if keys.is_empty() || !root.join(rules::LOG).present_dir() {
         return;
     }
     let now = sioul_core::zone::now().timestamp().as_millisecond();
@@ -407,7 +409,7 @@ fn row_of(line: &rules::PorchLine, notice_of: &std::collections::BTreeMap<String
 /// where no phone shares them, or while the part is off here.
 pub(crate) fn history(numbers: &[String]) -> Vec<String> {
     let root = rules::folder();
-    if numbers.is_empty() || !root.join(rules::LOG).is_dir() || !crate::share::shares(rules::PART) {
+    if numbers.is_empty() || !root.join(rules::LOG).present_dir() || !crate::share::shares(rules::PART) {
         return Vec::new();
     }
     let config = load_config();

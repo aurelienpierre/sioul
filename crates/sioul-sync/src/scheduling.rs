@@ -56,13 +56,13 @@ fn path(account: &str) -> PathBuf {
 
 /// What an account's server said last; none when it was never asked.
 pub fn of(account: &str) -> Option<Scheduling> {
-    std::fs::read_to_string(path(account)).ok().and_then(|text| toml::from_str(&text).ok())
+    crate::files::read_to_string(path(account)).ok().and_then(|text| toml::from_str(&text).ok())
 }
 
 fn save(account: &str, scheduling: &Scheduling) -> Result<(), String> {
     let path = path(account);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+        crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     }
     let text = toml::to_string(scheduling).map_err(|e| e.to_string())?;
     sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))

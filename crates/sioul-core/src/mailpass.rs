@@ -31,6 +31,8 @@
 //!   and `sioul mcp` never add it twice. Lines whose messages are gone stay
 //!   until they make half the file; it is then written again beside and renamed.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::mailcache;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -126,18 +128,17 @@ pub fn folder_of(message: &Path) -> Option<&Path> {
 }
 
 fn private_dir(dir: &Path) {
-    let _ = std::fs::create_dir_all(dir);
+    let _ = crate::files::create_dir_all(dir);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        let _ = crate::files::set_permissions(dir, crate::files::Permissions::from_mode(0o700));
     }
 }
 
-fn private_file(path: &Path, options: &mut std::fs::OpenOptions) -> std::io::Result<std::fs::File> {
+fn private_file(path: &Path, options: &mut crate::files::OpenOptions) -> std::io::Result<crate::files::File> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     options.open(path)
@@ -157,7 +158,7 @@ fn line_text(unique: &str, columns: &Option<Vec<String>>) -> String {
 /// The file's findings by unique part, and how many lines it holds; none
 /// when its first line is not this reader's with this stamp.
 fn read_file(path: &Path, header: &str) -> Option<(HashMap<String, Option<Vec<String>>>, usize)> {
-    let bytes = std::fs::read(path).ok()?;
+    let bytes = crate::files::read(path).ok()?;
     // A stop may cut the last line: every line written ends with a line end.
     let whole = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |end| end + 1);
     let text = String::from_utf8_lossy(&bytes[..whole]);
@@ -193,15 +194,15 @@ fn write_whole(path: &Path, header: &str, lines: &[String]) -> std::io::Result<(
         text.push_str(line);
         text.push('\n');
     }
-    let mut file = private_file(&beside, std::fs::OpenOptions::new().write(true).create(true).truncate(true))?;
+    let mut file = private_file(&beside, crate::files::OpenOptions::new().write(true).create(true).truncate(true))?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     drop(file);
-    std::fs::rename(&beside, path)
+    crate::files::rename(&beside, path)
 }
 
 fn append(path: &Path, lines: &[String]) -> std::io::Result<()> {
-    let mut file = private_file(path, std::fs::OpenOptions::new().read(true).append(true).create(true))?;
+    let mut file = private_file(path, crate::files::OpenOptions::new().read(true).append(true).create(true))?;
     let mut text = String::new();
     let length = file.metadata()?.len();
     if length > 0 {
@@ -230,7 +231,7 @@ pub fn folder(reader: &dyn Reader, account: &str, root: &Path, local: &str, fill
     lines.sort_by_key(|(_, l)| std::cmp::Reverse(l.arrived));
     let Some(path) = file_of(reader.name(), account, &dir) else {
         let found = lines.into_iter().map(|(path, line)| {
-            let columns = if reader.wanted(&line) { std::fs::read(&path).ok().and_then(|raw| reader.read(&line, &path, &raw)) } else { None };
+            let columns = if reader.wanted(&line) { crate::files::read(&path).ok().and_then(|raw| reader.read(&line, &path, &raw)) } else { None };
             Found { path, line, columns }
         });
         let found: Vec<Found> = found.collect();
@@ -262,7 +263,7 @@ pub fn folder(reader: &dyn Reader, account: &str, root: &Path, local: &str, fill
                     continue;
                 }
                 opened += 1;
-                std::fs::read(&file).ok().and_then(|raw| reader.read(&line, &file, &raw))
+                crate::files::read(&file).ok().and_then(|raw| reader.read(&line, &file, &raw))
             } else {
                 None
             };
@@ -314,7 +315,7 @@ pub fn kept_for(reader: &dyn Reader, account: &str, message: &Path) -> Option<Op
     let dir = folder_of(message)?;
     let path = file_of(reader.name(), account, dir)?;
     let unique = crate::maildir::unique_part(&message.file_name()?.to_string_lossy()).to_string();
-    let meta = std::fs::metadata(&path).ok()?;
+    let meta = crate::files::metadata(&path).ok()?;
     let (len, at) = (meta.len(), meta.modified().ok());
     let header = header_of(reader);
     let mut parsed = PARSED.lock().ok()?;
@@ -340,7 +341,7 @@ pub fn forget_account(account: &str) -> Vec<PathBuf> {
     let mut gone = Vec::new();
     for name in NAMES {
         let dir = crate::config::cache_dir().join(name).join(account);
-        if dir.is_dir() && std::fs::remove_dir_all(&dir).is_ok() {
+        if dir.present_dir() && crate::files::remove_dir_all(&dir).is_ok() {
             gone.push(dir);
         }
     }

@@ -23,6 +23,8 @@
 //! from elsewhere (the Letters page's "Link scans…", `Letter::linked`) stays
 //! where it is, never copied, never moved.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::money::Money;
 use crate::words::{LetterWords, Words};
 use jiff::ToSpan;
@@ -502,7 +504,7 @@ impl Letters {
         let root = places.records.as_path();
         let docs = places.letters.clone();
         let path = Letters::folder(root).join(MANIFEST);
-        let text = match std::fs::read_to_string(&path) {
+        let text = match crate::files::read_to_string(&path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Letters { root: root.to_path_buf(), docs, list: Vec::new() }),
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -565,12 +567,12 @@ impl Letters {
 
     /// Its text, as read.
     pub fn text(&self, letter: &Letter) -> String {
-        std::fs::read_to_string(Letters::folder(&self.root).join(format!("{}.txt", letter.id))).unwrap_or_default()
+        crate::files::read_to_string(Letters::folder(&self.root).join(format!("{}.txt", letter.id))).unwrap_or_default()
     }
 
     pub fn save_text(&self, id: &str, text: &str) -> Result<(), String> {
         let folder = Letters::folder(&self.root);
-        std::fs::create_dir_all(&folder).and_then(|()| std::fs::write(folder.join(format!("{id}.txt")), text)).map_err(|e| e.to_string())
+        crate::files::create_dir_all(&folder).and_then(|()| crate::files::write(folder.join(format!("{id}.txt")), text)).map_err(|e| e.to_string())
     }
 
     /// Its scan moved out of the inbox into the letters' folder's `<year>/`,
@@ -585,12 +587,12 @@ impl Letters {
         if from.starts_with(&folder) {
             return Ok(());
         }
-        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let extension = from.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
         let sender: String = crate::projects::new_id(&letter.reading.sender, &[]);
         let base = format!("{day} {sender} {}", letter.reading.kind.id());
-        let target = std::iter::once(folder.join(format!("{base}{extension}"))).chain((2..1000).map(|n| folder.join(format!("{base} {n}{extension}")))).find(|p| !p.exists()).ok_or("no free name")?;
-        std::fs::rename(&from, &target).or_else(|_| std::fs::copy(&from, &target).and_then(|_| std::fs::remove_file(&from))).map_err(|e| e.to_string())?;
+        let target = std::iter::once(folder.join(format!("{base}{extension}"))).chain((2..1000).map(|n| folder.join(format!("{base} {n}{extension}")))).find(|p| !p.present()).ok_or("no free name")?;
+        crate::files::rename(&from, &target).or_else(|_| crate::files::copy(&from, &target).and_then(|_| crate::files::remove_file(&from))).map_err(|e| e.to_string())?;
         letter.file = self.docs.named(&target);
         Ok(())
     }
@@ -604,7 +606,7 @@ impl Letters {
 
     fn write(&self) -> Result<(), String> {
         let folder = Letters::folder(&self.root);
-        std::fs::create_dir_all(&folder).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(&folder).map_err(|e| e.to_string())?;
         let mut doc = toml_edit::DocumentMut::new();
         doc.decor_mut().set_prefix("# Paper letters, read from their scans (docs/porch.md). Their texts are beside: <id>.txt.\n\n");
         let date = |d: Date| toml_edit::value(toml_edit::Datetime { date: Some(toml_edit::Date { year: d.year() as u16, month: d.month() as u8, day: d.day() as u8 }), time: None, offset: None });
@@ -643,7 +645,7 @@ impl Letters {
         doc.insert("letter", toml_edit::Item::ArrayOfTables(list));
         let path = folder.join(MANIFEST);
         let temporary = folder.join(format!("{MANIFEST}.new"));
-        std::fs::write(&temporary, doc.to_string()).and_then(|()| std::fs::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
+        crate::files::write(&temporary, doc.to_string()).and_then(|()| crate::files::rename(&temporary, &path)).map_err(|e| format!("{}: {e}", path.display()))
     }
 }
 

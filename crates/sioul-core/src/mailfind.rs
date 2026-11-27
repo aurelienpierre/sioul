@@ -46,6 +46,8 @@
 //! system (links followed), still be inside that same Maildir. Anything else
 //! is not looked at, and the search goes on by the address alone.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::card::ImapOrigin;
 use crate::config::Account;
 use crate::folders::{Folder, Role};
@@ -251,7 +253,7 @@ fn validities(account: &str) -> BTreeMap<String, u32> {
         uidvalidity: u32,
     }
     let path = crate::config::state_dir().join("sync").join(format!("{account}.toml"));
-    let state: State = std::fs::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
+    let state: State = crate::files::read_to_string(path).ok().and_then(|text| toml::from_str(&text).ok()).unwrap_or_default();
     state.folders.into_iter().map(|(name, f)| (name, f.uidvalidity)).collect()
 }
 
@@ -316,7 +318,7 @@ fn copies(roots: &[Root], address: &Address) -> Vec<Copy> {
 /// removals' log says it (`$XDG_STATE_HOME/sioul/sync/<account>.removed.log`:
 /// when, the folder, `U<validity>-<uid>` of the old copy, of the new or "-").
 fn renumbered_to(account: &str, folder: &str, old: ImapOrigin) -> Option<ImapOrigin> {
-    let log = std::fs::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))).ok()?;
+    let log = crate::files::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))).ok()?;
     let wanted = format!("U{}-{}", old.validity, old.uid);
     log.lines().rev().find_map(|line| {
         let fields: Vec<&str> = line.split('\t').collect();
@@ -337,7 +339,7 @@ fn renumbered_to(account: &str, folder: &str, old: ImapOrigin) -> Option<ImapOri
 /// lines never count (review of wt/sync, R6: two folders renumbered alike
 /// share their old numberings).
 pub fn renumbered_from(account: &str, folder: &str, new: ImapOrigin) -> Vec<ImapOrigin> {
-    let Ok(log) = std::fs::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))) else { return Vec::new() };
+    let Ok(log) = crate::files::read_to_string(crate::config::state_dir().join("sync").join(format!("{account}.removed.log"))) else { return Vec::new() };
     // The folder as the log writes it (`renumbered::remove`).
     let folder = folder.replace(['\t', '\n', '\r'], " ");
     let wanted = format!("U{}-{}", new.validity, new.uid);
@@ -399,7 +401,7 @@ pub fn inside(roots: &[Root], file: &Path, account: Option<&str>) -> Option<Insi
         return None;
     }
     let written = lexical(file);
-    let canonical = |p: &Path| std::fs::canonicalize(p).ok();
+    let canonical = |p: &Path| crate::files::canonicalize(p).ok();
     // The most precise Maildir it is written in: a Maildir held within another is its own.
     let starts = |root: &Root| written.starts_with(lexical(&root.path)) || canonical(&root.path).is_some_and(|c| written.starts_with(c));
     let root = roots.iter().filter(|r| starts(r)).max_by_key(|r| r.path.components().count())?;
@@ -422,10 +424,10 @@ pub fn inside(roots: &[Root], file: &Path, account: Option<&str>) -> Option<Insi
     // file as written (a link to a file elsewhere is refused) and its folder.
     let real_root = canonical(&root.path)?;
     let within = |p: &Path| canonical(p).is_some_and(|real| real.starts_with(&real_root));
-    if std::fs::symlink_metadata(&written).is_ok() && !within(&written) {
+    if crate::files::symlink_metadata(&written).is_ok() && !within(&written) {
         return None;
     }
-    if written.parent().and_then(Path::parent).is_some_and(|dir| dir.exists() && !within(dir)) {
+    if written.parent().and_then(Path::parent).is_some_and(|dir| dir.present() && !within(dir)) {
         return None;
     }
     let now = crate::maildir::locate(&written).filter(|found| within(found));

@@ -1,0 +1,11 @@
+# The file calls that go around the sealed store's door and must
+# (tools/check-store-door.py, docs/store.md, "Paths"): filelock.rs keeps the
+# mechanics of a file of the system and takes the door's way for a sealed
+# file; the agents' server reads its standard input; the keyring's lock on
+# Android is a lock's file, which flock needs. This list only shrinks.
+crates/sioul-cli/src/mcp/transport.rs	std::fs	2
+crates/sioul-core/src/filelock.rs	exists	1
+crates/sioul-core/src/filelock.rs	is_dir	3
+crates/sioul-core/src/filelock.rs	is_file	4
+crates/sioul-core/src/filelock.rs	std::fs	62
+crates/sioul-sync/src/secret.rs	std::fs	1

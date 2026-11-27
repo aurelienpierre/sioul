@@ -16,6 +16,8 @@
 //! - Each time the plan is made, what changed elsewhere is set right
 //!   (`upkeep`), and a time given by a drag before blocks becomes a block, once.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, load_config, say, tr};
 use crate::{mail, pim, work};
 use jiff::{Timestamp, Zoned};
@@ -43,7 +45,7 @@ fn fingerprint(calendar: &Collection) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for path in calendar.items() {
         path.hash(&mut hasher);
-        if let Ok(meta) = std::fs::metadata(&path) {
+        if let Ok(meta) = crate::files::metadata(&path) {
             meta.len().hash(&mut hasher);
             meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).hash(&mut hasher);
         }
@@ -162,7 +164,7 @@ struct Written {
 /// What was written put back, unless something changed it since (a sync,
 /// another device): says what went wrong, else "".
 fn put_back(shared: &Shared, written: &[Written]) -> String {
-    if written.iter().any(|w| std::fs::read_to_string(&w.path).ok() != w.after) {
+    if written.iter().any(|w| crate::files::read_to_string(&w.path).ok() != w.after) {
         return tr().text("undo-too-late", None);
     }
     for w in written {
@@ -208,7 +210,7 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
     let Some(start) = at.parse::<jiff::civil::DateTime>().ok().and_then(|d| d.to_zoned(zone.clone()).ok()).map(|z| z.timestamp().as_second()) else { return format!("{at}?") };
     // The block it is pinned to, else none: one is made. One another application made repeat is left as it is.
     let own: Vec<Occurrence> = found_of(uid).into_iter().filter(|b| !b.recurring).collect();
-    let current = Blocks::of(&own, std::slice::from_ref(&task), now.timestamp().as_second(), &zone).pins.remove(uid).filter(|p| Path::new(&p.key).is_file());
+    let current = Blocks::of(&own, std::slice::from_ref(&task), now.timestamp().as_second(), &zone).pins.remove(uid).filter(|p| Path::new(&p.key).present_file());
     // Never pinned before the current five minutes, whoever asks (the agenda
     // offers no drag there; the writer says it all the same); but a block under
     // way keeps its own start as its length changes ("Do at…" prefills it so:
@@ -230,7 +232,7 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
     let block_uid = match &current {
         Some(pin) => {
             let path = PathBuf::from(&pin.key);
-            let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+            let Ok(before) = crate::files::read_to_string(&path) else { return tr().text("agenda-gone", None) };
             let moved = blocks::moved(&before, start, end, &zone).map(|text| blocks::titled(&text, &task.title, &zone).unwrap_or(text));
             let text = match moved {
                 Ok(text) => text,
@@ -244,7 +246,7 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
         }
         None => match make(shared, &task, start, end, &now) {
             Ok((path, uid)) => {
-                written.push(Written { after: std::fs::read_to_string(&path).ok(), path, before: None });
+                written.push(Written { after: crate::files::read_to_string(&path).ok(), path, before: None });
                 uid
             }
             Err(e) => return e,
@@ -252,7 +254,7 @@ pub(crate) fn pin(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: &str, minu
     };
     // The task tied to it, and to it alone; a time given by a drag before blocks taken out.
     let task_path = PathBuf::from(&task.key);
-    if let Ok(before) = std::fs::read_to_string(&task_path)
+    if let Ok(before) = crate::files::read_to_string(&task_path)
         && let Ok(text) = blocks::task_pinned(&before, Some(&block_uid), &now)
         && text != before
     {
@@ -296,7 +298,7 @@ pub(crate) fn unpin(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
             Closing::Keep => {}
             Closing::Delete => removals.push((pim::account_of(&path).unwrap_or_default(), path)),
             Closing::EndAt(end) => {
-                let Ok(before) = std::fs::read_to_string(&path) else { continue };
+                let Ok(before) = crate::files::read_to_string(&path) else { continue };
                 if let Ok(text) = blocks::ended(&before, end, &zone)
                     && write(shared, &path, &text).is_ok()
                 {
@@ -306,7 +308,7 @@ pub(crate) fn unpin(qt: &QtThread, shared: &Arc<Shared>, uid: &str) -> String {
         }
     }
     let task_path = PathBuf::from(&task.key);
-    if let Ok(before) = std::fs::read_to_string(&task_path)
+    if let Ok(before) = crate::files::read_to_string(&task_path)
         && let Ok(text) = blocks::task_pinned(&before, None, &now)
         && text != before
     {
@@ -343,7 +345,7 @@ pub(crate) fn closed(qt: &QtThread, shared: &Arc<Shared>, uid: &str, at: i64) {
         let done = match blocks::closing(block.start, block.end, at) {
             Closing::Keep => continue,
             Closing::Delete => remove(shared, &path),
-            Closing::EndAt(end) => std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|text| blocks::ended(&text, end, &zone)).and_then(|text| write(shared, &path, &text)),
+            Closing::EndAt(end) => crate::files::read_to_string(&path).map_err(|e| e.to_string()).and_then(|text| blocks::ended(&text, end, &zone)).and_then(|text| write(shared, &path, &text)),
         };
         changed |= done.is_ok();
     }
@@ -368,13 +370,13 @@ pub(crate) fn with_task(uid: &str) -> Vec<(String, PathBuf)> {
 pub(crate) fn follow(qt: &QtThread, shared: &Arc<Shared>, uid: &str) {
     let zone = sioul_core::zone::current();
     let Ok(known) = work::find_task(shared, uid) else { return };
-    let Some(task) = std::fs::read_to_string(&known.key).ok().and_then(|text| sioul_core::tasks::task_of_text(&text, &zone)) else { return };
+    let Some(task) = crate::files::read_to_string(&known.key).ok().and_then(|text| sioul_core::tasks::task_of_text(&text, &zone)) else { return };
     let stamp = Timestamp::now().as_second();
     let turn = blocks::turn_of(&task);
     // A leg keeps its own title ("Bus 24"), whatever its step is called.
     for block in found_of(uid).into_iter().filter(|b| !b.read_only && !b.recurring && b.anchor.is_none() && b.end > stamp) {
         let path = PathBuf::from(&block.key);
-        let Ok(before) = std::fs::read_to_string(&path) else { continue };
+        let Ok(before) = crate::files::read_to_string(&path) else { continue };
         let mut text = blocks::titled(&before, &task.title, &zone).unwrap_or_else(|| before.clone());
         if !block.turn.is_empty() && !turn.is_empty() && block.turn != turn {
             text = blocks::turned(&text, &turn).unwrap_or(text);
@@ -394,7 +396,7 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
     // A time given by a drag before blocks, today or later: a block, once; the line goes from the task.
     for (task, start) in blocks::given_times(tasks, now.date(), zone).into_iter().filter(|(t, _)| !t.read_only) {
         let minutes = blocks::default_minutes(task, None, load_config().tasks.estimate.unwrap_or(30));
-        let Ok(before) = std::fs::read_to_string(&task.key) else { continue };
+        let Ok(before) = crate::files::read_to_string(&task.key) else { continue };
         let Ok((block, uid)) = make(shared, task, start, start + i64::from(minutes) * 60, now) else { continue };
         // The task tied to its block, the line gone; failing that, no block either: never one made twice.
         match blocks::task_pinned(&before, Some(&uid), now).and_then(|text| write(shared, Path::new(&task.key), &text)) {
@@ -408,7 +410,7 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
     let found: Vec<Occurrence> = FOUND.lock().unwrap_or_else(|e| e.into_inner()).iter().filter(|b| !b.read_only && !removed.contains(Path::new(&b.key))).cloned().collect();
     for (key, fix) in blocks::upkeep(&found, tasks, now.timestamp().as_second()) {
         let path = PathBuf::from(&key);
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
+        let Ok(text) = crate::files::read_to_string(&path) else { continue };
         // What would be written, when it differs: nothing is written twice.
         let changed = match &fix {
             Fix::Delete => None,
@@ -431,7 +433,7 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
     for block in found.iter().filter(|b| b.end > stamp && !b.recurring && !b.with_others) {
         let Some(task) = tasks.iter().find(|t| t.uid == block.task && t.status.is_open() && !t.read_only) else { continue };
         let path = PathBuf::from(&block.key);
-        if !seen.insert(path.clone()) || !path.is_file() {
+        if !seen.insert(path.clone()) || !path.present_file() {
             continue;
         }
         let Some(calendar) = pim::collection_of(&path) else { continue };
@@ -441,7 +443,7 @@ pub(crate) fn upkeep(shared: &Shared, tasks: &[Task], now: &Zoned) -> bool {
         let Ok(to) = calendar_for(task) else { continue };
         let Some(name) = path.file_name() else { continue };
         let target = to.dir.join(name);
-        if to.account == vdir::LOCAL || to.dir == calendar.dir || target.exists() {
+        if to.account == vdir::LOCAL || to.dir == calendar.dir || target.present() {
             continue;
         }
         if vdir::move_item(&path, &target).is_ok() {

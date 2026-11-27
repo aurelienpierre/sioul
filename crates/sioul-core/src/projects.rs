@@ -16,6 +16,8 @@
 //! that a device not yet updated reads it as before. Renaming it is the
 //! person's choice, made once every device is updated (`rename_file`).
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::areas::Area;
 use crate::card::Card;
 use crate::text::{contains_word, fold};
@@ -39,18 +41,18 @@ const OLD_TABLE: &str = "case";
 /// name: the first project made makes it.
 pub fn file_in(root: &Path) -> PathBuf {
     let (new, old) = (root.join(FILE), root.join(OLD_FILE));
-    if !new.exists() && old.exists() { old } else { new }
+    if !new.present() && old.present() { old } else { new }
 }
 
 /// Both files are in the notes folder: `sioul-projects.toml` is read, and
 /// `sioul-cases.toml` is left as it is (Settings says so).
 pub fn both_in(root: &Path) -> bool {
-    root.join(FILE).exists() && root.join(OLD_FILE).exists()
+    root.join(FILE).present() && root.join(OLD_FILE).present()
 }
 
 /// Only the file's first name is there: Settings offers to rename it.
 pub fn only_old_in(root: &Path) -> bool {
-    !root.join(FILE).exists() && root.join(OLD_FILE).exists()
+    !root.join(FILE).present() && root.join(OLD_FILE).present()
 }
 
 #[derive(Debug, Deserialize)]
@@ -333,7 +335,7 @@ pub fn new_id(title: &str, taken: &[String]) -> String {
 /// project would go.
 fn read_doc(file: &Path, missing_empty: bool) -> Result<DocumentMut, String> {
     let fail = |e: String| format!("{}: {e}", file.display());
-    let text = match std::fs::read_to_string(file) {
+    let text = match crate::files::read_to_string(file) {
         Ok(text) => text,
         Err(e) if missing_empty && e.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(e) => return Err(fail(e.to_string())),
@@ -345,8 +347,8 @@ fn read_doc(file: &Path, missing_empty: bool) -> Result<DocumentMut, String> {
 fn write_doc(file: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", file.display());
     let temporary = file.with_extension("toml.new");
-    std::fs::write(&temporary, doc.to_string()).map_err(fail)?;
-    std::fs::rename(&temporary, file).map_err(fail)?;
+    crate::files::write(&temporary, doc.to_string()).map_err(fail)?;
+    crate::files::rename(&temporary, file).map_err(fail)?;
     crate::changes::said(crate::changes::Kind::Projects);
     Ok(())
 }
@@ -464,10 +466,10 @@ pub fn set_ai(file: &Path, project_id: &str, open: bool) -> Result<(), String> {
 /// Returns where the old file was kept.
 pub fn rename_file(root: &Path) -> Result<PathBuf, String> {
     let (old, new) = (root.join(OLD_FILE), root.join(FILE));
-    if new.exists() {
+    if new.present() {
         return Err(format!("{}: already there; {OLD_FILE} is left as it is.", new.display()));
     }
-    let text = std::fs::read_to_string(&old).map_err(|e| format!("{}: {e}", old.display()))?;
+    let text = crate::files::read_to_string(&old).map_err(|e| format!("{}: {e}", old.display()))?;
     let fail = |e: String| format!("{}: {e}", old.display());
     let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
     if let Some(older) = doc.remove(OLD_TABLE) {
@@ -502,14 +504,14 @@ pub fn rename_file(root: &Path) -> Result<PathBuf, String> {
     if split(before) != split(after) {
         return Err(fail("renaming it would change what it says: it is left as it is".into()));
     }
-    std::fs::write(new.with_extension("toml.new"), &renamed).map_err(|e| fail(e.to_string()))?;
-    std::fs::rename(new.with_extension("toml.new"), &new).map_err(|e| format!("{}: {e}", new.display()))?;
+    crate::files::write(new.with_extension("toml.new"), &renamed).map_err(|e| fail(e.to_string()))?;
+    crate::files::rename(new.with_extension("toml.new"), &new).map_err(|e| format!("{}: {e}", new.display()))?;
     crate::changes::said(crate::changes::Kind::Projects);
     let kept = (1..)
         .map(|n| if n == 1 { root.join(BEFORE_RENAME) } else { root.join(format!("{BEFORE_RENAME}-{n}")) })
-        .find(|path| !path.exists())
+        .find(|path| !path.present())
         .unwrap_or_else(|| root.join(BEFORE_RENAME));
-    std::fs::rename(&old, &kept).map_err(|e| fail(e.to_string()))?;
+    crate::files::rename(&old, &kept).map_err(|e| fail(e.to_string()))?;
     Ok(kept)
 }
 
@@ -669,7 +671,7 @@ impl ProjectStore {
     /// (`file_in`: `sioul-projects.toml`, or `sioul-cases.toml`).
     pub fn load(root: &Path) -> Result<ProjectStore, String> {
         let path = file_in(root);
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = crate::files::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let projects = read_projects(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(ProjectStore { root: root.to_path_buf(), notes: root.to_path_buf(), projects, ties: Default::default() })
     }
@@ -723,7 +725,7 @@ impl ProjectStore {
         self.projects
             .iter()
             .flat_map(|p| p.files.iter().map(move |f| (p.id.clone(), f.clone())))
-            .filter(|(_, f)| !self.notes.join(f).exists())
+            .filter(|(_, f)| !self.notes.join(f).present())
             .collect()
     }
 

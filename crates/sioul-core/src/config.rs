@@ -10,6 +10,8 @@
 //! Sioul writes to this file too, when you add or remove an account. It edits
 //! it in place with `toml_edit`, so your comments and your order stay.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::window::AdminWindow;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -739,7 +741,7 @@ impl Config {
 /// device's change brought in meanwhile stays.
 pub fn change_kind(path: &Path, from: &str, to: &str) -> Result<(), String> {
     crate::filelock::with_lock(path, || {
-        let config = if path.exists() { Config::load(path)? } else { Config::default() };
+        let config = if path.present() { Config::load(path)? } else { Config::default() };
         let mut kinds = config.tasks.kinds.clone().unwrap_or_else(default_kinds);
         let to = to.trim();
         if from.is_empty() {
@@ -1828,8 +1830,8 @@ impl Config {
         // folder sits behind a link (macOS's /var is /private/var; a mail folder linked
         // elsewhere): a path found through the link and its account's would not match.
         syncing().find(|a| file.starts_with(a.maildir_path())).or_else(|| {
-            let file = std::fs::canonicalize(file).ok()?;
-            syncing().find(|a| std::fs::canonicalize(a.maildir_path()).is_ok_and(|root| file.starts_with(root)))
+            let file = crate::files::canonicalize(file).ok()?;
+            syncing().find(|a| crate::files::canonicalize(a.maildir_path()).is_ok_and(|root| file.starts_with(root)))
         })
     }
 
@@ -1837,7 +1839,7 @@ impl Config {
     /// unless it has its own. Sites written as accounts by older files join
     /// the sites; accounts switched off are set aside.
     pub fn load(path: &Path) -> Result<Config, String> {
-        let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let text = crate::files::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut config: Config = toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         config.settle();
         config.storage = crate::storage::Storage::here();
@@ -1936,7 +1938,7 @@ impl Config {
         let mut inboxes: Vec<PathBuf> = self.letters_inbox().into_iter().collect();
         if self.letters.inbox.as_deref().is_none_or(|inbox| inbox.trim().is_empty())
             && let Some(old) = self.storage.from_path().map(|from| from.join(crate::storage::OLD_LETTERS).join("inbox"))
-            && old.is_dir()
+            && old.present_dir()
             && !inboxes.contains(&old)
         {
             inboxes.push(old);
@@ -1950,7 +1952,7 @@ impl Config {
     /// once it reads). The Notes page asks for it when it is not ready,
     /// rather than show nothing.
     pub fn notes_folder(&self) -> NotesFolder {
-        let reads = |path: &Path| std::fs::read_dir(path).is_ok();
+        let reads = |path: &Path| crate::files::read_dir(path).is_ok();
         match self.notes_root.as_deref().filter(|root| !root.trim().is_empty()) {
             Some(root) if reads(&expand_home(root)) => NotesFolder::Ready(root.to_string()),
             Some(root) => NotesFolder::Unreadable(root.to_string()),
@@ -2188,12 +2190,12 @@ pub fn before_sites_path(path: &Path) -> PathBuf {
 /// fails at each start never writes over the first copy, the file as it was.
 /// Returns whether any site moved.
 pub fn migrate_sites_at_start(path: &Path) -> Result<bool, String> {
-    if !std::fs::read_to_string(path).is_ok_and(|text| text.contains("kind = \"portal\"")) {
+    if !crate::files::read_to_string(path).is_ok_and(|text| text.contains("kind = \"portal\"")) {
         return Ok(false);
     }
     let copy = before_sites_path(path);
-    if !copy.exists() {
-        std::fs::copy(path, &copy).map_err(|e| format!("{}: {e}", copy.display()))?;
+    if !copy.present() {
+        crate::files::copy(path, &copy).map_err(|e| format!("{}: {e}", copy.display()))?;
     }
     migrate_sites(path)
 }
@@ -2208,7 +2210,7 @@ pub fn migrate_sites_at_start(path: &Path) -> Result<bool, String> {
 /// sync brought it) is kept as it is. Returns the id of the availability it
 /// became, if one did; an old key that does not read stays as it is.
 pub fn migrate_availability(path: &Path, tr: &crate::i18n::Translator, today: jiff::civil::Date) -> Result<Option<String>, String> {
-    if !std::fs::read_to_string(path).is_ok_and(|text| text.contains("availability")) {
+    if !crate::files::read_to_string(path).is_ok_and(|text| text.contains("availability")) {
         return Ok(None);
     }
     // Read, changed and written under the file's lock, which the sharing takes too.
@@ -2268,7 +2270,7 @@ pub fn migrated_availability(doc: &mut DocumentMut, tr: &crate::i18n::Translator
 /// format 3 still reads them; one unsaid stays unsaid). The settings' format
 /// is marked (`FORMAT`). Returns whether it wrote.
 pub fn migrate_presets(path: &Path) -> Result<bool, String> {
-    if !path.exists() {
+    if !path.present() {
         return Ok(false);
     }
     crate::filelock::with_lock(path, || {
@@ -3238,7 +3240,7 @@ fn filter_table(filter: &crate::rules::Filter) -> Result<Table, String> {
 }
 
 pub(crate) fn read_document(path: &Path) -> Result<DocumentMut, String> {
-    let text = match std::fs::read_to_string(path) {
+    let text = match crate::files::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::from("# Sioul configuration (examples/config.toml explains each setting).\n"),
         Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -3251,27 +3253,27 @@ pub(crate) fn read_document(path: &Path) -> Result<DocumentMut, String> {
 /// is written where it points, the link kept.
 pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
-    let target = std::fs::canonicalize(path).ok().filter(|_| path.is_symlink());
+    let target = crate::files::canonicalize(path).ok().filter(|_| path.is_symlink());
     let path = target.as_deref().unwrap_or(path);
     let text = doc.to_string();
     // What Sioul could read before, it reads after: a value of the wrong kind
     // (a number with decimals where a whole one goes) is refused, never written.
     if let Err(e) = toml::from_str::<Config>(&text)
-        && std::fs::read_to_string(path).is_ok_and(|old| toml::from_str::<Config>(&old).is_ok())
+        && crate::files::read_to_string(path).is_ok_and(|old| toml::from_str::<Config>(&old).is_ok())
     {
         return Err(format!("{}: {e}", path.display()));
     }
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(fail)?;
+        crate::files::create_dir_all(parent).map_err(fail)?;
     }
     // Which lists change, said to the window once written (`changes`): the accounts, the sites.
-    let before: Option<DocumentMut> = std::fs::read_to_string(path).ok().and_then(|old| old.parse().ok());
+    let before: Option<DocumentMut> = crate::files::read_to_string(path).ok().and_then(|old| old.parse().ok());
     let differs = |key: &str| before.as_ref().and_then(|b| b.get(key)).map(|i| i.to_string()) != doc.get(key).map(|i| i.to_string());
     let (accounts, sites) = (differs("account"), differs("site"));
     let topic_list = differs("topic");
     let temporary = path.with_extension("toml.new");
-    std::fs::write(&temporary, text).map_err(fail)?;
-    std::fs::rename(&temporary, path).map_err(fail)?;
+    crate::files::write(&temporary, text).map_err(fail)?;
+    crate::files::rename(&temporary, path).map_err(fail)?;
     if accounts {
         crate::changes::said(crate::changes::Kind::Accounts);
     }
@@ -3289,7 +3291,7 @@ pub(crate) fn write_document(path: &Path, doc: &DocumentMut) -> Result<(), Strin
 /// sender can write results that pass for Sioul's. Made once, kept in the state folder.
 pub fn sioul_authserv_id() -> String {
     let path = state_dir().join("authserv-id");
-    if let Some(id) = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid")) {
+    if let Some(id) = crate::files::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid")) {
         return id;
     }
     use std::hash::{Hash, Hasher};
@@ -3300,8 +3302,8 @@ pub fn sioul_authserv_id() -> String {
     let id = format!("sioul-{:012x}.invalid", hasher.finish() & 0xffff_ffff_ffff);
     // Made once, by whoever comes first: two processes (or threads) starting
     // together keep the one written first, never two ids for one installation.
-    let _ = std::fs::create_dir_all(state_dir());
-    match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+    let _ = crate::files::create_dir_all(state_dir());
+    match crate::files::OpenOptions::new().write(true).create_new(true).open(&path) {
         Ok(mut file) => {
             use std::io::Write;
             let _ = file.write_all(id.as_bytes());
@@ -3310,7 +3312,7 @@ pub fn sioul_authserv_id() -> String {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
             // Written by another just now: read once it holds its id.
             for _ in 0..50 {
-                if let Some(id) = std::fs::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid")) {
+                if let Some(id) = crate::files::read_to_string(&path).ok().map(|t| t.trim().to_string()).filter(|t| t.ends_with(".invalid")) {
                     return id;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(2));
@@ -3342,7 +3344,7 @@ pub fn stand_in_folders() -> bool {
 /// `stand_in_folders` on the variables `var` reads.
 fn stand_ins(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     // As the disk resolves it (a link followed), whole when it is not there yet.
-    let resolved = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()));
+    let resolved = |path: &Path| crate::files::canonicalize(path).unwrap_or_else(|_| std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()));
     // Each of the four set and made for tests, holding the runners' mark: a
     // folder is never taken for a stand-in because it is not the default
     // (review of 1b6795e, M10), since Sioul reads whatever the variables name.
@@ -3352,7 +3354,7 @@ fn stand_ins(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> bool {
     // (build.yml: under its temporary folder, marked).
     [("XDG_CONFIG_HOME", "~/.config"), ("XDG_DATA_HOME", "~/.local/share"), ("XDG_STATE_HOME", "~/.local/state"), ("XDG_CACHE_HOME", "~/.cache")].iter().all(|(variable, own)| {
         let Some(set) = var(variable).filter(|v| !v.is_empty()).map(PathBuf::from) else { return false };
-        let marked = std::fs::symlink_metadata(set.join(STAND_IN_MARK)).is_ok_and(|m| m.is_file());
+        let marked = crate::files::symlink_metadata(set.join(STAND_IN_MARK)).is_ok_and(|m| m.present_file());
         let (theirs, own) = (resolved(&set).join("sioul"), resolved(&expand_home(own)).join("sioul"));
         marked && !theirs.starts_with(&own) && !own.starts_with(&theirs)
     })
@@ -3368,8 +3370,8 @@ pub const STAND_IN_MARK: &str = ".sioul-stand-in";
 /// Makes `folder` and leaves the mark of a folder made for tests in it
 /// (`STAND_IN_MARK`): for a test's own home, which nothing else uses.
 pub fn mark_stand_in(folder: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(folder)?;
-    std::fs::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
+    crate::files::create_dir_all(folder)?;
+    crate::files::write(folder.join(STAND_IN_MARK), b"A folder made for Sioul's tests.\n")
 }
 
 /// For a test that writes Sioul's files where it reads them: refuses to go
@@ -3437,15 +3439,15 @@ pub fn make_private_dirs() {
 /// One folder of Sioul's own, made or narrowed to 0700.
 #[cfg(unix)]
 fn private_dir(dir: &Path) -> std::io::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    use std::os::unix::fs::PermissionsExt;
     if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::files::create_dir_all(parent)?;
     }
-    match std::fs::DirBuilder::new().mode(0o700).create(dir) {
+    match crate::files::DirBuilder::new().mode(0o700).create(dir) {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            let metadata = std::fs::symlink_metadata(dir)?;
-            if metadata.is_dir() && metadata.permissions().mode() & 0o077 != 0 {
-                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+            let metadata = crate::files::symlink_metadata(dir)?;
+            if metadata.present_dir() && metadata.permissions().mode() & 0o077 != 0 {
+                crate::files::set_permissions(dir, crate::files::Permissions::from_mode(0o700))?;
             }
             Ok(())
         }
@@ -3460,7 +3462,7 @@ pub fn downloads_dir() -> PathBuf {
         return dir;
     }
     let dirs = expand_home("~/.config/user-dirs.dirs");
-    let named = std::fs::read_to_string(dirs).ok().and_then(|text| {
+    let named = crate::files::read_to_string(dirs).ok().and_then(|text| {
         let line = text.lines().find(|l| l.trim_start().starts_with("XDG_DOWNLOAD_DIR="))?;
         let value = line.split_once('=')?.1.trim().trim_matches('"');
         Some(PathBuf::from(value.replace("$HOME", &std::env::var("HOME").unwrap_or_default())))

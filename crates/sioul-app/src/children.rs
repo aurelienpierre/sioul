@@ -7,6 +7,8 @@
 //! parent answers by mail, and their answer read; the follow-ups. The
 //! rules are `sioul_core::holders`'; here, what this device reads and writes.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
 use serde::{Deserialize, Serialize};
 use sioul_core::agendas::{self, Agenda, Answers, Whose};
@@ -133,14 +135,14 @@ fn sent_path() -> PathBuf {
 }
 
 fn read_sent() -> Sent {
-    std::fs::read_to_string(sent_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(sent_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 fn write_sent(sent: &Sent) -> Result<(), String> {
     let path = sent_path();
     let text = toml::to_string(sent).map_err(|e| e.to_string())?;
     if let Some(folder) = path.parent() {
-        std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+        crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
     }
     sioul_core::filelock::replace(&path, text.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -175,7 +177,7 @@ fn child_items(here: &[(Agenda, Collection)]) -> Vec<ChildRead> {
 /// them yet (third review, R1); one that is no meeting any more reads its
 /// lines from the store until they are back in its file.
 fn read_with(path: &Path, store: &sioul_core::meeting_lines::MeetingLines) -> Option<(String, bool)> {
-    let file = std::fs::read_to_string(path).ok()?;
+    let file = crate::files::read_to_string(path).ok()?;
     let meeting = sioul_core::agenda::with_others(&file);
     Some(match sioul_core::meeting_lines::read(&file, store, meeting) {
         sioul_core::meeting_lines::Read::Known(text) => (text, false),
@@ -215,7 +217,7 @@ pub(crate) fn in_child_agenda(path: &Path) -> bool {
 /// children's upkeep writes it (its server would tell its guests), and
 /// Sioul's own lines of it go to their own store (`write_child`).
 fn a_meeting(path: &Path) -> bool {
-    std::fs::read_to_string(path).is_ok_and(|text| sioul_core::agenda::with_others(&text))
+    crate::files::read_to_string(path).is_ok_and(|text| sioul_core::agenda::with_others(&text))
 }
 
 /// A child's item written as `text` (its file as `read_item` read it, then
@@ -227,10 +229,10 @@ fn a_meeting(path: &Path) -> bool {
 fn write_child(path: &Path, before: &str, text: &str) -> Result<sioul_core::agentwrites::FileChange, String> {
     if a_meeting(path) {
         let store = sioul_core::meeting_lines::default_path();
-        let had = std::fs::read_to_string(&store).ok();
+        let had = crate::files::read_to_string(&store).ok();
         let uid = holders::uid_of(text).ok_or_else(|| tr().text("agenda-gone", None))?;
         sioul_core::meeting_lines::set_from(&store, &uid, text)?;
-        return Ok(sioul_core::agentwrites::FileChange { after: std::fs::read_to_string(&store).ok(), path: store, before: had });
+        return Ok(sioul_core::agentwrites::FileChange { after: crate::files::read_to_string(&store).ok(), path: store, before: had });
     }
     vdir::write_item(path, text)?;
     Ok(sioul_core::agentwrites::FileChange { path: path.to_path_buf(), before: Some(before.to_string()), after: Some(text.to_string()) })
@@ -578,13 +580,13 @@ fn take_files(key: &str, start: i64, who: &str, me: &Me) -> Result<Option<(Vec<s
     for act in holders::upkeep(&child, &mine, &cx) {
         match act {
             Act::Made { path, text, .. } | Act::Followed { path, text, .. } => {
-                let before = std::fs::read_to_string(&path).ok();
+                let before = crate::files::read_to_string(&path).ok();
                 if vdir::write_item(&path, &text).is_ok() {
                     files.push(sioul_core::agentwrites::FileChange { path, before, after: Some(text) });
                 }
             }
             Act::Given { path, .. } => {
-                let before = std::fs::read_to_string(&path).ok();
+                let before = crate::files::read_to_string(&path).ok();
                 if vdir::remove_item(&path).is_ok() {
                     files.push(sioul_core::agentwrites::FileChange { path, before, after: None });
                 }
@@ -706,7 +708,7 @@ fn card_as(path: &Path, start: i64, own: &[String]) -> Option<serde_json::Value>
 /// Whether one of your agendas holds a stand-in of this child event (by its UID derived, its file named after it).
 fn config_stand_in(config: &Config, child: &str) -> bool {
     let Some(uid) = holders::uid_of(child) else { return false };
-    agendas_here(config).iter().filter(|(a, _)| a.whose == Whose::Yours && a.events).any(|(a, c)| c.dir.join(format!("{}.ics", holders::stand_in_uid(&uid, &a.id))).exists())
+    agendas_here(config).iter().filter(|(a, _)| a.whose == Whose::Yours && a.events).any(|(a, c)| c.dir.join(format!("{}.ics", holders::stand_in_uid(&uid, &a.id))).present())
 }
 
 /// Who Sioul proposes for a child's event, and why (`holders::propose`):

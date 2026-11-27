@@ -14,6 +14,8 @@
 //! What is made, renamed or removed is written here and sent by the next sync.
 //! Only the window does any of this: agents never change an address book.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, json, load_config, say, tell, tr};
 use serde::Deserialize;
 use sioul_core::addressbooks::{self, Removal};
@@ -177,8 +179,8 @@ pub(crate) fn remove(qt: &QtThread, shared: &Arc<Shared>, place: &str, how: &str
 /// back, its text and UID as they were (review F5).
 fn restore_from_copy(kind: vdir::Kind, account: &str, id: &str, name: &str, copy: &std::path::Path) -> Result<(), String> {
     let late = || say("books-remove-too-late", &[("copy", copy.display().to_string())]);
-    let text = std::fs::read_to_string(copy).map_err(|_| late())?;
-    if kind.root().join(account).join(id).is_dir() {
+    let text = crate::files::read_to_string(copy).map_err(|_| late())?;
+    if kind.root().join(account).join(id).present_dir() {
         return Err(late());
     }
     vdir::restore_collection(kind, account, id, name).map_err(|_| late())?;

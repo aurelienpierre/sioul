@@ -41,7 +41,7 @@ pub(crate) fn open(raw: &[u8]) -> Option<(Option<Vec<u8>>, PgpView)> {
 
 /// The message as it reads: decrypted when it was encrypted to you.
 pub(crate) fn readable(path: &Path) -> Option<Vec<u8>> {
-    let raw = std::fs::read(path).ok()?;
+    let raw = crate::files::read(path).ok()?;
     Some(open(&raw).and_then(|(opened, _)| opened).unwrap_or(raw))
 }
 
@@ -361,7 +361,7 @@ pub(crate) fn generate(address: &str) -> Result<String, String> {
 /// kept in the keyring.
 pub(crate) fn import(url: &str, passphrase: &str) -> Result<String, String> {
     let chosen = crate::chosen::take(url)?;
-    let bytes = std::fs::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()))?;
+    let bytes = crate::files::read(chosen.path()).map_err(|e| format!("{}: {e}", chosen.path().display()))?;
     drop(chosen);
     // Your keys before: one imported again with a mistyped passphrase stays yours.
     let had: Vec<String> = pgp::summaries().into_iter().filter(|k| k.own).map(|k| k.fingerprint).collect();
@@ -383,10 +383,10 @@ pub(crate) fn import(url: &str, passphrase: &str) -> Result<String, String> {
 /// Your public key into the downloads folder, to give to others.
 pub(crate) fn export(fingerprint: &str, folder: &Path) -> Result<PathBuf, String> {
     let armored = pgp::export_public(fingerprint).ok_or_else(|| tr().text("pgp-no-key", None))?;
-    std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
+    crate::files::create_dir_all(folder).map_err(|e| e.to_string())?;
     let short: String = fingerprint.chars().rev().take(16).collect::<Vec<_>>().into_iter().rev().collect();
     let path = folder.join(format!("{short}.asc"));
-    std::fs::write(&path, armored).map_err(|e| e.to_string())?;
+    crate::files::write(&path, armored).map_err(|e| e.to_string())?;
     Ok(path)
 }
 

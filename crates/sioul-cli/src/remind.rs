@@ -43,8 +43,8 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
         return Ok(());
     }
     let lock_path = config::state_dir().join("remind.lock");
-    std::fs::create_dir_all(config::state_dir()).map_err(|e| e.to_string())?;
-    let lock = std::fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(|e| format!("{}: {e}", lock_path.display()))?;
+    crate::files::create_dir_all(config::state_dir()).map_err(|e| e.to_string())?;
+    let lock = crate::files::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path).map_err(|e| format!("{}: {e}", lock_path.display()))?;
     // Held as long as the process lives; let go when it runs a new program
     // in its place (the descriptor closes on exec), which takes it again.
     if lock.try_lock().is_err() {
@@ -52,7 +52,7 @@ pub(crate) fn watch(s: &Session, for_session: bool) -> Result<(), String> {
         return Ok(());
     }
     // Its number, for the window to stop it when asked.
-    let _ = std::fs::write(config::state_dir().join("remind.pid"), std::process::id().to_string());
+    let _ = crate::files::write(config::state_dir().join("remind.pid"), std::process::id().to_string());
     println!("{}", s.tr.text("remind-watching", None));
     let dir = reminders::told_dir();
     let mut forgotten_on = None;

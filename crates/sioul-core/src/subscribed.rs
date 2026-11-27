@@ -32,6 +32,8 @@
 //! when the calendar says so (`Subscription::after_class`), as the official
 //! French files do.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::config::Config;
 use crate::vdir::{self, Kind};
 use jiff::civil::Date;
@@ -765,13 +767,13 @@ impl Fetched {
     }
 
     pub fn load(id: &str) -> Fetched {
-        std::fs::read_to_string(Fetched::path(id)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+        crate::files::read_to_string(Fetched::path(id)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
     }
 
     pub fn save(&self, id: &str) -> Result<(), String> {
         let path = Fetched::path(id);
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+            crate::files::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
         crate::filelock::replace(&path, toml::to_string(self).map_err(|e| e.to_string())?.as_bytes()).map_err(|e| format!("{}: {e}", path.display()))
     }
@@ -830,7 +832,7 @@ pub fn validators(id: &str, subscription: &Subscription) -> Option<(String, Stri
 /// that kept the renames and not the files' contents (F11, F12): then
 /// "unchanged" no longer holds, and the next answer is written whole.
 pub fn intact(id: &str, state: &Fetched) -> bool {
-    let Ok(entries) = std::fs::read_dir(folder(id)) else { return false };
+    let Ok(entries) = crate::files::read_dir(folder(id)) else { return false };
     let mut count = 0usize;
     for entry in entries.flatten() {
         if entry.path().extension().is_some_and(|x| x == "ics") {
@@ -918,7 +920,7 @@ pub fn take(id: &str, subscription: &Subscription, answer: Answer, now: i64) -> 
         state = Fetched { tried: state.tried, entry: state.entry, ..Fetched::default() };
     }
     state.address = address.clone();
-    let same_address = folder(id).is_dir() && state.checked > 0;
+    let same_address = folder(id).present_dir() && state.checked > 0;
     // "Unchanged" is judged against the copy on the disk, never this device's note alone (F11).
     let intact = same_address && intact(id, &state);
     state.tried = now;
@@ -1006,10 +1008,10 @@ pub fn settle(config: &Config) -> bool {
             Err(e) => eprintln!("subscribed: {id}: {e}"),
         }
     }
-    let here: Vec<String> = std::fs::read_dir(Kind::Calendars.root().join(ACCOUNT)).into_iter().flatten().filter_map(Result::ok).filter(|e| e.path().is_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+    let here: Vec<String> = crate::files::read_dir(Kind::Calendars.root().join(ACCOUNT)).into_iter().flatten().filter_map(Result::ok).filter(|e| e.path().present_dir()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
     for id in stopped(config, &here) {
         if vdir::remove_subscribed(&id).is_ok() {
-            let _ = std::fs::remove_file(Fetched::path(&id));
+            let _ = crate::files::remove_file(Fetched::path(&id));
             changed = true;
         }
     }
@@ -1061,7 +1063,7 @@ pub fn subscribe(path: &Path, config: &Config, new: &New, tr: &crate::i18n::Tran
     let host = crate::sites::host_of(&url);
     let base = if valid_id(new.id.trim()) { new.id.trim().to_string() } else { crate::config::slug(if new.name.trim().is_empty() { &host } else { new.name.trim() }) };
     let base: String = if base.is_empty() { "calendar".to_string() } else { base.chars().take(60).collect() };
-    let taken = |id: &str| config.agenda.subscriptions.contains_key(id) || folder(id).exists();
+    let taken = |id: &str| config.agenda.subscriptions.contains_key(id) || folder(id).present();
     let id = std::iter::once(base.clone()).chain((2..100).map(|n| format!("{base}-{n}"))).find(|id| !taken(id)).ok_or_else(|| format!("{base}: no free name"))?;
     let holidays = Holidays::parse(&new.holidays);
     // The Ministry's files begin after class: said so, unless said otherwise.
@@ -1140,7 +1142,7 @@ pub fn stop(path: &Path, id: &str) -> Result<(), String> {
     })?;
     forget_place(path, &place(id))?;
     vdir::remove_subscribed(id)?;
-    let _ = std::fs::remove_file(Fetched::path(id));
+    let _ = crate::files::remove_file(Fetched::path(id));
     Ok(())
 }
 
@@ -1257,20 +1259,20 @@ pub fn holidays(config: &Config, zone: &jiff::tz::TimeZone) -> Vec<HolidayDays> 
     type Key = (Option<std::time::SystemTime>, Option<std::time::SystemTime>, bool, String);
     type Seen = BTreeMap<String, (Key, Vec<(Date, Date, String)>, String, Option<i64>)>;
     static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(BTreeMap::new());
-    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    let modified = |path: &Path| crate::files::metadata(path).and_then(|m| m.modified()).ok();
     let mut out = Vec::new();
     for (id, subscription) in &config.agenda.subscriptions {
         let Some(kind) = subscription.holidays() else { continue };
         let dir = folder(id);
         // Between the replacement's two renames there is no copy: waited for, once (F13).
-        if !dir.is_dir() {
+        if !dir.present_dir() {
             vdir::finish_subscribed(id);
         }
         let key: Key = (modified(&dir), modified(&Fetched::path(id)), subscription.after_class(), crate::zone::name_of(zone, jiff::Timestamp::now()));
         let known = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(id).filter(|(k, ..)| *k == key).map(|(_, p, name, as_of)| (p.clone(), name.clone(), *as_of));
         let (periods, own_name, as_of) = known.unwrap_or_else(|| {
             let state = Fetched::load(id);
-            let files: Vec<PathBuf> = std::fs::read_dir(&dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
+            let files: Vec<PathBuf> = crate::files::read_dir(&dir).into_iter().flatten().filter_map(Result::ok).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "ics")).collect();
             let periods = holiday_periods(&dir, &files, subscription.after_class(), zone);
             SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.clone(), (key, periods.clone(), state.name.clone(), state.as_of()));
             let as_of = state.as_of();
@@ -1293,7 +1295,7 @@ fn holiday_periods(dir: &Path, files: &[PathBuf], after_class: bool, zone: &jiff
         // Whole days that do not repeat (every holidays' file Sioul knows): their own
         // dates, as written; the calendar library gives none for a day whose midnight
         // does not exist (Santiago, Havana, Beirut some years: F29).
-        if let Some(days) = std::fs::read_to_string(file).ok().and_then(|text| whole_days(&text)) {
+        if let Some(days) = crate::files::read_to_string(file).ok().and_then(|text| whole_days(&text)) {
             for (first, after, name) in days {
                 let (first, after) = shaped(first, after);
                 if let Ok(last) = after.yesterday()

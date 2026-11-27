@@ -378,7 +378,7 @@ pub(crate) fn join(qt: &QtThread, shared: &Arc<Shared>, place: String, passphras
 #[allow(clippy::too_many_arguments)]
 fn joined(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant, place: &str, passphrase: &str, again: &str, may_start: bool) -> Result<(Vec<String>, Vec<String>), String> {
     let before = load_config();
-    let before_text = std::fs::read_to_string(crate::backend::config_path()).unwrap_or_default();
+    let before_text = crate::files::read_to_string(crate::backend::config_path()).unwrap_or_default();
     let login = signed.login_for(&agenda_id(&before, signed));
     let since = jiff::Timestamp::now().as_second();
     let begun = crate::share::begin_on_server(&login, place, passphrase, again, true, may_start)?;
@@ -389,7 +389,7 @@ fn joined(qt: &QtThread, shared: &Arc<Shared>, signed: &Grant, place: &str, pass
         // A new sharing: nothing to wait for from other devices, never "joined".
         crate::share::Begun::Started => vec![say("join-started", &[("host", host.clone()), ("place", place.trim().trim_matches('/').to_string())])],
         crate::share::Begun::Joined => {
-            let after_text = std::fs::read_to_string(crate::backend::config_path()).unwrap_or_default();
+            let after_text = crate::files::read_to_string(crate::backend::config_path()).unwrap_or_default();
             said_joined(&load_config(), before_text != after_text)
         }
     };
@@ -472,7 +472,7 @@ fn write_pending(pending: &Pending) {
 /// no contacts nor calendars there, the app password refused there).
 pub(crate) fn agenda_later(qt: &QtThread, shared: &Arc<Shared>) {
     let path = pending_path();
-    let Some(pending) = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str::<Pending>(&t).ok()) else { return };
+    let Some(pending) = crate::files::read_to_string(&path).ok().and_then(|t| toml::from_str::<Pending>(&t).ok()) else { return };
     let now = jiff::Timestamp::now().as_second();
     if !due(&pending, now) || !complete_since(pending.since) {
         return;
@@ -486,7 +486,7 @@ pub(crate) fn agenda_later(qt: &QtThread, shared: &Arc<Shared>) {
     match binding {
         Binding::Again => write_pending(&Pending { tried: now, ..pending }),
         Binding::Done(bound) => {
-            let _ = std::fs::remove_file(&path);
+            let _ = crate::files::remove_file(&path);
             if let Some(line) = bound.and_then(|bound| line_of(bound, &host)) {
                 crate::backend::set_status(qt, line);
             }
@@ -875,7 +875,7 @@ fn asked_path() -> std::path::PathBuf {
 }
 
 fn asked() -> Asked {
-    std::fs::read_to_string(asked_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
+    crate::files::read_to_string(asked_path()).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
 }
 
 /// A moment, said shortly: "14:05" today, "Fri 2 Oct" before.

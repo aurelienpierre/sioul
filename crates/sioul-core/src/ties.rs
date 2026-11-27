@@ -33,6 +33,8 @@
 //! line's, its occurrence's, its bank line's, `sioul:movement/<any of them>`)
 //! to it.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::agenda::EventRef;
 use crate::config::Config;
 use crate::consent::Consent;
@@ -429,7 +431,7 @@ pub struct CallTask {
 /// its number has in your address books.
 fn call_sources(config: &Config, loaded: &Loaded) -> (Vec<CallSource>, Vec<CallTask>) {
     let root = crate::calls::folder();
-    if !root.join(crate::calls::LOG).is_dir() {
+    if !root.join(crate::calls::LOG).present_dir() {
         return (Vec::new(), Vec::new());
     }
     let region = crate::reach::region(config);
@@ -469,7 +471,7 @@ fn call_sources(config: &Config, loaded: &Loaded) -> (Vec<CallSource>, Vec<CallT
         .iter()
         .filter(|t| t.uid.starts_with(crate::callback::UID_PREFIX))
         .filter_map(|t| {
-            let text = std::fs::read_to_string(&t.key).ok()?;
+            let text = crate::files::read_to_string(&t.key).ok()?;
             let kept = crate::callback::Kept::read(Path::new(&t.key), &text, &zone)?;
             Some(CallTask { uid: kept.uid, person: kept.person, calls: kept.calls, called: kept.closed_by })
         })
@@ -532,7 +534,7 @@ fn agenda_ties(config: &Config, events: &[EventRef], persons: &Persons) -> (Vec<
             }
             // Who takes a child's event: its own lines, read for a child's events alone.
             if agenda.whose == Whose::Child
-                && let Ok(text) = std::fs::read_to_string(&event.key)
+                && let Ok(text) = crate::files::read_to_string(&event.key)
             {
                 let said = crate::holders::taken(&text, (event.start > 0).then_some(event.start), &zone);
                 for holder in said.to.iter().chain(said.back.iter()) {

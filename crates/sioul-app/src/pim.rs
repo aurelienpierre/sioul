@@ -9,6 +9,8 @@
 //! syncs in the background every fifteen minutes, and at once after a change
 //! here. Deleting waits ten seconds with "Undo", as in the mail.
 
+#[allow(unused_imports)]
+use crate::files::Probe as _;
 use crate::backend::{QtThread, Shared, config_path, json, load_config, say, set_status, show, tell, tr};
 use crate::mail;
 use cxx_qt_lib::QString;
@@ -115,7 +117,7 @@ pub(crate) fn ours(key: &str) -> Option<PathBuf> {
     let path = PathBuf::from(key);
     let climbs = path.components().any(|c| c == std::path::Component::ParentDir);
     let inside = [Kind::Contacts, Kind::Calendars].iter().any(|k| path.starts_with(k.root()));
-    (inside && !climbs && path.is_file()).then_some(path)
+    (inside && !climbs && path.present_file()).then_some(path)
 }
 
 /// The account's background sync runs now.
@@ -400,7 +402,7 @@ fn write_contact(shared: &Shared, key: &str, edit: &str) -> Result<PathBuf, Stri
         return Err(tr().text("contact-no-name", None));
     }
     if let Some(path) = ours(key) {
-        let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let current = crate::files::read_to_string(&path).map_err(|e| e.to_string())?;
         vdir::write_item(&path, &contacts::apply(&current, &edit))?;
         return Ok(path);
     }
@@ -479,7 +481,7 @@ pub(crate) fn move_contact(qt: &QtThread, shared: &Arc<Shared>, key: &str, book:
     if from.parent() == Some(target.dir.as_path()) {
         return serde_json::json!({ "key": from.display().to_string() }).to_string();
     }
-    let Ok(text) = std::fs::read_to_string(&from) else { return fail(tr().text("contact-gone", None)) };
+    let Ok(text) = crate::files::read_to_string(&from) else { return fail(tr().text("contact-gone", None)) };
     let provider = sioul_core::capabilities::provider_of(load_config().account(&target.account));
     let losses = sioul_core::capabilities::contact_losses(&text, provider);
     // What the move does to who may reach the person, when it crosses a book whose groups are held back (review V1).
@@ -755,7 +757,7 @@ pub(crate) fn event(key: &str) -> String {
     let Some(calendar) = collection_of(&path) else { return String::new() };
     let config = load_config();
     let place = if here_only(&calendar) { tr().text(&format!("event-calendar-here-{}", crate::devicekind::kind().word()), None) } else { String::new() };
-    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let text = crate::files::read_to_string(&path).unwrap_or_default();
     let organized = agenda::organized_meeting(&text, &agenda::own_addresses());
     let others = with_others(&text) && !organized;
     let stays = if others { tr().text("event-change-with-others", None) } else { String::new() };
@@ -812,7 +814,7 @@ pub(crate) fn move_event_file(path: &Path, to: &Collection) -> Result<PathBuf, S
     // A meeting with others is never moved: its server would cancel it (or
     // decline it) for them from the old calendar, then invite them again
     // (the review of 22 October 2026, F2).
-    if std::fs::read_to_string(path).is_ok_and(|t| with_others(&t)) {
+    if crate::files::read_to_string(path).is_ok_and(|t| with_others(&t)) {
         return Err(tr().text("event-move-with-others", None));
     }
     if to.read_only || !to.holds("VEVENT") {
@@ -843,7 +845,7 @@ pub(crate) fn check_event_item(qt: &QtThread, shared: &Arc<Shared>, key: &str, l
         if read_only {
             return Err(tr().text("agenda-read-only", None));
         }
-        let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let current = crate::files::read_to_string(&path).map_err(|e| e.to_string())?;
         if with_others(&current) {
             return Err(tr().text("checklist-with-others", None));
         }
@@ -879,7 +881,7 @@ pub(crate) fn save_own_time(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit
 
 /// `save_own_time` without the window: your own file written, the meeting's never.
 pub(crate) fn set_own_time(path: &Path, edit: &EventEdit) -> Result<(), String> {
-    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let text = crate::files::read_to_string(path).map_err(|e| e.to_string())?;
     if !with_others(&text) {
         return Err(tr().text("agenda-gone", None));
     }
@@ -915,7 +917,7 @@ pub(crate) fn save_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &
     let told = if saved.told.is_empty() { String::new() } else { format!(" {}", saved.told) };
     tell(qt, shared, format!("{}{legs}{told}", tr().text("event-saved", None)));
     // A series that pauses: its pauses settled at once, off the window (`series`).
-    if std::fs::read_to_string(&saved.path).is_ok_and(|t| t.contains("X-SIOUL-PAUSE")) {
+    if crate::files::read_to_string(&saved.path).is_ok_and(|t| t.contains("X-SIOUL-PAUSE")) {
         crate::series::keep_paused(qt, shared, "saved");
     }
     // The re-plan due before the agenda's job starts (`work::replan_asked`).
@@ -991,7 +993,7 @@ fn write_event_with(key: &str, edit: &str, calendar: &str, events: &[sioul_core:
     let mut before: Option<String> = None;
     let (path, text) = match ours(key) {
         Some(path) => {
-            let current = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let current = crate::files::read_to_string(&path).map_err(|e| e.to_string())?;
             // A meeting you organize takes the whole form, through its own door (below).
             let meeting = with_others(&current) && !agenda::organized_meeting(&current, &own);
             // Another calendar chosen for a meeting with others: nothing written (F2).
@@ -1139,7 +1141,7 @@ pub(crate) fn move_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start: 
         // Only what this drag wrote is put back, every file or none: a change since stays.
         // A meeting you organize, through its own door, its unsent draft discarded; its legs
         // too, under the same Undo (F19), each looked at before any is put back (N10).
-        let unchanged = said.files.iter().all(|f| std::fs::read_to_string(&f.path).ok() == f.after);
+        let unchanged = said.files.iter().all(|f| crate::files::read_to_string(&f.path).ok() == f.after);
         let back = match &organized {
             Some(_) if !unchanged => Err(tr().text("undo-too-late", None)),
             Some(written) => crate::organized::put_back(written).and_then(|()| if said.files.is_empty() || said.put_back() { Ok(()) } else { Err(tr().text("undo-too-late", None)) }),
@@ -1174,7 +1176,7 @@ pub(crate) fn set_event_status(qt: &QtThread, shared: &Arc<Shared>, key: &str, s
     if collection_of(&path).is_none_or(|c| c.read_only) {
         return tr().text("agenda-read-only", None);
     }
-    let Ok(before) = std::fs::read_to_string(&path) else { return tr().text("agenda-gone", None) };
+    let Ok(before) = crate::files::read_to_string(&path) else { return tr().text("agenda-gone", None) };
     if agenda::organized_meeting(&before, &agenda::own_addresses()) {
         return organized_status(qt, shared, &path, &before, status);
     }
@@ -1264,7 +1266,7 @@ fn status_written(path: &Path, before: &str, status: &str) -> Result<Option<(cra
 pub(crate) fn status_said(key: &str, status: &str) -> String {
     let asked = || -> Result<String, String> {
         let Some(path) = ours(key) else { return Err(tr().text("agenda-gone", None)) };
-        let before = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        let before = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
         if !agenda::organized_meeting(&before, &agenda::own_addresses()) {
             return Ok(String::new());
         }
@@ -1280,7 +1282,7 @@ pub(crate) fn status_said(key: &str, status: &str) -> String {
 pub(crate) fn delete_said(key: &str, start: i64, only_this: bool) -> String {
     let asked = || -> Result<String, String> {
         let Some(path) = ours(key) else { return Err(tr().text("agenda-gone", None)) };
-        let before = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        let before = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
         if !agenda::organized_meeting(&before, &agenda::own_addresses()) {
             return Ok(String::new());
         }
@@ -1342,7 +1344,7 @@ pub(crate) fn move_written(shared: &Shared, key: &str, start: i64, new_start: i6
     if collection_of(&path).is_none_or(|c| c.read_only) {
         return Err(tr().text("agenda-read-only", None));
     }
-    let Ok(before) = std::fs::read_to_string(&path) else { return Err(tr().text("agenda-gone", None)) };
+    let Ok(before) = crate::files::read_to_string(&path) else { return Err(tr().text("agenda-gone", None)) };
     // Its organizer's time: never moved here (`agenda::may_change`; the window offers no drag of it),
     // but for a meeting you organize, through its own door (decision 8 of the event card).
     let organized = agenda::organized_meeting(&before, &agenda::own_addresses());
@@ -1402,7 +1404,7 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
     let Some((path, account)) = ours(key).and_then(|p| Some((p.clone(), account_of(&p)?))) else { return tr().text("agenda-gone", None) };
     // A meeting you organize: deleted through its own door, whole or this time alone, its guests
     // told (decision 7 of the event card), after the window said so; Undo puts it back.
-    if std::fs::read_to_string(&path).is_ok_and(|t| agenda::organized_meeting(&t, &agenda::own_addresses())) {
+    if crate::files::read_to_string(&path).is_ok_and(|t| agenda::organized_meeting(&t, &agenda::own_addresses())) {
         if only_this {
             let (written, told) = match deleted_time(&path, start) {
                 Ok(done) => done,
@@ -1480,7 +1482,7 @@ pub(crate) fn delete_event(qt: &QtThread, shared: &Arc<Shared>, key: &str, start
 /// through its own door, the guests of that time told (`organized::time_plan`).
 /// What Undo needs, and how they were told.
 fn deleted_time(path: &Path, start: i64) -> Result<(crate::organized::Written, String), String> {
-    let before = std::fs::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
+    let before = crate::files::read_to_string(path).map_err(|_| tr().text("agenda-gone", None))?;
     let calendar = collection_of(path).ok_or_else(|| tr().text("agenda-gone", None))?;
     let plan = crate::organized::time_plan(path, &before, start, &calendar)?;
     let written = crate::organized::write(&plan)?;
@@ -1510,7 +1512,7 @@ pub(crate) fn deleted_with_legs(shared: &Shared, path: &Path) -> Result<(crate::
 /// 1e8551e, F14), and its legs. What the line says (`organized::undelete`),
 /// none when it is too late.
 pub(crate) fn undeleted_with_legs(written: &crate::organized::Written, legs: &[sioul_core::agentwrites::FileChange]) -> Option<String> {
-    if !legs.iter().all(|f| std::fs::read_to_string(&f.path).ok() == f.after) || written.file.as_ref().is_some_and(|f| f.path.exists()) {
+    if !legs.iter().all(|f| crate::files::read_to_string(&f.path).ok() == f.after) || written.file.as_ref().is_some_and(|f| f.path.present()) {
         return None;
     }
     let said = crate::organized::undelete(written)?;
@@ -1537,12 +1539,12 @@ fn events_known(shared: &Shared, path: &Path, zone: &TimeZone) -> Vec<sioul_core
     let mut events: Vec<sioul_core::agenda::EventRef> = known.events.clone();
     // A margin for file systems that keep coarse times.
     let Some(since) = known.read_at.and_then(|t| t.checked_sub(Duration::from_secs(2))) else { return events };
-    let changed = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).is_ok_and(|m| m >= since);
+    let changed = |path: &Path| crate::files::metadata(path).and_then(|m| m.modified()).is_ok_and(|m| m >= since);
     let own = collection_of(path);
     let mut dirs: Vec<PathBuf> = own.iter().map(|c| c.dir.clone()).chain(own.as_ref().and_then(leg_calendar).map(|c| c.dir)).collect();
     dirs.dedup();
     for dir in dirs.iter().filter(|dir| changed(dir)) {
-        for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        for entry in crate::files::read_dir(dir).into_iter().flatten().flatten() {
             let file = entry.path();
             let newer = entry.metadata().and_then(|m| m.modified()).is_ok_and(|m| m >= since);
             if !newer || file.extension().is_none_or(|e| e != "ics") {
@@ -1550,7 +1552,7 @@ fn events_known(shared: &Shared, path: &Path, zone: &TimeZone) -> Vec<sioul_core
             }
             let key = file.display().to_string();
             events.retain(|e| e.key != key);
-            events.extend(std::fs::read_to_string(&file).ok().and_then(|t| agenda::event_ref(&t, &key, zone)));
+            events.extend(crate::files::read_to_string(&file).ok().and_then(|t| agenda::event_ref(&t, &key, zone)));
         }
     }
     events
@@ -1559,7 +1561,7 @@ fn events_known(shared: &Shared, path: &Path, zone: &TimeZone) -> Vec<sioul_core
 /// The legs to come of the appointment in `path` (`anchors::to_come`), from
 /// what `events_known` holds; none for a leg or a file that does not read.
 fn legs_to_come(shared: &Shared, path: &Path, zone: &TimeZone) -> Vec<PathBuf> {
-    let uid = std::fs::read_to_string(path).ok().and_then(|t| agenda::event_ref(&t, &path.display().to_string(), zone)).filter(|r| r.anchor.is_none()).map(|r| r.uid).unwrap_or_default();
+    let uid = crate::files::read_to_string(path).ok().and_then(|t| agenda::event_ref(&t, &path.display().to_string(), zone)).filter(|r| r.anchor.is_none()).map(|r| r.uid).unwrap_or_default();
     if uid.is_empty() {
         return Vec::new();
     }
@@ -1623,7 +1625,7 @@ pub(crate) fn save_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str, edit: &st
 /// once every device keeps such a leg (`offered`, `share::legs_as_steps`).
 fn leg_change(shared: &Shared, key: &str, edit: &str, side: &str, timetable: bool, step: &str, offered: bool) -> Result<(sioul_core::composed::Change, String), String> {
     let path = ours(key).ok_or_else(|| tr().text("leg-gone", None))?;
-    let text = std::fs::read_to_string(&path).map_err(|_| tr().text("leg-gone", None))?;
+    let text = crate::files::read_to_string(&path).map_err(|_| tr().text("leg-gone", None))?;
     let zone = sioul_core::zone::current();
     let appointment = sioul_core::anchors::Followed::of(&text, &path, &zone).ok_or_else(|| tr().text("leg-gone", None))?;
     let edit: EventEdit = serde_json::from_str(edit).map_err(|e| e.to_string())?;
@@ -1641,7 +1643,7 @@ fn leg_change(shared: &Shared, key: &str, edit: &str, side: &str, timetable: boo
             return Err(tr().text("leg-step-not-yet", None));
         }
         let task = leg_steps_of(shared, &appointment.uid).into_iter().find(|t| t.uid == step).ok_or_else(|| tr().text("leg-step-gone", None))?;
-        let step_text = std::fs::read_to_string(&task.key).map_err(|_| tr().text("leg-step-gone", None))?;
+        let step_text = crate::files::read_to_string(&task.key).map_err(|_| tr().text("leg-step-gone", None))?;
         let (as_time, pinned) = sioul_core::anchors::leg_for_step(&leg, &task, &step_text, &sioul_core::zone::now()).map_err(|e| tr().text(&e, None))?;
         leg = as_time;
         written.push((PathBuf::from(&task.key), pinned));
@@ -1665,7 +1667,7 @@ fn leg_steps_of(shared: &Shared, uid: &str) -> Vec<sioul_core::tasks::Task> {
 /// [{uid, title}], "why"}; offered only once every device keeps such a leg.
 pub(crate) fn leg_steps(shared: &Shared, key: &str) -> String {
     let zone = sioul_core::zone::current();
-    let uid = ours(key).and_then(|p| std::fs::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, key, &zone))).map(|r| r.uid).unwrap_or_default();
+    let uid = ours(key).and_then(|p| crate::files::read_to_string(&p).ok().and_then(|t| agenda::event_ref(&t, key, &zone))).map(|r| r.uid).unwrap_or_default();
     let steps: Vec<serde_json::Value> = leg_steps_of(shared, &uid).iter().map(|t| serde_json::json!({ "uid": t.uid, "title": t.title })).collect();
     let offered = !steps.is_empty() && crate::share::legs_offered();
     let why = if steps.is_empty() || offered { String::new() } else { tr().text("leg-step-not-yet", None) };
@@ -1678,7 +1680,7 @@ pub(crate) fn leg_steps(shared: &Shared, key: &str) -> String {
 pub(crate) fn untie_leg(qt: &QtThread, shared: &Arc<Shared>, key: &str) -> String {
     let untied = || -> Result<(), String> {
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
-        let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        let text = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
         let zone = sioul_core::zone::current();
         let known = crate::work::loaded_known(shared);
         let appointment = sioul_core::anchors::parse(&text).and_then(|a| known.as_ref()?.events.iter().find(|e| e.uid == a.appointment).map(|e| e.summary.clone())).unwrap_or_default();
@@ -1756,7 +1758,7 @@ pub(crate) fn invite_said(key: &str, edit: &str, calendar: &str) -> String {
         let own = agenda::own_addresses();
         let (path, before, applied, collection) = match ours(key) {
             Some(path) => {
-                let current = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+                let current = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
                 if with_others(&current) && !agenda::organized_meeting(&current, &own) {
                     return Ok(String::new());
                 }
@@ -1823,7 +1825,7 @@ pub(crate) fn invitation(key: &str) -> String {
     // line set from it, said in the reader, nothing to press.
     // Written only when the Porch would take it as coming from them (`children::replied`).
     if asked.method == "REPLY" {
-        let Some(message) = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)) else { return String::new() };
+        let Some(message) = crate::files::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)) else { return String::new() };
         let config = load_config();
         let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
         let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
@@ -1853,7 +1855,7 @@ fn uid_of(text: &str) -> Option<String> {
 pub(crate) fn set_event_busy(qt: &QtThread, shared: &Arc<Shared>, key: &str, busy: bool, rid: &str) -> String {
     let saved = || -> Result<(), String> {
         let path = ours(key).ok_or_else(|| tr().text("agenda-gone", None))?;
-        let text = std::fs::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
+        let text = crate::files::read_to_string(&path).map_err(|_| tr().text("agenda-gone", None))?;
         if let Some(changed) = busy_of_time(&text, busy, rid)? {
             vdir::write_item(&path, &changed)?;
             if let Some(calendar) = collection_of(&path) {
@@ -1888,7 +1890,7 @@ fn busy_of_time(text: &str, busy: bool, rid: &str) -> Result<Option<String>, Str
 /// from. An event that is no meeting reads its own lines, whatever your own
 /// file holds of it (its guests taken out elsewhere; review of part 4, later 4).
 pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
-    let text = std::fs::read_to_string(path).ok()?;
+    let text = crate::files::read_to_string(path).ok()?;
     let mut edit = agenda::edit_of_text(&text, &sioul_core::zone::current())?;
     if let Some(own) = Some(&text).filter(|text| with_others(text)).and_then(|text| uid_of(text)).and_then(|uid| sioul_core::own_time::current().events.get(&uid).cloned()) {
         (edit.margins, edit.demands, edit.remind) = (own.margins(), own.demands, own.remind);
@@ -1903,7 +1905,7 @@ pub(crate) fn edit_with_own(path: &Path) -> Option<EventEdit> {
 /// index keeps that UID): the event's file is read, no message.
 pub(crate) fn invitation_of(shared: &Shared, key: &str) -> String {
     let Some(path) = ours(key) else { return String::new() };
-    let Ok(text) = std::fs::read_to_string(&path) else { return String::new() };
+    let Ok(text) = crate::files::read_to_string(&path) else { return String::new() };
     if !with_others(&text) {
         return String::new();
     }
@@ -1928,7 +1930,7 @@ fn find_uid(uid: &str) -> Option<PathBuf> {
     let mut calendars = vdir::collections(Kind::Calendars);
     calendars.sort_by_key(|c| (c.account == vdir::SUBSCRIBED, c.read_only));
     calendars.into_iter().flat_map(|c| c.items()).find(|path| {
-        std::fs::read_to_string(path).ok().is_some_and(|text| sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
+        crate::files::read_to_string(path).ok().is_some_and(|text| sioul_core::lines::unfold(&text).iter().any(|l| sioul_core::lines::name(l) == "UID" && sioul_core::lines::value(l).trim() == uid))
     })
 }
 
@@ -1948,7 +1950,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
             // others out (`mail`), as its organizer asks it alone, and only what it
             // cancels (review of 36002ea, can-wait 5).
             let Some(file) = known else { return Ok(()) };
-            let there = std::fs::read_to_string(&file).map_err(|e| e.to_string())?;
+            let there = crate::files::read_to_string(&file).map_err(|e| e.to_string())?;
             match agenda::cancellation(&there, &text, &agenda::own_addresses()) {
                 agenda::Cancellation::Refused => return Err(tr().text("invitation-cancel-refused", None)),
                 agenda::Cancellation::Whole => {
@@ -1976,7 +1978,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 return Err(tr().text("invitation-update-refused", None));
             }
             let calendar = agenda::default_calendar().ok_or_else(|| tr().text("dav-no-calendar", None))?;
-            let message = std::fs::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)).ok_or_else(|| tr().text("mail-message-gone", None))?;
+            let message = crate::files::read(&path).ok().and_then(|raw| sioul_core::card::Card::from_bytes(&raw)).ok_or_else(|| tr().text("mail-message-gone", None))?;
             let config = load_config();
             let account = config.account_of(&path).map(|a| a.id.clone()).unwrap_or_default();
             let trusted = config.mail_sources().into_iter().find(|s| s.account.as_deref() == Some(account.as_str())).map(|s| s.trusted_ids).unwrap_or_default();
@@ -2008,7 +2010,7 @@ pub(crate) fn answer(qt: &QtThread, shared: &Arc<Shared>, key: &str, answer: &st
                 let partstat = if answer == "add" { String::new() } else { answer.to_ascii_uppercase() };
                 let written = match &known {
                     Some(file) => {
-                        let there = std::fs::read_to_string(file).map_err(|e| e.to_string())?;
+                        let there = crate::files::read_to_string(file).map_err(|e| e.to_string())?;
                         match agenda::answered_into(&there, &text, &me, &partstat, &agenda::own_addresses()) {
                             agenda::Answered::Written(changed) => Some((file.clone(), changed)),
                             agenda::Answered::Same => None,
