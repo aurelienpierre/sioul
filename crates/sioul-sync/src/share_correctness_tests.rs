@@ -672,6 +672,61 @@ fn doses_come_whatever_a_late_carrier_brings_across_segments() {
     let _ = std::fs::remove_dir_all(&base);
 }
 
+/// A full round written in pieces (`PIECE`), its last piece not here yet,
+/// and the end of the round before it not here either: the reader enters
+/// the full round, which restates all, and passes over that end. Until it
+/// has read the whole restatement it knows nothing more of what was written
+/// before the full round, so a dose marked there is in doubt, never known
+/// not taken (GitHub's run of 27 November 2026: "dose40 known not taken",
+/// the full round's first pieces read, the doses' entry restated in a piece
+/// not brought yet). Once every piece is here, the dose comes and is known.
+#[test]
+fn a_full_round_read_in_part_never_makes_what_came_before_it_known() {
+    let base = scratch("full-in-part");
+    let (server, phone_folder) = (base.join("server").join("Sioul"), base.join("phone").join("Sioul"));
+    let key = quick_key(&server, "four words make a passphrase").unwrap();
+    carry(&server, &phone_folder, "seal.toml", None);
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let carry_all = || {
+        let mut found = Vec::new();
+        list_files(&server, &server, &[], &mut found);
+        for (name, _) in found {
+            carry(&server, &phone_folder, &name, None);
+        }
+    };
+    // Much held: its full rounds go in several pieces.
+    desk.write("config/known-senders.txt", &senders(0, 15_000));
+    desk.exchange(&server, &key, NOW);
+    carry_all();
+    phone.exchange(&phone_folder, &key, NOW + 30_000);
+    // A dose marked on the desk; the phone's copy of that round stays as it was.
+    desk.write("state/health-state.toml", &doses(&["a@1790000600"]));
+    desk.exchange(&server, &key, NOW + MINUTE);
+    let marked = written(&desk.memory, &desk.id).unwrap();
+    // A full round owed, written in pieces.
+    let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&desk.memory).unwrap()).unwrap();
+    memory["owed"] = true.into();
+    std::fs::write(&desk.memory, serde_json::to_vec(&memory).unwrap()).unwrap();
+    desk.exchange(&server, &key, NOW + 2 * MINUTE);
+    let m = Memory::load(&desk.memory, &desk.id);
+    assert!(m.full_round > marked.0 && m.round >= m.full_round + 2, "a full round in pieces: from {} to {}, the dose in {marked:?}", m.full_round, m.round);
+    // Its first pieces here, not its last, nor the end of the round the dose went into.
+    for round in m.full_round..m.round {
+        carry(&server, &phone_folder, &format!("{}-{round}.jsonl", desk.id), None);
+    }
+    phone.exchange(&phone_folder, &key, NOW + 2 * MINUTE + 30_000);
+    assert!(!phone.read("state/health-state.toml").contains("a@1790000600"), "not here yet");
+    let h = heard(&phone.memory, &phone.id);
+    assert!(!h.complete(&desk.id, marked), "never known while the restatement is read in part: read {:?}, the dose written by {marked:?}", h.read.get(&desk.id));
+    // Every piece here: the dose restated, and known.
+    carry_all();
+    phone.exchange(&phone_folder, &key, NOW + 3 * MINUTE);
+    assert!(phone.read("state/health-state.toml").contains("a@1790000600"));
+    let h = heard(&phone.memory, &phone.id);
+    assert!(h.complete(&desk.id, marked) && h.complete(&desk.id, written(&desk.memory, &desk.id).unwrap()), "known once whole: read {:?}", h.read.get(&desk.id));
+    let _ = std::fs::remove_dir_all(&base);
+}
+
 /// R4: your version of an event set aside (a change made here and on its
 /// server, `dav`) is kept as a shared file's versions are: the last 20, and
 /// all those of 30 days; the sharing's hourly tidy took it for a file no

@@ -3366,6 +3366,11 @@ struct Memory {
     /// travel again (`never_known`).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     never_takes: BTreeSet<String>,
+    /// Full rounds of other computers being read (`Turn::all`): until the
+    /// whole restatement is read, what each wrote before it counts as read
+    /// only as far as this device had read it before entering it (`heard`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    restating: BTreeMap<String, Restating>,
     /// The folders that never traveled here at the last exchange, by their
     /// place in the records ("files/notes/archive/"): one no longer among them
     /// was let travel again here, and its files' marks go (`never_takes`).
@@ -4994,6 +4999,24 @@ struct Turn {
     /// On the first line of a full round.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     full: bool,
+    /// On the first line of a full round: how many lines its restatement
+    /// holds, in this round and the rounds continuing it (`PIECE`). A reader
+    /// that enters it knows what was written before it only once it has read
+    /// them all (`Memory::restating`); 0 from an older Sioul, whose full round
+    /// was one file. An older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    all: u64,
+}
+
+/// A full round being read (`Turn::all`): where this device had read that
+/// computer before entering it, how many lines its restatement holds, and
+/// how many of them were read in order.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Restating {
+    #[serde(default)]
+    before: Option<(u32, u64)>,
+    all: u64,
+    read: u64,
 }
 
 fn is_zero_i64(n: &i64) -> bool {
@@ -5038,11 +5061,13 @@ struct Opened {
     p: u64,
     #[serde(default)]
     full: bool,
+    #[serde(default)]
+    all: u64,
 }
 
 impl Opened {
     fn parts(self) -> (Change, Turn) {
-        (Change { k: self.k, v: self.v, b: self.b, build: self.build, f: self.f }, Turn { p: self.p, full: self.full })
+        (Change { k: self.k, v: self.v, b: self.b, build: self.build, f: self.f }, Turn { p: self.p, full: self.full, all: self.all })
     }
 }
 
@@ -5668,7 +5693,7 @@ fn any_silence(_: Option<&crate::devices::Entry>) -> i64 {
 /// reads is said as such, even when an older one was seen here). A hostile
 /// folder can only hold it back longer, never open it.
 fn format_holders(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Holds)> {
-    let heard = Heard { read: memory.read_n.clone(), broken: BTreeMap::new() };
+    let heard = Heard { read: read_known(memory), broken: BTreeMap::new() };
     present(folder, key, computer, memory, now_ms)
         .into_iter()
         .filter_map(|(id, entry, unread)| match entry {
@@ -7544,6 +7569,25 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     };
                     if follows {
                         memory.read_n.insert(computer.clone(), (round, record.n));
+                        // A full round entered: what that computer wrote before it is known
+                        // here only once its whole restatement is read, its pieces (`PIECE`)
+                        // travelling apart, the end of the round before passed over (GitHub's
+                        // run of 27 November 2026: a dose known not taken, the doses' entry
+                        // restated in a piece not here yet). Where it stood before is kept
+                        // meanwhile (`Memory::restating`, read by `heard`).
+                        if record.n == 1 && turn.full {
+                            let before = memory.restating.get(computer).map_or(last, |r| r.before);
+                            if turn.all > 1 {
+                                memory.restating.insert(computer.clone(), Restating { before, all: turn.all, read: 1 });
+                            } else {
+                                memory.restating.remove(computer);
+                            }
+                        } else if let Some(restating) = memory.restating.get_mut(computer) {
+                            restating.read += 1;
+                            if restating.read >= restating.all {
+                                memory.restating.remove(computer);
+                            }
+                        }
                     } else if last.is_some() {
                         if !outcome.problems.iter().any(|p| *p == format!("share-other-gap:{computer}")) {
                             outcome.problems.push(format!("share-other-gap:{computer}"));
@@ -9613,9 +9657,10 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
             // computer's first round, or one restating all, `new_round`).
             let turn = if memory.seq == 0 {
                 if memory.continues > 0 {
-                    Turn { p: memory.continues, full: false }
+                    Turn { p: memory.continues, ..Turn::default() }
                 } else if memory.full_round == memory.round || memory.round <= 1 {
-                    Turn { p: 0, full: true }
+                    // A full round says how many lines it restates: its pieces may come apart.
+                    Turn { full: true, all: changes.len() as u64, ..Turn::default() }
                 } else {
                     Turn::default()
                 }
@@ -9913,6 +9958,22 @@ pub fn written(memory: &Path, computer: &str) -> Option<(u32, u64)> {
     memory.joined.then_some((memory.round.max(1), memory.seq))
 }
 
+/// How far this device has read each other computer's records in order, as
+/// far as what it read is known whole: a full round entered and not read
+/// whole yet counts only as far as it had read before entering it
+/// (`Memory::restating`), what it passed over to enter it not known until
+/// the restatement is.
+fn read_known(memory: &Memory) -> BTreeMap<String, (u32, u64)> {
+    let mut read = memory.read_n.clone();
+    for (computer, restating) in &memory.restating {
+        match restating.before {
+            Some(before) => read.insert(computer.clone(), before),
+            None => read.remove(computer),
+        };
+    }
+    read
+}
+
 /// What this computer read of the others' records.
 #[derive(Debug, Default, Clone)]
 pub struct Heard {
@@ -9938,7 +9999,7 @@ pub fn traffic(memory: &Path, computer: &str) -> BTreeMap<String, (i64, i64)> {
 
 pub fn heard(memory: &Path, computer: &str) -> Heard {
     let memory = Memory::load(memory, computer);
-    let mut read = memory.read_n;
+    let mut read = read_known(&memory);
     // A device whose doses' records wait here, in a format this Sioul does
     // not read: not all it wrote is known here, whatever was read of its file.
     for (key, (_, _, writer, f)) in &memory.waiting {

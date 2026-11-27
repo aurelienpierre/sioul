@@ -813,16 +813,25 @@ mod tests {
         })
         .is_err());
         assert!(!ran.load(std::sync::atomic::Ordering::SeqCst) && at_once.elapsed() < short, "given up at once while the first has not answered");
-        // Every reader meanwhile is told the keyring did not answer, never
+        // Every read meanwhile is told the keyring did not answer, never
         // "none kept": nothing forgotten, no sign-in asked again, asked again
         // later (the fourth review of 27 November 2026, F3). None of them
         // reaches a bus: the call late holds every other back here.
-        assert!(matches!(named("someone on example.org"), Err(SyncError::Keyring(_))));
-        assert!(matches!(crate::google::grant_for(crate::google::Purpose::Mail, "someone@example.org"), Err(SyncError::Keyring(_))));
-        assert!(matches!(crate::google::access_token_for(crate::google::Purpose::Mail, "someone@example.org", false), Err(SyncError::Keyring(_))), "never \"sign in to Google again\"");
-        assert!(matches!(crate::loginflow::kept("someone", "cloud.example.org"), Err(SyncError::Keyring(_))));
-        assert!(matches!(crate::github::token(), Err(SyncError::Keyring(_))));
-        assert!(matches!(crate::shield_ai::api_key(), Err(SyncError::Keyring(_))));
+        assert!(matches!(read_password("someone on example.org"), Err(keyring::Error::PlatformFailure(_))));
+        if testing() {
+            // A build that keeps nothing (`no-keyring`: CI tests core, sync and
+            // the command line in one command, which turns the command line's
+            // feature on for this crate's tests too, run 46043446541): every
+            // reader leaves the keyring alone and finds none kept, by design.
+            assert!(matches!(named("someone on example.org"), Ok(None)));
+        } else {
+            assert!(matches!(named("someone on example.org"), Err(SyncError::Keyring(_))));
+            assert!(matches!(crate::google::grant_for(crate::google::Purpose::Mail, "someone@example.org"), Err(SyncError::Keyring(_))));
+            assert!(matches!(crate::google::access_token_for(crate::google::Purpose::Mail, "someone@example.org", false), Err(SyncError::Keyring(_))), "never \"sign in to Google again\"");
+            assert!(matches!(crate::loginflow::kept("someone", "cloud.example.org"), Err(SyncError::Keyring(_))));
+            assert!(matches!(crate::github::token(), Err(SyncError::Keyring(_))));
+            assert!(matches!(crate::shield_ai::api_key(), Err(SyncError::Keyring(_))));
+        }
         go.send(()).unwrap();
         done.recv().unwrap();
         let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
