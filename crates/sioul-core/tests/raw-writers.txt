@@ -244,6 +244,9 @@ sioul-cli/src/spam/jobs.rs	held	1	std::fs::OpenOptions::new()
 sioul-cli/src/spam/jobs.rs	prune	1	std::fs::remove_file(file(&job.id, extension))
 sioul-cli/src/spam/jobs.rs	finish	1	std::fs::remove_file(file(&self.job.id, "stop"))
 
+# sioul-core/src/draftserver.rs: what this device placed in its accounts' Drafts folders (state, its own): no item.
+sioul-core/src/draftserver.rs	save	1	crate::filelock::replace(path, text.as_bytes())
+
 # sioul-core/src/addressbooks.rs: the books whose groups this device said stopped deciding who reaches the person, with their writers (state): no item.
 sioul-core/src/addressbooks.rs	mark_groups_told	1	crate::filelock::replace(&path, text.as_bytes())
 

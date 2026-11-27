@@ -38,7 +38,7 @@ Microsoft's rule for Outlook.com, "Basic Authentication no longer available to a
 - Fetching sets no flag. Opening a message in the window sets `\Seen`, as any client does; read, unread and flag are `UID STORE` with `.SILENT`.
 - Archive, delete, junk and move reach the server ten seconds after the act (the "Undo" window), as moves.
 - Replying sets no `\Answered`, forwarding no `$Forwarded`: nothing stores them.
-- Drafts stay on the device; the server's Drafts folder is fetched like any folder, never written ([database.md](database.md), "Not built").
+- Drafts: Sioul's own, carried by the sharing; a copy of each is written to the server's Drafts folder for other programs, and the folder is fetched like any folder, Sioul's copies left out of its list ([client.md](client.md), "Drafts on the server").
 - What Sioul alone knows (the Porch's lanes, senders' lists, links) stays on the device and travels by the sharing log, never in IMAP.
 
 ## Mail: SMTP

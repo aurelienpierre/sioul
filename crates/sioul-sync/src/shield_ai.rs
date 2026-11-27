@@ -3,8 +3,9 @@
 
 //! The AI reading of a shielded address (docs/shield.md). Only when you allow
 //! it for that address: the subject and text of each new message in its inbox
-//! are sent once to Anthropic's API, with the question of `shield::ai_prompt`,
-//! and the answer (tone, topic, one neutral line) is kept by Message-ID. The
+//! are sent once to Anthropic's API, with the question of `shield::ai_prompt`
+//! (masked as agents get them: codes, links that sign in, account and card
+//! numbers hidden), and the answer (tone, topic, one neutral line) is kept by Message-ID. The
 //! key lives in the system keyring, under the service "sioul".
 
 use crate::SyncError;
@@ -59,6 +60,8 @@ fn read_with(config: &Config, endpoint: &str, key: &str) -> Result<Read, SyncErr
     // No redirect followed: the key is a header of its own, which would go along to any other address.
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(60))).http_status_as_error(false).max_redirects(0).build().into();
     let mut done = Read::default();
+    // The codes the window finds, as your configuration makes them: hidden from the AI too.
+    let words = sioul_core::words::Words::of(config);
     for account in accounts {
         let mut cache = AiCache::load(&account.id);
         // Neither answered, nor sent twice for answers not in the form asked (`AiCache::wants`).
@@ -70,7 +73,7 @@ fn read_with(config: &Config, endpoint: &str, key: &str) -> Result<Read, SyncErr
         waiting.sort_by_key(|(_, card)| std::cmp::Reverse(card.date.unwrap_or(0)));
         done.left += waiting.len().saturating_sub(PER_ROUND);
         for (id, card) in waiting.into_iter().take(PER_ROUND) {
-            match ask(&agent, endpoint, key, &shield::ai_prompt(&card.subject, &card.excerpt)) {
+            match ask(&agent, endpoint, key, &shield::ai_prompt(&words, &card.subject, &card.excerpt)) {
                 Ok(Some(assessment)) => {
                     cache.malformed.remove(&id);
                     cache.messages.insert(id, assessment);
@@ -231,6 +234,33 @@ mod tests {
         assert_eq!(read_with(&config, &url, "test-key").unwrap().read, 1);
         let cache = AiCache::load(&account.id);
         assert!(cache.malformed.is_empty() && cache.messages.len() == 1 && asked.load(Ordering::SeqCst) == 1, "{cache:?}");
+        let _ = std::fs::remove_dir_all(&mail);
+    }
+
+    /// What reaches the AI is what agents get: a code, an IBAN and a link
+    /// that signs in are masked in the request itself (decided 26 November
+    /// 2026). A stand-in answers; nothing goes to Anthropic.
+    #[test]
+    fn the_request_carries_the_agents_mask() {
+        let home = crate::dav::stand_in::home();
+        let mut account = sioul_core::config::Account::imap("shield-mask-tester", "public@example.org", "localhost", 993, sioul_core::config::Security::Tls, None);
+        account.shield = true;
+        account.shield_ai = true;
+        let mail = home.join(format!("mail-shield-mask-{}", std::process::id()));
+        account.maildir = Some(mail.display().to_string());
+        std::fs::create_dir_all(mail.join("cur")).unwrap();
+        let body = "Your verification code is 482913.\r\nPay to FR76 3000 6000 0112 3456 7890 189.\r\nOr open https://site.example/login?token=9fK2a8LmQ7xR4tZ1 now.\r\n";
+        std::fs::write(mail.join("cur").join(format!("1759300002.U2-1.test{}2,S", sioul_core::maildir::INFO)), format!("From: Someone <someone@example.net>\r\nTo: public@example.org\r\nSubject: Your verification code\r\nMessage-ID: <masked-1@example.net>\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\n\r\n{body}")).unwrap();
+        let mut config = Config::default();
+        config.accounts = vec![account];
+        let (url, served) = stand_in(200, r#"{"content":[{"type":"text","text":"{\"tone\": \"calm\", \"topic\": \"other\", \"summary\": \"A code.\"}"}]}"#);
+        assert_eq!(read_with(&config, &url, "test-key").unwrap().read, 1);
+        let request = served.join().unwrap();
+        for secret in ["482913", "3456 7890", "9fK2a8LmQ7xR4tZ1"] {
+            assert!(!request.contains(secret), "{secret} was sent: {request}");
+        }
+        // The IBAN's groups, beside a code, are hidden as codes: none of its digits goes.
+        assert!(request.contains("[code hidden]") && request.contains("[link hidden]"), "{request}");
         let _ = std::fs::remove_dir_all(&mail);
     }
 

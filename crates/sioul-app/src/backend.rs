@@ -4877,6 +4877,11 @@ fn reported(qt: &QtThread, shared: &Arc<Shared>, account: &Account, result: Resu
         Ok(_) => (say("ui-synced-at", &[("time", sioul_core::zone::now().strftime("%H:%M").to_string())]), false),
         Err(e) => (e.sentence(tr(), &account.id), true),
     };
+    // A server that refused to keep a draft in its Drafts folder (`draftserver`): said once, here.
+    let line = match &result {
+        Ok(report) if !report.drafts_refused.is_empty() => format!("{line} {}", say("sync-drafts-refused", &[("words", report.drafts_refused.join("; "))])),
+        _ => line,
+    };
     if let Ok(mut statuses) = shared.statuses.lock() {
         statuses.insert(account.id.clone(), (line.clone(), problem));
     }

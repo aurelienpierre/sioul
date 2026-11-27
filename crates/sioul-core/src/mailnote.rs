@@ -18,6 +18,16 @@
 //! same way, never as new. A row that says "not at all" now: never told, on
 //! the Porch only.
 //!
+//! A row that says "at the gathered times" (◎, by day: decided 26 November
+//! 2026) shows the mail on the Porch now and tells it at the next gathered
+//! time (`[reminders] gathered`) after it reached its server, when the row
+//! says so then and still now: mail that comes within two minutes after one
+//! comes with it (`GATHERING_NEW`); what waited for it, and mail fetched late
+//! that reached its server before it, is told at the first look after it,
+//! however late (a computer asleep, a phone's late step), in one notification
+//! (`gathered_at`, `waited_for`; the ledger's `gathered`, the last gathering
+//! a look went through).
+//!
 //! Each letter a notification names opens its own message (`openers`). What
 //! a device told is said in its told log, which the sharing carries
 //! (`say_told`, `told_elsewhere`): the device that tells next does not tell
@@ -346,6 +356,36 @@ pub fn moment(now: &crate::attention::Now, may: bool) -> String {
     if now.here.narrows() { format!("{moment}:{}:{}", crate::areas::Line::cell_id(now.here.cell(now.time, now.week)), crate::areas::Line::cell_id(now.here.unheld)) } else { moment }
 }
 
+/// How long after a gathered time new mail at the gathered times (◎) is told
+/// at once: it comes with that gathering, as the sites' gathered notice is
+/// made within two minutes of its time.
+pub const GATHERING_NEW: i64 = 120;
+
+/// How far back the last gathered time is looked for: a day and a half, so
+/// that the latest one is always found, however late the first look after
+/// it (a computer asleep all afternoon, a phone's step an hour late).
+pub const GATHERING_LAST: i64 = 36 * 3600;
+
+/// The latest gathered time (`[reminders] gathered`, read as
+/// `appnotes::times_of` reads it) at or before `now` and at most `within`
+/// seconds before it, as Unix seconds; none when no gathered time fell then.
+pub fn gathered_at(times: &[String], now: &jiff::Zoned, within: i64) -> Option<i64> {
+    let stamp = now.timestamp().as_second();
+    let days = [Some(now.date()), now.date().yesterday().ok()];
+    crate::appnotes::times_of(times)
+        .into_iter()
+        .flat_map(|time| days.into_iter().flatten().filter_map(move |day| day.to_datetime(time).to_zoned(now.time_zone().clone()).ok()))
+        .map(|at| at.timestamp().as_second())
+        .filter(|at| *at <= stamp && stamp - *at <= within)
+        .max()
+}
+
+/// Whether a letter waiting since `since` (the ledger's `waiting`) waited for
+/// the gathering at `gathered`: it began to wait before that gathered time.
+pub fn waited_for(since: Option<i64>, gathered: Option<i64>) -> bool {
+    matches!((since, gathered), (Some(since), Some(at)) if since < at)
+}
+
 /// What becomes of a new message now, as the matrix says of its sender.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fate {
@@ -378,10 +418,20 @@ pub struct Ledger {
     /// 2, M5).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub messages: BTreeMap<String, i64>,
+    /// The last gathered time a look went through (Unix seconds): the mail
+    /// at the gathered times waiting since before a later one is told at the
+    /// next look, however late (format 3, 27 November 2026; a ledger of an
+    /// older format reads with none, and an older Sioul passes it over).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub gathered: i64,
 }
 
-/// The ledger's format: 2, with `messages`.
-pub const LEDGER_FORMAT: u32 = 2;
+fn is_zero(n: &i64) -> bool {
+    *n == 0
+}
+
+/// The ledger's format: 3, with `gathered` (2 added `messages`).
+pub const LEDGER_FORMAT: u32 = 3;
 
 impl Ledger {
     pub fn default_path() -> PathBuf {
@@ -425,7 +475,8 @@ impl Ledger {
         }
     }
 
-    /// Waiting for a time it may come in.
+    /// Waiting for a time it may come in, since `at`: when it reached its
+    /// server, for the gathered times (`waited_for`).
     pub fn wait(&mut self, key: &str, at: i64) {
         if !self.told.contains_key(key) {
             self.waiting.entry(key.to_string()).or_insert(at);
@@ -561,6 +612,27 @@ mod tests {
 
     fn mode(time: Time, reason: Why) -> Mode {
         Mode { quiet: false, time, week: Week { work_hours: true, admin_hours: false, meals: true, sleep: true }, reason, until: None, back: None, label: String::new(), here: crate::areas::Here::default() }
+    }
+
+    /// The gathered times as the mail at the gathered times (◎) reads them:
+    /// the latest one within a span before now, yesterday's last too, never
+    /// one to come; a letter waited for one when it began to wait before it.
+    #[test]
+    fn the_gathering_mail_waits_for() {
+        let times = ["09:00".to_string(), "13:00".to_string(), "18:00".to_string()];
+        let at = |text: &str| text.parse::<jiff::civil::DateTime>().unwrap().to_zoned(jiff::tz::TimeZone::UTC).unwrap();
+        let stamp = |text: &str| at(text).timestamp().as_second();
+        assert_eq!(gathered_at(&times, &at("2026-11-27T13:01:00"), GATHERING_NEW), Some(stamp("2026-11-27T13:00:00")));
+        assert_eq!(gathered_at(&times, &at("2026-11-27T13:03:00"), GATHERING_NEW), None, "two minutes for new mail");
+        assert_eq!(gathered_at(&times, &at("2026-11-27T13:15:00"), GATHERING_LAST), Some(stamp("2026-11-27T13:00:00")), "a phone's look a quarter of an hour on");
+        assert_eq!(gathered_at(&times, &at("2026-11-27T17:40:00"), GATHERING_LAST), Some(stamp("2026-11-27T13:00:00")), "a computer asleep all afternoon: the last one, however late");
+        assert_eq!(gathered_at(&times, &at("2026-11-27T08:59:00"), GATHERING_LAST), Some(stamp("2026-11-26T18:00:00")), "never one to come: yesterday's last");
+        assert_eq!(gathered_at(&["23:55".to_string()], &at("2026-11-28T00:05:00"), GATHERING_LAST), Some(stamp("2026-11-27T23:55:00")), "across midnight");
+        assert_eq!(gathered_at(&[], &at("2026-11-27T09:00:30"), GATHERING_NEW), Some(stamp("2026-11-27T09:00:00")), "none set: 09:00, 13:00, 18:00");
+        let gathering = Some(stamp("2026-11-27T13:00:00"));
+        assert!(waited_for(Some(stamp("2026-11-27T08:00:00")), gathering));
+        assert!(!waited_for(Some(stamp("2026-11-27T13:05:00")), gathering), "come after it: the next one");
+        assert!(!waited_for(None, gathering) && !waited_for(Some(1), None));
     }
 
     #[test]
@@ -752,14 +824,17 @@ mod tests {
         ledger.wait(&key(&home), 100);
         ledger.wait(&key(&work), 100);
         assert_eq!(waited(&[home.clone(), work.clone()], &ledger, false, |_| true).len(), 1);
-        // Kept and read back in format 2; a format 1 ledger reads with no messages.
+        // Kept and read back in format 3 (its last gathering; 2 added the messages); a format 1 ledger reads with no messages, a format 2 one with no gathering.
         let path = std::env::temp_dir().join(format!("sioul-mail-ledger-{}.toml", std::process::id()));
         let mut kept = Ledger::default();
         kept.told_message("id:0123", 5);
+        kept.gathered = 1_790_000_000;
         kept.save(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains("format = 2") && text.contains("[messages]"), "{text}");
-        assert_eq!(Ledger::load(&path).messages, kept.messages);
+        assert!(text.contains("format = 3") && text.contains("[messages]") && text.contains("gathered = 1790000000"), "{text}");
+        assert_eq!((Ledger::load(&path).messages, Ledger::load(&path).gathered), (kept.messages.clone(), kept.gathered));
+        std::fs::write(&path, "format = 2\n\n[messages]\n\"id:0123\" = 5\n").unwrap();
+        assert_eq!(Ledger::load(&path).gathered, 0);
         std::fs::write(&path, "[told]\nabc = 5\n").unwrap();
         let older = Ledger::load(&path);
         assert!(older.known("abc") && older.messages.is_empty());

@@ -63,6 +63,13 @@ pub struct Root {
     pub folders: Vec<crate::folders::Folder>,
 }
 
+/// Whether the message in `file` carries both marks of one of Sioul's draft copies; its head alone read.
+fn own_copy(file: &Path) -> bool {
+    use std::io::Read;
+    let mut head = Vec::new();
+    std::fs::File::open(file).and_then(|f| f.take(64 * 1024).read_to_end(&mut head)).is_ok() && crate::draftserver::copy_of(&head).is_some()
+}
+
 /// What the folder holding `file` under `root` is for: the inbox for the
 /// Maildir itself, else its saved folder's purpose, else its name's.
 fn role_of(root: &Root, file: &Path) -> crate::folders::Role {
@@ -143,7 +150,13 @@ impl MailIndex {
         for root in roots {
             for local in crate::mailcache::folders(&root.path) {
                 for (path, line) in crate::mailcache::folder(&root.account, &root.path, &local) {
-                    let rank = role_of(root, &path).rank();
+                    let role = role_of(root, &path);
+                    // Sioul's own copy of a draft in a Drafts folder (`draftserver::copy_of`: both its
+                    // marks), which a fetch never stores, left out besides: never mail to any reader.
+                    if role == crate::folders::Role::Drafts && line.message_id.as_deref().is_some_and(crate::draftserver::is_copy) && own_copy(&path) {
+                        continue;
+                    }
+                    let rank = role.rank();
                     let mail = MailRef {
                         path,
                         subject: line.subject.clone(),

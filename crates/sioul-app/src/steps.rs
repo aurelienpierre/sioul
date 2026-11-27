@@ -394,7 +394,27 @@ fn mail_round(exchanged: std::sync::mpsc::Receiver<()>) {
     crate::mailnote::close_now();
     crate::mailnote::tick();
     crate::ledger::background_step(&load_config());
+    // The drafts saved here, to their accounts' Drafts folders, once the mail is told: nothing
+    // new waits for an upload (docs/client.md, "Drafts on the server"). No connection without
+    // work; within what the step's wake lock leaves (`DRAFTS_AT_MOST` in all), the rest left for
+    // the next step; a draft with files attached left to the window's rounds.
+    let until = std::time::Instant::now() + DRAFTS_AT_MOST;
+    for account in load_config().accounts.iter().filter(|a| a.syncs() && sioul_sync::draftserver::has_work(a, false)) {
+        let left = until.saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        if let Ok(password) = sioul_sync::secret::password(account)
+            && let Err(e) = sioul_sync::fetch::drafts(account, &password, left)
+        {
+            eprintln!("sioul: steps: {}: the drafts on the server: {e:?}", account.id);
+        }
+    }
 }
+
+/// The longest a background step gives the drafts' rounds, every account
+/// together: well within the step's wake lock (docs/android.md, "Its rhythm").
+const DRAFTS_AT_MOST: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// The step's exchange done, or given up waiting for: what follows a fetch
 /// runs then (`fetch_mail`), so that your rules read what other devices did
@@ -1412,6 +1432,9 @@ mod tests {
         assert!(step.find("drop(exchanged_said);").is_some_and(|at| at > exchange), "the round told after the exchange");
         let round = source.split("fn mail_round(").nth(1).unwrap().split("\n}\n").next().unwrap();
         let (held, fetched, waited, told) = (round.find("hold()").unwrap(), round.find("fetch_mail(").unwrap(), round.find("recv_timeout").unwrap(), round.find("close_now()").unwrap());
+        // The drafts last, after the ledger's step, bounded well within the wake lock (re-review R2).
+        let (ledger, drafts) = (round.find("background_step(").unwrap(), round.find("fetch::drafts(").unwrap());
+        assert!(told < ledger && ledger < drafts && DRAFTS_AT_MOST <= std::time::Duration::from_secs(30));
         assert!(held < fetched && fetched < waited && waited < told, "{round}");
     }
 

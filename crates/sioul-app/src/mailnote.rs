@@ -7,7 +7,9 @@
 //! gathered for ten seconds (a minute at most), every account together:
 //! then one quiet notification for the batch. What may not come now waits,
 //! and comes in one notification when a time begins in which it may
-//! (`tick`, each minute): "The Porch opens: …".
+//! (`tick`, each minute): "The Porch opens: …". Mail whose row says "at the
+//! gathered times" (◎) waits on the Porch for the next gathered time, and
+//! comes then in one notification (`mailnote::gathered_at`).
 //!
 //! Only the device you used last tells (the "notices" lease, as for the
 //! sites' gathered notification): your phone and your computer fetch the
@@ -119,6 +121,7 @@ fn add_to_batch(letters: Vec<Letter>, window: Option<Window>, opens: bool) {
 /// The moment last seen by `tick`, in this process: a change is a time beginning.
 static MOMENT: Mutex<Option<String>> = Mutex::new(None);
 
+
 /// The moment (`Seen::moment`) looked at now, by `told`, `tick` and each of
 /// a phone's steps (`look`): since when this device has watched it, without
 /// a gap (`mailnote::Watch`, kept on the device for every process). New mail
@@ -164,6 +167,12 @@ struct Seen {
     sure: sioul_sync::dispatch::Sure,
     /// The keeper is part of the moment (`Judged::marks`).
     marks: bool,
+    /// The keeper's cells read (`Judged::lines`), for the moment of a gathered time.
+    lines: sioul_core::areas::Lines,
+    /// The last gathered time at or before now (`[reminders] gathered`), whatever the delay.
+    gathered: Option<i64>,
+    /// The moment of that gathered time, a gathering, read once.
+    at_gathering: std::cell::OnceCell<Option<Now>>,
 }
 
 impl Seen {
@@ -175,10 +184,38 @@ impl Seen {
         // Since when it keeps them: the later of this process's word and the keeper's own claim, never earlier than a spell this process missed.
         let judged = crate::dispatch::judge(if keeper.mine { "" } else { &keeper.computer }, keeper.since.max(keeper.claimed), entry.as_ref());
         let mode = crate::hours::hours_mode_at(now).on(&judged.lines);
-        let moment = crate::hours::attention_at(&mode, now);
+        let mut moment = crate::hours::attention_at(&mode, now);
+        // Within two minutes of a gathered time, new mail at the gathered times (◎) comes with it.
+        moment.gathering = mailnote::gathered_at(&config.reminders.gathered_times(), now, mailnote::GATHERING_NEW).is_some();
         // Reachable lifts the Porch's rest after a pause: new mail told (part 3).
         let may = config.reminders.mail && (!moment.holds.porch_rests || moment.reachable);
-        Seen { attention: Attention::of(&config), always: People::load(&People::default_path()), config, senders: std::cell::OnceCell::new(), now: moment, may, keeper: keeper.computer.clone(), sure: judged.sure, marks: judged.marks }
+        let gathered = mailnote::gathered_at(&config.reminders.gathered_times(), now, mailnote::GATHERING_LAST);
+        Seen {
+            attention: Attention::of(&config),
+            always: People::load(&People::default_path()),
+            config,
+            senders: std::cell::OnceCell::new(),
+            now: moment,
+            may,
+            keeper: keeper.computer.clone(),
+            sure: judged.sure,
+            marks: judged.marks,
+            lines: judged.lines,
+            gathered,
+            at_gathering: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// The moment of the last gathered time, as a gathering: what the matrix
+    /// and the hours said then (a gathered time in sleep or a pause tells nothing).
+    fn at_gathering(&self) -> Option<&Now> {
+        self.at_gathering
+            .get_or_init(|| {
+                let at = jiff::Timestamp::from_second(self.gathered?).ok()?.to_zoned(sioul_core::zone::current());
+                let mode = crate::hours::hours_mode_at(&at).on(&self.lines);
+                Some(Now { gathering: true, ..crate::hours::attention_at(&mode, &at) })
+            })
+            .as_ref()
     }
 
     fn senders(&self) -> &porch::Senders {
@@ -205,8 +242,11 @@ impl Seen {
     /// tells waits: never claimed on a doubt.
     fn fate(&self, t: &Triaged) -> Fate {
         let out = self.decided(t);
+        // At the gathered times, fetched late: it reached its server before the last gathering, which it joins now.
+        let arrived = t.card.path.as_deref().map(mailnote::arrived_at).filter(|at| *at > 0);
         match out {
             _ if !self.may => Fate::Later,
+            out if !out.told && out.level == Level::Gathered && self.comes_with(t, arrived) => Fate::Now,
             out if out.told && !self.sure(t) => Fate::Later,
             out if out.told && out.pierce => Fate::Through,
             out if out.told => Fate::Now,
@@ -219,6 +259,22 @@ impl Seen {
     /// elsewhere when sure the keeper tells it.
     fn tells(&self, t: &Triaged) -> bool {
         self.may && self.decided(t).told && self.sure(t)
+    }
+
+    /// Whether this message, at the gathered times (◎), belongs to the last
+    /// gathering: it reached its server before it (`since`: when it did, the
+    /// ledger's for what waited), its row told it at that gathered time, and
+    /// still tells it at a gathering now. Told at the first look after it,
+    /// however late.
+    fn comes_with(&self, t: &Triaged, since: Option<i64>) -> bool {
+        if !self.may || !mailnote::waited_for(since, self.gathered) {
+            return false;
+        }
+        let Some(then) = self.at_gathering() else { return false };
+        let area = t.card.account.as_deref().and_then(|id| self.config.account(id)).and_then(sioul_core::mailbox::said_area);
+        let now = Now { gathering: true, ..self.now.clone() };
+        let told = |moment: &Now| self.attention.mail(t, self.senders(), &self.always, area, moment).told;
+        told(then) && told(&now) && self.sure(t)
     }
 
     /// The moment (`mailnote::moment`); where something is said of a device,
@@ -315,8 +371,10 @@ fn told(_account: &str, files: &[PathBuf], window: Option<Window>, hold: bool) {
         for key in &sorted.never {
             ledger.tell(key, stamp);
         }
+        // Waiting since it reached its server, never later than now: the gathered times read it so.
+        let since = |key: &String| arrivals.iter().find(|t| mailnote::key(t) == *key).and_then(|t| t.card.path.as_deref()).map(mailnote::arrived_at).filter(|at| *at > 0).map_or(stamp, |at| at.min(stamp));
         for key in sorted.later.iter().chain(sorted.now.iter().map(|l| &l.key)) {
-            ledger.wait(key, stamp);
+            ledger.wait(key, since(key));
         }
         ledger.forget_old(stamp);
         if let Err(e) = ledger.save(&path) {
@@ -425,24 +483,36 @@ fn tick_from(window: Option<Window>) {
     let moment = seen.moment();
     watched(&moment, stamp);
     let changed = MOMENT.lock().is_ok_and(|mut last| last.replace(moment.clone()).as_ref() != Some(&moment));
-    if !changed || !seen.may {
-        return;
-    }
     let path = Ledger::default_path();
     let ledger = Ledger::load(&path);
+    // A gathered time passed since the last look that went through one (◎, the ledger's, every
+    // process of this device): what waited for it comes, however late this look.
+    let gathers = seen.gathered.is_some_and(|at| at > ledger.gathered);
+    if !(changed || gathers) || !seen.may {
+        return;
+    }
     if ledger.waiting.is_empty() {
         return;
     }
     let items = seen.porch(stamp);
-    let letters = mailnote::waited(&items, &ledger, newsletters, |t| seen.tells(t));
+    let letters = mailnote::waited(&items, &ledger, newsletters, |t| seen.tells(t) || seen.comes_with(t, ledger.waiting.get(&mailnote::key(t)).copied()));
+    // This gathering looked through: not again at the next minute.
+    if let Some(at) = seen.gathered.filter(|_| gathers) {
+        let _ = sioul_core::filelock::with_lock(&path, || {
+            let mut kept = Ledger::load(&path);
+            kept.gathered = kept.gathered.max(at);
+            kept.save(&path)
+        });
+    }
     // Read meanwhile, blocked, set aside: waiting no more.
     let gone = mailnote::gone_by(&items, &ledger, newsletters);
     // With the window, gathered with what its fetches bring meanwhile (Sioul
     // starting): one notification. Without it, told now: the process may end.
+    // A gathering alone opens no time: its letters are said as a batch is, not as "The Porch opens".
     if window.is_some() {
         claim(Vec::new(), &gone, stamp);
         if !letters.is_empty() {
-            add_to_batch(letters, window, true);
+            add_to_batch(letters, window, changed);
         }
         return;
     }
@@ -450,7 +520,7 @@ fn tick_from(window: Option<Window>) {
     if mine.is_empty() || !ours(window.as_ref()) {
         return;
     }
-    let (title, body) = mailnote::opens(tr(), &mine);
+    let (title, body) = if changed { mailnote::opens(tr(), &mine) } else { mailnote::batch(tr(), &mine) };
     show(&title, &body, mine.iter().any(|l| l.through), window.as_ref(), &mine);
 }
 

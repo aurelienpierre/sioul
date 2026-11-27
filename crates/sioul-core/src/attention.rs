@@ -590,6 +590,9 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
         Row::People(Channel::Mail, Person::Always) => &[Now, Quiet, As],
         Row::People(_, Person::Always) if layer => &[Now, Through, As],
         Row::People(_, Person::Always) => &[Now, As],
+        // At the gathered times by day too (decided 26 November 2026), as a message's: never in
+        // sleep, a pause, Free time nor on a layer, where no gathering falls.
+        Row::People(Channel::Mail, _) if matches!(column, Column::Work | Column::Admin | Column::Leisure | Column::Meals) => &[Now, Quiet, Gathered, Later, Never],
         Row::People(Channel::Mail, _) => &[Now, Quiet, Later, Never],
         // A text in the shade without a sound, under do-not-disturb alone: Android silences it then.
         Row::People(Channel::Messages, _) if column == Column::Dnd => &[Now, Quiet, Later],
@@ -1249,7 +1252,7 @@ impl Attention {
     /// Whether a person's row lets them through at some time of the week
     /// that an area is for: when none, the area holds nothing back for good.
     fn meets(&self, channel: Channel, person: Person, area: Area, week: Week) -> bool {
-        self.meets_at(channel, person, area, week, &[Level::Now, Level::Quiet])
+        self.meets_at(channel, person, area, week, &[Level::Now, Level::Quiet, Level::Gathered])
     }
 
     /// The same, the row's cell at one of `levels` then: your safe senders'
@@ -1600,6 +1603,15 @@ impl Attention {
         }
         let mut level = self.person(Channel::Mail, person, always, now);
         let mut step = Step::Matrix;
+        // At the gathered times (◎, decided 26 November 2026), under a layer whose own cell shows
+        // mail without telling it (◑): shown so, as no gathering falls under a layer; told at a
+        // gathered time once the layer ends. A layer's ● lets the gathering through; its ○ holds it already.
+        if level == Level::Gathered && (now.slot || now.dnd) {
+            let layers = Now { times: Vec::new(), nothing: false, ..now.clone() };
+            if self.person(Channel::Mail, person, always, &layers) == Level::Quiet {
+                level = Level::Quiet;
+            }
+        }
         // Step 10: mail to an address for another time waits for that time
         // (the notifications' decision 2 of 13 November 2026), but Always
         // through's, and but when its row and the address never meet in your
@@ -1619,30 +1631,32 @@ impl Attention {
         if let Some(area) = event.area
             && !now.reachable
             && !always
-            && matches!(level, Level::Now | Level::Quiet)
+            && matches!(level, Level::Now | Level::Quiet | Level::Gathered)
         {
             // An address nobody classified has no closed hours for your safe senders (your people
             // among them), on any device.
             let narrowed = !(person.safe() && event.unsaid);
             let (hours, here) = (in_view(area, now.time, now.week), now.brings(area));
             if !hours && !(narrowed && here) {
+                // ◎ is held as ● is: told at a gathered time within the address's hours.
                 match (person.safe(), level) {
-                    (true, Level::Now) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Area),
+                    (true, Level::Now | Level::Gathered) if !event.unsaid && self.meets_at(Channel::Mail, person, area, now.week, &[Level::Now, Level::Gathered]) => (level, step) = (Level::Quiet, Step::Area),
                     (true, _) => {}
                     _ if self.meets(Channel::Mail, person, area, now.week) => (level, step) = (Level::Later, Step::Area),
                     _ => {}
                 }
             } else if hours && !here && narrowed {
                 match (person.safe(), level) {
-                    (true, Level::Now) if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now]) => (level, step) = (Level::Quiet, Step::Device),
+                    (true, Level::Now | Level::Gathered) if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now, Level::Gathered]) => (level, step) = (Level::Quiet, Step::Device),
                     (true, _) => {}
-                    _ if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now, Level::Quiet]) => (level, step) = (Level::Later, Step::Device),
+                    _ if self.meets_somewhere(Channel::Mail, person, area, now, &[Level::Now, Level::Quiet, Level::Gathered]) => (level, step) = (Level::Later, Step::Device),
                     _ => {}
                 }
             }
         }
         let mut out = Output::at(level, step);
-        out.told = level == Level::Now && lane == Lane::Usual;
+        // ◎: shown on the Porch now, told at a gathered time (`Now::gathering`).
+        out.told = (level == Level::Now || (level == Level::Gathered && now.gathering)) && lane == Lane::Usual;
         // Reachable lifts the Porch's rest after a pause too.
         if out.told && now.holds.porch_rests && !now.reachable {
             (out.told, out.step) = (false, Step::Hold);
@@ -3073,10 +3087,8 @@ mod tests {
                 assert_eq!(offered, by_day, "{row:?} {column:?}");
             }
         }
-        for channel in [Channel::Mail, Channel::Calls] {
-            for person in persons(channel) {
-                assert!(Column::ALL.iter().all(|c| !choices(Row::People(channel, *person), *c).contains(&Level::Gathered)), "{channel:?} {person:?}");
-            }
+        for person in persons(Channel::Calls) {
+            assert!(Column::ALL.iter().all(|c| !choices(Row::People(Channel::Calls, *person), *c).contains(&Level::Gathered)), "{person:?}");
         }
         let a = Attention::usual();
         let stranger = |now: &Now| a.decide(&Event::of(Source::Message { via: Channel::Messages, who: Who::Stranger, circle: false, group: false, always: false }), now);
@@ -3111,10 +3123,54 @@ mod tests {
         }
     }
 
+    /// People's mail at the gathered times (◎, decided 26 November 2026):
+    /// offered by day as a message's (work, admin, leisure, meals), never in
+    /// sleep, a pause, Free time nor on a layer, nor for Always through or
+    /// the blocked; meals' own notices keep theirs. Shown on the Porch now,
+    /// told at a gathered time; under a layer whose cell shows mail without
+    /// telling it (◑), shown so; an address for another time holds it as it
+    /// holds ●, your safe senders' shown meanwhile.
+    #[test]
+    fn mail_takes_the_gathered_times_by_day() {
+        for person in persons(Channel::Mail) {
+            let row = Row::People(Channel::Mail, *person);
+            for column in Column::ALL {
+                let offered = choices(row, column).contains(&Level::Gathered);
+                let by_day = matches!(column, Column::Work | Column::Admin | Column::Leisure | Column::Meals) && person.state();
+                assert_eq!(offered, by_day, "{row:?} {column:?}");
+            }
+        }
+        assert!(Column::ALL.iter().all(|c| !choices(Row::Own(Kind::Needs), *c).contains(&Level::Gathered)), "a meal's notices keep theirs");
+        let mut a = Attention::usual();
+        a.set(Row::People(Channel::Mail, Person::Neutral), Column::Leisure, Level::Gathered).unwrap();
+        let mail = |who: Who| Event::of(Source::Mail { who, circle: false, always: false, lane: Lane::Usual });
+        let leisure = Now::time(Column::Leisure);
+        let out = a.decide(&mail(Who::Neutral), &leisure);
+        assert_eq!((out.level, out.shown, out.told), (Level::Gathered, true, false), "on the Porch, told later");
+        let gathering = Now { gathering: true, ..leisure.clone() };
+        let told = a.decide(&mail(Who::Neutral), &gathering);
+        assert_eq!((told.level, told.told, told.pierce), (Level::Gathered, true, false), "told at the gathered time");
+        // A code keeps its own row; mail from yourself is never told.
+        assert!(a.decide(&Event::of(Source::Mail { who: Who::Neutral, circle: false, always: false, lane: Lane::Code }), &leisure).told);
+        assert!(!a.decide(&Event::of(Source::Mail { who: Who::Neutral, circle: false, always: false, lane: Lane::Own }), &gathering).told);
+        // Under a layer whose cell shows mail without telling it: shown so, even at a gathered time.
+        a.set(Row::People(Channel::Mail, Person::Neutral), Column::Dnd, Level::Quiet).unwrap();
+        let dnd = Now { gathering: true, ..leisure.clone().layers(false, true) };
+        assert_eq!((a.decide(&mail(Who::Neutral), &dnd).level, a.decide(&mail(Who::Neutral), &dnd).told), (Level::Quiet, false));
+        a.set(Row::People(Channel::Mail, Person::Neutral), Column::Dnd, Level::Now).unwrap();
+        assert!(a.decide(&mail(Who::Neutral), &dnd).told, "a layer's ● lets the gathering through");
+        // An address for work, in leisure: held as ● is.
+        a.set(Row::People(Channel::Mail, Person::Neutral), Column::Work, Level::Gathered).unwrap();
+        let for_work = a.decide(&mail(Who::Neutral).for_area(Some(Area::WORK)), &gathering);
+        assert_eq!((for_work.level, for_work.told, for_work.step), (Level::Later, false, Step::Area));
+        // Sleep keeps its own cell.
+        assert_eq!(a.decide(&mail(Who::Neutral), &Now { gathering: true, ..Now::time(Column::Sleep) }).told, false);
+    }
+
     #[test]
     fn rows_from_the_configuration_and_their_words() {
         let config: Config = toml::from_str(
-            "[attention]\n\"mail.neutral\" = [\"leisure\", \"Repas:quiet\", \"sleep:never\", \"nonsense\", \"work:gathered\"]\n\
+            "[attention]\n\"mail.neutral\" = [\"leisure\", \"Repas:quiet\", \"sleep:never\", \"nonsense\", \"pause:gathered\"]\n\
              codes = \"sleep:never, pause:never\"\n\
              \"calls.groups\" = [\"work\"]\n\
              \"messages.always\" = [\"dnd:through\", \"sleep:as\"]\n\
@@ -3122,7 +3178,7 @@ mod tests {
         )
         .unwrap();
         let a = Attention::of(&config);
-        // Read leniently: French words, a value not offered left aside (gathered mail), a fixed cell kept.
+        // Read leniently: French words, a value not offered left aside (gathered mail in a pause), a fixed cell kept.
         assert_eq!(a.words(row("mail.neutral")), ["work", "admin", "leisure", "meals:quiet", "sleep:never", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]);
         // Codes are fixed at once everywhere (24 November 2026): an older "sleep:never" is left aside.
         assert_eq!((a.cell(row("codes"), Column::Sleep), a.cell(row("codes"), Column::Pause)), (Level::Now, Level::Now));

@@ -120,6 +120,8 @@ pub mod device_grid;
 pub mod device_table;
 pub mod devices;
 pub mod dispatch;
+// draftserver: each draft's copy kept in its account's Drafts folder, at the account's rounds.
+pub mod draftserver;
 pub mod discover;
 pub mod favicon;
 // A calendar fetched by its web address, held to what a calendar needs (sioul-core's `subscribed`).

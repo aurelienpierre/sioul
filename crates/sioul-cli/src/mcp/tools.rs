@@ -69,9 +69,10 @@ pub fn is_spam(tool: &Tool) -> bool {
     tool.name.starts_with("spam_")
 }
 
-/// Whether a tool reads or drafts texts, which only `[mcp] texts = true` offers.
+/// Whether a tool reads or drafts texts, or reads the calls, which only
+/// `[mcp] texts = true` offers (Settings ▸ AI agents, "Texts and calls").
 pub fn is_texts(tool: &Tool) -> bool {
-    super::phone::TEXTS.contains(&tool.name)
+    super::phone::BEHIND_TEXTS.contains(&tool.name)
 }
 
 /// The tool with this name.
@@ -639,7 +640,7 @@ pub const TOOLS: &[Tool] = &[
     Tool {
         name: "calls",
         title: "Calls",
-        description: "The calls of the person's phones, newest first, each by its address (sioul:call/…): which way (theirs or the person's), with whom (their name in the address books, else their number; a hidden number said so), when, how long, answered or not, missed, or declined by the screening and sent to voicemail. `links` and `link` follow a call's address: the card of whom it was with, the task it made. Read-only: nothing calls anyone, and no agent writes a call.",
+        description: "The calls of the person's phones, newest first, each by its address (sioul:call/…): which way (theirs or the person's), with whom (their name in the address books, else their number; a hidden number said so), when, how long, answered or not, missed, or declined by the screening and sent to voicemail. `links` and `link` follow a call's address: the card of whom it was with, the task it made. Read-only: nothing calls anyone, and no agent writes a call. Offered only while the person allows texts and calls (Settings ▸ AI agents).",
         writes: false,
         idempotent: true,
         open_world: false,

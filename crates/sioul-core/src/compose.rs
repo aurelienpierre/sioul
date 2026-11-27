@@ -167,6 +167,8 @@ impl Draft {
         let temporary = path.with_extension("toml.new");
         std::fs::write(&temporary, text).map_err(fail)?;
         std::fs::rename(&temporary, &path).map_err(fail)?;
+        // Saved here: its copy goes to its account's Drafts folder at the next round (`draftserver`).
+        crate::draftserver::saved(self);
         Ok(path)
     }
 
@@ -191,6 +193,8 @@ impl Draft {
     /// the original and the files Sioul copied for it from another
     /// application (`handed`): yours, where they came from, stay.
     pub fn discard(&self) {
+        // Its copies in the server's Drafts folder go too, at the next round (`draftserver`).
+        crate::draftserver::discarded(self);
         let _ = std::fs::remove_file(self.path());
         let _ = std::fs::remove_file(self.original_copy());
         for path in &self.attachments {
@@ -823,6 +827,93 @@ pub fn build(draft: &Draft, from: (&str, &str), tr: &Translator, date: i64) -> R
     // An encrypted original is never quoted unprotected.
     let original = draft.original_here().and_then(|path| crate::filelock::read_whole(&path).ok()).filter(|raw| !crate::pgp::is_encrypted(raw));
     build_with(draft, from, tr, date, None, None, original.as_deref())
+}
+
+/// The copy of a draft kept in its account's Drafts folder for other mail
+/// programs (`draftserver`): your text, as Markdown and as HTML, your own
+/// attachments with `attached` (none past `draftserver::ATTACHED_AT_MOST` in
+/// all, nor a file this device does not hold), the recipients (Bcc too, as
+/// mail programs keep a draft's), the subject and the thread, marked as
+/// Sioul's with its id and version (`mark`, in `draftserver::HEADER`;
+/// `message_id`, without its angle brackets). Never the message it answers
+/// or forwards, which goes at Send. With `encrypt`
+/// (`draftserver::wants_encryption`), it is encrypted to `own` (your
+/// certificates), its subject and Bcc inside it and "..." as the outer
+/// subject (protected headers); none when `own` is empty: nothing of it lies
+/// on a server in clear.
+#[allow(clippy::too_many_arguments)]
+pub fn server_copy(draft: &Draft, from: (&str, &str), date: i64, mark: &str, message_id: &str, encrypt: bool, attached: bool, own: &[&sequoia_openpgp::Cert]) -> Result<Option<Vec<u8>>, String> {
+    use mail_builder::headers::content_type::ContentType;
+    use mail_builder::headers::raw::Raw;
+    use mail_builder::mime::MimePart;
+    if encrypt && own.is_empty() {
+        return Ok(None);
+    }
+    let html = format!("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>{}</body></html>", markdown_html(&draft.body));
+    let alternative = MimePart::new("multipart/alternative", vec![MimePart::new("text/plain", draft.body.clone()), MimePart::new("text/html", html)]);
+    let held: Vec<&PathBuf> = draft.attachments.iter().filter(|p| p.is_file()).collect();
+    let size: u64 = held.iter().filter_map(|p| std::fs::metadata(p).ok()).map(|m| m.len()).sum();
+    let mut files = Vec::new();
+    if attached && size <= crate::draftserver::ATTACHED_AT_MOST {
+        for path in held {
+            let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let name = path.file_name().map_or_else(|| "attachment".to_string(), |n| n.to_string_lossy().to_string());
+            files.push(MimePart::new(mime_of(&name), bytes).attachment(name));
+        }
+    }
+    let content = if files.is_empty() {
+        alternative
+    } else {
+        let mut parts = vec![alternative];
+        parts.extend(files);
+        MimePart::new("multipart/mixed", parts)
+    };
+    let pairs = |list: &[String]| -> Vec<(String, String)> { list.iter().filter_map(|e| Some((name_of(e), address_of(e)?))).collect() };
+    let (to, cc, bcc) = (pairs(&draft.to), pairs(&draft.cc), pairs(&draft.bcc));
+    let (body, subject) = if encrypt {
+        // Protected headers: the subject and Bcc inside what is encrypted, "..." outside.
+        // The parameter's name held apart: `attribute("…")` reads as a message's key to tools/check-messages.py.
+        let protected = "protected-headers";
+        let mut inner = MimePart::new(ContentType::new("multipart/mixed").attribute(protected, "v1"), vec![content]).header("Subject", mail_builder::headers::text::Text::new(draft.subject.as_str()));
+        if !bcc.is_empty() {
+            inner = inner.header("Bcc", mail_builder::headers::address::Address::from(bcc.clone()));
+        }
+        let mut entity = Vec::new();
+        inner.write_part(&mut entity);
+        if entity.ends_with(b"\r\n") {
+            entity.truncate(entity.len() - 2);
+        }
+        let sealed = crate::pgp::encrypt_each(&entity, &[own.to_vec()], None)?.into_iter().next().ok_or("nothing encrypted")?;
+        let part = MimePart::new(
+            ContentType::new("multipart/encrypted").attribute("protocol", "application/pgp-encrypted"),
+            vec![
+                MimePart::new("application/pgp-encrypted", "Version: 1\r\n".as_bytes()).transfer_encoding("7bit"),
+                MimePart::new(ContentType::new("application/octet-stream").attribute("name", "encrypted.asc"), sealed.into_bytes()).inline().transfer_encoding("7bit"),
+            ],
+        );
+        (part, "...".to_string())
+    } else {
+        (content, draft.subject.clone())
+    };
+    let as_pairs = |list: &[(String, String)]| -> Vec<(String, String)> { list.to_vec() };
+    let mut message = MessageBuilder::new().from(from).subject(subject).message_id(message_id).date(date).header(crate::draftserver::HEADER, Raw::new(mark)).body(body);
+    if !to.is_empty() {
+        message = message.to(as_pairs(&to));
+    }
+    if !cc.is_empty() {
+        message = message.cc(as_pairs(&cc));
+    }
+    // An encrypted copy keeps its Bcc inside, as a sent encrypted message shows it to nobody.
+    if !bcc.is_empty() && !encrypt {
+        message = message.bcc(as_pairs(&bcc));
+    }
+    if let Some(reply_to) = &draft.in_reply_to {
+        message = message.in_reply_to(reply_to.as_str());
+    }
+    if !draft.references.is_empty() {
+        message = message.references(draft.references.iter().map(String::as_str).collect::<Vec<_>>());
+    }
+    message.write_to_vec().map(Some).map_err(|e| e.to_string())
 }
 
 /// How a message is protected with OpenPGP: signed with your key, encrypted

@@ -18,6 +18,7 @@ If Sioul stopped tomorrow, your mail, your agenda, your contacts, your notes and
 | What | Kept as | Opened without Sioul by |
 |---|---|---|
 | Mail | on your mail server (IMAP), and on your device as one file per message (Maildir) | any mail program: Thunderbird, your phone's mail app, your provider's webmail; on a computer, mail programs that read Maildir, such as notmuch or mutt |
+| Drafts | in Sioul, and a copy of each in your mail server's Drafts folder (an encrypted draft's encrypted to your own key) | any mail program, in its Drafts |
 | Agenda and tasks | on your calendar server (CalDAV), and on your device as one file per event or task (iCalendar, `.ics`) | any calendar program: Thunderbird, your phone's calendar through DAVx⁵, Nextcloud's Calendar and Tasks, Tasks.org; on a computer, khal |
 | Contacts | on your contacts server (CardDAV), and on your device as one file per card (vCard, `.vcf`) | any address book: your phone's, Thunderbird's, Nextcloud's; on a computer, khard |
 | Notes | a folder of Markdown files that you choose, outside Sioul's own folders | Obsidian, Nextcloud Notes, any text editor |
@@ -74,7 +75,6 @@ Linux, Windows, macOS and Android: GitHub builds Sioul for each of them at every
 ## Where it does not hold yet {#where-it-does-not-hold-yet}
 
 - **Sioul's archive of your texts**, on each of your devices, is sealed, so that a copy is unreadable without your sharing's key. Your phone's messages app stays the record of your texts; but a text you delete on the phone stays only in Sioul's archive, and no other program opens it.
-- **Drafts** stay in Sioul: they are not written into your server's Drafts folder, so your other mail programs do not see them.
 - **Your notes and papers on a server** are plain files there only when your own sync app carries their folder: Sioul does not yet write them to a WebDAV server as plain files itself. Carried by Sioul's sharing, they are sealed there, and Nextcloud Notes or Obsidian elsewhere cannot open them ([above](#between-your-devices)).
 - **On an Android phone**, Sioul's own files are in its private storage, which other apps cannot open. Your notes go there too until you choose a notes folder: choose one in the phone's shared storage (in Documents, for example) on the Notes page's ⚙, and other apps can open your notes. The papers', the letters' and the invoices' folders can be there too (chosen in Papers ▸ ⚙, Letters ▸ ⚙ and Settings ▸ Invoices). The command line (above) is a computer's: a phone has none.
 - **The sealed sharing folder** opens only in Sioul, with your passphrase ([above](#between-your-devices)).

@@ -279,7 +279,7 @@ Sioul for Android shares the same way, through the folder your sync app keeps on
 
 ## Not there yet {#not-there-yet}
 
-Sizes padded to steps, and the devices' notes sealed too, so that the folder tells even less; a database server instead of a folder, for those who would rather have one; drafts in your mail server's Drafts folder, for other mail programs to see; phones other than Android's. The format is plain and documented ([the design notes](../dev/database.md)), so that they can come.
+Sizes padded to steps, and the devices' notes sealed too, so that the folder tells even less; a database server instead of a folder, for those who would rather have one; phones other than Android's. The format is plain and documented ([the design notes](../dev/database.md)), so that they can come.
 
 ## For technical readers {#for-technical-readers}
 

@@ -675,7 +675,7 @@ fn unreadable_lines_are_said() {
 }
 
 const READING: &[&str] = &[
-    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "calls", "papers", "persons", "contracts",
+    "porch", "search_mail", "mailbox", "read_message", "list_tasks", "get_task", "agenda", "get_event", "search_contacts", "budgets", "movements", "get_movement", "money_mail", "search_notes", "read_note", "list_projects", "links", "find", "phone_messages", "papers", "persons", "contracts",
     "letters", "time", "invoices", "books", "reminders", "now",
 ];
 /// The command line and the agents run on a computer only: what they say
@@ -1935,7 +1935,8 @@ fn things_outside_projects_can_be_closed() {
     let home = home();
     let path = home.root.join("config/sioul/outside-closed.toml");
     let config = std::fs::read_to_string(&home.config).unwrap();
-    std::fs::write(&path, format!("{config}\n[mcp]\noutside_projects = false\n")).unwrap();
+    // Texts and calls open, for the calls to be kept as things in no project.
+    std::fs::write(&path, format!("{config}\n[mcp]\noutside_projects = false\ntexts = true\n")).unwrap();
     let mut server = Server::new(&path, "en");
     let mail = call(&mut server, "search_mail", json!({}));
     let subjects: Vec<&str> = mail["structuredContent"]["messages"].as_array().unwrap().iter().map(|m| m["subject"].as_str().unwrap()).collect();
@@ -2038,6 +2039,50 @@ fn a_kept_account_s_server_is_never_asked_for_an_agent() {
     assert!(!asked.is_empty() && !asked.contains(&"work".to_string()), "{asked:?}");
 }
 
+/// Sioul's own copy of a draft in a server's Drafts folder (both its marks)
+/// is never mail to an agent: a fetch never stores one, and one lying in a
+/// Drafts folder all the same (put there by an older Sioul's fetch) is met
+/// by neither `search_mail`, by its subject or its words, nor `read_message`,
+/// by its address or its file, nor `find`.
+#[test]
+fn an_agent_never_meets_a_drafts_copy() {
+    use sioul_core::draftserver;
+    let home = home();
+    let maildir = home.root.join("mail/drafts-copy");
+    for sub in ["cur", "new", "tmp"] {
+        std::fs::create_dir_all(maildir.join(sub)).unwrap();
+        std::fs::create_dir_all(maildir.join(".Drafts").join(sub)).unwrap();
+    }
+    let id = "1a2b3c4d5e6f7a8b";
+    let message_id = draftserver::message_id(id, "0123456789abcdef", "drafts.example");
+    let copy = format!(
+        "Message-ID: <{message_id}>\r\n{}: {}\r\nFrom: Jane <jane@drafts.example>\r\nTo: office@example.org\r\nDate: Thu, 01 Oct 2026 10:00:00 +0200\r\nSubject: Larkspur renewal\r\n\r\nThe Larkspur contract, as drafted.\r\n",
+        draftserver::HEADER,
+        draftserver::mark(id, "0123456789abcdef")
+    );
+    let file = maildir.join(".Drafts/cur").join(seen("1759300100.U9-1.test"));
+    std::fs::write(&file, copy).unwrap();
+    let path = home.root.join("config/sioul/drafts-copy.toml");
+    let config = std::fs::read_to_string(&home.config).unwrap();
+    std::fs::write(&path, format!("{config}\n[[account]]\nid = \"drafts-copy\"\nkind = \"imap\"\naddress = \"jane@drafts.example\"\nhost = \"imap.drafts.example\"\nmaildir = \"{}\"\n", maildir.display().to_string().replace('\\', "\\\\"))).unwrap();
+    let mut server = Server::new(&path, "en");
+    // Its subject and its words, never the query an answer says back.
+    let met = |answer: &Value| answer.to_string().contains("Larkspur renewal") || answer.to_string().contains("Larkspur contract");
+    for arguments in [json!({ "query": "Larkspur" }), json!({ "query": "Larkspur", "in_text": true }), json!({ "account": "drafts-copy" })] {
+        let found = call(&mut server, "search_mail", arguments.clone());
+        assert!(!met(&found), "{arguments}: {found}");
+    }
+    for message in [format!("mid:{message_id}"), file.display().to_string()] {
+        let read = call(&mut server, "read_message", json!({ "message": message }));
+        assert!(read["isError"] == true && !met(&read), "{message}: {read}");
+    }
+    for arguments in [json!({ "query": "Larkspur" }), json!({ "query": "Larkspur", "kind": "mail" })] {
+        let found = call(&mut server, "find", arguments.clone());
+        assert!(!met(&found), "{arguments}: {found}");
+    }
+    let _ = std::fs::remove_dir_all(&maildir);
+}
+
 /// The phone's messages: the words where the phone sent them, a code its
 /// phone did not catch masked, one it caught said without it, a message held
 /// by the phone not given before its time, all framed as data; the calls.
@@ -2060,14 +2105,28 @@ fn the_phone_messages_and_calls() {
     for query in ["Lune", "7314"] {
         assert_eq!(call(&mut server, "phone_messages", json!({ "query": query }))["structuredContent"]["total"], 0, "{query}");
     }
-    let calls = call(&mut server, "calls", json!({}));
+    // The calls follow the texts' switch (decided 27 November 2026): off, neither listed nor called.
+    let listed = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().clone();
+    assert!(!listed.iter().any(|t| t["name"] == "calls"));
+    let refused = ask(&mut server, "tools/call", json!({ "name": "calls", "arguments": {} }));
+    assert!(refused["error"]["message"].as_str().unwrap().contains("texts and calls"), "{refused}");
+    let home = home();
+    let open = home.root.join("config/sioul/calls-open.toml");
+    std::fs::write(&open, format!("{}\n[mcp]\ntexts = true\n", std::fs::read_to_string(&home.config).unwrap())).unwrap();
+    let mut opened = Server::new(&open, "en");
+    let calls = call(&mut opened, "calls", json!({}));
     assert!(text(&calls).contains("declined") && calls["structuredContent"]["calls"].as_array().unwrap().len() == 1, "{calls}");
     // Each call by its address, which `links` follows.
     let address = calls["structuredContent"]["calls"][0]["address"].as_str().unwrap_or_default().to_string();
     assert!(address.starts_with("sioul:call/") && text(&calls).contains(&address) && !address.contains('+'), "{calls}");
-    let tied = call(&mut server, "links", json!({ "uri": address }));
+    let tied = call(&mut opened, "links", json!({ "uri": address }));
     assert_eq!(tied["structuredContent"]["found"], true, "{tied}");
     assert_eq!(tied["structuredContent"]["kind"], "call", "{tied}");
+    // Switch off: its address is followed nowhere, nor tied by an agent.
+    let followed = call(&mut server, "links", json!({ "uri": address }));
+    assert!(followed["isError"] == true && text(&followed).contains("texts and calls"), "{followed}");
+    let tie = call(&mut server, "link", json!({ "from": "sioul:task/saturday", "to": address }));
+    assert_eq!(tie["isError"], true, "{tie}");
     // The moment now, read-only and cheap: what now is for and what reaches the person.
     let now = call(&mut server, "now", json!({}));
     assert!(now["structuredContent"]["reaches"].as_array().unwrap().len() > 20 && text(&now).starts_with("Now: "), "{now}");
@@ -2093,7 +2152,7 @@ fn texts_only_when_allowed_and_never_sent() {
     std::fs::write(&path, format!("{config}\n[mcp]\ntexts = true\n")).unwrap();
     let mut server = Server::new(&path, "en");
     let names: Vec<String> = ask(&mut server, "tools/list", json!({}))["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_string()).collect();
-    assert!(["texts", "search_texts", "draft_text"].iter().all(|n| names.iter().any(|m| m == n)), "{names:?}");
+    assert!(["texts", "search_texts", "draft_text", "calls"].iter().all(|n| names.iter().any(|m| m == n)), "{names:?}");
     let list = call(&mut server, "texts", json!({}));
     let said = text(&list);
     assert_eq!(list["isError"], false, "{said}");

@@ -2524,7 +2524,7 @@ set-account-fetch-help = 0 suit les autres adresses. Une adresse publique peut �
 set-account-shield = Protégée contre le harcèlement
 set-account-shield-help = Pour une adresse publique qui peut amener des insultes : ses courriels sont lus d’abord ; les courriels hostiles sont mis de côté sans montrer leur texte, le reste est résumé par sujet.
 set-account-shield-ai = Laisser l’IA le lire d’abord
-set-account-shield-ai-help = Une IA (Claude, le modèle d’Anthropic, avec votre propre clé) lit les nouveaux courriels de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour Anthropic, selon ses conditions d’utilisation de son API.
+set-account-shield-ai-help = Une IA (Claude, le modèle d’Anthropic, avec votre propre clé) lit les nouveaux courriels de cette adresse pour en dire le ton et le sujet, plus finement que des listes de mots. Le texte quitte cet appareil pour Anthropic, selon ses conditions d’utilisation de son API, ses codes, ses liens de connexion et ses numéros de compte et de carte cachés, comme pour un agent.
 set-day-start = La journée commence à
 set-day-start-help = L’heure à laquelle s’ouvrent le planning du jour et de la semaine.
 set-task-estimate = Une tâche sans durée compte
@@ -2621,8 +2621,8 @@ set-ai-agents-group = Ce que les agents d’IA peuvent utiliser
 set-ai-agents-note = Un agent d’IA que vous connectez avec sioul mcp (Claude Code, Claude Desktop, tout client MCP) lit ce que vous lui ouvrez ici, et y ajoute des tâches, des évènements, des notes, des liens et des brouillons. Ce qu’il lit part chez le fournisseur de son modèle. Il n’envoie, ne supprime et ne paie jamais rien, et ne voit jamais un mot de passe, un code ni un numéro de compte entier.
 set-mcp-outside-projects = Ce qui n’est dans aucun projet
 set-mcp-outside-projects-help = Les autres courriels du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, pour qu’un agent connecté serve tout de suite ; fermez-le si vous voulez que les agents ne voient que les projets que vous ouvrez, chacun sur sa propre page.
-set-mcp-texts = SMS
-set-mcp-texts-help = Désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes. Activé, un agent lit et cherche les SMS que cet ordinateur garde de votre téléphone, codes masqués, et écrit des brouillons qui attendent dans la page des SMS jusqu’à ce que vous les envoyiez vous-même ; jamais à un groupe, jamais un SMS envoyé. Pour ouvrir vos SMS, Sioul lit la clé de partage dans le trousseau de cet ordinateur, et seulement alors ; la clé ne parvient jamais à l’agent.
+set-mcp-texts = SMS et appels
+set-mcp-texts-help = Désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes et les appels disent avec qui vous parlez. Activé, un agent lit et cherche les SMS que cet ordinateur garde de votre téléphone, codes masqués, et écrit des brouillons qui attendent dans la page des SMS jusqu’à ce que vous les envoyiez vous-même ; jamais à un groupe, jamais un SMS envoyé. Il lit aussi les appels de vos téléphones : qui, quand, combien de temps. Désactivé, un appel manqué à rendre lui parvient toujours comme sa tâche. Pour ouvrir vos SMS, Sioul lit la clé de partage dans le trousseau de cet ordinateur, et seulement alors ; la clé ne parvient jamais à l’agent.
 set-mcp-spam = Les outils de votre filtre à indésirables
 set-mcp-spam-help = Un agent peut faire tourner, tester et juger votre propre filtre à indésirables : il voit l’expéditeur et le sujet des courriels qu’il liste, jamais un texte, et une étiquette qu’il donne change ce que le filtre signale sur chaque appareil. Sur les ordinateurs.
 set-theme = Couleurs
@@ -3920,8 +3920,9 @@ porch-conflict-during = { $span }, avec d’autres événements pendant celui-ci
 porch-shortfall-what = Un paiement qu’il ne tiendrait pas
 letters-its-page = Sa page
 rule-order = Chaque courriel va dans la première file qui le prend, dans cet ordre : mis de côté, hostile, ce que votre propre filtre à indésirables signale, codes, projets, ce que vous vous envoyez, votre adresse publique, adresses moins importantes, infolettres, quelqu’un de nouveau, personnes que vous connaissez.
-rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
-rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, comme un expéditeur qu’un domaine seul nomme sur une liste, sauf si un projet ou la règle des infolettres prend le courriel d’abord.
+sync-drafts-refused = Le serveur n’a pas voulu garder un brouillon dans son dossier Brouillons ({ $words }) : Sioul réessaie plus tard, et votre brouillon reste ici.
+rule-people = Toute personne de vos carnets d’adresses, ou sur une liste par sa propre adresse ou par son domaine, vient ici, comme les expéditeurs que vous avez laissés entrer : leur liste compte { $n } entrées, et « Laisser entrer », dans un courriel de quelqu’un de nouveau, les y ajoute.
+rule-screener = Un inconnu (dans aucun de vos carnets d’adresses, sur aucune liste) attend ici, sauf si un projet ou la règle des infolettres prend le courriel d’abord. Un expéditeur qu’un domaine de l’une de vos listes nomme passe sans attendre, une fois prouvé que son courriel vient de ce domaine.
 rule-filed = Un courriel qui dit venir d’une liste de diffusion (List-Id, List-Unsubscribe, Precedence: bulk) est une infolettre. Un expéditeur dont l’adresse contient l’un de ces mots est automatique : { $words }.
 rule-low-none = Aucune adresse n’est encore classée moins importante : le rang d’une adresse se règle sur sa fiche dans Comptes.
 rule-low = Adresses classées moins importantes : { $addresses }. Leurs codes arrivent quand même tout de suite.
@@ -8084,6 +8085,10 @@ attention-sheet-line-mail-quiet = { $first ->
     [yes] Ses courriels s’affichent dans Sioul sans notification { $during }.
    *[other] Ils s’affichent dans Sioul sans notification { $during }.
 }
+attention-sheet-line-mail-gathered = { $first ->
+    [yes] Ses courriels s’affichent dans Sioul, et une notification les annonce aux heures de regroupement { $during }.
+   *[other] Ils s’affichent dans Sioul, et une notification les annonce aux heures de regroupement { $during }.
+}
 attention-sheet-line-mail-later = { $first ->
     [yes] Ses courriels attendent { $during }.
    *[other] Ils attendent { $during }.
@@ -8135,6 +8140,10 @@ attention-always-line-mail-now = { $first ->
 attention-always-line-mail-quiet = { $first ->
     [yes] Les courriels des personnes qui passent toujours s’affichent dans Sioul sans notification { $during }.
    *[other] Ils s’affichent dans Sioul sans notification { $during }.
+}
+attention-always-line-mail-gathered = { $first ->
+    [yes] Les courriels des personnes qui passent toujours s’affichent dans Sioul, et une notification les annonce aux heures de regroupement { $during }.
+   *[other] Ils s’affichent dans Sioul, et une notification les annonce aux heures de regroupement { $during }.
 }
 attention-always-line-mail-later = { $first ->
     [yes] Les courriels des personnes qui passent toujours attendent { $during }.

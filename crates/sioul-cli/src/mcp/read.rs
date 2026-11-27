@@ -455,6 +455,10 @@ pub(super) fn locate_with(s: &Session, wanted: &str, servers: Option<&dyn mailfi
         found => found,
     };
     match found {
+        // One of Sioul's draft copies (both its marks), found by its address or its path: no mail.
+        // The mail index leaves them out, and a fetch never stores them; a draft another program
+        // saved again under the same Message-ID without the mark stays mail, and is read.
+        mailfind::Found::Here(here) if std::fs::read(&here.path).ok().is_some_and(|raw| sioul_core::draftserver::copy_of(&raw).is_some()) => Err(not_found()),
         mailfind::Found::Here(here) => Ok(here),
         mailfind::Found::NotHere => Err(not_found()),
         mailfind::Found::Gone => Err(s.tr.text("mail-find-gone", None)),
@@ -1532,6 +1536,9 @@ pub fn links(s: &Session, args: &Args) -> Result<Answer, String> {
     let rule = access::AgentRule { window: &built.gates, consent: &consent, world: &base };
     let world = loaded.world_with(&built.index, &rule);
     let me = world.describe(&uri);
+    if links::kind_of(&me.uri) == Kind::Call && !consent.calls {
+        return Err(access::CALLS_CLOSED.to_string());
+    }
     if me.found && !access::allows(&consent, &base, &me.uri) {
         return Err(access::kept("This thing"));
     }

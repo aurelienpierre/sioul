@@ -207,8 +207,8 @@ The extensions are unofficial: a service can change and stop one. [The developer
 
 What an AI agent you connect with `sioul mcp` may use. The tab says first what holds for all of them: what an agent reads goes to the provider of its model; it never sends, deletes or pays anything, and never sees a password, a code or a whole account number.
 
-- **Things in no project**: the Porch's other mail, the tasks and notes of no project, the agenda, contacts, the phone's messages and calls, papers, contracts, and the budgets no project uses. Open unless you close it; closed, agents see only the projects you open, each on its page ([Projects](projects.md)), with nothing to set here for them.
-- **Texts**: off unless you turn it on, as texts carry other people's words.
+- **Things in no project**: the Porch's other mail, the tasks and notes of no project, the agenda, contacts, the phone's messages, papers, contracts, and the budgets no project uses. Open unless you close it; closed, agents see only the projects you open, each on its page ([Projects](projects.md)), with nothing to set here for them.
+- **Texts and calls**: off unless you turn it on, as texts carry other people's words and calls say whom you speak with. A missed call you are to return still reaches an agent as its task.
 - **The spam filter's tools**: an agent may run, test and judge your own spam filter, on computers. On unless you turn it off.
 - **Work and school Microsoft accounts**, shown when you have one: their mail stays closed to agents unless you open it here.
 

@@ -279,7 +279,7 @@ Sioul pour Android partage de la même façon, par le dossier que votre applicat
 
 ## Pas encore là {#not-there-yet}
 
-Des tailles arrondies par paliers, et les notes des appareils scellées aussi, pour que le dossier en dise encore moins ; un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les brouillons dans le dossier Brouillons de votre serveur de courriel, pour que d’autres programmes de courriel les voient ; les téléphones autres qu’Android. Le format est simple et documenté ([les notes de conception](https://sioul.aurelienpierre.com/dev/database.html), en anglais), pour qu’ils puissent venir.
+Des tailles arrondies par paliers, et les notes des appareils scellées aussi, pour que le dossier en dise encore moins ; un serveur de base de données au lieu d’un dossier, pour qui en préfère un ; les téléphones autres qu’Android. Le format est simple et documenté ([les notes de conception](https://sioul.aurelienpierre.com/dev/database.html), en anglais), pour qu’ils puissent venir.
 
 ## Côté technique {#for-technical-readers}
 

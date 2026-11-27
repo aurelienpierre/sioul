@@ -243,21 +243,21 @@ pub fn bring(account: &Account, password: &str, place: &ServerRef) -> Result<Pat
     let server = Server::of(account)?;
     let written = crate::fetch::block_on(async {
         let mut session = imap::open(&server, password).await?;
-        let result = bring_in(&mut session, &folder, place.origin, &root).await;
+        let result = bring_in(&mut session, &folder, place.origin, &root, crate::fetch::drafts_of(account, &folder)).await;
         let _ = session.logout().await;
         result
     })?;
     written.ok_or_else(|| SyncError::Said(said::GONE, String::new()))
 }
 
-async fn bring_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin, root: &std::path::Path) -> Result<Option<PathBuf>, SyncError> {
+async fn bring_in(session: &mut Imap, folder: &Folder, origin: ImapOrigin, root: &std::path::Path, drafts_of: Option<&str>) -> Result<Option<PathBuf>, SyncError> {
     let examined = imap::within(COMMAND, session.examine(&folder.name)).await?.map_err(imap::server)?;
     if examined.uid_validity.unwrap_or(0) != origin.validity {
         return Err(SyncError::Said(said::RENUMBERED, String::new()));
     }
     let arrived = imap::within(COMMAND, crate::fetch::fetch_batch(session, &origin.uid.to_string())).await??;
     let verifier = crate::verify::Verifier::new();
-    let written = crate::fetch::store_checked(arrived, origin.validity, root, verifier.as_ref()).await?;
+    let written = crate::fetch::store_checked(arrived, origin.validity, root, verifier.as_ref(), drafts_of).await?;
     Ok(written.into_iter().find(|(uid, _)| *uid == origin.uid).map(|(_, path)| path))
 }
 

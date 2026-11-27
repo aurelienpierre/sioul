@@ -48,6 +48,9 @@ pub struct Report {
     pub elsewhere: Vec<PathBuf>,
     /// Older mail waits: fetching it would take the disk's reserve.
     pub held_back: bool,
+    /// What a server said when it refused to keep a draft in its Drafts
+    /// folder (`draftserver`), each refusal once: said on the account's card.
+    pub drafts_refused: Vec<String>,
 }
 
 const INBOX: &str = "INBOX";
@@ -334,7 +337,27 @@ pub fn sync(account: &Account, password: &str) -> Result<Report, SyncError> {
             report.held_back |= held_back;
         }
         let _ = session.logout().await;
+        if let Ok(report) = report.as_mut() {
+            report.drafts_refused = drafts_round(&server, password, account, true, true).await;
+        }
         report
+    })
+}
+
+/// The drafts' round of an account alone (`draftserver`), on a connection of
+/// its own, once a phone's background step told its mail
+/// (crates/sioul-app/src/steps.rs): nothing new waits for an upload. Bounded
+/// by `within`, what is left of the step's wake lock: what it could not do
+/// is left for the next step, nothing recorded. Drafts with files attached
+/// are left to the window's rounds there. Its refusals are not said (no card
+/// shows them); the window says them.
+pub fn drafts(account: &Account, password: &str, within: Duration) -> Result<(), SyncError> {
+    let server = Server::of(account)?;
+    block_on(async {
+        if tokio::time::timeout(within, drafts_round(&server, password, account, false, false)).await.is_err() {
+            eprintln!("{}: the drafts on the server: left for the next step", account.id);
+        }
+        Ok(())
     })
 }
 
@@ -350,6 +373,39 @@ pub fn inbox(account: &Account, password: &str) -> Result<Report, SyncError> {
         let _ = session.logout().await;
         report
     })
+}
+
+/// The drafts' round (`draftserver`): each draft saved here placed in the
+/// account's Drafts folder, each one gone removed from it, on a connection of
+/// its own, once the account's mail is fetched: a slow or refused upload
+/// never holds back new mail, the rules nor the other folders. No connection
+/// when there is nothing to do, or while another process runs this account's
+/// round. A connection lost is dropped, its work left for the next round;
+/// every failure is written to the standard error. Returns the server's
+/// refusals to say on the account's card, each once.
+async fn drafts_round(server: &Server, password: &str, account: &Account, say: bool, attachments: bool) -> Vec<String> {
+    let Some(_lock) = crate::draftserver::lock(account) else { return Vec::new() };
+    let Some(work) = crate::draftserver::work_for(account, attachments) else { return Vec::new() };
+    let round = async {
+        let mut session = imap::open(server, password).await?;
+        let name = mailbox::role_folder(&mut session, account, Role::Drafts, "Drafts").await?;
+        let capabilities = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?;
+        let (done, broken) = crate::draftserver::act(&mut session, account, &name, &work, crate::draftserver::Limits::of(&capabilities)).await;
+        match &broken {
+            Some(e) => eprintln!("{}: the drafts on the server: {e}", account.id),
+            None => {
+                let _ = session.logout().await;
+            }
+        }
+        crate::draftserver::finish(account, &done, say)
+    };
+    match round.await {
+        Ok(said) => said,
+        Err(e) => {
+            eprintln!("{}: the drafts on the server: {e}", account.id);
+            Vec::new()
+        }
+    }
 }
 
 /// Lists the folders, keeps the list, and fetches every folder but the inbox;
@@ -425,6 +481,8 @@ async fn keep_open(
     let has_idle = imap::within(COMMAND, session.capabilities()).await?.map_err(imap::server)?.has_str("IDLE");
     // The other folders: at the start, then at each quiet round (five minutes), not at each arrival.
     let mut others_due = true;
+    // What a server refused at the drafts' rounds, which run beside this one: said with the next report.
+    let refused: std::sync::Arc<std::sync::Mutex<Vec<String>>> = std::sync::Arc::default();
     while !control.stopped() {
         let (full, others) = control.brings(others_due);
         let mut new = fetch_folder(&mut session, account, &folders::folder(INBOX, None, None), full).await?;
@@ -434,7 +492,20 @@ async fn keep_open(
             new.held_back |= held_back;
         }
         *pause = FIRST_PAUSE;
+        new.drafts_refused = refused.lock().map(|mut said| std::mem::take(&mut *said)).unwrap_or_default();
         report(Ok(new));
+        // The drafts, once the new mail is reported, beside this connection, never before IDLE: on a
+        // connection of their own, so that an upload, however slow, holds back no mail that comes
+        // meanwhile. One round per account at a time (`draftserver::lock`): another skips its turn.
+        if others && crate::draftserver::has_work(account, true) {
+            let (server, password, account, refused) = (server.clone(), password.to_string(), account.clone(), std::sync::Arc::clone(&refused));
+            tokio::spawn(async move {
+                let said = drafts_round(&server, &password, &account, true, true).await;
+                if let Ok(mut kept) = refused.lock() {
+                    kept.extend(said);
+                }
+            });
+        }
         if control.stopped() {
             break;
         }
@@ -503,14 +574,16 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
     let found = imap::within(COMMAND, session.uid_search(&query)).await?.map_err(imap::server)?;
     let root = account.maildir_path().join(&folder.local);
     let (uids, mut newest) = to_fetch(found, last_uid, &root, validity);
-    let mut report = Report { account: account.id.clone(), new: Vec::new(), first: known.is_none(), inbox: inbox.exists, elsewhere: Vec::new(), held_back: false };
+    let mut report = Report { account: account.id.clone(), new: Vec::new(), first: known.is_none(), inbox: inbox.exists, elsewhere: Vec::new(), held_back: false, drafts_refused: Vec::new() };
     // Without DNS (offline), mail is stored unchecked; a later pass checks it.
     let verifier = if uids.is_empty() { None } else { Verifier::new() };
     for batch in uids.chunks(BATCH) {
         let set = batch.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
         let arrived = imap::within(FETCH, fetch_batch(session, &set)).await??;
-        let written = store_checked(arrived, validity, &root, verifier.as_ref()).await?;
-        newest = written.iter().map(|(uid, _)| *uid).fold(newest, u32::max);
+        // Every message the server gave counts as fetched, Sioul's own draft copies too, which are never stored.
+        let given: Vec<u32> = arrived.iter().map(|m| m.uid).collect();
+        let written = store_checked(arrived, validity, &root, verifier.as_ref(), drafts_of(account, folder)).await?;
+        newest = given.into_iter().fold(newest, u32::max);
         report.new.extend(written.into_iter().map(|(_, path)| path));
         let reached = known.map_or_else(|| Reach::first(account), |k| k.reach());
         state.folders.insert(key.into(), FolderState { uidvalidity: validity, last_uid: newest, since: reached.since, everything: reached.everything });
@@ -535,7 +608,7 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
         && full
     {
         mailbox::reconcile(session, &root, validity).await?;
-        backfill(session, &mut state, &state_path, key, known, &root, validity, &mut report).await?;
+        backfill(session, &mut state, &state_path, key, known, &root, validity, &mut report, drafts_of(account, folder)).await?;
         // A renumbered folder's old copies, once the pass went through, under
         // the fetch lock (the unified mailbox's §5.4, `renumbered`), never in a
         // directory another address shares: those the new numbering holds
@@ -564,6 +637,13 @@ async fn fetch_folder(session: &mut Imap, account: &Account, folder: &Folder, fu
         let _ = sioul_core::mailmoved::arrived(&account.id, key, &here);
     }
     Ok(report)
+}
+
+/// The account's own address when `folder` may hold Sioul's copies of its
+/// drafts (its Drafts folder, or Gmail's All Mail, which holds them too):
+/// what `store_checked` leaves out there.
+pub(crate) fn drafts_of<'a>(account: &'a Account, folder: &Folder) -> Option<&'a str> {
+    matches!(folder.role, Role::Drafts | Role::All).then(|| account.address.as_deref().unwrap_or("")).filter(|a| !a.is_empty())
 }
 
 /// The UIDs to fetch of those found, oldest first, and the newest of those
@@ -607,7 +687,7 @@ impl FolderState {
 /// newest first, each round sized first so the disk keeps its reserve; the
 /// folder remembers once it holds everything.
 #[allow(clippy::too_many_arguments)]
-async fn backfill(session: &mut Imap, state: &mut SyncState, state_path: &Path, key: &str, known: FolderState, root: &Path, validity: u32, report: &mut Report) -> Result<(), SyncError> {
+async fn backfill(session: &mut Imap, state: &mut SyncState, state_path: &Path, key: &str, known: FolderState, root: &Path, validity: u32, report: &mut Report, drafts_of: Option<&str>) -> Result<(), SyncError> {
     if known.everything {
         return Ok(());
     }
@@ -634,7 +714,7 @@ async fn backfill(session: &mut Imap, state: &mut SyncState, state_path: &Path, 
     for batch in take.chunks(BATCH) {
         let set = batch.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
         let arrived = imap::within(FETCH, fetch_batch(session, &set)).await??;
-        report.elsewhere.extend(store_checked(arrived, validity, root, verifier.as_ref()).await?.into_iter().map(|(_, path)| path));
+        report.elsewhere.extend(store_checked(arrived, validity, root, verifier.as_ref(), drafts_of).await?.into_iter().map(|(_, path)| path));
     }
     if !report.held_back && take.len() == older.len() {
         let mut folder = state.folders.get(key).copied().unwrap_or(known);
@@ -704,9 +784,16 @@ pub(crate) async fn fetch_batch(session: &mut Imap, set: &str) -> Result<Vec<Arr
 }
 
 /// Checks each message (SPF, DKIM, DMARC…, see `verify`) and writes it into the Maildir.
-pub(crate) async fn store_checked(arrived: Vec<Arrived>, validity: u32, root: &Path, verifier: Option<&Verifier>) -> Result<Vec<(u32, PathBuf)>, SyncError> {
+pub(crate) async fn store_checked(arrived: Vec<Arrived>, validity: u32, root: &Path, verifier: Option<&Verifier>, drafts_of: Option<&str>) -> Result<Vec<(u32, PathBuf)>, SyncError> {
     let mut written = Vec::new();
     for message in arrived {
+        // In the account's Drafts folder (or Gmail's All Mail), `drafts_of` its own address: Sioul's
+        // own copy of a draft (both its marks, from that address: `draftserver::own_copy`) is never
+        // mail here, for no reader of it (agents, the money history, ties, rules) to meet. The marks
+        // in any other folder, or from anyone else, are a message's words: stored as mail.
+        if drafts_of.is_some_and(|own| sioul_core::draftserver::own_copy(&message.raw, own).is_some()) {
+            continue;
+        }
         let raw = match verifier {
             Some(v) => v.stamp(&message.raw).await,
             None => message.raw,
@@ -895,6 +982,55 @@ async fn wait(length: Duration, control: &Control) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sioul's own copy of a draft (both its marks, from the account's own
+    /// address) is never stored by a fetch of the account's Drafts folder
+    /// (or Gmail's All Mail): no reader of the mail kept here meets it. A
+    /// draft another program saved again without the mark is mail; so are
+    /// the same marks from anyone else, and in the inbox or any other folder.
+    #[test]
+    fn a_drafts_copy_is_never_stored() {
+        use sioul_core::draftserver::{HEADER, mark, message_id};
+        crate::dav::stand_in::home();
+        let root = state_dir().join(format!("copies-never-stored-{}", std::process::id()));
+        for sub in ["cur", "new", "tmp"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        let named = message_id("abc123", "r1", "example.org");
+        let copy = format!("Message-ID: <{named}>\r\n{HEADER}: {}\r\nFrom: Me <me@example.org>\r\nSubject: Lunch\r\n\r\nText.\r\n", mark("abc123", "r1"));
+        let saved_again = format!("Message-ID: <{named}>\r\nFrom: Me <me@example.org>\r\nSubject: Lunch\r\n\r\nText, edited elsewhere.\r\n");
+        let forged = copy.replace("Me <me@example.org>", "Someone <someone@elsewhere.example>");
+        let arrived = || vec![Arrived::appended(1, "S".into(), copy.clone().into_bytes()), Arrived::appended(2, "S".into(), saved_again.clone().into_bytes()), Arrived::appended(3, "S".into(), forged.clone().into_bytes())];
+        let mut account = Account::imap("drafts-of", "me@example.org", "localhost", 993, sioul_core::config::Security::Tls, None);
+        account.maildir = Some(root.display().to_string());
+        let drafts = folders::folder("Drafts", Some("/"), Some(Role::Drafts));
+        let written = block_on(store_checked(arrived(), 7, &root, None, drafts_of(&account, &drafts))).unwrap();
+        assert_eq!(written.iter().map(|(uid, _)| *uid).collect::<Vec<_>>(), [2, 3], "the Drafts folder: the account's own copy left out");
+        assert_eq!(drafts_of(&account, &folders::folder("[Gmail]/All Mail", Some("/"), Some(Role::All))), Some("me@example.org"));
+        // The inbox, or any other folder: every message is mail, the marks only words.
+        for folder in [folders::folder(INBOX, None, None), folders::folder("Archive", Some("/"), Some(Role::Archive))] {
+            assert_eq!(drafts_of(&account, &folder), None);
+        }
+        let inbox = root.join("inbox");
+        for sub in ["cur", "new", "tmp"] {
+            std::fs::create_dir_all(inbox.join(sub)).unwrap();
+        }
+        let written = block_on(store_checked(arrived(), 8, &inbox, None, drafts_of(&account, &folders::folder(INBOX, None, None)))).unwrap();
+        assert_eq!(written.len(), 3);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The window's watcher never waits for the drafts' upload before going
+    /// back to IDLE: it starts their round as a task beside itself, once the
+    /// round's mail is reported (re-review R2).
+    #[test]
+    fn the_watcher_never_waits_for_the_drafts() {
+        let source = include_str!("fetch.rs");
+        let watcher = source.split("async fn keep_open(").nth(1).unwrap().split("\n}\n").next().unwrap();
+        let (reported, spawned, idle) = (watcher.find("report(Ok(new))").unwrap(), watcher.find("tokio::spawn(").unwrap(), watcher.find("session.idle()").unwrap());
+        assert!(reported < spawned && spawned < idle, "reported, then the drafts beside, then IDLE");
+        assert!(!watcher.contains("drafts_round(server, password, account, true, true).await"), "never awaited there");
+    }
 
     #[test]
     fn imap_dates_are_english() {

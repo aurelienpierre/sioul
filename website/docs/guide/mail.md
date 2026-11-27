@@ -164,7 +164,7 @@ Attachments are folded under the message, one line each with their kind, name an
 - **Attach**, or drop files on the window. **A paper**, beside it, attaches one of your [papers](papers.md); one that has ended, or is older than usually asked, says so in the list.
 - **Your signature** is put below the text when the draft starts, after the usual "-- " line, so that you see what goes out. Your name and signature are set per address in Accounts (**Name and signature…**).
 - **Answering**, the window says "Below your text: Camille's message of …, quoted". The quote is added when the message leaves.
-- **Drafts are saved as you type.** Closing the window loses nothing: the draft waits under Drafts, on the left. Drafts stay on your devices: they reach your other devices sealed when you [share between them](sharing.md), and never go to your server's Drafts folder.
+- **Drafts are saved as you type.** Closing the window loses nothing: the draft waits under Drafts, on the left. They reach your other devices sealed when you [share between them](sharing.md), and a copy of each goes to your server's Drafts folder within a few minutes, so that your other mail programs see what you are writing. A draft you send or delete in Sioul leaves the server too; one you send or delete in another program is not put back, and stays in Sioul until you change it or delete it here. A draft you encrypt, or one that answers or forwards an encrypted message even with Encrypt unticked, goes there encrypted to your own key, its subject and Bcc too, or not at all when your key is not on that device: nothing of an encrypted conversation is readable on the server. When the server will not keep a draft (a full mailbox), the address's card in Accounts says so once, and Sioul tries again later; your draft stays in Sioul. What it answers or forwards is added at Send, not to the copy; attachments over 25 MB in all stay out of it.
 
 **Send** (or ++ctrl+enter++) waits ten seconds, with **Undo**, before the message leaves. Then a copy goes to Sent. Nothing is ever sent without you.
 
@@ -200,7 +200,7 @@ Outside working hours, work addresses fold in the column, without their dots; so
 
 ## Not there yet {#not-there-yet}
 
-Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, drafts kept on the server, sending later, an encrypted subject, revoking an OpenPGP key or extending one kept on this device, lookalike domain names. They are planned. Sioul has no S/MIME.
+Emptying the trash or the junk in one go, copying a message to a folder, saving it as a file, sending later, an encrypted subject, revoking an OpenPGP key or extending one kept on this device, lookalike domain names. They are planned. Sioul has no S/MIME.
 
 ## Going further {#going-further}
 

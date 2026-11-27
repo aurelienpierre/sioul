@@ -7,7 +7,9 @@
 //! calls (`calls`: each call of its history and each its screening
 //! declined, by its address, `sioul:call/…`: which way, with whom, when, how
 //! long, answered or not; `links` follows its ties to their card and to the
-//! task it made). Read from the logs the sharing carries to this computer; none
+//! task it made), behind the texts' switch (`[mcp] texts`, decided 27
+//! November 2026: the Porch's missed calls reach agents only as the tasks
+//! they make). Read from the logs the sharing carries to this computer; none
 //! when the parts "Messages from your phone" and "Calls" are off.
 //!
 //! A code or an approval never left the phone: its line says that one came,
@@ -182,7 +184,7 @@ pub fn calls(s: &Session, args: &Args) -> Result<Answer, String> {
     let all = calls::objects(&calls::folder(), &blocked, now_ms);
     let in_scope: Vec<&calls::Object> = all.iter().filter(|o| o.at >= from_ms).collect();
     let name_of = |o: &calls::Object| o.screened.as_ref().map(|h| h.name.clone()).unwrap_or_default();
-    let (open, closed): (Vec<&calls::Object>, Vec<&calls::Object>) = in_scope.into_iter().partition(|o| consent.outside && !kept.holds(&name_of(o), &o.key));
+    let (open, closed): (Vec<&calls::Object>, Vec<&calls::Object>) = in_scope.into_iter().partition(|o| consent.outside && consent.calls && !kept.holds(&name_of(o), &o.key));
     let closed = closed.len();
     let mut lines = Vec::new();
     let mut out = Vec::new();
@@ -219,6 +221,11 @@ pub fn calls(s: &Session, args: &Args) -> Result<Answer, String> {
 
 /// The tools that read or draft texts, which `[mcp] texts` keeps from agents unless it is true.
 pub const TEXTS: [&str; 3] = ["texts", "search_texts", "draft_text"];
+
+/// The tools behind the texts' switch: the texts' and the calls' (decided 27
+/// November 2026; `Consent::calls` keeps the calls' addresses from `links`,
+/// `link` and `find` the same way).
+pub const BEHIND_TEXTS: [&str; 4] = ["texts", "search_texts", "draft_text", "calls"];
 
 /// What opens the texts sealed at rest on this computer: the sharing key,
 /// read from the keyring now, while `[mcp] texts` is true, and only for this.

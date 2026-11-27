@@ -74,12 +74,19 @@ pub struct Consent {
     /// What is a person's kept from agents, by address (`keep_persons`): a
     /// closed person's papers and address, others' health papers.
     persons: BTreeSet<String>,
+    /// The calls of the person's phones (`sioul:call/…`): open to agents
+    /// only with the texts' switch (`[mcp] texts`, decided 27 November
+    /// 2026), as they tell whom the person speaks with, when and how long;
+    /// closed otherwise, ties to them left out and counted. A missed call's
+    /// task stays a task, as its project and the switch for things in no
+    /// project say.
+    pub calls: bool,
 }
 
 impl Consent {
     /// Every project closed, things outside projects as `outside` says; nothing tied.
     pub fn new(projects: &[Project], outside: bool) -> Consent {
-        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new(), persons: BTreeSet::new(), made: Vec::new() }
+        Consent { outside, projects: projects.iter().map(|c| (c.id.clone(), c.ai)).collect(), listed: projects.to_vec(), tied: HashMap::new(), gate: None, kept_accounts: BTreeMap::new(), kept_mail: BTreeSet::new(), health: BTreeSet::new(), health_unread: false, private: BTreeSet::new(), persons: BTreeSet::new(), made: Vec::new(), calls: false }
     }
 
     /// Keeps the events of the agendas shared for their availability alone
@@ -480,6 +487,9 @@ impl Consent {
     /// Whether a thing reaches an agent, by its address.
     pub fn allows(&self, uri: &str) -> bool {
         if links::kind_of(uri.trim()) == Kind::Mail && self.kept_by_account(Some(uri), None) {
+            return false;
+        }
+        if links::kind_of(uri.trim()) == Kind::Call && !self.calls {
             return false;
         }
         if self.private.contains(uri.trim()) || self.persons.contains(uri.trim()) {

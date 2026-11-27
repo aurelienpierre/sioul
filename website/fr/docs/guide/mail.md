@@ -164,7 +164,7 @@ Les pièces jointes sont repliées sous le courriel, une ligne chacune, avec leu
 - **Joindre**, ou déposer des fichiers sur la fenêtre. **Un papier**, à côté, joint l’un de vos [papiers](papers.md) ; un papier qui a expiré, ou plus vieux que ce qui est demandé d’habitude, le dit dans la liste.
 - **Votre signature** est placée sous le texte quand le brouillon commence, après la ligne habituelle « -- », pour que vous voyiez ce qui part. Votre nom et votre signature se règlent par adresse dans Comptes (**Nom et signature…**).
 - **En répondant**, la fenêtre dit « Sous votre texte : le courriel de Camille du …, cité ». La citation est ajoutée quand le courriel part.
-- **Les brouillons s’enregistrent pendant que vous tapez.** Fermer la fenêtre ne perd rien : le brouillon attend dans Brouillons, à gauche. Les brouillons restent sur vos appareils : ils rejoignent vos autres appareils scellés quand vous [partagez entre eux](sharing.md), et ne vont jamais dans le dossier Brouillons de votre serveur.
+- **Les brouillons s’enregistrent pendant que vous tapez.** Fermer la fenêtre ne perd rien : le brouillon attend dans Brouillons, à gauche. Ils rejoignent vos autres appareils scellés quand vous [partagez entre eux](sharing.md), et une copie de chacun va dans le dossier Brouillons de votre serveur en quelques minutes, pour que vos autres logiciels de courriel voient ce que vous écrivez. Un brouillon que vous envoyez ou supprimez dans Sioul quitte aussi le serveur ; un brouillon envoyé ou supprimé dans un autre logiciel n’y est pas remis, et reste dans Sioul jusqu’à ce que vous le changiez ou le supprimiez ici. Un brouillon que vous chiffrez, ou qui répond à un courriel chiffré ou le transfère même quand Chiffrer est décoché, y va chiffré pour votre propre clé, son objet et ses Cci aussi, ou pas du tout quand votre clé n’est pas sur cet appareil : rien d’une conversation chiffrée n’est lisible sur le serveur. Quand le serveur refuse de garder un brouillon (une boîte pleine), la fiche de l’adresse dans Comptes le dit une fois, et Sioul réessaie plus tard ; votre brouillon reste dans Sioul. Ce qu’il répond ou transfère s’ajoute à l’envoi, pas à la copie ; les pièces jointes au-delà de 25 Mo en tout n’y vont pas.
 
 **Envoyer** (ou ++ctrl+"Entrée"++) attend dix secondes, avec **Annuler**, avant que le courriel parte. Puis une copie va dans Envoyés. Rien n’est jamais envoyé sans vous.
 
@@ -200,7 +200,7 @@ En dehors des heures de travail, les adresses du travail se replient dans la col
 
 ## Pas encore là {#not-there-yet}
 
-Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, garder les brouillons sur le serveur, envoyer plus tard, un objet chiffré, révoquer une clé OpenPGP ou prolonger une clé gardée sur cet appareil, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
+Vider la corbeille ou les indésirables d’un coup, copier un courriel dans un dossier, l’enregistrer comme fichier, envoyer plus tard, un objet chiffré, révoquer une clé OpenPGP ou prolonger une clé gardée sur cet appareil, les noms de domaine qui en imitent d’autres. C’est prévu. Sioul n’a pas S/MIME.
 
 ## Pour aller plus loin {#going-further}
 

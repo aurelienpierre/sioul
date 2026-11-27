@@ -207,8 +207,8 @@ Les extensions ne sont pas officielles : un service peut changer et en arrête
 
 Ce qu’un agent d’IA que vous connectez avec `sioul mcp` peut utiliser. L’onglet dit d’abord ce qui vaut pour tous : ce qu’un agent lit part chez le fournisseur de son modèle ; il n’envoie, ne supprime et ne paie jamais rien, et ne voit jamais un mot de passe, un code ni un numéro de compte entier.
 
-- **Ce qui n’est dans aucun projet** : les autres courriels du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages et les appels du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, sauf si vous le fermez ; fermé, les agents ne voient que les projets que vous ouvrez, chacun sur sa page ([Projets](projects.md)), sans rien à régler ici pour eux.
-- **SMS** : désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes.
+- **Ce qui n’est dans aucun projet** : les autres courriels du Porche, les tâches et les notes d’aucun projet, l’agenda, les contacts, les messages du téléphone, les papiers, les contrats et les budgets qu’aucun projet n’utilise. Ouvert, sauf si vous le fermez ; fermé, les agents ne voient que les projets que vous ouvrez, chacun sur sa page ([Projets](projects.md)), sans rien à régler ici pour eux.
+- **SMS et appels** : désactivé tant que vous ne l’activez pas, car les SMS portent les mots d’autres personnes et les appels disent avec qui vous parlez. Un appel manqué à rendre parvient toujours à un agent comme sa tâche.
 - **Les outils de votre filtre à indésirables** : un agent peut faire tourner, tester et juger votre propre filtre à indésirables, sur les ordinateurs. Activé, sauf si vous le désactivez.
 - **Comptes Microsoft professionnels et scolaires**, affiché quand vous en avez un : leurs courriels restent fermés aux agents tant que vous ne les ouvrez pas ici.
 

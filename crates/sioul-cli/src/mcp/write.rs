@@ -56,6 +56,7 @@ fn known(world: &World, consent: &Consent, uri: &str) -> Result<String, String> 
         Kind::Web => Ok(canonical),
         Kind::File | Kind::Other => Err(unknown()),
         Kind::Project if world.describe(&canonical).found && !consent.is_open(&links::id_of(&canonical)) => Err(access::closed_project(&links::id_of(&canonical))),
+        Kind::Call if !consent.calls => Err(access::CALLS_CLOSED.to_string()),
         _ if world.describe(&canonical).found && !access::allows(consent, world, &canonical) => Err(access::kept(&format!("“{}”", shown()))),
         _ if world.describe(&canonical).found => Ok(canonical),
         _ => Err(unknown()),

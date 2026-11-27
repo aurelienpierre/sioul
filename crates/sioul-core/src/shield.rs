@@ -14,7 +14,9 @@
 //! use, French and English built in, and your changes), matched on whole
 //! words with case and accents ignored; an insult near "you" weighs more,
 //! and shouting adds to it. When you allow it, an AI reads the message too
-//! (`ai_prompt`), more finely; its answer is kept and takes precedence.
+//! (`ai_prompt`), more finely; its answer is kept and takes precedence. The
+//! AI gets what agents get (`mask::message`): codes, links that sign in,
+//! account, card and social security numbers masked.
 
 use crate::text::{find_word, fold};
 use crate::words::ShieldWords;
@@ -175,8 +177,14 @@ pub fn reading(card: &crate::card::Card, answers: Option<&std::collections::BTre
     answers.and_then(|answers| answers.get(&ai_key(card)?)).cloned().unwrap_or_else(|| assess(&card.subject, &card.excerpt))
 }
 
-/// What an AI is asked about a message, to answer in one line of JSON.
-pub fn ai_prompt(subject: &str, text: &str) -> String {
+/// What an AI is asked about a message, to answer in one line of JSON: its
+/// subject and its first 4,000 characters, masked as agents get them
+/// (`mask::message`, with `words`: the codes the window finds are hidden
+/// too). The shield needs the message's tone, never its codes, links that
+/// sign in, or account and card numbers (decided 26 November 2026).
+pub fn ai_prompt(words: &crate::words::Words, subject: &str, text: &str) -> String {
+    // Masked whole, then cut: a code is found with the words around it, and a cut falls in a mark at worst.
+    let (subject, text) = crate::mask::message(words, subject, text);
     let excerpt: String = text.chars().take(4000).collect();
     format!(
         "You screen mail sent to a public contact address, so that its owner, who is vulnerable to harassment, never reads hostile text. \
@@ -304,7 +312,31 @@ mod tests {
         assert!(read.summary.starts_with("Complains"));
         assert!(read_ai_answer("no json").is_none());
         assert!(read_ai_answer("} said the model, then {").is_none());
-        assert!(ai_prompt("s", "t").contains("Subject: s"));
+        assert!(ai_prompt(crate::words::Words::builtin_ref(), "s", "t").contains("Subject: s"));
+    }
+
+    /// The AI shield's question carries what agents get: a code, a link that
+    /// signs in, an IBAN and a card number masked, the rest of the text as it
+    /// is (decided 26 November 2026).
+    #[test]
+    fn the_ai_is_sent_what_agents_get() {
+        let words = crate::words::Words::builtin_ref();
+        let body = "Hello, your verification code is 482913.\nSign in at https://site.example/login?token=9fK2a8LmQ7xR4tZ1 to see it.\nYou are an idiot.";
+        let prompt = ai_prompt(words, "Your verification code 482913", body);
+        for secret in ["482913", "9fK2a8LmQ7xR4tZ1"] {
+            assert!(!prompt.contains(secret), "{secret} reached the prompt: {prompt}");
+        }
+        assert!(prompt.contains("[code hidden]") && prompt.contains("[link hidden]"), "{prompt}");
+        assert!(prompt.contains("You are an idiot."), "the tone stays: {prompt}");
+        let (subject, text) = crate::mask::message(words, "Your verification code 482913", body);
+        assert!(prompt.contains(&format!("Subject: {subject}\n\n{text}")), "the agents' very mask");
+        // Account and card numbers, in a message with no code.
+        let bill = ai_prompt(words, "Your bill", "Pay to FR76 3000 6000 0112 3456 7890 189, or by card 4111 1111 1111 1111.");
+        assert!(!bill.contains("3456 7890") && !bill.contains("4111 1111"), "{bill}");
+        assert!(bill.contains("[IBAN …0189]") && bill.contains("[card …1111]"), "{bill}");
+        // A password's message: its words stay out, as an agent's.
+        let password = ai_prompt(words, "Your access", "Your temporary password is Kq-77zz.");
+        assert!(!password.contains("Kq-77zz"), "{password}");
     }
 
     /// The AI's answer is kept under `ai_key` and read back under it, by

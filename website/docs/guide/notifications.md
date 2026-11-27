@@ -48,6 +48,7 @@ The words, the same everywhere on the page:
 - **Gathered outside your work and admin hours** (messages): at once in work and admin hours; in leisure and meals, at the next gathered time (09:00, 13:00 and 18:00 unless you set others), with other apps' automatic notifications; held while you sleep, pause or take Free time, and under do-not-disturb. A stranger's text on a Saturday morning comes at 13:00, not on Monday.
 - **In your work and admin hours**, **in your work hours**.
 - **Shown, never told** (mail): it stays on the Porch without a word.
+- **At the gathered times** (mail, in work, admin, leisure and meals): shown on the Porch as it comes, and told in one notification at the next gathered time ([below](#the-gathered-times)).
 - **Never**: mail kept in its lane, never told; a message held at every time, in its own app, the card What reaches you now counting what the phone holds; a call to voicemail.
 
 Outside a circle's times, your safe senders' mail waits on the Porch, shown; everyone else's waits out of sight. A message is told only while what it was written to, an address or an app, is for now ([Hours](hours.md)).
@@ -197,6 +198,7 @@ What reaches you ▸ **Other apps on this phone** (on a computer, **Notification
 
 - **On a computer**, one notification then says which of your sites have news, for the sites of those hours, on the computer you are at, with **Open the Porch**. With an exception that makes your sites' gathered notifications come when you are awake, nothing is gathered: each site's news comes as it arrives, in work, admin, leisure and meals; with one that says never, no gathered notification is made at all.
 - **On Android**, other apps' notifications from automatons come back then.
+- **Mail**, on every device, for the people whose row says **At the gathered times** then (a circle's, a person's own times, an exception): it is on the Porch as soon as it comes, and one notification names it at the next gathered time, on the device you use. Mail that comes within two minutes after a gathered time comes with it, and so does mail that reached your server before it but was fetched later; what waited is told at your device's first look after it, however late (a computer that slept through it, a phone's late check), never skipped to the next one. Under do-not-disturb or in a slot of time for you, where the row shows mail without telling it, nothing is told; it comes at the next gathered time after. Meals' own notices keep theirs.
 - **A gathered time** that falls while their row says later is skipped: what waits comes at the next one.
 
 ## Each person's and each source's own {#exceptions}

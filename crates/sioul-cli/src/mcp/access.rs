@@ -33,6 +33,8 @@ pub const KEPT: &str = "(kept from agents)";
 pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     let gate = sioul_core::porch::Gate::load(&s.config, jiff::Timestamp::now().as_second());
     let mut consent = Consent::of(loaded, s.config.mcp.outside_projects, Some(std::sync::Arc::new(gate)));
+    // The calls follow the texts' switch (decided 27 November 2026).
+    consent.calls = s.config.mcp.texts;
     consent.keep_accounts(kept_accounts(&s.config), &loaded.mail);
     let recorded = sioul_core::health::HealthState::errand_uids(&sioul_core::health::HealthState::default_path());
     consent.keep_errands(loaded, recorded.as_ref());
@@ -119,6 +121,9 @@ pub fn kept(what: &str) -> String {
     )
 }
 
+/// A call asked for by its address while calls are kept from agents (`Consent::calls`).
+pub const CALLS_CLOSED: &str = "The calls of the person's phones are kept from agents unless the person allows texts and calls (Settings ▸ AI agents, “Texts and calls”; [mcp] texts = true). A missed call the person is to return comes as a task.";
+
 /// A project named by the agent, closed to agents.
 pub fn closed_project(id: &str) -> String {
     format!("The project “{}” is closed to agents: Sioul neither reads it nor writes into it for an agent. The person opens it on its page in Sioul.", crate::one_line(id))
@@ -139,10 +144,11 @@ pub fn allows(consent: &Consent, world: &World, uri: &str) -> bool {
     let uri = world.canonical(uri);
     match links::kind_of(&uri) {
         Kind::Mail => allows_mail(consent, world, &uri),
-        // A call is outside projects, and kept with any card its number is on (the index ties it to
-        // every one: `ties::CallSource::cards`), as the calls tool keeps it. A call the index does not
-        // know (gone from its phone's month) has no card to read: outside projects alone decides, and
-        // the calls tool never gives its address anyway.
+        // A call is outside projects, behind the texts' switch (`Consent::calls`), and kept with any
+        // card its number is on (the index ties it to every one: `ties::CallSource::cards`), as the
+        // calls tool keeps it. A call the index does not know (gone from its phone's month) has no card
+        // to read: the switch and outside projects alone decide, and the calls tool never gives its
+        // address anyway.
         Kind::Call => consent.outside && consent.allows(&uri) && world.ties.is_none_or(|t| t.index.node(&uri).is_none_or(|node| t.index.ties_of(node).filter(|seen| seen.how == sioul_core::ties::How::Contact).all(|seen| consent.allows(t.index.address(seen.other))))),
         _ => consent.allows(&uri),
     }

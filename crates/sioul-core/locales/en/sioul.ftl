@@ -2491,7 +2491,7 @@ set-account-fetch-help = 0 follows the other addresses. A public address can be 
 set-account-shield = Protected against harassment
 set-account-shield-help = For a public address that may bring insults: its mail is read first; hostile messages are set aside without showing their text, the rest is summarised by topic.
 set-account-shield-ai = Let the AI read it first
-set-account-shield-ai-help = An AI (Claude, Anthropic's model, with your own key) reads new mail of this address to say its tone and topic, more finely than word lists. The text leaves this device for Anthropic, under its terms for its API.
+set-account-shield-ai-help = An AI (Claude, Anthropic's model, with your own key) reads new mail of this address to say its tone and topic, more finely than word lists. The text leaves this device for Anthropic, under its terms for its API, with its codes, sign-in links and account and card numbers hidden, as for an agent.
 set-day-start = The day starts at
 set-day-start-help = The hour the day and week planning open on.
 set-task-estimate = A task without an estimate counts
@@ -2588,8 +2588,8 @@ set-ai-agents-group = What AI agents may use
 set-ai-agents-note = An AI agent you connect with sioul mcp (Claude Code, Claude Desktop, any MCP client) reads what you open to it here, and adds tasks, events, notes, ties and drafts there. What it reads goes to the provider of its model. It never sends, deletes or pays anything, and never sees a password, a code or a whole account number.
 set-mcp-outside-projects = Things in no project
 set-mcp-outside-projects-help = The Porch's other mail, tasks and notes of no project, the agenda, contacts, the phone's messages and calls, papers, contracts, and the budgets no project uses. Open, so that an agent you connect is of use at once; close it if you want agents to see only the projects you open, each on its own page.
-set-mcp-texts = Texts
-set-mcp-texts-help = Off unless you turn it on, as texts carry other people's words. On, an agent reads and searches the texts this computer keeps from your phone, codes masked, and writes drafts that wait in the Texts page until you send them yourself; never a group, never a text sent. To open your texts, Sioul reads the sharing key from this computer's keyring, and only then; the key never reaches the agent.
+set-mcp-texts = Texts and calls
+set-mcp-texts-help = Off unless you turn it on, as texts carry other people's words and calls say whom you speak with. On, an agent reads and searches the texts this computer keeps from your phone, codes masked, and writes drafts that wait in the Texts page until you send them yourself; never a group, never a text sent. It reads your phones' calls too: who, when, how long. Off, a missed call you are to return still reaches it as its task. To open your texts, Sioul reads the sharing key from this computer's keyring, and only then; the key never reaches the agent.
 set-mcp-spam = The spam filter's tools
 set-mcp-spam-help = An agent may run, test and judge your own spam filter: it sees the sender and the subject of the mail it lists, never a text, and a label it gives changes what the filter flags on every device. On computers.
 set-theme = Colours
@@ -3887,8 +3887,9 @@ porch-conflict-during = { $span }, with other events during it
 porch-shortfall-what = A payment it would not hold
 letters-its-page = Its page
 rule-order = Each message goes to the first lane that takes it, in this order: set aside, hostile, what your own spam filter flags, codes, projects, what you send yourself, your public address, less important addresses, newsletters, someone new, people you know.
-rule-people = Anyone in your address books, or on a list by their own address, comes here, as do the senders you let in: your list of them holds { $n } entries, and “Let in”, in a message from someone new, adds them.
-rule-screener = A stranger (in none of your address books, on no list) waits here, and so does a sender a domain alone names on a list, unless a project or the newsletter rule takes the message first.
+sync-drafts-refused = The server would not keep a draft in its Drafts folder ({ $words }): Sioul tries again later, and your draft stays here.
+rule-people = Anyone in your address books, or on a list by their own address or by their domain, comes here, as do the senders you let in: your list of them holds { $n } entries, and “Let in”, in a message from someone new, adds them.
+rule-screener = A stranger (in none of your address books, on no list) waits here, unless a project or the newsletter rule takes the message first. A sender a domain on one of your lists names skips it, once their mail is proven to come from that domain.
 rule-filed = A message that says it comes from a mailing list (List-Id, List-Unsubscribe, Precedence: bulk) is a newsletter. A sender whose address holds one of these words is automatic: { $words }.
 rule-low-none = No address is ranked less important yet: an address's rank is set on its card in Accounts.
 rule-low = Addresses ranked less important: { $addresses }. Their codes still come at once.
@@ -8028,6 +8029,10 @@ attention-sheet-line-mail-quiet = { $first ->
     [yes] Their mail is shown in Sioul without a notification { $during }.
    *[other] It is shown in Sioul without a notification { $during }.
 }
+attention-sheet-line-mail-gathered = { $first ->
+    [yes] Their mail is shown in Sioul, with a notification at the gathered times { $during }.
+   *[other] It is shown in Sioul, with a notification at the gathered times { $during }.
+}
 attention-sheet-line-mail-later = { $first ->
     [yes] Their mail waits { $during }.
    *[other] It waits { $during }.
@@ -8079,6 +8084,10 @@ attention-always-line-mail-now = { $first ->
 attention-always-line-mail-quiet = { $first ->
     [yes] Mail from your Always through people is shown in Sioul without a notification { $during }.
    *[other] It is shown in Sioul without a notification { $during }.
+}
+attention-always-line-mail-gathered = { $first ->
+    [yes] Mail from your Always through people is shown in Sioul, with a notification at the gathered times { $during }.
+   *[other] It is shown in Sioul, with a notification at the gathered times { $during }.
 }
 attention-always-line-mail-later = { $first ->
     [yes] Mail from your Always through people waits { $during }.

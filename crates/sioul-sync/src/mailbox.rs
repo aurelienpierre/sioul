@@ -583,7 +583,7 @@ fn arrive(to: &Account, folder: &str, place: Option<ImapOrigin>, raw: Vec<u8>, f
         return forget();
     }
     let verifier = crate::verify::Verifier::new();
-    let written = crate::fetch::block_on(crate::fetch::store_checked(vec![crate::fetch::Arrived::appended(place.uid, flags, raw)], place.validity, &dir, verifier.as_ref()));
+    let written = crate::fetch::block_on(crate::fetch::store_checked(vec![crate::fetch::Arrived::appended(place.uid, flags, raw)], place.validity, &dir, verifier.as_ref(), None));
     if written.is_ok() {
         forget();
     }

@@ -243,6 +243,8 @@ pub mod description;
 pub mod doses;
 pub mod downloads;
 pub mod draftcopies;
+// draftserver: each draft's copy in its account's Drafts folder, for other mail programs (docs/client.md, "Drafts on the server").
+pub mod draftserver;
 pub mod dose_backs;
 pub mod dose_reminders;
 pub mod filelock;
@@ -282,6 +284,8 @@ pub mod mailsearch;
 pub mod maildir;
 pub mod matching;
 pub mod mailnote;
+// mask: what no AI is handed as it is (codes, links that sign in, account and card numbers), for agents and the AI shield alike.
+pub mod mask;
 // mailpass: readers of every message kept on this device, each read once (money, topics).
 pub mod mailpass;
 pub mod mailto;

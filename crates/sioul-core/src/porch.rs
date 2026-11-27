@@ -1415,11 +1415,21 @@ pub struct Context<'a> {
 struct Sender {
     /// Its row in who may reach you when.
     who: crate::reach::Who,
-    /// Past the screener: a sender you let in, or marked safe, or named for
-    /// themselves (their address on a list, their card, its categories, your
-    /// address books). A domain alone does not make a sender known: their
-    /// first mail still waits in the screener, at the times its list says.
+    /// Known: a sender you let in, or marked safe, or named for themselves
+    /// (their address on a list, their card, its categories, your address
+    /// books). A domain alone does not make a sender known: a borrowed name
+    /// is still looked for in their mail, and a shielded address still sends
+    /// it to its own lane.
     knows: bool,
+    /// Named on one of your lists by their domain alone (neutral or
+    /// restricted; a safe domain makes them known), and the message proven to
+    /// come from that domain (`Trust::Verified`: DMARC passed aligned, or a
+    /// DKIM signature of that domain passed, as Sioul's own checks and your
+    /// provider's say them): past the screener, since putting the domain
+    /// there was your choice (decided 26 November 2026), at the times its
+    /// list says. Anyone's server can pass SPF for itself while showing the
+    /// domain in From: without that proof, the screener as before.
+    listed: bool,
     /// The message is not authenticated: nothing proves it comes from the address it shows.
     unproven: bool,
 }
@@ -1439,16 +1449,17 @@ impl Context<'_> {
     /// whoever the address is: no People lane, a stranger's times, no
     /// protection from spam. A blocked address stays blocked: keeping someone
     /// out asks for no proof.
-    fn sender(&self, card: &Card, authenticated: bool) -> Sender {
+    fn sender(&self, card: &Card, authenticated: bool, trust: Trust) -> Sender {
         let judged = card.from_address.as_deref().map_or_else(Judged::stranger, |a| self.senders.judge(a));
         if judged.who == crate::reach::Who::Blocked {
-            return Sender { who: judged.who, knows: false, unproven: false };
+            return Sender { who: judged.who, knows: false, listed: false, unproven: false };
         }
         if !authenticated {
-            return Sender { who: crate::reach::Who::Stranger, knows: false, unproven: true };
+            return Sender { who: crate::reach::Who::Stranger, knows: false, listed: false, unproven: true };
         }
         let knows = self.known.knows(card) || judged.who == crate::reach::Who::Safe || matches!(judged.by, By::Address | By::Card | By::Category | By::Book | By::LetIn);
-        Sender { who: judged.who, knows, unproven: false }
+        let listed = judged.by == By::Domain && judged.who != crate::reach::Who::Stranger && trust == Trust::Verified;
+        Sender { who: judged.who, knows, listed, unproven: false }
     }
 
     /// Sent from one of your own addresses, and verified: a file sent from
@@ -1513,7 +1524,7 @@ fn checks_with(card: &Card, ctx: &Context, auth: Option<trust::AuthResults>, det
     let assessment = ctx.shielded.then(|| crate::shield::reading(card, ctx.assessments));
     // Who sent it, judged once: a stranger when nothing authenticates it.
     let authenticated = trust::authenticated(auth.as_ref(), &card.headers, &sealers(ctx.trusted_ids, ctx.own_domains));
-    let sender = ctx.sender(card, authenticated);
+    let sender = ctx.sender(card, authenticated, trust);
     // Spam is said of strangers' mail only: Sioul's own filter reads nothing protected.
     let protected = protected(card, ctx, trust, code.as_ref(), sender);
     Checks { auth, trust, proof, code, assessment, sender, protected }
@@ -1739,8 +1750,10 @@ fn filed(card: &Card, ctx: &Context) -> Option<(Lane, Reason)> {
     (card.is_list || automatic).then_some((Lane::Filed, reason))
 }
 
+/// A stranger's mail, or mail nothing proves the sender of: the screener.
+/// A sender a domain on one of your lists names skips it.
 fn screener(sender: Sender) -> Option<(Lane, Reason)> {
-    (!sender.knows).then_some((Lane::Screener, Reason::FirstMessage))
+    (!sender.knows && !sender.listed).then_some((Lane::Screener, Reason::FirstMessage))
 }
 
 /// What decides every message's triage beside its file and the clock,
@@ -2498,12 +2511,50 @@ mod tests {
         let card = |from: &str| Card::from_bytes(format!("From: {from}\r\nSubject: Hello\r\n\r\nHi.\r\n").as_bytes()).unwrap();
         assert_eq!(triage(card("Jane <jane@example.org>"), &ctx).lane, Lane::People);
         assert_eq!(triage(card("Someone <someone@elsewhere.example>"), &ctx).lane, Lane::Screener);
-        // Their own entry makes them known; a domain alone does not.
+        // Their own entry makes them known.
         assert_eq!(triage(card("Cousin <cousin@family.example>"), &ctx).lane, Lane::People);
         let forged = Card::from_bytes(b"From: Jane <jane@example.org>\r\nAuthentication-Results: mx.example.net; dmarc=fail (p=reject) header.from=example.org\r\nSubject: Hello\r\n\r\nHi.\r\n").unwrap();
         let trusted = ["mx.example.net".to_string()];
         let strict = Context { trusted_ids: &trusted, ..ctx };
         assert_eq!(triage(forged, &strict).lane, Lane::SetAside);
+    }
+
+    /// A sender named only by a domain on one of your lists (neutral or
+    /// restricted) skips the screener, at its list's times, when the message
+    /// is proven to come from that domain (DMARC aligned, or the domain's own
+    /// DKIM signature): putting the domain there was your choice (decided 26
+    /// November 2026). Mail that only passes SPF for some other server waits
+    /// as before. The domain does not make them known otherwise: a borrowed
+    /// name in their mail is still set aside.
+    #[test]
+    fn a_domain_on_a_list_skips_the_screener() {
+        use crate::reach::Who;
+        let senders = Senders { neutral: SenderList::parse("@partner.example"), restricted: SenderList::parse("*@client.example"), ..Senders::default() };
+        let none = SenderList::default();
+        let trusted = ["mx.example.net".to_string()];
+        let ctx = Context { projects: None, known: &none, senders: &senders, trusted_ids: &trusted, now: None, priority: Priority::Average, own_domains: &[], shielded: false, assessments: None, words: None, own_addresses: &[], spam: None };
+        let mail = |from: &str, auth: &str| Card::from_bytes(format!("{auth}From: {from}\r\nSubject: Hello\r\n\r\nHi.\r\n").as_bytes()).unwrap();
+        let passed = |domain: &str| format!("Authentication-Results: mx.example.net; spf=pass smtp.mailfrom={domain}; dkim=pass header.d={domain}; dmarc=pass header.from={domain}\r\n");
+        let neutral = triage(mail("Ops <ops@partner.example>", &passed("partner.example")), &ctx);
+        assert_eq!((neutral.lane.clone(), neutral.reasons.last()), (Lane::People, Some(&Reason::KnownPerson)), "{:?}", neutral.reasons);
+        assert_eq!(senders.who("boss@client.example"), Who::Restricted);
+        assert_eq!(triage(mail("Boss <boss@client.example>", &passed("client.example")), &ctx).lane, Lane::People);
+        // A stranger still waits; so does mail nothing proves comes from the listed domain.
+        assert_eq!(triage(mail("Someone <someone@elsewhere.example>", &passed("elsewhere.example")), &ctx).lane, Lane::Screener);
+        let failed = "Authentication-Results: mx.example.net; spf=fail smtp.mailfrom=partner.example; dkim=fail header.d=partner.example; dmarc=none header.from=partner.example\r\n";
+        let unproven = triage(mail("Ops <ops@partner.example>", failed), &ctx);
+        assert_eq!(unproven.lane, Lane::Screener, "{:?}", unproven.reasons);
+        assert!(unproven.reasons.contains(&Reason::NotAuthenticated), "{:?}", unproven.reasons);
+        // Passing SPF for someone's own server, nothing aligned with the listed domain: the screener.
+        let not_aligned = "Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=attacker.example; dkim=none; dmarc=none header.from=partner.example\r\n";
+        let spoofed = triage(mail("Ops <anyone@partner.example>", not_aligned), &ctx);
+        assert_eq!(spoofed.lane, Lane::Screener, "{:?}", spoofed.reasons);
+        // A DKIM signature of the domain itself, without DMARC: proven, past the screener.
+        let signed = "Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=partner.example; dkim=pass header.d=partner.example; dmarc=none header.from=partner.example\r\n";
+        assert_eq!(triage(mail("Ops <ops@partner.example>", signed), &ctx).lane, Lane::People);
+        // A borrowed name is still looked for: the domain alone does not make the sender known.
+        let borrowed = triage(mail("PayPal <service@partner.example>", &passed("partner.example")), &ctx);
+        assert_eq!(borrowed.lane, Lane::SetAside, "{:?}", borrowed.reasons);
     }
 
     /// An invitation (iMIP: a text/calendar part, METHOD:REQUEST) from a
@@ -3052,6 +3103,7 @@ mod tests {
         assert!(stranger.reasons.last().is_some_and(Reason::is_spam));
         // A safe sender, a domain on a list, a code, a project's route: their lanes.
         assert_eq!(triage(flagged("Jane <jane@example.org>", "Lunch", "Tomorrow?"), &ctx).lane, Lane::People);
+        // Its domain on a list, nothing proving it comes from there: the screener, never spam.
         assert_eq!(triage(flagged("Ops <ops@partner.example>", "Hello", "Hi."), &ctx).lane, Lane::Screener);
         assert_eq!(triage(flagged("Shop <codes@shop.example>", "Your verification code", "Your verification code: 482913"), &ctx).lane, Lane::RightNow);
         assert_eq!(triage(flagged("Avis <avis@dgfip.finances.example>", "Avis", "Votre avis."), &ctx).lane, Lane::Project("taxes".into()));
