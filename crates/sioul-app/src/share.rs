@@ -45,11 +45,33 @@ fn unhex(text: &str) -> Option<[u8; 32]> {
 }
 
 fn key() -> Option<[u8; 32]> {
-    let mut held = KEY.lock().ok()?;
-    if held.is_none() {
-        *held = sioul_sync::secret::named(share::KEY_NAME).and_then(|k| unhex(&k));
+    key_checked().ok().flatten()
+}
+
+/// The sharing's key, read once from the keyring and held: none kept
+/// (`Ok(None)`), or the keyring not answering now (an error, nothing held,
+/// asked again at the next call). The Sharing page alone says a late
+/// keyring, and keeps showing sharing as set up (`status`); everything else
+/// reads `on`, false then, and the guards that ask whether another device
+/// may be there take it as yes (`configured() && !on()`).
+
+#[cfg(test)]
+thread_local! {
+    /// Tests: the keyring not answering on this thread (`key_checked`).
+    pub(crate) static KEYRING_LATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Tests: sharing set up on this thread (a folder chosen), whatever the stand-in folders hold (`configured`).
+    pub(crate) static SET_UP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+fn key_checked() -> Result<Option<[u8; 32]>, sioul_sync::SyncError> {
+    #[cfg(test)]
+    if KEYRING_LATE.with(std::cell::Cell::get) {
+        return Err(sioul_sync::SyncError::Keyring("a stand-in for a keyring that does not answer".into()));
     }
-    *held
+    let Ok(mut held) = KEY.lock() else { return Ok(None) };
+    if held.is_none() {
+        *held = sioul_sync::secret::named(share::KEY_NAME)?.and_then(|k| unhex(&k));
+    }
+    Ok(*held)
 }
 
 /// The sharing folder and its key, the key asked of the keyring only once a
@@ -473,6 +495,8 @@ struct Status {
     sealed: bool,
     /// Projects and budgets travel here too.
     projects: bool,
+    /// The folders of the notes that never travel, as the settings say them (`Config::share_never`).
+    never: Vec<String>,
     lines: Vec<String>,
     problems: Vec<String>,
     /// What travels from this device, part by part.
@@ -538,7 +562,9 @@ struct Part {
 pub(crate) fn status(folder: &str) -> String {
     let here = here();
     let roots = synced_roots();
-    let on = here.folder_path().is_some() && key().is_some();
+    // The keyring not answering now: still on, said (`key_checked`).
+    let keyring = key_checked();
+    let on = here.folder_path().is_some() && !matches!(keyring, Ok(None));
     // Shared: the folder in use. Not yet: the one being chosen, else where it was, else a suggestion.
     let saved = here.folder.clone().filter(|f| !f.is_empty());
     let chosen = match (&saved, folder.is_empty()) {
@@ -560,6 +586,10 @@ pub(crate) fn status(folder: &str) -> String {
     let mirror = mirrored();
     // The format of what travels, as this device knows it (its devices listed below, every one holding it back among them).
     let formats = if on { key().map(|key| share::formats(&path, &key, &memory_path(), &here.id, now_ms())) } else { None };
+    // What letting the sharing's app password go could not do once sharing stopped (`join::let_go`), said once.
+    if let Some(said) = crate::join::LET_GO_SAID.lock().ok().and_then(|mut said| said.take()) {
+        lines.push(said);
+    }
     if on {
         // Kept in step with a server by Sioul itself: its folder there said, not its copy here.
         match &mirror {
@@ -570,6 +600,9 @@ pub(crate) fn status(folder: &str) -> String {
             None => lines.push(say("share-on", &[("folder", chosen.clone())])),
         }
         attached(&here);
+        if keyring.is_err() {
+            lines.push(tr().text("share-keyring-late", None));
+        }
         // Each heard of by its notes or its entry, the later (a phone put away restates its entry hourly).
         let others = match key() {
             Some(key) => share::others_heard(&path, &key, &here.id),
@@ -586,7 +619,7 @@ pub(crate) fn status(folder: &str) -> String {
         }
         if let Some((at, said)) = LAST.lock().ok().and_then(|l| l.clone()) {
             lines.push(say("share-last", &[("when", when(at))]));
-            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:") && !p.starts_with("share-medicines-emptied")).map(|p| problem_text(p)));
+            problems.extend(said.iter().filter(|p| !kept_a_day(p) && !p.starts_with("share-vanished:") && !p.starts_with("share-never-held:") && !p.starts_with("share-busy") && !p.starts_with("share-newer:") && !p.starts_with("share-medicines-emptied")).map(|p| problem_text(p)));
             medicines.extend(said.iter().filter_map(|p| medicines_of(p)));
             vanished.extend(said.iter().filter(|p| !p.strip_prefix("share-vanished:").and_then(|rest| rest.rsplit_once(':')).is_some_and(|(folder, _)| held_stores.iter().any(|store| store == folder))).filter_map(|p| vanished_of(p)));
         }
@@ -666,7 +699,7 @@ pub(crate) fn status(folder: &str) -> String {
     let add_device = if on && !cfg!(target_os = "android") { crate::join::add_device(server_place(mirror.as_ref(), &path)) } else { Vec::new() };
     let gone_devices = if on { gone_rows(&path) } else { Vec::new() };
     let leaving = if on { leaving_rows(&path) } else { Vec::new() };
-    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
+    json(&Status { on, folder: chosen, sealed: share::sealed(&path), projects: here.shares("projects", &config), never: config.share_never.clone(), lines, problems, parts, vanished, medicines, withheld, gone_devices, leaving, backup, servers: server_accounts(&config), mirrored: mirror.is_some(), build, can_again, again, carried_ask, replace, add_device })
 }
 
 /// Settings ▸ Devices, as JSON: whether sharing is on here, and every
@@ -970,6 +1003,19 @@ fn problem_text(code: &str) -> String {
         Some(("share-emptied", name)) => say("share-emptied", &[("file", file(name))]),
         Some((code @ ("share-list-back" | "share-list-held" | "share-not-medicines" | "share-medicines-emptied" | "share-medicines-emptied-there"), name)) => say(code, &[("file", file(name))]),
         Some(("share-format-wait", name)) => say("share-format-wait", &[("file", file(name))]),
+        // The host's room short of a full round, or of this device's records
+        // waiting to go up (`share::host_room`): its numbers, in words, each
+        // in a sentence of its own (the third review of 26 November 2026, D3).
+        Some(("share-host-full", numbers)) => {
+            let (left, need) = numbers.split_once(':').unwrap_or((numbers, "0"));
+            let bytes = |n: &str| size_words(n.parse().unwrap_or(0));
+            say("share-host-full", &[("left", bytes(left)), ("need", bytes(need))])
+        }
+        Some(("share-host-behind", numbers)) => {
+            let (left, behind) = numbers.split_once(':').unwrap_or((numbers, "0"));
+            let bytes = |n: &str| size_words(n.parse().unwrap_or(0));
+            say("share-host-behind", &[("left", bytes(left)), ("behind", bytes(behind))])
+        }
         None if code == "share-files-unreadable" => tr().text("share-files-unreadable", None),
         None if matches!(code, "share-no-seal" | "share-sealed-otherwise" | "share-twin" | "share-own-ahead" | "share-own-cut" | "share-device-counts" | "share-device-unknown") => tr().text(code, None),
         _ => code.to_string(),
@@ -1038,6 +1084,12 @@ pub(crate) fn take_out_medicines(file: &str) -> String {
 }
 
 fn vanished_of(code: &str) -> Option<Vanished> {
+    // A folder that never travels, of which this device still holds files
+    // sealed before (`share-never-held`): its own words, the same button.
+    if let Some((folder, count)) = code.strip_prefix("share-never-held:").and_then(|rest| rest.rsplit_once(':')) {
+        let shown = share::shown(folder).trim_end_matches('/').to_string();
+        return Some(Vanished { store: folder.to_string(), text: say("share-never-held", &[("folder", shown), ("count", count.to_string())]) });
+    }
     let (folder, count) = code.strip_prefix("share-vanished:")?.rsplit_once(':')?;
     // That folder, what "Take them out everywhere" confirms: it alone, never a folder beside it (review of 17 October 2026, M1).
     let store = folder;
@@ -1239,11 +1291,40 @@ fn leaving_rows(folder: &Path) -> Vec<LeavingRow> {
     let named = |id: &str| entries.iter().find(|e| e.id == id).map_or_else(|| tr().text("share-device-unnamed", None), |e| device_named(&e.name, e.form_or_kind()));
     let heard = |id: &str| key.map_or(0, |key| share::heard_of(folder, &key, &memory, &here.id, id)) / 1000;
     let mut rows = rows_of(&leaving, &named, &heard, jiff::Timestamp::now().as_second());
+    if let Some(row) = weight_row(weight_of(folder), &leaving) {
+        rows.insert(0, row);
+    }
     let (count, bytes) = still_on_the_server(folder, &memory);
     if count > 0 {
         rows.push(LeavingRow { text: say("share-leaving-next", &[("count", count.to_string()), ("size", size_words(bytes))]), device: String::new() });
     }
     rows
+}
+
+/// The sharing folder's weight on this device, and how much of it leaves by
+/// itself (what `rows_of` says, summed), in one line before those rows; none
+/// when nothing waits (24 November 2026: 600 MB on the server, and nothing
+/// said how much of it would go, nor when).
+fn weight_row(weight: u64, leaving: &share::Leaving) -> Option<LeavingRow> {
+    let waits: u64 = leaving.unread.values().chain(leaving.older.values()).map(|(_, bytes)| *bytes).sum::<u64>() + leaving.untold.1 + leaving.texts.1 + leaving.in_time.1;
+    (waits > 0).then(|| LeavingRow { text: say("share-leaving-weight", &[("size", size_words(weight.max(waits))), ("leaving", size_words(waits))]), device: String::new() })
+}
+
+/// What the sharing folder holds on this device, in bytes: every file's
+/// size, its folders walked (sizes only, nothing opened).
+fn weight_of(folder: &Path) -> u64 {
+    let Ok(items) = std::fs::read_dir(folder) else { return 0 };
+    items
+        .filter_map(Result::ok)
+        .filter_map(|item| {
+            let kind = item.file_type().ok()?;
+            if kind.is_dir() {
+                Some(weight_of(&item.path()))
+            } else {
+                kind.is_file().then(|| item.metadata().map_or(0, |m| m.len()))
+            }
+        })
+        .sum()
 }
 
 /// The contents of notes and papers taken out that wait for a device to read
@@ -1430,6 +1511,52 @@ pub(crate) fn start(folder: &str, passphrase: &str, again: &str) -> String {
 /// Projects and money shared from this device, or not; "" when kept, else why not.
 pub(crate) fn set_projects(on: bool) -> String {
     set_part("projects", on)
+}
+
+/// The folders of the notes that never travel (`Config::share_never`), from
+/// a JSON list of paths from the notes folder, kept in the settings that
+/// travel, so that every device leaves the same folders out. Each kept as
+/// said, once, blank ones and any leaving the notes folder refused; a folder
+/// added is refused unless it is a folder of the notes folder here, and the
+/// papers' folder (a part of its own) is refused too (the third review of 26
+/// November 2026, C4). "" when kept, else why not.
+pub(crate) fn set_never(folders: &str) -> String {
+    let Ok(said) = serde_json::from_str::<Vec<String>>(folders) else { return format!("share-never?{folders}") };
+    let before = load_config().share_never;
+    let notes = load_config().notes_root_path();
+    let mut kept: Vec<String> = Vec::new();
+    for folder in said.iter().map(|f| f.trim().trim_matches('/').to_string()) {
+        if let Some(refused) = never_refused(&folder, notes.as_deref(), &before) {
+            return refused;
+        }
+        if !kept.iter().any(|k| share::never_folders(std::slice::from_ref(k)) == share::never_folders(std::slice::from_ref(&folder))) {
+            kept.push(folder);
+        }
+    }
+    // Between two exchanges: one never lists the notes half with the old list.
+    between_exchanges(|| sioul_core::config::set_value(&crate::backend::config_path(), "share_never", &sioul_core::config::SettingValue::Texts(kept.clone())).err().unwrap_or_default())
+}
+
+/// Why a folder said for "never travels" is refused, in words; none when it
+/// is kept. One already in the list (`before`) is kept as it is, whatever
+/// this device holds (another device may hold that folder alone); a new one
+/// must leave nothing of the notes folder (`share::never_folders`), name a
+/// folder of it on this device, and not be the papers' own folder, which
+/// travels as a part of its own.
+fn never_refused(folder: &str, notes: Option<&Path>, before: &[String]) -> Option<String> {
+    let normal = share::never_folders(std::slice::from_ref(&folder.to_string()));
+    if normal.is_empty() {
+        return Some(say("share-never-refused", &[("folder", folder.to_string())]));
+    }
+    if before.iter().any(|b| share::never_folders(std::slice::from_ref(b)) == normal) {
+        return None;
+    }
+    let papers = sioul_core::papers::FOLDER.trim_matches('/');
+    if normal[0].trim_end_matches('/').eq_ignore_ascii_case(papers) || normal[0].to_lowercase().starts_with(&format!("{}/", papers.to_lowercase())) {
+        return Some(say("share-never-papers", &[("folder", folder.to_string())]));
+    }
+    let exists = notes.is_some_and(|notes| notes.join(normal[0].trim_end_matches('/')).is_dir());
+    (!exists).then(|| say("share-never-no-folder", &[("folder", folder.to_string())]))
 }
 
 /// A part shared from this device, or not (`share::PARTS`): this device's own
@@ -1737,6 +1864,8 @@ pub(crate) fn stop() -> String {
         // Starting again later reads the others first, as the first time.
         let memory = memory_path();
         let _ = std::fs::remove_file(memory.with_file_name("files.json"));
+        // What the last exchange wrote, noted (`share::journal`): of this sharing alone.
+        let _ = std::fs::remove_file(memory.with_file_name("journal.jsonl"));
         let _ = std::fs::remove_file(&memory);
         here.save(&state).err().unwrap_or_default()
     })
@@ -1768,13 +1897,22 @@ pub(crate) fn writes_format_2() -> bool {
     on() && share::writes(&memory_path()) >= 2
 }
 
-/// Whether sharing is on here: a folder and its key.
+/// Whether sharing is on here: a folder and its key read. The keyring not
+/// answering now: not on, while sharing is still set up (`configured`), so
+/// that every guard asking whether another device may be there takes it as
+/// yes, never as this device alone (the invoices' numbers refused, the doses
+/// in doubt: the fourth review's re-review, R1); the Sharing page says the
+/// keyring is late (`status`).
 pub(crate) fn on() -> bool {
-    share::Here::load(&state_dir()).folder_path().is_some() && key().is_some()
+    configured() && key().is_some()
 }
 
 /// Whether sharing is set up here (a folder chosen), its key read or not.
 pub(crate) fn configured() -> bool {
+    #[cfg(test)]
+    if SET_UP.with(std::cell::Cell::get) {
+        return true;
+    }
     share::Here::load(&state_dir()).folder_path().is_some()
 }
 
@@ -2417,7 +2555,8 @@ pub(crate) fn exchange_here(fetch_first: bool) -> Option<Result<share::Outcome, 
         match attached(&here) {
             Some(at) => {
                 let state = sioul_sync::remote::State::load(&memory);
-                let login = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of);
+                // The keyring not answering now: no pull, the sync app asked and waited for.
+                let login = load_config().accounts.iter().find(|a| a.id == state.account).map_or(Ok(None), login_of).ok().flatten();
                 let came = sioul_sync::remote::alarm_news(&memory, &at, &here.id, key, login, &FETCHING, since, std::sync::Arc::new(|| jiff::Timestamp::now().as_second()), &mut ask_sync_app);
                 match came {
                     sioul_sync::remote::AlarmNews::Pulled => log_backup("alarm: the others' news pulled since it began".into()),
@@ -2663,6 +2802,7 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             // Sioul's own link to the server down an hour after it last went
             // through: said once in the status line for that stretch (`server_down`).
             say_server_down(&qt, now.as_second());
+            say_host_full(&qt, now.as_second());
         }
         // On a phone nobody reads the status line: what each exchange did goes to its
         // log (adb logcat), counts and problems only, never what was exchanged.
@@ -3009,11 +3149,21 @@ fn send_to_server(here: &share::Here, again: bool) -> Option<sioul_sync::remote:
         return None;
     }
     let config = load_config();
-    let Some(login) = config.accounts.iter().find(|a| a.id == state.account).and_then(login_of) else {
-        if again {
-            sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host()));
+    let login = match config.accounts.iter().find(|a| a.id == state.account).map_or(Ok(None), login_of) {
+        Ok(Some(login)) => login,
+        // The keyring not answering now: sent at a later turn, said when asked.
+        Err(_) => {
+            if again {
+                sioul_sync::remote::Sending::note_again(&memory, now, "keyring");
+            }
+            return None;
         }
-        return None;
+        Ok(None) => {
+            if again {
+                sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host()));
+            }
+            return None;
+        }
     };
     let sealed = share::own_sealed(&memory, &here.id);
     // The texts to send first, on their own lane: never behind a large file.
@@ -3126,7 +3276,7 @@ fn send_texts(here: &share::Here) {
     if !state.confirmed_for(&folder) || !(state.mode == sioul_sync::remote::MIRROR || state.sending()) {
         return;
     }
-    let Some(login) = server_login(&state, &load_config()) else { return };
+    let Ok(Some(login)) = server_login(&state, &load_config()) else { return };
     // A multimedia message's media first, before the request that names them (docs/texts.md).
     let media = if texts { crate::texts::media_to_send() } else { std::collections::BTreeMap::new() };
     let sent = sioul_sync::remote::send_urgent(&memory, &folder, &here.id, &login, jiff::Timestamp::now().as_second(), &media);
@@ -3188,10 +3338,11 @@ pub(crate) fn send_again(qt: &QtThread, shared: &Arc<Shared>) {
         let now = jiff::Timestamp::now().as_second();
         match (mirrored(), here.folder_path()) {
             (Some(state), Some(folder)) => match server_login(&state, &load_config()) {
-                Some(login) => {
+                Ok(Some(login)) => {
                     sioul_sync::remote::again_mirror(&memory, &folder, &here.id, &login, now);
                 }
-                None => sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host())),
+                Ok(None) => sioul_sync::remote::Sending::note_again(&memory, now, &format!("no-account-for:{}", state.host())),
+                Err(_) => sioul_sync::remote::Sending::note_again(&memory, now, "keyring"),
             },
             (None, Some(_)) => {
                 send_to_server(&here, true);
@@ -3227,12 +3378,14 @@ fn mirrored() -> Option<sioul_sync::remote::State> {
 /// from the keyring (`loginflow::kept`), whatever account the contacts and
 /// calendars use; else the account's, by its id, with its password. None
 /// without either. The password for the requests only, never kept nor said.
-fn server_login(state: &sioul_sync::remote::State, config: &Config) -> Option<sioul_sync::remote::Login> {
+/// The keyring not answering now: an error, the step left for the next turn,
+/// never a login without its password (which says none is kept here).
+fn server_login(state: &sioul_sync::remote::State, config: &Config) -> Result<Option<sioul_sync::remote::Login>, sioul_sync::SyncError> {
     if !state.user.is_empty() {
-        let password = sioul_sync::loginflow::kept(&state.user, &state.host());
-        return Some(sioul_sync::remote::Login { account: state.account.clone(), url: state.url.clone(), user: state.user.clone(), password });
+        let password = sioul_sync::loginflow::kept(&state.user, &state.host())?;
+        return Ok(Some(sioul_sync::remote::Login { account: state.account.clone(), url: state.url.clone(), user: state.user.clone(), password }));
     }
-    config.accounts.iter().find(|a| a.id == state.account).and_then(login_of)
+    config.accounts.iter().find(|a| a.id == state.account).map_or(Ok(None), login_of)
 }
 
 /// A step of Sioul keeping the folder itself (`sioul_sync::remote::step`):
@@ -3249,7 +3402,7 @@ fn mirror_step_for(folder: &Path, own: &str, whole: bool, urgent: bool) {
     let Some(state) = mirrored().filter(|s| s.confirmed_for(folder)) else { return };
     let now = jiff::Timestamp::now().as_second();
     let whole = whole && (urgent || now - state.tried >= 20);
-    let Some(login) = server_login(&state, &load_config()) else { return };
+    let Ok(Some(login)) = server_login(&state, &load_config()) else { return };
     let stepped = sioul_sync::remote::step(&memory_path(), folder, own, &login, now, whole);
     // On a phone, its log (adb logcat): counts and a code, never a name nor
     // an address; what the listings read, in bytes, so that a night's mobile
@@ -3279,7 +3432,7 @@ fn mirror_sealed(folder: &Path, own: &str, key: &[u8; 32]) -> usize {
     if !sioul_sync::remote::sealed_due(&memory, folder, own, now) {
         return 0;
     }
-    let Some(login) = server_login(&state, &load_config()) else { return 0 };
+    let Ok(Some(login)) = server_login(&state, &load_config()) else { return 0 };
     // A metered or slow connection: a large one at most every ten minutes, as the sending does.
     let pulled = sioul_sync::remote::sealed_step(&memory, folder, own, &login, key, now, frugal_now());
     if cfg!(target_os = "android") && (pulled.fetched + pulled.held + pulled.paced + pulled.let_go > 0 || pulled.listed_bytes > 0 || pulled.problem.is_some()) {
@@ -3370,7 +3523,7 @@ pub(crate) fn start_on_server(qt: &QtThread, shared: &Arc<Shared>, account: Stri
                 return Err(tr().text("share-short", None));
             }
             let config = load_config();
-            let login = config.accounts.iter().find(|a| a.id == account).and_then(login_of).ok_or_else(|| tr().text("share-server-none", None))?;
+            let login = config.accounts.iter().find(|a| a.id == account).map_or(Ok(None), login_of).map_err(|e| e.sentence(tr(), &account))?.ok_or_else(|| tr().text("share-server-none", None))?;
             if login.password.is_none() {
                 return Err(tr().text("share-server-no-password", None));
             }
@@ -3486,13 +3639,21 @@ fn attached(here: &share::Here) -> Option<PathBuf> {
 /// The contacts-and-calendars accounts whose server may keep files
 /// Nextcloud's way (found under `/remote.php/`: Nextcloud, Murena, ownCloud),
 /// each with its password from the keyring as their sync has it. Google's never.
-fn logins(config: &Config) -> Vec<sioul_sync::remote::Login> {
-    config.accounts.iter().filter(|a| a.auth.as_deref() != Some("google")).filter_map(login_of).collect()
+/// The keyring not answering now for one of them: its error, nothing looked for with fewer.
+fn logins(config: &Config) -> Result<Vec<sioul_sync::remote::Login>, sioul_sync::SyncError> {
+    config.accounts.iter().filter(|a| a.auth.as_deref() != Some("google")).filter_map(|a| login_of(a).transpose()).collect()
 }
 
-fn login_of(account: &sioul_core::config::Account) -> Option<sioul_sync::remote::Login> {
-    let url = account.url.clone().filter(|u| account.is_dav() && u.contains("/remote.php/"))?;
-    Some(sioul_sync::remote::Login { account: account.id.clone(), url, user: account.login()?.to_string(), password: sioul_sync::secret::password(account).ok() })
+/// The keyring not answering now: an error (`server_login`); no password kept: a login without one.
+fn login_of(account: &sioul_core::config::Account) -> Result<Option<sioul_sync::remote::Login>, sioul_sync::SyncError> {
+    let Some(url) = account.url.clone().filter(|u| account.is_dav() && u.contains("/remote.php/")) else { return Ok(None) };
+    let Some(user) = account.login().map(str::to_string) else { return Ok(None) };
+    let password = match sioul_sync::secret::password(account) {
+        Ok(password) => Some(password),
+        Err(sioul_sync::SyncError::Keyring(e)) => return Err(sioul_sync::SyncError::Keyring(e)),
+        Err(_) => None,
+    };
+    Ok(Some(sioul_sync::remote::Login { account: account.id.clone(), url, user, password }))
 }
 
 /// What the Nextcloud client says it carries, on a computer: its `nextcloud.cfg`.
@@ -3538,6 +3699,7 @@ fn backup_words(said: &str) -> String {
         "seal-gone" => "the folder holds no seal any more",
         "no-account" => "no account with a Nextcloud server",
         "no-account-for" => "no account on that server",
+        "keyring" => "the keyring did not answer",
         "no-seal" => "no seal in the folder here",
         "off" => "switched off here",
         other => other,
@@ -3572,11 +3734,13 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
         return;
     }
     let config = load_config();
-    let login = |account: &str| config.accounts.iter().find(|a| a.id == account).and_then(login_of);
+    let login = |account: &str| config.accounts.iter().find(|a| a.id == account).map_or(Ok(None), login_of);
+    // The keyring not answering now: nothing looked for nor concluded, at a later turn.
+    let Ok(own_login) = login(&state.account) else { return };
     // Its account gone, or its password: looked for again.
-    if state.look_due(&folder, now) || (state.confirmed_for(&folder) && login(&state.account).is_none_or(|l| l.password.is_none())) {
+    if state.look_due(&folder, now) || (state.confirmed_for(&folder) && own_login.as_ref().is_none_or(|l| l.password.is_none())) {
         let places = sioul_sync::remote::places(&folder, &nextcloud_configs());
-        let logins = logins(&config);
+        let Ok(logins) = logins(&config) else { return };
         state = sioul_sync::remote::find(&memory, &folder, &logins, &places, now);
         log_backup(if state.confirmed_for(&folder) { format!("the folder found on {}", state.host()) } else { format!("the folder not found on {} account(s): {}", logins.len(), backup_words(&state.said)) });
     }
@@ -3603,7 +3767,7 @@ fn fetch_from_server(here: &share::Here, urgent: bool) {
         log_backup(format!("next pull at its pace ({pace_said})"));
         return;
     }
-    let Some(login) = login(&state.account) else { return };
+    let Ok(Some(login)) = login(&state.account) else { return };
     let pulled = sioul_sync::remote::pull(&memory, &folder, &here.id, &login, now);
     let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
     log_backup(match &pulled.problem {
@@ -3660,7 +3824,7 @@ fn fetch_wanted(folder: &Path, key: &[u8; 32]) -> usize {
     if !state.fetching() || !state.confirmed_for(folder) || !sioul_sync::remote::wanted_due(&memory, folder, now) {
         return 0;
     }
-    let Some(login) = load_config().accounts.iter().find(|a| a.id == state.account).and_then(login_of) else { return 0 };
+    let Ok(Some(login)) = load_config().accounts.iter().find(|a| a.id == state.account).map_or(Ok(None), login_of) else { return 0 };
     let pulled = sioul_sync::remote::fetch_wanted(&memory, folder, &login, key, now, frugal_now());
     let at = jiff::Timestamp::now().to_zoned(sioul_core::zone::current()).strftime("%H:%M:%S").to_string();
     log_backup(match &pulled.problem {
@@ -3737,7 +3901,12 @@ fn server_down(state: &sioul_sync::remote::State, sending: &sioul_sync::remote::
     };
     let host = state.host();
     let host = if host.is_empty() { about.to_string() } else { host };
-    Some((since, say("share-server-down-status", &[("host", host), ("when", when(since)), ("why", why)])))
+    // That the sync app still carries the folder is said only where the
+    // cause is Sioul's own (its password, its sign-in), which the sync app's
+    // own sign-in does not share; never for a server out of reach or full,
+    // which stops it too (the review of 24 November 2026, 6).
+    let words = if matches!(kind, "no-password" | "login") { "share-server-down-own" } else { "share-server-down-status" };
+    Some((since, say(words, &[("host", host), ("when", when(since)), ("why", why)])))
 }
 
 /// A stretch of Sioul's own link to the server failing, as this window
@@ -3782,6 +3951,33 @@ fn say_server_down(qt: &QtThread, now: i64) {
     let due = STRETCH.lock().is_ok_and(|mut stretch| server_down_due(&mut stretch, down.as_ref().map(|(since, _)| *since), now));
     if let Some((_, line)) = down.filter(|_| due) {
         crate::backend::set_status(qt, line);
+    }
+}
+
+/// The host's room short of what this device has waiting to go up there, in
+/// words (`remote::State::room`, `behind`, as the pull found them within the
+/// hour): none when the room is enough, not said by the server, or older
+/// (24 November 2026: 17.8 MB of records refused by a host with 12 MB left,
+/// and nothing said where Sioul is seen).
+fn host_full(state: &sioul_sync::remote::State, now: i64) -> Option<String> {
+    let room = state.room?;
+    (state.room_at > 0 && now - state.room_at <= 3600 && state.behind > room).then(|| say("share-host-full-status", &[("host", state.host()), ("left", size_words(room)), ("behind", size_words(state.behind))]))
+}
+
+/// `host_full` said in the status line once for as long as it lasts, at once:
+/// said again only after the room was found enough in between.
+fn say_host_full(qt: &QtThread, now: i64) {
+    static SAID: Mutex<bool> = Mutex::new(false);
+    let line = host_full(&sioul_sync::remote::State::load(&memory_path()), now);
+    if let Ok(mut said) = SAID.lock() {
+        match line {
+            Some(line) if !*said => {
+                *said = true;
+                crate::backend::set_status(qt, line);
+            }
+            None => *said = false,
+            _ => {}
+        }
     }
 }
 
@@ -3975,7 +4171,9 @@ mod tests {
         assert_eq!(since, 1_000);
         assert!(line.contains("cloud.example.org") && line.contains("example") && !line.contains('{'), "{line}");
         let sending = Sending { said: "network:cloud.example.org".into(), last: 500, ..sending };
-        assert_eq!(server_down(&state, &sending).map(|(since, _)| since), Some(500), "the earlier stretch is said");
+        let (since, out_of_reach) = server_down(&state, &sending).unwrap();
+        assert_eq!(since, 500, "the earlier stretch is said");
+        assert!(line != out_of_reach && out_of_reach.len() < line.len(), "the sync app's carrying said only for a cause of Sioul's own: {out_of_reach}");
         assert_eq!(server_down(&State { last: 0, ..state.clone() }, &Sending { last: 0, ..sending.clone() }), None, "what never went through: the panel says it");
         state.on = Some(false);
         assert_eq!(server_down(&state, &sending), None, "switched off");
@@ -3993,7 +4191,7 @@ mod tests {
             for (name, value) in [("host", "cloud.example.org"), ("when", "07:30"), ("why", "why"), ("account", "example")] {
                 args.set(name, value.to_string());
             }
-            for id in ["share-server-down-status", "share-server-down-no-password"] {
+            for id in ["share-server-down-status", "share-server-down-own", "share-server-down-no-password"] {
                 let said = tr.text(id, Some(&args));
                 assert!(!said.is_empty() && said != id && !said.contains('{'), "{language}: {id}: {said}");
             }
@@ -4172,6 +4370,42 @@ mod tests {
         assert_eq!(row("older-build").text, said("share-leaving-unread-earlier", "older-build", 1, 1_000), "an earlier Sioul said apart");
         assert_eq!(row("live-phone").text, said("share-leaving-unread", "live-phone", 2, 4_000));
         assert_eq!(row("old-laptop").device, "", "never heard of: nothing to offer");
+    }
+
+    /// The folder's weight here and what of it leaves by itself, summed from
+    /// every row's reason, said first in one line; nothing when nothing waits.
+    #[test]
+    fn the_folder_s_weight_and_what_leaves_it_are_said_in_one_line() {
+        let leaving = share::Leaving {
+            unread: [("phone".to_string(), (196, 300_000_000))].into(),
+            in_time: (1805, 70_000_000),
+            ..share::Leaving::default()
+        };
+        let row = weight_row(600_000_000, &leaving).expect("a line when something waits");
+        assert_eq!(row.text, say("share-leaving-weight", &[("size", size_words(600_000_000)), ("leaving", size_words(370_000_000))]));
+        assert!(!row.text.contains('{') && row.device.is_empty(), "{}", row.text);
+        assert!(weight_row(600_000_000, &share::Leaving::default()).is_none(), "nothing waits: nothing said");
+        let base = std::env::temp_dir().join(format!("sioul-weight-{}", std::process::id()));
+        std::fs::create_dir_all(base.join("blobs")).unwrap();
+        std::fs::write(base.join("a.jsonl"), vec![b'a'; 1_000]).unwrap();
+        std::fs::write(base.join("blobs").join("b"), vec![b'b'; 2_500]).unwrap();
+        assert_eq!(weight_of(&base), 3_500, "every file, its folders walked");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// The host's room short of this device's records waiting to go up is
+    /// said with its numbers; not when the room is enough, unknown, or the
+    /// figure is older than an hour.
+    #[test]
+    fn a_host_short_of_room_is_said_with_its_numbers() {
+        let now = 1_790_000_000;
+        let state = sioul_sync::remote::State { url: "https://cloud.example.org/remote.php/dav/files/someone/Sioul/".into(), room: Some(12_000_000), behind: 17_800_000, room_at: now - 60, ..Default::default() };
+        let line = host_full(&state, now).expect("said");
+        assert_eq!(line, say("share-host-full-status", &[("host", state.host()), ("left", size_words(12_000_000)), ("behind", size_words(17_800_000))]));
+        assert!(line.contains("cloud.example.org") && !line.contains('{'), "{line}");
+        assert!(host_full(&sioul_sync::remote::State { behind: 1_000, ..state.clone() }, now).is_none(), "room enough");
+        assert!(host_full(&sioul_sync::remote::State { room: None, ..state.clone() }, now).is_none(), "not said by the server");
+        assert!(host_full(&sioul_sync::remote::State { room_at: now - 7_200, ..state }, now).is_none(), "an old figure");
     }
 
     /// A dose's alarm path measured in a fresh process (review of 19 October

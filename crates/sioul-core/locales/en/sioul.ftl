@@ -2523,6 +2523,18 @@ notes-folder-choose = Choose a folder…
 notes-folder-choose-again = Choose again…
 share-notes-folder = Your notes folder is { $path }: your notes travel from there when a part below carries them.
 share-notes-folder-none = This device has no notes folder yet: no notes travel from it.
+share-never-title = Folders of your notes that never travel
+share-never-help = Their files stay on each device and are never sealed into the sharing folder, on any device. What travelled of them before stays in the sharing until you take it out everywhere, which takes out only what is in the sharing: each device keeps its own copy. A device with an older Sioul stops sharing your notes until it is updated, so that it never takes its copy out.
+share-never-placeholder = A folder, by its path from your notes folder: archive/scans
+share-never-add = Leave it out
+share-never-travel-again = Let it travel again
+share-never-refused = { $folder } is not a folder of your notes folder.
+share-never-no-folder = There is no folder { $folder } in your notes folder on this device.
+share-never-papers = { $folder } is where your papers are kept: they travel as a part of their own, which you switch off below.
+share-never-held = { $count ->
+    [one] One file of { $folder }, which never travels, was sealed into the sharing before: it stays there until you take it out everywhere. Each device keeps its own copy.
+   *[other] { $count } files of { $folder }, which never travels, were sealed into the sharing before: they stay there until you take them out everywhere. Each device keeps its own copy.
+}
 set-notes-root = The notes folder
 set-notes-root-help = Your notes, as plain Markdown files that stay yours: Sioul links to them and never owns them. This device's own: each of your devices says where its copy is.
 set-projects-rename = Rename to sioul-projects.toml
@@ -4454,6 +4466,12 @@ share-sealed-otherwise = The sharing folder is now sealed with another passphras
 share-twin = Another device shares under this device's name (its disk or its settings were copied to it): stop sharing on one of them, then start again there, which gives it a name of its own.
 share-own-ahead = This device's records in the folder went further than its memory (restored from a backup, or sharing set up again): it goes on after them, and reads everything again.
 share-own-cut = The sync app put back an older copy of this device's records: it started them again, holding everything.
+share-host-full = Your folder's server has { $left } left. This device's records, started again with everything it holds, need about { $need }: they wait until there is room, and your changes still go meanwhile.
+share-host-behind = Your folder's server has { $left } left, and { $behind } of this device's records wait to go up there: they go as soon as there is room. Free some room there (its deleted files count until they are emptied).
+share-keyring-late = The keyring did not answer just now: the sharing waits, and goes on as soon as it answers.
+share-let-go-kept = Sharing stopped. Its app password on { $host } was not given back to the server, nor forgotten here: the keyring did not answer. You can sign it out in your server's security settings.
+share-let-go-failed = Sharing stopped. Its app password on { $host } could not be given back to the server. You can sign it out in your server's security settings.
+share-host-full-status = Your folder's server { $host } has { $left } left, and { $behind } of this device's records wait to go up there. Free some room there (its deleted files count until they are emptied): they go as soon as there is.
 share-other-gap = Some records of another device are missing here: what it did meanwhile is not known (a dose shows the doubt) until it restates everything.
 share-other-cut = The sync app put back an older copy of another device's records: they are read again.
 share-other-line = A line of another device's records could not be read here: what it held is not known (a dose shows the doubt).
@@ -4589,6 +4607,7 @@ share-withheld-size = { $count ->
    *[other] Their contents in the folder: { $size }.
 }
 share-leaving-title = Leaving your folder's server
+share-leaving-weight = Your sharing folder holds { $size } on this device, { $leaving } of which will leave by itself, as said below.
 share-leaving-unread = { $count ->
     [one] The content of a note or paper taken out, { $size }, leaves once { $device } has read that it was.
    *[other] The contents of { $count } notes and papers taken out, { $size }, leave once { $device } has read that they were.
@@ -4825,7 +4844,8 @@ share-device-build-older = Sioul { $build }, older than this device's ({ $here }
 share-newer = Your other devices share “{ $part }” in a newer form than this Sioul reads (Sioul { $build } wrote it). Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
 share-newer-plain = Your other devices share “{ $part }” in a newer form than this Sioul reads. Update Sioul on this device to share it again: until then, what you change here in it stays on this device, and what changes on the others waits here.
 share-newer-status = This device needs a newer Sioul to share “{ $part }”: Settings ▸ Sharing says more.
-share-server-down-status = Sioul has not reached { $host } itself since { $when }: { $why }. Your sync app still carries the sharing folder; Settings ▸ Sharing says more.
+share-server-down-status = Sioul has not reached { $host } itself since { $when }: { $why }. Settings ▸ Sharing says more.
+share-server-down-own = Sioul has not reached { $host } itself since { $when }: { $why }. Your sync app signs in on its own and still carries the sharing folder; Settings ▸ Sharing says more.
 share-server-down-no-password = this device keeps no password for { $account }
 share-format-held = One of your devices runs an older Sioul, or what it says does not read here (its line below says which): until it is updated there, your devices keep sharing in the form an older Sioul reads. Meanwhile, a time session, your pinned sites or a list of words changed on two devices at the same moment keep only the later change.
 share-format-wait = { $file } does not read as it should: your devices keep sharing in the older form until it does. Sioul tries again at each exchange.
@@ -6141,6 +6161,7 @@ health-day-empty-set = Set your usual meals and sleep
 health-day-nothing = Nothing set for this day.
 health-errand-day = { $what } (in your tasks from this day)
 health-alone = These doses are known to this device only. If Sioul also runs on another device, share between them (Settings ▸ Sharing): a dose marked on one then counts on all, and only the one you are using reminds you.
+health-others-unknown = Sharing is set up, but its key cannot be read now (the keyring is locked or did not answer): a dose marked on another device may not be known here yet.
 health-unchecked = Your other devices were last heard from at { $time }: a dose marked there may not show here yet.
 health-unchecked-yet = Your other devices are not heard from yet: a dose marked there may not show here yet.
 health-reminded-there = Reminders come on { $computer }, the device you are using.

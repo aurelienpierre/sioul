@@ -192,6 +192,77 @@ ColumnLayout {
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
         color: panel.theme.text
     }
+    // Folders of the notes that never travel (`share_never`, a setting that travels, so that
+    // every device leaves the same folders out): one row each, with a word to let it travel
+    // again, and a field to leave one out by its path from the notes folder.
+    ColumnLayout {
+        objectName: "shareNever"
+        visible: panel.status.on === true
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        spacing: 4
+
+        Label {
+            Layout.fillWidth: true
+            text: panel.sioul.text("share-never-title")
+            font.bold: true
+            wrapMode: Text.Wrap
+            color: panel.theme.text
+        }
+        Label {
+            Layout.fillWidth: true
+            text: panel.sioul.text("share-never-help")
+            wrapMode: Text.Wrap
+            font.pixelSize: 13
+            color: panel.theme.muted
+        }
+        Repeater {
+            model: panel.status.never || []
+            delegate: RowLayout {
+                id: neverRow
+                required property string modelData
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: neverRow.modelData
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                    color: panel.theme.text
+                }
+                Button {
+                    objectName: "shareNeverTravel"
+                    implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                    flat: true
+                    text: panel.sioul.text("share-never-travel-again")
+                    onClicked: {
+                        panel.problem = panel.sioul.setShareNever(JSON.stringify((panel.status.never || []).filter(folder => folder !== neverRow.modelData)))
+                        panel.reload()
+                    }
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            TextField {
+                id: neverField
+                objectName: "shareNeverField"
+                Layout.fillWidth: true
+                placeholderText: panel.sioul.text("share-never-placeholder")
+            }
+            Button {
+                objectName: "shareNeverAdd"
+                implicitWidth: implicitContentWidth + leftPadding + rightPadding
+                enabled: neverField.text.trim() !== ""
+                text: panel.sioul.text("share-never-add")
+                onClicked: {
+                    panel.problem = panel.sioul.setShareNever(JSON.stringify((panel.status.never || []).concat([neverField.text.trim()])))
+                    if (panel.problem === "")
+                        neverField.text = ""
+                    panel.reload()
+                }
+            }
+        }
+    }
     // Where Sioul keeps its own lists (docs/notes-folder.md, "What lives where"): in the notes folder
     // until this device moved them, then in its own folder; the window of the move from here at any time.
     Label {

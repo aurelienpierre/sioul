@@ -399,15 +399,16 @@ pub fn keep(grant: &Grant) -> Result<(), crate::SyncError> {
     crate::secret::save_named(&keyring_name(&grant.login, &grant.host()), grant.password())
 }
 
-/// The app password kept for that login and server, from the keyring.
-pub fn kept(login: &str, host: &str) -> Option<String> {
+/// The app password kept for that login and server, from the keyring: none
+/// kept (`Ok(None)`), or the keyring not answering (an error: a passing
+/// failure, asked again later, never taken for none).
+pub fn kept(login: &str, host: &str) -> Result<Option<String>, crate::SyncError> {
     crate::secret::named(&keyring_name(login, host))
 }
 
-/// The same, told apart: none kept (Ok(None)), or the keyring not answering
-/// (an error: a passing failure, asked again later).
+/// The same, by its older name.
 pub fn kept_checked(login: &str, host: &str) -> Result<Option<String>, crate::SyncError> {
-    crate::secret::named_checked(&keyring_name(login, host))
+    kept(login, host)
 }
 
 /// The app password kept for that login and server, forgotten here.

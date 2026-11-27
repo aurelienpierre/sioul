@@ -185,10 +185,13 @@ fn a_full_round_waits_for_as_much_as_the_last_one_restated() {
     let mut list = lines(0, 20_000);
     desk.write("config/known-senders.txt", &list);
     desk.exchange(&folder, &key, NOW);
-    let opening = std::fs::metadata(round_file(&folder, &desk.id, 1)).unwrap().len();
-    assert!(opening > 2 * ROUND_SIZE, "{opening}");
     let memory = || Memory::load(&desk.memory, &desk.id);
-    assert_eq!(memory().full_size, opening, "the first round counts as full: its size noted");
+    // Written in pieces of a megabyte (`PIECE`), each round continuing the one before: their sizes summed.
+    let pieces = |from: u32, to: u32| (from..=to).map(|n| std::fs::metadata(round_file(&folder, &desk.id, n)).map_or(0, |m| m.len())).sum::<u64>();
+    let opening = pieces(1, memory().round);
+    assert!(opening > 2 * ROUND_SIZE && memory().round > 2, "{opening} in {} pieces", memory().round);
+    assert_eq!(memory().full_round, 1, "the first round counts as full, whatever its pieces");
+    assert_eq!(memory().full_size, opening, "the first round counts as full: its size noted, every piece");
     // Appended past a megabyte, below what it restated: no full round.
     let mut n = 20_000;
     let mut at = NOW;
@@ -209,16 +212,17 @@ fn a_full_round_waits_for_as_much_as_the_last_one_restated() {
     }
     assert!(before > ROUND_SIZE && before <= opening, "past a megabyte and within what the first round restated: {before}, {opening}");
     let m = memory();
-    let restated = std::fs::metadata(round_file(&folder, &desk.id, m.full_round)).unwrap().len();
-    assert_eq!(m.full_size, restated, "what the new full round restated, noted");
+    let restated = pieces(m.full_round, m.round);
+    assert_eq!(m.full_size, restated, "what the new full round restated, noted, every piece");
     assert!(restated > opening, "it restates all, the appended lines too");
-    // A memory from before: the size read once from that round's file, the same.
+    // A memory from before the sizes were kept: the size read once from that
+    // round's file (one file then, before the pieces of 24 November 2026).
     let mut kept = Memory::load_all(&desk.memory, &desk.id);
     kept.full_size = 0;
     kept.save(&desk.memory).unwrap();
     desk.write("config/safe-senders.txt", "a@example.org\n");
     desk.exchange(&folder, &key, at + MINUTE);
-    assert_eq!(memory().full_size, restated);
+    assert_eq!(memory().full_size, std::fs::metadata(round_file(&folder, &desk.id, m.full_round)).unwrap().len());
     let _ = std::fs::remove_dir_all(&base);
 }
 

@@ -785,3 +785,171 @@ fn a_retired_table_s_sealed_file_leaves_the_folder() {
     assert!(!folder.join("blobs").join(content_name(&base, &key, &own)).exists(), "the laptop's never went");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A full round larger than a piece (`PIECE`, a megabyte) goes into the
+/// folder as several files of about a megabyte, the first opening full, each
+/// next one continuing the one before (`Turn`), so that a sync app or a host
+/// that will not take a large file still takes each piece; a reader reading
+/// along and a device joining once the earlier rounds went both hold every
+/// entry, and the next full round waits for as much as all the pieces
+/// restated (24 November 2026: a 17.8 MB full round, refused whole by a host
+/// with 12 MB left, and by a desktop client that kept an old figure of the
+/// room left).
+#[test]
+fn a_full_round_larger_than_a_piece_goes_in_pieces_that_every_reader_reads() {
+    let base = scratch("rounds-pieces");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"), Computer::new(&base, "phone"));
+    // Six drafts of about 300 KB each: a restatement of about two megabytes.
+    let draft = |n: usize| format!("{{\"n\": {n}, \"pad\": \"{}\"}}", "y".repeat(300_000));
+    for n in 0..6 {
+        desk.write(&format!("data/drafts/2026-09-0{}.json", n + 1), &draft(n));
+    }
+    desk.exchange(&folder, &key, NOW);
+    laptop.exchange(&folder, &key, NOW + 30_000);
+    let now = grow(&desk, &folder, &key, NOW, &|now| {
+        laptop.exchange(&folder, &key, now + 30_000);
+    });
+    let full = full_round(&desk);
+    let line_at_most = 450_000;
+    for round in kept(&folder, &desk.id) {
+        let size = std::fs::metadata(round_file(&folder, &desk.id, round)).unwrap().len();
+        assert!(size <= PIECE + line_at_most, "round {round}: {size} bytes");
+    }
+    let pieces: Vec<u32> = kept(&folder, &desk.id).into_iter().filter(|r| *r >= full).collect();
+    assert!(pieces.len() >= 2, "the full round {full} in pieces: {pieces:?}");
+    let sharing = Sharing { folder: &folder, computer: &laptop.id, key: &key, memory: &laptop.memory, files: false, hurry: None };
+    assert!(opens_full(&sharing, &desk.id, full) && !opens_full(&sharing, &desk.id, full + 1), "the first piece opens full, the next continues it");
+    assert!(Memory::load(&desk.memory, &desk.id).full_size > 2_000_000, "the next full round waits for all the pieces restated");
+    // The rounds before the full one go once read; a device joining then reads the pieces alone.
+    desk.exchange(&folder, &key, now + MINUTE);
+    assert_eq!(kept(&folder, &desk.id).first(), Some(&full), "{:?}", kept(&folder, &desk.id));
+    phone.exchange(&folder, &key, now + 2 * MINUTE);
+    for (c, n) in [&laptop, &phone].into_iter().flat_map(|c| (0..6).map(move |n| (c, n))) {
+        assert_eq!(c.read(&format!("data/drafts/2026-09-0{}.json", n + 1)), draft(n), "{} draft {n}", c.id);
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The host says how much room it has left (`remote::State::room`): a full
+/// round it has no room for is never begun, said with its numbers
+/// ("share-host-full"), the small changes going on meanwhile; once the room
+/// is there, it is begun at the next exchange.
+#[test]
+fn no_full_round_is_begun_that_the_host_has_no_room_for() {
+    let base = scratch("rounds-room");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    desk.write("config/safe-senders.txt", "friend@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    laptop.exchange(&folder, &key, NOW + 30_000);
+    let room = |bytes: u64, at: i64| {
+        crate::remote::State::choose(&desk.memory, |s| {
+            s.folder = crate::remote::shown(&folder);
+            s.url = "https://cloud.example.org/remote.php/dav/files/someone/Sioul".into();
+            s.confirmed = 1;
+            s.room = Some(bytes);
+            s.room_at = at / 1000;
+        })
+        .unwrap();
+    };
+    // Two megabytes appended, the host with half a megabyte left, said within the hour.
+    let before = full_round(&desk).max(1);
+    let mut now = NOW;
+    let mut said = Vec::new();
+    for n in 0..24 {
+        now += MINUTE;
+        room(500_000, now);
+        desk.write("data/drafts/2026-10-01.json", &format!("{{\"steps\": {n}, \"pad\": \"{}\"}}", "x".repeat(100_000)));
+        said.extend(desk.exchange(&folder, &key, now).problems.into_iter().filter(|p| p.starts_with("share-host-full:")));
+    }
+    assert_eq!(full_round(&desk).max(1), before, "never begun without room");
+    assert!(said.iter().any(|p| p.starts_with("share-host-full:500000:")), "{said:?}");
+    // The small changes still go.
+    desk.write("config/safe-senders.txt", "friend@example.org\nneighbour@example.org\n");
+    desk.exchange(&folder, &key, now + MINUTE);
+    laptop.exchange(&folder, &key, now + MINUTE + 30_000);
+    assert!(laptop.read("config/safe-senders.txt").contains("neighbour@example.org"));
+    // Room again (a plan taken, files freed): begun at the next exchange.
+    room(1 << 30, now + 2 * MINUTE);
+    desk.write("data/drafts/2026-10-01.json", "{\"steps\": 99}");
+    desk.exchange(&folder, &key, now + 2 * MINUTE);
+    assert!(full_round(&desk) > before, "begun once the room is there");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device's sealed entry saying what its Sioul reads (`sealed_notes`).
+fn reads_notes_sealed(c: &Computer, folder: &Path, key: &[u8; 32], sealed: u32) {
+    let id = c.id.clone();
+    crate::devices::change(&crate::devices::own_path(&c.roots.state), Some((folder, key)), |e| {
+        e.id = id;
+        e.kind = crate::devices::COMPUTER.into();
+        e.working = true;
+        e.sealed_notes = sealed;
+    })
+    .unwrap();
+}
+
+/// The notes in which each computer says how far it read the others are
+/// sealed with the records' key, bound to their writer (27 November 2026,
+/// decided on 26 November 2026): the server reads none of them, and a
+/// note it writes in a device's name is never read. Beside a device on a
+/// Sioul before them (0.1.0 up to 72e996b7, its entry saying nothing of
+/// them), the plain fields go with the sealed copy, the same, and that
+/// device reads them as before; once every device that counts reads them
+/// sealed, the plain fields go. Old rounds still leave by what the sealed
+/// notes say.
+#[test]
+fn the_notes_are_sealed_and_their_plain_fields_go_once_every_device_reads_them() {
+    let base = scratch("rounds-sealed-notes");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    reads_notes_sealed(&desk, &folder, &key, NOTES_SEALED);
+    reads_notes_sealed(&phone, &folder, &key, 0);
+    desk.write("config/safe-senders.txt", "friend@example.org\n");
+    desk.exchange(&folder, &key, NOW);
+    phone.write("data/drafts/2026-10-01.json", "{\"steps\": 1}");
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    desk.exchange(&folder, &key, NOW + 2 * MINUTE);
+    let raw = |id: &str| std::fs::read_to_string(seen_path(&folder, id)).unwrap();
+    // Beside the older phone: sealed, and the plain fields too, which it reads as before.
+    let desk_notes: Seen = toml::from_str(&raw(&desk.id)).unwrap();
+    assert!(!desk_notes.sealed.is_empty() && desk_notes.at > 0 && desk_notes.read.contains_key(&phone.id), "{}", raw(&desk.id));
+    let opened = read_seen_in(&folder, Some(&key), &desk.id).expect("opens");
+    assert_eq!((opened.at, opened.round, &opened.read), (desk_notes.at, desk_notes.round, &desk_notes.read), "the same in both");
+    assert_eq!(read_seen_in(&folder, None, &desk.id).map(|s| s.read), Some(desk_notes.read.clone()), "an older Sioul reads the plain fields");
+    // The phone updated: the desk's next notes are sealed alone.
+    reads_notes_sealed(&phone, &folder, &key, NOTES_SEALED);
+    let mut now = NOW + 3 * MINUTE;
+    for n in 0..3 {
+        phone.exchange(&folder, &key, now);
+        desk.write("config/safe-senders.txt", &format!("friend@example.org\nneighbour{n}@example.org\n"));
+        desk.exchange(&folder, &key, now + 30_000);
+        now += 20 * MINUTE;
+    }
+    let text = raw(&desk.id);
+    let alone: Seen = toml::from_str(&text).unwrap();
+    assert!(!alone.sealed.is_empty() && alone.at == 0 && alone.read.is_empty() && !text.contains(&phone.id), "nothing of it in clear: {text}");
+    assert!(read_seen_in(&folder, Some(&key), &desk.id).is_some_and(|s| s.read.contains_key(&phone.id)), "read sealed");
+    assert!(read_seen_in(&folder, None, &desk.id).is_none(), "nothing for whoever lacks the key");
+    // A note written in the desk's name by whoever holds the folder: never read.
+    std::fs::write(seen_path(&folder, &desk.id), format!("at = {}\nround = 1\n", now / 1000)).unwrap();
+    assert!(read_seen(&folder, &desk.id).is_none(), "plain notes in the name of a device whose notes were sealed");
+    let other: Seen = Seen { sealed: seal(&key, &notes_bound(&phone.id), b"at = 1\nround = 1\n"), ..Seen::default() };
+    std::fs::write(seen_path(&folder, &desk.id), toml::to_string(&other).unwrap()).unwrap();
+    assert!(read_seen(&folder, &desk.id).is_none(), "another device's sealed notes copied under its name");
+    desk.exchange(&folder, &key, now);
+    // Old rounds go by what the sealed notes say: grow the desk past a full round, the phone reading along.
+    let before = kept(&folder, &desk.id);
+    let now = grow(&desk, &folder, &key, now + MINUTE, &|at| {
+        phone.exchange(&folder, &key, at + 30_000);
+    });
+    desk.exchange(&folder, &key, now + MINUTE);
+    let after = kept(&folder, &desk.id);
+    assert!(after.first() > before.first(), "rounds read past left the folder: {before:?} then {after:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+

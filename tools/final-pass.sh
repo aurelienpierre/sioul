@@ -168,15 +168,16 @@ for crate in "${crates[@]}"; do
     [[ $secrets -eq 0 ]] || { echo "  $secrets call(s) to the keyring's service"; failed+=("keyring-$crate"); }
 done
 
-# 2b. The kept keyring session's own test (sioul-sync, secret.rs, kept_tests),
-# apart, on a bus of its own that nobody counts: it starts a GNOME keyring of
+# 2b. The kept keyring session's own tests (sioul-sync, secret.rs, kept_tests:
+# the session kept, and a Secret Service that never answers, given up after
+# its time limit), apart, on a bus of its own that nobody counts: it starts a GNOME keyring of
 # its own there, and checks itself that the service it reads is the one it
 # started (ignored in the crate's runs above, where any call to a keyring's
 # service fails the pass). It says "skipped" without gnome-keyring-daemon.
 room
 echo "$(date +%H:%M:%S) the kept keyring session, apart"
 fresh || exit 1
-env "${apart[@]}" timeout 600 dbus-run-session --config-file="$bus_conf" -- cargo test --release -p sioul-sync --lib secret::kept_tests::one_session_serves_every_read_and_is_made_again_once_the_service_went -- --ignored --exact --nocapture > "$out/test-kept-keyring.log" 2>&1
+env "${apart[@]}" timeout 600 dbus-run-session --config-file="$bus_conf" -- cargo test --release -p sioul-sync --lib -- secret::kept_tests::one_session_serves_every_read_and_is_made_again_once_the_service_went secret::kept_tests::a_secret_service_that_never_answers_is_given_up_after_its_limit --ignored --exact --nocapture > "$out/test-kept-keyring.log" 2>&1
 status=$?
 grep -E "^test result:|FAILED|panicked|skipped" "$out/test-kept-keyring.log" | head -4 | sed 's/^/  /'
 [[ $status -eq 0 ]] || { echo "  exit $status"; failed+=(kept-keyring); }

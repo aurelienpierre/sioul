@@ -163,6 +163,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.topics = sioul_sync::share::TOPICS_SHARED;
         // It has your rules' list and their record of acts: they travel once every device says so.
         entry.rules = sioul_sync::share::RULES_SHARED;
+        // It reads the others' notes sealed: theirs go without their plain fields once every device says so.
+        entry.sealed_notes = sioul_sync::share::NOTES_SEALED;
         // It follows what you said each device is for, and says its own cells and the cells it
         // acts on of each other device (docs/areas.md, "Which device tells"): the keeper of the
         // notices reads them, never the settings this device may not share. No word of the doses'.

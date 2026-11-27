@@ -101,16 +101,22 @@ pcsc = "=2.9.0"
 # Each system's own keyring: the Secret Service (KWallet, GNOME Keyring), the
 # Windows Credential Manager, the macOS Keychain, Android's KeyStore.
 [target.'cfg(all(unix, not(any(target_os = "macos", target_os = "android"))))'.dependencies]
-keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust"] }
+# Through zbus (`async-secret-service`, its blocking calls on zbus's own
+# executor), never libdbus: a call the session bus does not answer is given up
+# after its time limit (secret.rs, `limited`), and a thread left waiting holds
+# none of libdbus's locks that Sioul's other D-Bus connections take (decided
+# on 26 November 2026).
+keyring = { workspace = true, features = ["async-secret-service", "async-io", "crypto-rust"] }
 # Every D-Bus connection (bus.rs: never libdbus's own registration): the notifications
 # (notify.rs), the desktop's do-not-disturb (dnd.rs), the system's reading (power.rs), colord.
 dbus = "0.9"
 # The keyring's own Secret Service library, for reads through one session kept
-# for the process (secret.rs, `kept`): the same version and encryption, where
-# the keyring crate keeps passwords in the Secret Service (Linux, FreeBSD,
+# for the process (secret.rs, `kept`): the same version, encryption and zbus,
+# where the keyring crate keeps passwords in the Secret Service (Linux, FreeBSD,
 # OpenBSD; elsewhere among the Unixes it keeps none).
 [target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))'.dependencies]
-dbus-secret-service = { version = "4.1", features = ["crypto-rust"] }
+secret-service = { version = "4", features = ["rt-async-io-crypto-rust"] }
+zbus = { version = "4", default-features = false, features = ["async-io"] }
 [target.'cfg(windows)'.dependencies]
 keyring = { workspace = true, features = ["windows-native"] }
 # The antivirus's doors (antivirus_windows.rs): AMSI and the Security

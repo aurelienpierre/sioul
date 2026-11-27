@@ -128,7 +128,15 @@ const LISTING: u64 = 64 << 20;
 const OVERLAP: u64 = 1 << 20;
 
 const XML: &str = "application/xml; charset=utf-8";
-const LIST: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>"#;
+/// A folder's listing: each item's kind, ETag, size and checksums; and, of
+/// the folder itself, the room its account has left (`quota-available-bytes`,
+/// RFC 4331), which Nextcloud says and other servers may leave out.
+const LIST: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><oc:checksums/><d:quota-available-bytes/></d:prop></d:propfind>"#;
+/// The same without the room left: for the folder of sealed files
+/// (`list_within`), thousands of items, each of which would be answered
+/// for it (Nextcloud says "not found" item by item: the third review of 26
+/// November 2026, D4). The room is read of the sharing folder alone.
+const LIST_PLAIN: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><oc:checksums/></d:prop></d:propfind>"#;
 /// One file's properties (`Server::stat`): a listing's, and its time there.
 const STAT: &str = r#"<?xml version="1.0" encoding="utf-8"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:resourcetype/><d:getetag/><d:getcontentlength/><d:getlastmodified/><oc:checksums/></d:prop></d:propfind>"#;
 /// Nextcloud's own properties: the checksums a file was sent with (`oc:checksums`).
@@ -147,7 +155,7 @@ fn state_path(memory: &Path) -> PathBuf {
     memory.with_file_name("remote.toml")
 }
 
-fn shown(folder: &Path) -> String {
+pub(crate) fn shown(folder: &Path) -> String {
     folder.display().to_string()
 }
 
@@ -267,9 +275,23 @@ pub struct State {
     /// `sealed_step`, which lists it once it changed (`listing_due`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub blobs_seen: String,
+    /// The room the server said was left to the account, with the pull's
+    /// last look through the folder (`Puller::note_room`): none when it said
+    /// nothing; and how much of this device's records there was behind the
+    /// copies here then, and when (Unix seconds). An older Sioul passes them over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<u64>,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub behind: u64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub room_at: i64,
 }
 
 fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
+}
+
+fn is_zero_u64(n: &u64) -> bool {
     *n == 0
 }
 
@@ -529,6 +551,10 @@ pub(crate) struct Server {
 pub(crate) struct Listing {
     pub(crate) etag: String,
     pub(crate) items: BTreeMap<String, Item>,
+    /// The room left to the account there (bytes), as the folder's own
+    /// answer says it; none when not said, or said unknown or unlimited
+    /// (Nextcloud's -1, -2, -3).
+    pub(crate) room: Option<u64>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -632,13 +658,18 @@ impl Server {
 
     /// A folder's own ETag and what it holds (`Depth: 1`), by name.
     pub(crate) fn list(&self, url: &str) -> Result<Listing, SyncError> {
-        self.list_within(self.limits.small, url)
+        self.listed(self.limits.small, url, LIST)
     }
 
     /// The same, given `whole` for all of it (a folder of thousands of
-    /// sealed files, on a slow line: `limits.large`).
+    /// sealed files, on a slow line: `limits.large`), the room left not asked
+    /// (`LIST_PLAIN`).
     pub(crate) fn list_within(&self, whole: Duration, url: &str) -> Result<Listing, SyncError> {
-        let mut response = self.request_with(whole, "PROPFIND", url, &[("Depth", "1"), ("Content-Type", XML)], LIST.as_bytes().to_vec())?;
+        self.listed(whole, url, LIST_PLAIN)
+    }
+
+    fn listed(&self, whole: Duration, url: &str, asked: &str) -> Result<Listing, SyncError> {
+        let mut response = self.request_with(whole, "PROPFIND", url, &[("Depth", "1"), ("Content-Type", XML)], asked.as_bytes().to_vec())?;
         match response.status().as_u16() {
             207 => {}
             404 => return Err(SyncError::NotFound(String::new())),
@@ -980,6 +1011,7 @@ fn read_listing(mut reader: impl std::io::Read, url: &str) -> Result<(Listing, u
                 let etag = response.text(DAV, "getetag").unwrap_or_default();
                 if path == me {
                     listing.etag = etag;
+                    listing.room = response.text(DAV, "quota-available-bytes").and_then(|t| t.trim().parse::<i64>().ok()).and_then(|n| u64::try_from(n).ok());
                     itself = true;
                     continue;
                 }
@@ -1955,6 +1987,27 @@ impl Puller<'_> {
         self.state.folders.insert(relative.to_string(), Looked { etag: etag.to_string(), at: self.now });
     }
 
+    /// The room the server says is left (`Listing::room`), and how much of
+    /// this device's records and notes to the others there is behind the
+    /// copies here, by their sizes (none there: all of it): what the
+    /// exchange and the window say when the room is short of it, and what
+    /// holds a full round back (`State::room`).
+    fn note_room(&mut self, root: &Listing) {
+        let own = self.own;
+        let behind: u64 = file_names(self.folder)
+            .into_iter()
+            .filter(|name| matches!(kind_of(name), Some((Kind::Round | Kind::Seen, id)) if id == own))
+            .filter_map(|name| {
+                let here = std::fs::metadata(self.folder.join(&name)).ok()?.len();
+                let there = root.items.get(&name).filter(|item| !item.dir).map_or(0, |item| item.size);
+                (here > there).then_some(here - there)
+            })
+            .sum();
+        self.state.room = root.room;
+        self.state.behind = behind;
+        self.state.room_at = self.now;
+    }
+
     fn run(&mut self) -> Result<(), Stop> {
         let root = self.server.list(&self.state.url).map_err(|e| match e {
             SyncError::NotFound(_) => Stop::Unconfirmed(format!("seal-gone:{}", self.state.host())),
@@ -1963,6 +2016,8 @@ impl Puller<'_> {
         self.pulled.listed += root.items.len();
         // Never fetched from a folder sealed otherwise.
         self.seal(&root)?;
+        // The room left there, and what of this device's records is behind the copies here (`State::room`).
+        self.note_room(&root);
         // Sioul keeping the folder itself, its copy lost (none of its records
         // here): everything looked through again, what it wrote brought back first.
         self.lost = self.mirror() && own_latest(self.folder, self.own).is_none();
@@ -3281,6 +3336,13 @@ pub struct Sending {
     /// copy it did not put shows the app back. An older Sioul passes it over.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unaided: bool,
+    /// When Sioul took over (`unaided`): the time, here, of the file it
+    /// found not carried (Unix seconds, the clock its copies there are dated
+    /// by, `X-OC-Mtime`). Only a copy there newer than that shows the app
+    /// back; an older one (the app sending what it held before) does not (the
+    /// second review of 24 November 2026, S1). 0 in an older Sioul's: any copy.
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub unaided_at: i64,
 }
 
 /// A failed send, in detail: what the panel and the log say of it.
@@ -3471,6 +3533,13 @@ fn send_lane(lane: Lane, memory: &Path, folder: &Path, own: &str, login: &Login,
         if !again && now < sending.retry_at {
             pulled.problem = Some(format!("waiting:{host}"));
             return pulled;
+        }
+        // A start or a wake (no send tried for two renewals): the times files
+        // were left to a desktop sync app are stale and would read as an app
+        // not carrying them; forgotten, each is waited for afresh (the second
+        // review of 24 November 2026, S2).
+        if sending.tried > 0 && now - sending.tried > 2 * crate::lease::RENEWED_EVERY {
+            sending.beside.clear();
         }
         sending.tried = now;
         let check = again || sending.checked == 0 || now - sending.checked >= CHECK_AGAIN;
@@ -3690,16 +3759,17 @@ pub(crate) const BESIDE_WAIT: std::time::Duration = std::time::Duration::from_se
 const BESIDE_LONGEST: i64 = 15 * 60;
 
 /// The same for this device's claims, which live `lease::ALIVE` once renewed
-/// and are renewed each minute: asked of the server after two renewals
-/// (`BESIDE_CLAIMS`), then at each send, and sent by Sioul itself once the
-/// app has carried no new one for three (`BESIDE_CLAIMS_STALE`). What the
-/// others hold of it is then never older than four renewals, within its life,
-/// so that a claim never lapses on them for want of the app (the review of 24
-/// November 2026, must-fix 1: fifteen minutes against a claim's five, and two
-/// devices could remind the same dose).
-const BESIDE_CLAIMS: i64 = 2 * crate::lease::RENEWED_EVERY;
+/// and are renewed each minute: asked of the server at each send (a claim is
+/// one small file), and sent by Sioul itself once the copy there is three
+/// renewals behind the claim here, by that copy's own time
+/// (`BESIDE_CLAIMS_STALE`, `Item::modified`). What the others hold of it is
+/// then never older than three renewals and a send, within its life, so that
+/// a claim never lapses on them for want of the app (the review of 24
+/// November 2026, must-fix 1: fifteen minutes against a claim's five; the
+/// second review, S1: counted from when Sioul noticed a copy, a claim could
+/// still be six minutes old there before Sioul sent it).
 const BESIDE_CLAIMS_STALE: i64 = 3 * crate::lease::RENEWED_EVERY;
-const _: () = assert!(BESIDE_WAIT.as_secs() as i64 <= BESIDE_CLAIMS && BESIDE_CLAIMS <= BESIDE_CLAIMS_STALE && BESIDE_CLAIMS_STALE + crate::lease::RENEWED_EVERY < crate::lease::ALIVE);
+const _: () = assert!(BESIDE_WAIT.as_secs() as i64 <= BESIDE_CLAIMS_STALE && BESIDE_CLAIMS_STALE + crate::lease::RENEWED_EVERY < crate::lease::ALIVE);
 
 /// How long whether a desktop sync app carries a folder is taken as last
 /// found (`carried_beside`).
@@ -4009,16 +4079,29 @@ impl Sender<'_> {
         // within seconds; sent too, the app's next look would meet Sioul's copy
         // there and a newer one here, and keep the newer one aside as a
         // conflicted copy (`BESIDE_WAIT`). One that kept changing past
-        // `BESIDE_LONGEST` (`BESIDE_CLAIMS` for a claim) is asked of the
-        // server first, never sent over blindly, and sent once the app has
-        // carried no new copy of it past `BESIDE_LONGEST`
-        // (`BESIDE_CLAIMS_STALE`). Not while Sioul carries this
+        // `BESIDE_LONGEST` (a claim: at each send) is asked of the server
+        // first, never sent over blindly, and sent once the copy there is
+        // `BESIDE_LONGEST` behind it by that copy's own time
+        // (`BESIDE_CLAIMS_STALE` for a claim). Not while Sioul carries this
         // device's files itself, the app found not carrying them
         // (`Sending::unaided`). Never "Send everything again", which you asked for.
         let beside = self.beside && blob.is_none() && !again;
+        // While Sioul carries this device's files itself, its entry is left to
+        // the app two minutes in each quarter of an hour: an app back sends it,
+        // a copy newer than Sioul's taking over, and Sioul stands back again.
+        // Without it, Sioul sending each file the second it changes, the app
+        // would find the same bytes there and send nothing, and both would
+        // carry for good (the second review of 24 November 2026, S2).
+        if beside && self.sending.unaided && matches!(kind_of(relative), Some((Kind::Device, _))) && self.now.rem_euclid(BESIDE_LONGEST) < BESIDE_WAIT.as_secs() as i64 {
+            self.pulled.beside += 1;
+            return Ok(Went::Left);
+        }
         let standing = beside && !self.sending.unaided;
-        // When the server is asked whether the app carried it, and when the app is found not carrying it.
-        let (ask, give_up) = if matches!(kind_of(relative), Some((Kind::Claim, _))) { (BESIDE_CLAIMS, BESIDE_CLAIMS_STALE) } else { (BESIDE_LONGEST, BESIDE_LONGEST) };
+        let claim = matches!(kind_of(relative), Some((Kind::Claim, _)));
+        // When the server is asked whether the app carried it, and how far
+        // behind this file the copy there may be before the app is found not
+        // carrying it.
+        let (ask, give_up) = if claim { (0, BESIDE_CLAIMS_STALE) } else { (BESIDE_LONGEST, BESIDE_LONGEST) };
         // How long this file has been left to the app, changed here and not seen carried.
         let waited = if standing { self.now - *self.sending.beside.entry(relative.to_string()).or_insert(self.now) } else { 0 };
         if standing && waited < ask && meta.modified().ok().and_then(|t| t.elapsed().ok()).is_none_or(|age| age < BESIDE_WAIT) {
@@ -4084,8 +4167,23 @@ impl Sender<'_> {
                 // one there): its ETag kept as seen, and the file left a while
                 // more, as long as Sioul stands back.
                 let foreign = sent.as_ref().is_some_and(|s| s.etag != item.etag);
-                if (beside && foreign) || (standing && sent.is_none()) {
-                    self.sending.unaided &= !foreign;
+                // The app back where Sioul carried this device's files: a copy
+                // it did not put, newer than Sioul's taking over (S1).
+                if beside && self.sending.unaided && foreign && item.modified.is_some_and(|there| there > self.sending.unaided_at) {
+                    self.sending.unaided = false;
+                    self.sending.unaided_at = 0;
+                }
+                // For a claim, how far behind this file the copy there is, by
+                // its own time there (the time it had here when it was sent,
+                // `X-OC-Mtime`), never by when Sioul noticed it (S1): what the
+                // others hold of a claim must stay within its life. For any
+                // other file that gap says nothing of how long the app has
+                // waited (one changed after a quiet hour is an hour ahead of
+                // the copy there the moment it changes): the app's copy is
+                // left to it, the wait counted since it was last seen
+                // carrying (the third review of 26 November 2026, B1).
+                let behind = item.modified.map(|there| modified_s as i64 - there).filter(|_| claim);
+                if ((beside && foreign && !self.sending.unaided) || (standing && sent.is_none())) && behind.is_none_or(|behind| behind < give_up) {
                     self.sending.sent.insert(relative.to_string(), Sent { size: item.size.min(size), modified: 0, etag: item.etag.clone() });
                     self.sending.beside.insert(relative.to_string(), self.now);
                     self.pulled.beside += 1;
@@ -4093,17 +4191,27 @@ impl Sender<'_> {
                 }
             }
             if standing && attempt == 0 {
-                // The copy there still the one Sioul last put or saw, or none,
-                // while the app has had its wait: a moment behind still.
-                if waited <= give_up {
+                // How long the app has left this file: a claim by the copy
+                // there's own time when the server says it; any other file
+                // (and a claim the server dates not) since Sioul first left it,
+                // counted again each time the app was seen carrying it (B1).
+                let left_for = match &there {
+                    Some(Some(item)) if claim => item.modified.map_or(waited, |there| modified_s as i64 - there),
+                    _ => waited,
+                };
+                // Within the wait: a moment behind still (a claim's ends one
+                // renewal sooner than its whole minutes would, S1).
+                let within = if claim { left_for < give_up } else { left_for <= give_up };
+                if within {
                     self.pulled.beside += 1;
                     return Ok(Went::Left);
                 }
                 // Past it: the app does not carry this device's files
                 // (stopped, signed out, paused, or refused for lack of room).
                 // Sioul sends them itself from now on, at once, until a copy it
-                // did not put shows the app back.
+                // did not put, newer than this taking over, shows the app back.
                 self.sending.unaided = true;
+                self.sending.unaided_at = modified_s as i64;
             }
             let seen: Option<String> = match &there {
                 Some(Some(item)) => Some(item.etag.clone()),
@@ -4284,7 +4392,13 @@ impl Sender<'_> {
             Ok(None) => return true,
             Err(_) => return false,
         };
-        let dated = records || there.modified == Some((sent.modified / 1_000_000_000) as i64);
+        // A sealed file taken out here by the one rule (`Departed::blobs`,
+        // `Memory::taken_since`): its copy there no newer than a day before the
+        // take-out was used by nothing since, whatever sent it again (eDrive
+        // keeps and sends it with another time, and no other device ever
+        // removes it: the second review of 24 November 2026, S3).
+        let newest = relative.strip_prefix("blobs/").and_then(|name| self.departed.blobs.get(name)).map(|(_, newest)| newest / 1000);
+        let dated = records || there.modified == Some((sent.modified / 1_000_000_000) as i64) || newest.is_some_and(|newest| there.modified.is_some_and(|at| at <= newest));
         if there.dir || there.etag.is_empty() || there.size != sent.size || !dated {
             return true;
         }
@@ -7060,6 +7174,107 @@ mod tests {
         assert!(Sending::load(&w.desk.memory).unaided, "then carried by Sioul itself");
     }
 
+    /// A client that carries this device's files, then stops, then comes
+    /// back (the second review of 24 November 2026, S1 and S2). While it
+    /// carries, Sioul sends none of them and no copy is kept aside. Once it
+    /// stops, Sioul sends the doses' claim before the copy there is three
+    /// renewals behind, by that copy's own time there, so that two devices
+    /// never remind the same dose. Once it is back, Sioul finds it within a
+    /// quarter of an hour (its entry left to it two minutes) and stands back.
+    /// Each file of this device's is dated the minute it is written in, as a
+    /// device writing them over an hour would date them (`X-OC-Mtime` then
+    /// says that time there).
+    #[test]
+    fn beside_a_client_that_stops_the_claim_never_lapses_and_sioul_stands_back_when_it_returns() {
+        let w = World::new("client-stops");
+        let desk_folder = w.base.join("desk-folder").join("Sioul");
+        copy_dir(&w.server, &desk_folder);
+        std::fs::write(w.base.join("desk-folder").join(".sync_0123456789ab.db"), b"").unwrap();
+        State::choose(&w.desk.memory, |s| s.given = "Documents/Sioul".into()).unwrap();
+        assert!(find_with(&w.desk.memory, &desk_folder, &[w.fake.login()], &[], DUE, TEST).confirmed_for(&desk_folder));
+        let mut client = Client::default();
+        client.sync(&w.fake, &w.server, &desk_folder);
+        let minute = |client: &mut Client, m: i64, carries: bool| -> Option<i64> {
+            let now = DUE + m * 60;
+            w.desk.exchange(&desk_folder, now);
+            crate::lease::renew(&desk_folder, &KEY, "health", &w.desk.id, now, now, false, crate::lease::Rule::FollowsYou, crate::share::written(&w.desk.memory, &w.desk.id)).unwrap();
+            for relative in walk(&desk_folder).into_keys().filter(|r| r.contains(&w.desk.id)) {
+                set_mtime(&desk_folder.join(&relative), SystemTime::UNIX_EPOCH + Duration::from_secs(now as u64));
+            }
+            let sent = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), now + 1, false, TEST);
+            assert!(sent.problem.is_none(), "minute {m}: {sent:?}");
+            if carries {
+                client.sync(&w.fake, &w.server, &desk_folder);
+            }
+            crate::lease::claims(&w.server, &KEY, "health").into_iter().find(|c| c.computer == w.desk.id).map(|c| now - c.renewed)
+        };
+        // The client carries.
+        for m in 2..12 {
+            minute(&mut client, m, true);
+        }
+        assert!(!Sending::load(&w.desk.memory).unaided, "the client carries: Sioul stands back");
+        assert_eq!(client.conflicts, 0);
+        // The client stops: the claim there never three renewals old.
+        let mut oldest = 0;
+        for m in 12..32 {
+            let age = minute(&mut client, m, false).expect("the claim there");
+            oldest = oldest.max(age);
+            assert!(age <= BESIDE_CLAIMS_STALE, "minute {m}: the claim there renewed {age} s ago");
+        }
+        assert!(Sending::load(&w.desk.memory).unaided, "Sioul carries this device's files itself");
+        // The client back (at a minute its entry is not left to it): Sioul stands back again within a quarter of an hour.
+        let mut back = None;
+        for m in 32..50 {
+            minute(&mut client, m, true);
+            if back.is_none() && !Sending::load(&w.desk.memory).unaided {
+                back = Some(m);
+            }
+        }
+        assert!(back.is_some_and(|m| m <= 47), "found back at minute {back:?}");
+        assert_eq!(client.conflicts, 0, "no copy kept aside");
+        eprintln!("a client stopped for twenty minutes: the claim there {oldest} s old at most; found back at minute {back:?}");
+    }
+
+    /// A file of this device's own changed after a quiet hour, which the
+    /// client has not carried yet three minutes on (busy with a large upload):
+    /// still left to the client, its wait counted since Sioul first left it,
+    /// never by how far behind the copy there is by its own time (an hour,
+    /// the moment it changes): Sioul does not take over, the copy there stays
+    /// the client's, and the client then carries it with no copy kept aside.
+    /// Only a claim is judged by its copy's own time (the third review of 26
+    /// November 2026, B1). Dated by the wall clock, as the file's age is.
+    #[test]
+    fn a_file_changed_after_a_quiet_hour_is_left_to_a_client_a_moment_late() {
+        let w = World::new("client-late");
+        let desk_folder = w.base.join("desk-folder").join("Sioul");
+        copy_dir(&w.server, &desk_folder);
+        std::fs::write(w.base.join("desk-folder").join(".sync_0123456789ab.db"), b"").unwrap();
+        State::choose(&w.desk.memory, |s| s.given = "Documents/Sioul".into()).unwrap();
+        assert!(find_with(&w.desk.memory, &desk_folder, &[w.fake.login()], &[], DUE, TEST).confirmed_for(&desk_folder));
+        let mut client = Client::default();
+        client.sync(&w.fake, &w.server, &desk_folder);
+        w.desk.press(true, DUE);
+        w.desk.exchange(&desk_folder, DUE);
+        client.sync(&w.fake, &w.server, &desk_folder);
+        let first = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 60, false, TEST);
+        assert!(first.problem.is_none() && first.sent == 0, "the client carries: {first:?}");
+        // An hour later, a change: the round grows here, its copy there an hour old.
+        w.desk.press(false, DUE + 3_600);
+        w.desk.exchange(&desk_folder, DUE + 3_600);
+        let round = walk(&desk_folder).into_keys().filter(|r| r.starts_with(&w.desk.id) && r.ends_with(".jsonl")).max().expect("its round");
+        let wall = SystemTime::now();
+        set_mtime(&desk_folder.join(&round), wall - Duration::from_secs(180));
+        set_mtime(&w.server.join(&round), wall - Duration::from_secs(3_780));
+        let there = std::fs::read(w.server.join(&round)).unwrap();
+        let late = send_with(&w.desk.memory, &desk_folder, &w.desk.id, &w.fake.login(), &BTreeMap::new(), DUE + 3_780, false, TEST);
+        assert!(late.problem.is_none() && late.beside > 0, "{late:?}");
+        assert!(!Sending::load(&w.desk.memory).unaided, "Sioul never takes over for a copy an hour behind by its own time");
+        assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), there, "the copy there left to the client");
+        client.sync(&w.fake, &w.server, &desk_folder);
+        assert_eq!(client.conflicts, 0, "no copy kept aside");
+        assert_eq!(std::fs::read(w.server.join(&round)).unwrap(), std::fs::read(desk_folder.join(&round)).unwrap(), "carried by the client");
+    }
+
     /// The desktop clients' journals that say a folder is carried beside
     /// Sioul: Nextcloud's and ownCloud's `.sync_<hash>.db`, an older
     /// ownCloud's `._sync_<hash>.db` and `.csync_journal.db`, in the folder or
@@ -8633,6 +8848,55 @@ mod tests {
         assert!(sent.problem.is_none(), "{sent:?}");
         assert!(!w.server.join("blobs").join(&old).exists(), "no newer than its take-out: gone at the next send");
         assert!(w.server.join("blobs").join(&fresh).exists(), "made fresh there since: left");
+    }
+
+    /// A content of this device's own taken out by the one rule, which a sync
+    /// app that never passes a deletion on (eDrive) sent there again with
+    /// another time: its copy there goes all the same when that time is no
+    /// newer than a day before the take-out (`Departed::blobs`, noted by the
+    /// exchange in `Memory::taken_since`). Until the second review of 24
+    /// November 2026 (S3), dated otherwise than this device sent it, it
+    /// counted as used and stayed there for good; one dated after the
+    /// take-out still does (another device uses that content again).
+    #[test]
+    fn a_content_taken_out_that_edrive_sent_again_leaves_the_server() {
+        let w = World::new("edrive-taken-out");
+        assert!(w.find(DUE).confirmed_for(&w.phone_folder));
+        let seal = |text: &str| {
+            let source = w.base.join(format!("{}.md", text.len()));
+            std::fs::write(&source, text.repeat(200)).unwrap();
+            let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+            crate::blobs::put(&w.phone_folder, &KEY, &source, &hash).unwrap();
+            let name = crate::blobs::name(&KEY, &hash);
+            let size = std::fs::metadata(w.phone_folder.join("blobs").join(&name)).unwrap().len();
+            (name, size)
+        };
+        let (old, old_size) = seal("a note taken out\n");
+        let (used, used_size) = seal("a note taken out, used again elsewhere\n");
+        let sent = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &[(old.clone(), old_size), (used.clone(), used_size)].into(), DUE + 10, false, TEST);
+        assert!(sent.problem.is_none() && sent.sent >= 2, "{sent:?}");
+        let take_out = SystemTime::now();
+        {
+            let _turn = w.fake.turn.lock().unwrap();
+            // eDrive sends both again: new ETags there, one dated three days before the take-out, one an hour after it.
+            for (name, at) in [(&old, take_out - Duration::from_secs(3 * 86_400)), (&used, take_out + Duration::from_secs(3_600))] {
+                let there = w.server.join("blobs").join(name);
+                sync_up(&w.phone_folder.join("blobs").join(name), &there);
+                set_mtime(&there, at);
+            }
+        }
+        // Taken out here by the one rule, every device having read so; noted from a day before the take-out.
+        for name in [&old, &used] {
+            std::fs::remove_file(w.phone_folder.join("blobs").join(name)).unwrap();
+        }
+        swept_early_here(&w.phone, &[&old, &used], DUE + 15, take_out - Duration::from_secs(86_400));
+        // A send that lists (each six hours, or "Send everything again"), as the
+        // pull does at its own pace: an ordinary send forgets the copy it finds
+        // changed there (`412`), and the departed path takes it out (`take_out_departed`).
+        let gone = send_with(&w.phone.memory, &w.phone_folder, &w.phone.id, &w.fake.login(), &BTreeMap::new(), DUE + 20, true, TEST);
+        assert!(gone.problem.is_none(), "{gone:?}");
+        assert!(!w.server.join("blobs").join(&old).exists(), "no newer there than a day before its take-out: taken out");
+        assert!(w.server.join("blobs").join(&used).exists(), "dated after its take-out there: a use, left");
     }
 
     /// A phone dead for good, under a sync app that never passes a deletion

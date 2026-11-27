@@ -54,7 +54,8 @@ fn rows(s: &Session) -> (device_table::Read, Vec<Row>, i64) {
     let state = sioul_core::config::state_dir();
     let now = jiff::Timestamp::now().as_second();
     let shared = sioul_sync::share::Here::load(&state).folder_path().is_some();
-    let key = if shared { sioul_sync::secret::named(sioul_sync::share::KEY_NAME).and_then(|key| crate::invoices::unhex(&key)) } else { None };
+    // The keyring not answering: the table from what this device knows alone, as without a key.
+    let key = if shared { sioul_sync::secret::named(sioul_sync::share::KEY_NAME).ok().flatten().and_then(|key| crate::invoices::unhex(&key)) } else { None };
     let read = device_table::read(&state, &s.config, key.as_ref(), now);
     let rows = device_table::table(&read.facts(&s.config.devices, now, sioul_core::zone::current()), &s.tr);
     (read, rows, now)

@@ -192,6 +192,15 @@ pub struct Entry {
     /// field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub rules: u32,
+    /// Whether its Sioul reads the others' notes sealed (`share::NOTES_SEALED`:
+    /// how far each read, sealed with the records' key, `share::Seen::sealed`):
+    /// 1 from a build that does (27 November 2026), 0 from an older one, which
+    /// reads their plain fields only. Every device writes its notes sealed;
+    /// the plain fields go with them until every other device that counts
+    /// says 1 (`share::notes_sealed_open`). An older Sioul reads the entry as
+    /// before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub sealed_notes: u32,
     /// Whether its Sioul follows what you said each device is for
     /// (docs/areas.md, "Which device tells"): `AREAS` (1) from a build that
     /// reads its own line of the settings' table (`[device."<id>"]`: its

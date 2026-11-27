@@ -12,7 +12,12 @@
 //! Secret Service kept for the process (`kept`), rather than a new one, its
 //! Diffie–Hellman exchange included, at each read as the `keyring` crate
 //! makes: the window's sharing reads a password every minute. Writes, and
-//! what that session leaves aside, take the `keyring` crate's own way.
+//! what that session leaves aside, take the `keyring` crate's own way. Both
+//! go through the Secret Service's library of the keyring crate, never
+//! libdbus, and every call has a time limit (`limited`): a session
+//! bus that stops answering makes a keyring error after it, never a wait
+//! without end (27 November 2026: through libdbus a read could hang, the
+//! sharing stopped within a minute and Sioul could not quit).
 
 use crate::SyncError;
 use keyring::Entry;
@@ -29,7 +34,7 @@ const SERVICE: &str = "sioul";
 /// kept": a reader keeps its sign-in and tries again at its next run, a write
 /// fails visibly; nothing runs unlocked then, since the holder may be frozen
 /// in the middle of its write.
-fn guarded<T, E: From<Busy>>(f: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
+fn guarded<T: Send + 'static, E: From<Busy> + From<Late> + Send + 'static>(f: impl FnOnce() -> Result<T, E> + Send + 'static) -> Result<T, E> {
     #[cfg(target_os = "android")]
     if let Some(lock) = crate::android::keyring_lock() {
         return held(&lock, KEYRING_WAIT, || {
@@ -38,7 +43,107 @@ fn guarded<T, E: From<Busy>>(f: impl FnOnce() -> Result<T, E>) -> Result<T, E> {
         })
         .unwrap_or_else(|busy| Err(E::from(busy)));
     }
-    f()
+    limited(KEYRING_LIMIT, f)
+}
+
+/// A keyring write, as `guarded`, with the longer limit a write is given
+/// (`KEYRING_WRITE_LIMIT`: the keyring may ask to be unlocked first, and the
+/// person types its password).
+fn guarded_write<T: Send + 'static, E: From<Busy> + From<Late> + Send + 'static>(f: impl FnOnce() -> Result<T, E> + Send + 'static) -> Result<T, E> {
+    #[cfg(target_os = "android")]
+    if crate::android::keyring_lock().is_some() {
+        return guarded(f);
+    }
+    limited(KEYRING_WRITE_LIMIT, f)
+}
+
+/// A keyring call that did not answer within its time limit (`limited`), or
+/// asked while an earlier one still has not: a keyring error, never "none
+/// kept" (a reader keeps its sign-in and tries again at its next run; a write
+/// fails visibly).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")), allow(dead_code))]
+pub(crate) struct Late;
+
+impl Late {
+    fn words(self) -> String {
+        "the keyring has not answered in time: Sioul asks it again at its next turn".to_string()
+    }
+}
+
+impl From<Late> for keyring::Error {
+    fn from(late: Late) -> Self {
+        keyring::Error::PlatformFailure(Box::new(std::io::Error::other(late.words())))
+    }
+}
+
+impl From<Late> for SyncError {
+    fn from(late: Late) -> Self {
+        SyncError::Keyring(late.words())
+    }
+}
+
+/// How long a read of the keyring is waited for: a Secret Service answers
+/// within milliseconds; a session bus that stops answering would hold the
+/// caller (the sharing, every minute; the window's own thread) for ever.
+pub(crate) const KEYRING_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long a write of the keyring is waited for: the keyring may ask to be
+/// unlocked first, and the person types its password meanwhile.
+pub(crate) const KEYRING_WRITE_LIMIT: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Since when (Unix seconds) a keyring call has not answered past its limit:
+/// while one has not (the Secret Service or the bus stuck, an unlocking
+/// prompt left open), every other call is given up at once, never one more
+/// thread waiting behind it; the call answering at last, late, clears it.
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+static LATE: std::sync::Mutex<Option<i64>> = std::sync::Mutex::new(None);
+
+/// `f`, a call to the keyring, waited for `limit` at most (the Secret
+/// Service's systems: Linux, FreeBSD, OpenBSD): it runs on a thread of its
+/// own, and past the limit this returns `Late` while that thread is left to
+/// end by itself (its answer, late, thrown away; its connection not through libdbus,
+/// so it holds no lock that another of Sioul's connections takes). Elsewhere
+/// (the Keychain, the Credential Manager, Android's KeyStore: no bus) `f`
+/// alone.
+fn limited<T: Send + 'static, E: From<Late> + Send + 'static>(limit: std::time::Duration, f: impl FnOnce() -> Result<T, E> + Send + 'static) -> Result<T, E> {
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+    {
+        let now = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+        if LATE.lock().ok().is_some_and(|late| late.is_some()) {
+            return Err(E::from(Late));
+        }
+        let (answer, answered) = std::sync::mpsc::channel();
+        let asked = now();
+        let spawned = std::thread::Builder::new().name("sioul-keyring".into()).spawn(move || {
+            let out = f();
+            // Late: the calls given up meanwhile may go again.
+            if let Ok(mut late) = LATE.lock()
+                && late.is_some_and(|since| since >= asked)
+            {
+                *late = None;
+            }
+            let _ = answer.send(out);
+        });
+        if spawned.is_err() {
+            return Err(E::from(Late));
+        }
+        return match answered.recv_timeout(limit) {
+            Ok(out) => out,
+            Err(_) => {
+                if let Ok(mut late) = LATE.lock() {
+                    late.get_or_insert(asked);
+                }
+                eprintln!("sioul: the keyring did not answer within {} s: given up, asked again once it answers", limit.as_secs());
+                Err(E::from(Late))
+            }
+        };
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd")))]
+    {
+        let _ = limit;
+        f()
+    }
 }
 
 /// The keyring held by another of Sioul's processes past `KEYRING_WAIT`.
@@ -137,19 +242,27 @@ fn entry(account: &Account) -> Result<Entry, SyncError> {
 /// two alike, one of the keyring's first version) as it always did.
 fn read_secret(user: &str) -> Result<Vec<u8>, keyring::Error> {
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-    match kept::read(user) {
+    match kept_read(user)? {
         kept::Read::Found(secret) => return Ok(secret),
         kept::Read::None => return Err(keyring::Error::NoEntry),
         kept::Read::Elsewhere => {}
     }
-    guarded(|| Entry::new(SERVICE, user)?.get_secret())
+    let user = user.to_string();
+    guarded(move || Entry::new(SERVICE, &user)?.get_secret())
+}
+
+/// `kept::read`, with the time limit of every read (`limited`).
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+fn kept_read(user: &str) -> Result<kept::Read, keyring::Error> {
+    let user = user.to_string();
+    limited(KEYRING_LIMIT, move || Ok::<_, keyring::Error>(kept::read(&user)))
 }
 
 /// The secret kept under `user`, as text (`read_secret`); one that is not
 /// UTF-8 is refused by the `keyring` crate's own read, as before.
 fn read_password(user: &str) -> Result<String, keyring::Error> {
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
-    match kept::read(user) {
+    match kept_read(user)? {
         kept::Read::Found(secret) => {
             if let Ok(text) = String::from_utf8(secret) {
                 return Ok(text);
@@ -158,7 +271,8 @@ fn read_password(user: &str) -> Result<String, keyring::Error> {
         kept::Read::None => return Err(keyring::Error::NoEntry),
         kept::Read::Elsewhere => {}
     }
-    guarded(|| Entry::new(SERVICE, user)?.get_password())
+    let user = user.to_string();
+    guarded(move || Entry::new(SERVICE, &user)?.get_password())
 }
 
 /// Keeps the password for the account, replacing any older one.
@@ -166,7 +280,8 @@ pub fn save(account: &Account, password: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    guarded(|| entry(account)?.set_password(password).map_err(|e| SyncError::Keyring(e.to_string())))
+    let (entry, password) = (entry(account)?, password.to_string());
+    guarded_write(move || entry.set_password(&password).map_err(|e| SyncError::Keyring(e.to_string())))
 }
 
 /// Whether the keyring is left alone: tests against a local server
@@ -268,7 +383,16 @@ pub fn pgp_passphrase(fingerprint: &str) -> Option<String> {
     if cfg!(test) || testing() {
         return None;
     }
-    read_password(&passphrase_user(fingerprint)).ok()
+    // None while the keyring does not answer too: the message stays closed
+    // for now, opened at its next reading; nothing is asked nor forgotten.
+    match read_password(&passphrase_user(fingerprint)) {
+        Ok(passphrase) => Some(passphrase),
+        Err(keyring::Error::NoEntry) => None,
+        Err(e) => {
+            eprintln!("sioul: the keyring did not give an OpenPGP key's passphrase now ({e}): asked again at the next reading");
+            None
+        }
+    }
 }
 
 /// In a test build with `SIOUL_TEST_PASSWORD`, the passphrase every key gets
@@ -286,21 +410,19 @@ pub fn save_pgp_passphrase(fingerprint: &str, passphrase: &str) -> Result<(), Sy
     if testing() {
         return Ok(());
     }
-    guarded(|| passphrase_entry(fingerprint)?.set_password(passphrase).map_err(|e| SyncError::Keyring(e.to_string())))
+    let (entry, passphrase) = (passphrase_entry(fingerprint)?, passphrase.to_string());
+    guarded_write(move || entry.set_password(&passphrase).map_err(|e| SyncError::Keyring(e.to_string())))
 }
 
-/// A secret kept under a name of Sioul's ("Bitwarden device token for …").
-pub fn named(name: &str) -> Option<String> {
-    if testing() {
-        return None;
-    }
-    read_password(name).ok()
-}
-
-/// A secret kept under a name of Sioul's, told apart from none kept: an
-/// error when the keyring did not answer (locked, its service not running
-/// for a moment), never taken for none.
-pub fn named_checked(name: &str) -> Result<Option<String>, SyncError> {
+/// A secret kept under a name of Sioul's ("Bitwarden device token for …"),
+/// told apart from none kept: an error when the keyring did not answer
+/// (locked, its service not running for a moment, a call past its time
+/// limit or behind one, `limited`), never taken for none. Its readers take
+/// an error for "cannot know now": nothing forgotten, no sign-in asked
+/// again, asked again later (the fourth review of 27 November 2026, F3:
+/// until then it read as none kept, and a keyring stalled for a moment
+/// asked to sign in to Google again).
+pub fn named(name: &str) -> Result<Option<String>, SyncError> {
     if testing() {
         return Ok(None);
     }
@@ -311,12 +433,18 @@ pub fn named_checked(name: &str) -> Result<Option<String>, SyncError> {
     }
 }
 
+/// The same as `named`, by its older name.
+pub fn named_checked(name: &str) -> Result<Option<String>, SyncError> {
+    named(name)
+}
+
 /// Keeps a secret under a name of Sioul's.
 pub fn save_named(name: &str, secret: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    guarded(|| Entry::new(SERVICE, name).and_then(|e| e.set_password(secret))).map_err(|e| SyncError::Keyring(e.to_string()))
+    let (name, secret) = (name.to_string(), secret.to_string());
+    guarded_write(move || Entry::new(SERVICE, &name).and_then(|e| e.set_password(&secret))).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
 /// Forgets a secret kept under a name of Sioul's; nothing to do if there was none.
@@ -324,7 +452,8 @@ pub fn forget_named(name: &str) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    match guarded(|| Entry::new(SERVICE, name).and_then(|e| e.delete_credential())) {
+    let name = name.to_string();
+    match guarded_write(move || Entry::new(SERVICE, &name).and_then(|e| e.delete_credential())) {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(SyncError::Keyring(e.to_string())),
     }
@@ -359,7 +488,8 @@ pub fn save_named_bytes(name: &str, secret: &[u8]) -> Result<(), SyncError> {
     if secret.len() > ENTRY_BYTES {
         return Err(SyncError::Keyring(format!("{name}: {} bytes, more than an entry holds everywhere ({ENTRY_BYTES})", secret.len())));
     }
-    guarded(|| Entry::new(SERVICE, name).and_then(|e| e.set_secret(secret))).map_err(|e| SyncError::Keyring(e.to_string()))
+    let (name, secret) = (name.to_string(), secret.to_vec());
+    guarded_write(move || Entry::new(SERVICE, &name).and_then(|e| e.set_secret(&secret))).map_err(|e| SyncError::Keyring(e.to_string()))
 }
 
 /// Forgets the account's password; nothing to do if there was none.
@@ -367,7 +497,8 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
     if testing() {
         return Ok(());
     }
-    match guarded(|| entry(account).map(|e| e.delete_credential()))? {
+    let entry = entry(account)?;
+    match guarded_write(move || Ok::<_, SyncError>(entry.delete_credential()))? {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(SyncError::Keyring(e.to_string())),
     }
@@ -385,10 +516,11 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
 /// library once dropped), where it lived one read: whoever could record this
 /// process's messages to the keyring's service could read them with it, and
 /// that is someone who can already ask the unlocked keyring itself. Its
-/// connection is made by `dbus-secret-service`, the library the `keyring`
-/// crate reads through, as before: through libdbus's own registration, once
-/// for the process now rather than at each read (docs/android.md, "the
-/// keyring is the exposure left").
+/// connection is made by `secret-service`, the library the `keyring` crate
+/// reads through, without libdbus since 27 November 2026 (`dbus-secret-service` and
+/// libdbus before), once for the process rather than at each read
+/// (docs/android.md, "the keyring is the exposure left"). Each read through
+/// it is waited for `KEYRING_LIMIT` at most (`kept_read`).
 ///
 /// The items, their attributes and where they are looked for are the
 /// `keyring` crate's (`target` "default", `service`, `username`; then its
@@ -412,7 +544,8 @@ pub fn forget(account: &Account) -> Result<(), SyncError> {
 /// stuck.
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
 mod kept {
-    use dbus_secret_service::{EncryptionType, Error, SecretService};
+    use secret_service::blocking::SecretService;
+    use secret_service::{EncryptionType, Error};
     use std::collections::HashMap;
     use std::sync::{Mutex, TryLockError};
     use std::time::Duration;
@@ -422,7 +555,7 @@ mod kept {
 
     /// The session kept, with the connection its owner is asked through.
     pub(super) struct Session {
-        service: SecretService,
+        service: SecretService<'static>,
         /// A connection of Sioul's own (`crate::bus`), to ask who has the name.
         bus: dbus::channel::Channel,
         /// The unique name of the service the session was made with.
@@ -536,10 +669,24 @@ mod kept {
     /// it), never a call the bus or the service did not answer in time, which a
     /// new connection would wait for too.
     pub(super) fn made_again(e: &Error) -> bool {
+        const LATE: [&str; 3] = ["org.freedesktop.DBus.Error.NoReply", "org.freedesktop.DBus.Error.Timeout", "org.freedesktop.DBus.Error.TimedOut"];
         match e {
-            Error::Dbus(e) => !matches!(e.name(), Some("org.freedesktop.DBus.Error.NoReply" | "org.freedesktop.DBus.Error.Timeout" | "org.freedesktop.DBus.Error.TimedOut")),
+            Error::Zbus(zbus::Error::MethodError(name, _, _)) => !LATE.contains(&name.as_str()),
+            Error::Zbus(zbus::Error::FDO(e)) => !late_fdo(e),
+            Error::ZbusFdo(e) => !late_fdo(e),
             _ => false,
         }
+    }
+
+    /// The bus's own words for a call not answered in time.
+    fn late_fdo(e: &zbus::fdo::Error) -> bool {
+        matches!(e, zbus::fdo::Error::NoReply(_) | zbus::fdo::Error::Timeout(_) | zbus::fdo::Error::TimedOut(_))
+    }
+
+    /// Whether a failure is the bus's or the service's (a D-Bus error), told
+    /// from the library's own (a reply it could not read, a crypto fault).
+    fn on_the_bus(e: &Error) -> bool {
+        matches!(e, Error::Zbus(_) | Error::ZbusFdo(_))
     }
 
     /// `user`'s item where the `keyring` crate looks for it (its
@@ -553,7 +700,7 @@ mod kept {
                 let legacy = session.get_default_collection().and_then(|collection| collection.search_items(HashMap::from([("service", super::SERVICE), ("username", user)])).map(|items| items.is_empty()));
                 match legacy {
                     Ok(true) => Ok(Read::None),
-                    Err(e @ Error::Dbus(_)) => Err(e),
+                    Err(e) if on_the_bus(&e) => Err(e),
                     _ => Ok(Read::Elsewhere),
                 }
             }
@@ -634,6 +781,55 @@ mod tests {
         assert_eq!(held(&path, KEYRING_WAIT, || 1), Ok(1), "let go: taken");
         assert!(KEYRING_WAIT <= std::time::Duration::from_secs(5), "under Android's five seconds of a window that does not answer");
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// Every call to the keyring has a time limit (`limited`, the Secret
+    /// Service's systems): one that does not answer is given up after it as
+    /// `Late`, a keyring error; while it has not answered, another is given
+    /// up at once, without a thread more waiting behind it, and every reader
+    /// of a secret is told so, never "none kept"; once it answers, late,
+    /// calls go again. One that answers in time gives its answer.
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"))]
+    #[test]
+    fn a_keyring_call_past_its_limit_is_given_up_and_the_next_waits_for_none() {
+        let short = std::time::Duration::from_millis(150);
+        assert!(matches!(limited(short, || Ok::<_, SyncError>(7)), Ok(7)), "answered in time");
+        let (go, wait) = std::sync::mpsc::channel::<()>();
+        let (ended, done) = std::sync::mpsc::channel::<()>();
+        let started = std::time::Instant::now();
+        let late = limited(short, move || {
+            let _ = wait.recv();
+            let _ = ended.send(());
+            Ok::<_, SyncError>(1)
+        });
+        assert!(matches!(late, Err(SyncError::Keyring(ref why)) if why.contains("has not answered")), "{late:?}");
+        assert!(started.elapsed() >= short);
+        let at_once = std::time::Instant::now();
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mark = ran.clone();
+        assert!(limited(short, move || {
+            mark.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok::<_, SyncError>(2)
+        })
+        .is_err());
+        assert!(!ran.load(std::sync::atomic::Ordering::SeqCst) && at_once.elapsed() < short, "given up at once while the first has not answered");
+        // Every reader meanwhile is told the keyring did not answer, never
+        // "none kept": nothing forgotten, no sign-in asked again, asked again
+        // later (the fourth review of 27 November 2026, F3). None of them
+        // reaches a bus: the call late holds every other back here.
+        assert!(matches!(named("someone on example.org"), Err(SyncError::Keyring(_))));
+        assert!(matches!(crate::google::grant_for(crate::google::Purpose::Mail, "someone@example.org"), Err(SyncError::Keyring(_))));
+        assert!(matches!(crate::google::access_token_for(crate::google::Purpose::Mail, "someone@example.org", false), Err(SyncError::Keyring(_))), "never \"sign in to Google again\"");
+        assert!(matches!(crate::loginflow::kept("someone", "cloud.example.org"), Err(SyncError::Keyring(_))));
+        assert!(matches!(crate::github::token(), Err(SyncError::Keyring(_))));
+        assert!(matches!(crate::shield_ai::api_key(), Err(SyncError::Keyring(_))));
+        go.send(()).unwrap();
+        done.recv().unwrap();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while LATE.lock().unwrap().is_some() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(matches!(limited(short, || Ok::<_, SyncError>(3)), Ok(3)), "answered late: calls go again");
     }
 
     /// The AI key goes through the keyring's own writers (with their lock on
@@ -839,16 +1035,65 @@ mod kept_tests {
     }
 
     /// A call the bus or the service did not answer in time is never made
-    /// again at once (a new connection would wait on the same bus, without
-    /// limit); a service that answers it does not know the session is.
+    /// again at once (a new connection would wait on the same bus); a
+    /// service that answers it does not know the session is. The errors as
+    /// zbus gives them: the bus's own (`fdo`), or a method's error by name.
     #[test]
     fn a_call_not_answered_in_time_is_not_made_again_at_once() {
-        let error = |name: &str| dbus_secret_service::Error::Dbus(dbus::Error::new_custom(name, "a stand-in"));
-        assert!(!kept::made_again(&error("org.freedesktop.DBus.Error.NoReply")));
-        assert!(!kept::made_again(&error("org.freedesktop.DBus.Error.Timeout")));
-        assert!(kept::made_again(&error("org.freedesktop.Secret.Error.NoSession")));
-        assert!(kept::made_again(&error("org.freedesktop.DBus.Error.UnknownObject")));
-        assert!(!kept::made_again(&dbus_secret_service::Error::Locked));
+        use secret_service::Error;
+        let by_name = |name: &str| {
+            let call = zbus::Message::method("/", "Stand").unwrap().destination("org.example.StandIn").unwrap().build(&()).unwrap();
+            Error::Zbus(zbus::Error::MethodError(zbus::names::OwnedErrorName::try_from(name.to_string()).unwrap(), Some("a stand-in".into()), call))
+        };
+        assert!(!kept::made_again(&by_name("org.freedesktop.DBus.Error.NoReply")));
+        assert!(!kept::made_again(&by_name("org.freedesktop.DBus.Error.Timeout")));
+        assert!(!kept::made_again(&Error::ZbusFdo(zbus::fdo::Error::NoReply("a stand-in".into()))));
+        assert!(!kept::made_again(&Error::Zbus(zbus::Error::FDO(Box::new(zbus::fdo::Error::TimedOut("a stand-in".into()))))));
+        assert!(kept::made_again(&by_name("org.freedesktop.Secret.Error.NoSession")));
+        assert!(kept::made_again(&Error::ZbusFdo(zbus::fdo::Error::UnknownObject("a stand-in".into()))));
+        assert!(!kept::made_again(&Error::Locked));
+    }
+
+    /// A Secret Service of the test's own that takes its name on the bus
+    /// and never answers (a service stuck, a bus that stops answering): a
+    /// read of the keyring is given up after its time limit
+    /// (`KEYRING_LIMIT`) as a keyring error, never as "none kept", never a
+    /// wait without end; another asked meanwhile is given up at once; once
+    /// the stuck one ends (the service gone, the bus answering for it), the
+    /// next is asked again. Only on a test's own bus (dbus-run-session),
+    /// never the person's keyring.
+    #[test]
+    #[ignore = "takes the keyring's name on its bus, which the final pass's keyring count would fail on: tools/final-pass.sh runs it apart, on a bus of its own"]
+    fn a_secret_service_that_never_answers_is_given_up_after_its_limit() {
+        let _turn = KEYRINGS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !a_test_bus() {
+            eprintln!("skipped: not on a test's own bus with no Secret Service (run under dbus-run-session)");
+            return;
+        }
+        let silent = crate::bus::session().expect("the test's bus");
+        let take = dbus::Message::new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName").unwrap().append2(SECRETS, 4u32);
+        let taken = silent.send_with_reply_and_block(take, Duration::from_secs(5)).unwrap().read1::<u32>().unwrap();
+        assert_eq!(taken, 1, "the stand-in has the name");
+        // Never read again: every call to the name waits.
+        let asked = Instant::now();
+        let first = read_password("never-answered on example.org");
+        let waited = asked.elapsed();
+        assert!(matches!(first, Err(keyring::Error::PlatformFailure(_))), "a keyring error, never none kept: {first:?}");
+        assert!(waited >= KEYRING_LIMIT && waited < KEYRING_LIMIT + Duration::from_secs(20), "given up after its limit: {waited:?}");
+        let again = Instant::now();
+        assert!(matches!(read_password("never-answered on example.org"), Err(keyring::Error::PlatformFailure(_))));
+        assert!(again.elapsed() < Duration::from_secs(1), "given up at once while the first has not answered");
+        assert!(matches!(named_checked("never-answered"), Err(SyncError::Keyring(_))), "told from none kept");
+        // The stand-in gone: the bus answers the stuck call for it, and calls go again.
+        drop(silent);
+        let until = Instant::now() + Duration::from_secs(20);
+        while LATE.lock().unwrap().is_some() && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(LATE.lock().unwrap().is_none(), "the late call ended once the service went");
+        let after = Instant::now();
+        let _ = read_password("never-answered on example.org");
+        assert!(after.elapsed() < KEYRING_LIMIT, "asked again, answered (no service: an error at once)");
     }
 
     /// What a read costs, through the `keyring` crate (a connection and a

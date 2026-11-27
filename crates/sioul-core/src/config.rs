@@ -63,6 +63,15 @@ pub struct Config {
     /// travel with that folder (docs/database.md).
     #[serde(default)]
     pub share_projects: bool,
+    /// Folders of the notes folder that never travel with the sharing, by
+    /// their path from it ("archive/scans"): their files are never listed
+    /// nor sealed, at any depth, on any device, and what was sealed of them
+    /// before counts as unknown, never as deleted, until you say to take it
+    /// out everywhere (docs/database.md, "Folders that never travel"). Kept
+    /// with the settings that travel, so that every device leaves the same
+    /// folders out; a Sioul before it passes it over and keeps sharing them.
+    #[serde(default)]
+    pub share_never: Vec<String>,
     /// A text file of senders you know: one address or `@domain` per line.
     pub known_senders: Option<String>,
     /// A text file of senders you blocked, in the same form.

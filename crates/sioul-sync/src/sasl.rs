@@ -186,7 +186,7 @@ impl OAuth {
     /// the grant's mark. None kept: the sign-in must be done again.
     pub(crate) fn mark(self, login: &str) -> Result<String, SyncError> {
         match self {
-            OAuth::Google => crate::google::grant_for(crate::google::Purpose::Mail, login).map(|g| format!("google:{}", g.signed_in)).ok_or_else(|| SyncError::Login(crate::google::SIGN_IN_AGAIN.into())),
+            OAuth::Google => crate::google::grant_for(crate::google::Purpose::Mail, login)?.map(|g| format!("google:{}", g.signed_in)).ok_or_else(|| SyncError::Login(crate::google::SIGN_IN_AGAIN.into())),
             // The time of the sign-in on Microsoft's page: a refresh, which renews the token, does not change it.
             OAuth::Microsoft { .. } => crate::microsoft::grant(login).map(|g| format!("microsoft:{}", g.signed_in)).ok_or_else(|| SyncError::Login(crate::microsoft::AGAIN.into())),
         }

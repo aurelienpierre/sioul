@@ -22,14 +22,15 @@ const VERSION: &str = "2022-11-28";
 /// What a refused token says (`SyncError::Login`).
 pub const TOKEN_REFUSED: &str = "github-token";
 
-/// The token kept in the keyring.
-pub fn token() -> Option<String> {
+/// The token kept in the keyring: none kept (`Ok(None)`), or the keyring not
+/// answering now (an error, asked again later).
+pub fn token() -> Result<Option<String>, SyncError> {
     // A local stand-in for GitHub, in tests only (never in Sioul's builds).
     #[cfg(feature = "insecure-test-tls")]
     if let Some(token) = std::env::var_os("SIOUL_TEST_GITHUB_TOKEN") {
-        return Some(token.to_string_lossy().to_string());
+        return Ok(Some(token.to_string_lossy().to_string()));
     }
-    crate::secret::named(KEYRING).filter(|t| !t.trim().is_empty())
+    Ok(crate::secret::named(KEYRING)?.filter(|t| !t.trim().is_empty()))
 }
 
 fn api() -> String {
@@ -107,7 +108,7 @@ struct Client {
 
 impl Client {
     fn new() -> Result<Client, SyncError> {
-        let token = token().ok_or(SyncError::NoPassword)?;
+        let token = token()?.ok_or(SyncError::NoPassword)?;
         let agent = ureq::Agent::config_builder().timeout_global(Some(Duration::from_secs(30))).http_status_as_error(false).build().into();
         Ok(Client { agent, token, cache: Cache::load() })
     }

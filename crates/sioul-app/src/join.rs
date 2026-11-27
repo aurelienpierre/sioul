@@ -803,20 +803,51 @@ pub(crate) fn add_device(found: Option<(String, String)>) -> Vec<String> {
 
 // ---------------------------------------------------------------- stopping
 
+/// What letting the sharing's app password go could not do (`let_go`): said
+/// once on the Sharing page (`share::status`).
+pub(crate) static LET_GO_SAID: Mutex<Option<String>> = Mutex::new(None);
+
 /// Sharing stopped where it was joined through the server's sign-in
 /// (`State::user`): its app password forgotten here, and given back to the
 /// server unless one of your accounts here uses the same (its contacts and
-/// calendars, `bind_agenda`). Off the window's thread.
+/// calendars, `bind_agenda`). Never given back on a doubt: a password that
+/// could not be read (the keyring not answering) counts as one an account
+/// may use, and the app password is then kept here and said (`LET_GO_SAID`);
+/// so is one the server did not take back (the fourth review's re-review,
+/// L4). Off the window's thread.
 pub(crate) fn let_go(state: &remote::State) {
     if state.user.is_empty() {
         return;
     }
     let host = state.host();
-    let Some(password) = loginflow::kept(&state.user, &host) else { return };
-    let used = load_config().every_account().any(|a| secret::password(a).is_ok_and(|p| p == password));
+    let say_once = |id: &str| {
+        if let Ok(mut said) = LET_GO_SAID.lock() {
+            *said = Some(say(id, &[("host", host.clone())]));
+        }
+    };
+    let password = match loginflow::kept(&state.user, &host) {
+        Ok(Some(password)) => password,
+        Ok(None) => return,
+        // The keyring not answering: nothing given back nor forgotten.
+        Err(_) => return say_once("share-let-go-kept"),
+    };
+    let mut doubt = false;
+    let used = load_config().every_account().any(|a| match secret::password(a) {
+        Ok(p) => p == password,
+        Err(sioul_sync::SyncError::NoPassword) => false,
+        Err(_) => {
+            doubt = true;
+            false
+        }
+    });
+    if doubt {
+        return say_once("share-let-go-kept");
+    }
     if !used {
         let server = state.url.split_once("/remote.php/").map_or(state.url.as_str(), |(server, _)| server);
-        let _ = loginflow::revoke(&Grant::of(server, &state.user, &password));
+        if loginflow::revoke(&Grant::of(server, &state.user, &password)).is_err() {
+            say_once("share-let-go-failed");
+        }
     }
     let _ = loginflow::forget(&state.user, &host);
 }

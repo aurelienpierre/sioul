@@ -1013,6 +1013,45 @@ pub struct Store {
     /// known there, never as a store new here to rebuild from the records
     /// (`known_place`), since they are the same bytes, checked.
     pub was: Option<(String, String, i64)>,
+    /// In a folder: its folders that never travel, by their path from it,
+    /// each ending in "/" (`Config::share_never`, `never_folders`): never
+    /// listed, never sealed, at any depth; what was sealed of them is unknown
+    /// here, and what another device still sends for them waits.
+    pub never: Vec<String>,
+}
+
+/// The folders of the notes that never travel, as the settings say them
+/// (`Config::share_never`), each a path from the notes folder ending in "/":
+/// blank ones, and any that would leave the notes folder ("..", from its
+/// root) passed over.
+pub fn never_folders(said: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = said
+        .iter()
+        .map(|folder| folder.trim().replace('\\', "/"))
+        .map(|folder| folder.split('/').filter(|part| !part.is_empty() && *part != ".").map(str::to_string).collect::<Vec<String>>())
+        .filter(|parts| !parts.is_empty() && !parts.iter().any(|part| part == ".."))
+        .map(|parts| format!("{}/", parts.join("/")))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Whether a file, by its name in the records, is in a folder of its store
+/// that never travels (`Store::never`).
+fn never_travels(store: &Store, file: &str) -> bool {
+    !store.never.is_empty() && file.strip_prefix(store.name.as_str()).is_some_and(|within| store.never.iter().any(|never| within_never(within, never)))
+}
+
+/// Whether `within` (a path from the notes folder) is in `never` (one of
+/// `never_folders`), as a storage that does not tell case, nor how an accent
+/// is written, sees them (`folded`: a phone's shared storage, Windows, a
+/// Mac's, which writes an accent apart): "Archive" said for a folder named
+/// "archive" is that folder. Leaving out one more folder than said never
+/// lets anything travel that should not (the third review of 26 November
+/// 2026, C4).
+fn within_never(within: &str, never: &str) -> bool {
+    folded(within).starts_with(&folded(never))
 }
 
 /// The folders Sioul keeps its files in.
@@ -1044,12 +1083,82 @@ pub fn stores(config: &Config, roots: &Roots) -> Vec<Store> {
 /// Sioul, which reads format 1 only, is never sent what it cannot read.
 pub const FORMAT: u32 = 2;
 
-/// The format each part is written in at `FORMAT`: 2 for the parts whose
-/// records changed (settings, time, projects and money), 1 for the others.
-/// Each record says its part's format when it is not 1 (`Change::f`).
+/// The format each part is read in at `FORMAT`: 2 for the parts whose
+/// records changed (settings, time, projects and money) and for the notes
+/// (`NEVER_FORMAT`), 1 for the others. Each record says its part's format
+/// when it is not 1 (`Change::f`); a device that does not know it holds the
+/// part (`Memory::newer`).
 pub fn part_format(part: &str) -> u32 {
+    #[cfg(test)]
+    if part == "notes" && tests::BEFORE_NEVER.with(std::cell::Cell::get) {
+        return 1;
+    }
     match part {
         "settings" | "time" | "projects" => 2,
+        "notes" => NEVER_TAKE_OUT,
+        _ => 1,
+    }
+}
+
+/// The notes' format 3 (27 November 2026, the fourth review's F1): the
+/// take-out that "Take them out everywhere" sends for a file of a folder
+/// that never travels, and every restatement of it, says so itself. A device
+/// of this build that reads it settles it in its memory and leaves its own
+/// copy where it is, never sending it again from there (`Memory::never_takes`),
+/// whatever its own settings say yet: one that reads the setting and the
+/// take-outs in one exchange (its stores built before), one that joins after
+/// the press, one whose settings part is switched off. Until then the meaning
+/// came from the reader's settings alone, and such a device moved its copies
+/// into its earlier versions. A Sioul before it holds the notes at it, as at
+/// format 2, and once updated reads what waited with that mark kept (the
+/// waiting change keeps its format).
+pub const NEVER_TAKE_OUT: u32 = 3;
+
+/// The notes' format 2 (27 November 2026): some of their folders never
+/// travel (`Config::share_never`), and a take-out of a file there takes its
+/// content out of the sharing while every device keeps its own copy. The
+/// records are those of format 1; only their meaning for such a folder
+/// changed. A device writes its notes' changes in it while one of their
+/// folders never travels here (`written_format`), and in format 1 otherwise,
+/// which every Sioul reads. A Sioul before it (0.1.0, up to 72e996b7) knows
+/// neither the setting nor the format: it would take its own copies out at
+/// such a take-out, and seal those folders' files again. Meeting format 2,
+/// it holds the notes instead (`share-newer`: nothing of them sent from it
+/// nor written there, said, until it is updated), and once updated it
+/// reads what waited with the setting known.
+pub const NEVER_FORMAT: u32 = 2;
+
+/// Whether a change of `key` in format `f` needs this device to write format
+/// 2 before it is written here: format 2 of the parts whose entries it
+/// renamed (settings, time, projects); never the notes' (`NEVER_FORMAT`),
+/// whose entries are named as in format 1.
+fn renames(key: &str, f: u32) -> bool {
+    f >= 2 && known_part(file_of(key)) != Some("notes")
+}
+
+/// A change of `key` that wins here: marked as a take-out of a folder that
+/// never travels when it is one in that format (`NEVER_TAKE_OUT`), else no
+/// longer marked (another change came for that file since).
+fn mark_never_take(marks: &mut BTreeSet<String>, key: &str, taken_out: bool, format: u32) {
+    if !key.starts_with(FILES) {
+        return;
+    }
+    if taken_out && format >= NEVER_TAKE_OUT {
+        marks.insert(key.to_string());
+    } else {
+        marks.remove(key);
+    }
+}
+
+/// The format a change of `part` is written in: its part's (`part_format`)
+/// once this device writes format 2 (`Memory::format`), 1 before; the notes'
+/// in `NEVER_FORMAT` while one of their folders never travels here, whatever
+/// format the rest is written in, else in format 1.
+fn written_format(part: &str, memory: &Memory) -> u32 {
+    match part {
+        "notes" if memory.never => NEVER_FORMAT,
+        "notes" => 1,
+        part if memory.format >= 2 => part_format(part),
         _ => 1,
     }
 }
@@ -1060,8 +1169,8 @@ pub fn part_format(part: &str) -> u32 {
 /// they were made on).
 pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) -> Vec<Store> {
     let (c, d, s) = (&roots.config, &roots.data, &roots.state);
-    let file = |part: &'static str, name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[], part, flat: false, was: None };
-    let folder = |part: &'static str, name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip, part, flat: false, was: None };
+    let file = |part: &'static str, name: &str, path: PathBuf, shape: Shape| Store { name: name.into(), path, folder: false, shape, skip: &[], part, flat: false, was: None, never: Vec::new() };
+    let folder = |part: &'static str, name: &str, path: PathBuf, shape: Shape, skip: &'static [&'static str]| Store { name: name.into(), path, folder: true, shape, skip, part, flat: false, was: None, never: Vec::new() };
     let senders = |chosen: &Option<String>, name: &str| chosen.as_deref().map_or_else(|| c.join(name), sioul_core::config::expand_home);
     let local = sioul_core::vdir::LOCAL;
     let mut stores = vec![
@@ -1236,6 +1345,11 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         stores.push(folder("papers", "files/papers/", notes.join(sioul_core::papers::FOLDER), Shape::Files, &[]));
         stores.push(folder("notes", "files/notes/", notes, Shape::Files, NOT_NOTES));
     }
+    // Folders of the notes that never travel (`Config::share_never`): the notes' store leaves them out.
+    let never = never_folders(&config.share_never);
+    for store in stores.iter_mut().filter(|store| store.name == "files/notes/") {
+        store.never = never.clone();
+    }
     stores.retain(|store| shares(store.part));
     stores
 }
@@ -1261,7 +1375,7 @@ pub fn shaped(stores: &[Store], format: u32) -> Vec<Store> {
 pub fn estimate(stores: &[Store]) -> (usize, u64, usize) {
     let (mut found, mut files, known, confirmed) = (Found::default(), Vec::new(), BTreeMap::new(), BTreeSet::new());
     for store in stores.iter().filter(|s| matches!(s.shape, Shape::Files) && s.path.is_dir()) {
-        Listing { store: &store.name, root: &store.path, skip: store.skip, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false, listed: None, carried: &mut Vec::new(), clock: 0 }.list(&store.path);
+        Listing { store: &store.name, root: &store.path, skip: store.skip, never: &store.never, known: &known, confirmed: &confirmed, files: &mut files, found: &mut found, sweep: false, listed: None, carried: &mut Vec::new(), clock: 0 }.list(&store.path);
     }
     files.iter().filter_map(|(_, path)| std::fs::metadata(path).ok()).fold((0, 0, 0), |(count, bytes, big), meta| if meta.len() > crate::blobs::LARGEST { (count, bytes, big + 1) } else { (count + 1, bytes + meta.len(), big) })
 }
@@ -1322,6 +1436,10 @@ struct Found {
     /// Folders of files sealed apart that list empty while they held files at
     /// the last look, with how many they held: unknown, said.
     emptied: Vec<(String, usize)>,
+    /// Folders that never travel (`Store::never`) of which this device's
+    /// memory still holds files sealed before, with how many: unknown, said
+    /// in words of their own (`share-never-held`), never as a folder gone.
+    never_held: Vec<(String, usize)>,
     /// What else the look has to say (names that are not text).
     said: Vec<String>,
     /// Large notes and papers found changed since they were last read, not
@@ -1570,7 +1688,7 @@ fn gather(stores: &[Store], known: &BTreeMap<String, Stat>, look: &Look) -> Foun
                 if let Some(l) = listed.as_mut().filter(|_| whole) {
                     *l = Listed { whole_at: look.clock, dirs: BTreeMap::new() };
                 }
-                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true, listed: listed.as_mut(), carried: &mut carried, clock: look.clock };
+                let mut listing = Listing { store: &store.name, root: &store.path, skip: store.skip, never: &store.never, known, confirmed: look.confirmed, files: &mut files, found: &mut found, sweep: true, listed: listed.as_mut(), carried: &mut carried, clock: look.clock };
                 listing.list(&store.path);
                 if let (Some(listed), Ok(mut all)) = (listed, LISTED.lock()) {
                     all.insert(store.path.clone(), listed);
@@ -1630,6 +1748,8 @@ struct Listing<'a> {
     store: &'a str,
     root: &'a Path,
     skip: &'a [&'a str],
+    /// Its folders that never travel (`Store::never`).
+    never: &'a [String],
     known: &'a BTreeMap<String, Stat>,
     /// The folders you said to take out what went from (`Sealed::confirmed`):
     /// one of them, or a folder below one, listing empty is emptied.
@@ -1671,6 +1791,23 @@ impl Listing<'_> {
                 if let Some(parent) = dir.parent() {
                     listed.dirs.remove(parent);
                 }
+            }
+            return 0;
+        }
+        // A folder that never travels (`Store::never`): never listed, never
+        // read nor hashed, at any depth. What was sealed of it before is
+        // unknown here, never taken out, said in words of its own while this
+        // device's memory holds any of it (`share-never-held`), with "Take
+        // them out everywhere" (24 November 2026: folders of attachments and
+        // recordings, hundreds of megabytes, sealed into a host that had no
+        // room for them). Pressed, the take-outs go, and every device that
+        // knows the setting settles them in its memory and leaves its own
+        // copy where it is (as decided on 26 November 2026).
+        if !within.is_empty() && self.never.iter().any(|never| within_never(&within, never)) {
+            let held = self.known.range(prefix.clone()..).take_while(|(file, _)| file.starts_with(&prefix)).count();
+            if held > 0 && !self.confirmed.iter().any(|said| confirms(said, &prefix)) {
+                self.found.never_held.push((prefix.clone(), held));
+                self.found.unknown.insert(prefix);
             }
             return 0;
         }
@@ -3208,6 +3345,32 @@ pub(crate) fn hash(value: &str) -> String {
 struct Memory {
     #[serde(default)]
     computer: String,
+    /// For this exchange: a folder of the notes never travels here
+    /// (`Store::never`), so the notes' changes are written in the format that
+    /// says it (`NEVER_FORMAT`). Never saved.
+    #[serde(skip)]
+    never: bool,
+    /// For this exchange: the folders that never travel by this device's
+    /// settings, by their place in the records, said in its notes (`Seen::never`). Never saved.
+    #[serde(skip)]
+    never_here: BTreeSet<String>,
+    /// The old spam filter's tables a sync app left in a phone's folder,
+    /// taken out once (`sweep_old_tables`): `OLD_TABLES_SWEPT` once done.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    old_tables: u32,
+    /// Files of the notes taken out of the sharing as files of a folder that
+    /// never travels (`NEVER_TAKE_OUT`): their take-out is written and read
+    /// in that format, restated so, settled here without touching the file,
+    /// and this device's own copy is never sent again from here. A key leaves
+    /// once another change for it wins, or once this device lets its folder
+    /// travel again (`never_known`).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    never_takes: BTreeSet<String>,
+    /// The folders that never traveled here at the last exchange, by their
+    /// place in the records ("files/notes/archive/"): one no longer among them
+    /// was let travel again here, and its files' marks go (`never_takes`).
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    never_known: BTreeSet<String>,
     /// The last clock given or read.
     #[serde(default)]
     clock: u64,
@@ -3495,9 +3658,11 @@ struct Memory {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     departed: BTreeMap<String, u32>,
     /// Sealed files swept here as written by a device that no longer counts
-    /// (`sweep_theirs`), and when (milliseconds): the sending takes each out
-    /// of the server too (`swept_theirs`); forgotten after `UNUSED_DAYS`, or
-    /// once one is back in the folder (a device uses that content again).
+    /// (`sweep_theirs`), and since 25 November 2026 this device's own taken
+    /// out by the one rule (`stands`), and when (milliseconds): the sending
+    /// takes each out of the server too (`swept_theirs`, `again_after_412`);
+    /// forgotten after `UNUSED_DAYS`, or once one is back in the folder (a
+    /// device uses that content again).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     taken: BTreeMap<String, i64>,
     /// Of `taken`, those swept as soon as every device that counts read
@@ -3890,7 +4055,9 @@ enum Stands {
 ///   day before the take-out, and this device's own dated otherwise than when
 ///   it wrote it, `Sealed::stamped`; made fresh before that, as when a device
 ///   named every note again days earlier, it is no use since: 24 November
-///   2026), and no text names it (`texts_media`) (else `InTime`);
+///   2026), no text names it (`texts_media`), and this device asks no other
+///   for a full round (`full_asked`: records of theirs not read here may name
+///   the same bytes; the second review of 24 November 2026, S4) (else `InTime`);
 /// - this device can tell: every part whose files are sealed apart is shared
 ///   here (`FILE_PARTS`), so that a current paper of the same bytes is known,
 ///   and so are the texts' media (`texts_media`: the texts shared here and
@@ -3927,6 +4094,12 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
     let waiting: BTreeSet<String> = named_by_waiting.clone().filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))).filter(|h| !h.is_empty()).map(|h| crate::blobs::name(sharing.key, &h)).collect();
     let untold_waiting = named_by_waiting.into_iter().any(|(key, value)| value.as_deref().is_some_and(|v| value_hash(key, v).is_empty()));
     let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    // This device asks another for a full round (`full_asked`: records of
+    // theirs met past what it read in order, a round stuck on a full host):
+    // what those records say is not known here, and one may name the same
+    // bytes in another file. Nothing taken out goes meanwhile (the second
+    // review of 24 November 2026, S4).
+    let asking = !full_asked(memory, &rounds(sharing.folder)).is_empty();
     let blobs = sharing.folder.join("blobs");
     // Its file made fresh since: dated after a day before the take-out
     // (`USE_MARGIN`, clocks apart); this device's own, dated as it wrote it
@@ -3962,7 +4135,7 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
         } else if let Some(id) = older {
             Stands::Older(id.clone())
         } else {
-            let used = untold_waiting || waiting.contains(name) || sealed.replaced.contains_key(name) || sealed.named_at.get(name).is_some_and(|at| *at > since) || made_fresh(name, since_wall);
+            let used = asking || untold_waiting || waiting.contains(name) || sealed.replaced.contains_key(name) || sealed.named_at.get(name).is_some_and(|at| *at > since) || made_fresh(name, since_wall);
             if used {
                 Stands::InTime
             } else if !every_part {
@@ -4729,6 +4902,10 @@ pub fn set_keeping(on: bool) {
 /// names made with the sharing's key (`blobs::forget_names`).
 pub fn forget_held(memory: &Path, stores: &[Store]) {
     let below = |path: &Path| stores.iter().any(|store| path.starts_with(&store.path));
+    // The notes' keys: of the sharing stopped.
+    if let Ok(mut keys) = NOTES_KEYS.lock() {
+        keys.clear();
+    }
     if let Ok(mut all) = KEPT.lock() {
         all.remove(memory);
     }
@@ -4879,7 +5056,13 @@ struct Sealing<'a> {
     turn: Turn,
 }
 
-/// A computer's own notes in the folder: when it last exchanged, its round, how far it read the others.
+/// A computer's own notes in the folder: when it last exchanged, its round,
+/// how far it read the others. Sealed since 27 November 2026 (`sealed`): the
+/// server neither reads how far each device read nor can write it in a
+/// device's name (it could only make devices keep rounds longer or read
+/// again, review F19). While a device that counts reads the plain fields
+/// only (an older Sioul, `devices::Entry::sealed_notes`), they are written
+/// beside the sealed copy, the same (`notes_sealed_open`).
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Seen {
     #[serde(default)]
@@ -4907,6 +5090,42 @@ struct Seen {
     /// Its size changed at each writing (`pad_for`): read by nobody.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pad: String,
+    /// The same notes sealed with the records' key, bound to their writer
+    /// (`notes_bound`), its padding inside: what a device that reads them
+    /// sealed reads alone. An older Sioul passes over it.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    sealed: String,
+    /// The folders that never travel by its settings, by their place in the
+    /// records ("files/notes/archive/"): a device whose settings do not travel
+    /// learns from them when one travels again, and lets its marks go
+    /// (`Memory::never_takes`; the fourth review's re-review, L3). An older
+    /// Sioul passes over it.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    never: BTreeSet<String>,
+    /// Read from its plain fields alone (`read_seen_in`): an older Sioul's
+    /// notes, refused from a device whose sealed entry says it seals its own
+    /// (`read_seen`). Never written.
+    #[serde(skip)]
+    plain: bool,
+}
+
+/// What a device's entry says once its Sioul reads the others' notes sealed (`devices::Entry::sealed_notes`).
+pub const NOTES_SEALED: u32 = 1;
+
+/// What a computer's sealed notes are bound to: their writer, so that one
+/// device's notes are never taken for another's.
+fn notes_bound(computer: &str) -> String {
+    format!("notes\u{1f}{computer}")
+}
+
+/// Whether this device writes its notes without their plain fields: every
+/// other device that counts (`present`) says in its sealed entry that it
+/// reads them sealed (`devices::Entry::sealed_notes`). One that does not, an
+/// older Sioul (0.1.0 up to 72e996b7), reads the plain fields, which go
+/// beside the sealed copy until it is updated or no longer counts: it keeps
+/// working as before meanwhile, and the server reads those fields as before.
+fn notes_sealed_open(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.sealed_notes >= NOTES_SEALED))
 }
 
 fn bound(computer: &str, round: u32, n: u64, clock: u64) -> String {
@@ -5313,6 +5532,7 @@ impl Counted {
 /// the folder (notes alone). A stray file you forgot, or that a replacement
 /// names, is said so.
 fn counted(folder: &Path, key: &[u8; 32], computer: &str, memory: &Memory, now_ms: i64) -> Vec<(String, Counted)> {
+    remember_notes_key(folder, key);
     let (entries, unread) = crate::devices::all(folder, key);
     // Every replacement said: by the entries read now and the latest seen
     // here (an older copy put back never takes one away), this device's own among them.
@@ -6402,10 +6622,30 @@ impl Drop for HandedOff {
     }
 }
 
+/// The key each sharing folder's notes are opened with in this process
+/// (`read_seen`), as the last exchange or reading of sealed facts there was
+/// given it: the readers of the others' notes are many, and some have no key
+/// of their own (the sending: `rounds_past`). Forgotten when sharing stops
+/// here (`forget_held`). Without it, a note is read by its plain fields alone.
+static NOTES_KEYS: std::sync::Mutex<BTreeMap<PathBuf, [u8; 32]>> = std::sync::Mutex::new(BTreeMap::new());
+
+fn remember_notes_key(folder: &Path, key: &[u8; 32]) {
+    if let Ok(mut keys) = NOTES_KEYS.lock()
+        && keys.get(folder) != Some(key)
+    {
+        keys.insert(folder.to_path_buf(), *key);
+    }
+}
+
+fn notes_key(folder: &Path) -> Option<[u8; 32]> {
+    NOTES_KEYS.lock().ok().and_then(|keys| keys.get(folder).copied())
+}
+
 /// One exchange: the changes found here go out, the others' come in. One at a
 /// time on this computer, whatever runs it (`exchange_lock`): another running,
 /// a quick one waits for it; a whole one does nothing, and says so (`share-busy`).
 pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outcome, String> {
+    remember_notes_key(sharing.folder, sharing.key);
     // The folder as it was set up, its seal opening with this device's key;
     // else nothing is read, written or made, and it is said (`sealed_for`).
     let (sealed, salt) = match sealed_for(sharing.folder, sharing.key) {
@@ -6455,6 +6695,15 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // which the others can open and read on from (`later_full`).
         let round = last_own(sharing.folder, sharing.computer).map_or(1, |(round, _, _)| round + 1);
         memory = Memory { computer: sharing.computer.to_string(), round, full_round: round, ..Memory::default() };
+    }
+    // A memory not joined (new, started anew, its files lost): the journal's
+    // lines are of other records, and a join reads the records before it
+    // looks anyway. Else the memory's clock is never behind a change the
+    // journal says went: no change made here after it is given a clock
+    // already used (the review of 24 November 2026, 4).
+    if memory.joined {
+        memory.clock = memory.clock.max(journal.clock());
+    } else {
         journal.forget();
     }
     if sealed == Some(true) {
@@ -6616,6 +6865,31 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     release_newer(sharing, &mut memory, now_ms);
     // Where the shared tables stand, judged anew at every exchange (`Tables`).
     let tables = tables_now(sharing, &memory, now_ms);
+    // A folder of the notes never travels here: the notes' changes say so
+    // (`NEVER_FORMAT`), the full rounds' restatements too, so that a Sioul
+    // that does not know such a folder holds the notes rather than misread one.
+    memory.never = stores.iter().any(|store| !store.never.is_empty());
+    // The folders that never travel here now; one let travel again since the
+    // last exchange drops its files' marks, so that they go again from here.
+    if stores.iter().any(|store| store.name == "files/notes/" && matches!(store.shape, Shape::Files)) {
+        let never_here: BTreeSet<String> = stores.iter().flat_map(|store| store.never.iter().map(move |folder| format!("{}{folder}", store.name))).collect();
+        memory.never_here = never_here.clone();
+        // Its settings not travelling here, what the others' notes say of theirs:
+        // one let travel again there lets its marks go here too.
+        let never_now: BTreeSet<String> = if stores.iter().any(|store| store.name == "config/config.toml") {
+            never_here
+        } else {
+            let elsewhere: BTreeSet<String> = computers(sharing.folder).iter().filter(|c| *c != sharing.computer).filter_map(|c| read_seen(sharing.folder, c)).flat_map(|seen| seen.never).collect();
+            never_here.into_iter().chain(elsewhere).collect()
+        };
+        let let_go: Vec<String> = memory.never_known.difference(&never_now).cloned().collect();
+        if !let_go.is_empty() {
+            memory.never_takes.retain(|key| !let_go.iter().any(|folder| within_never(file_of(key), folder)));
+        }
+        memory.never_known = never_now;
+    }
+    // Joined before this exchange: what its memory knows is all it read (`sweep_old_tables`).
+    let joined_before = memory.joined;
     if memory.format < 2 && (memory.switch || format_open(sharing, &memory, now_ms)) {
         switch_format(sharing, &mut memory, stores, now_ms, &mut outcome.problems)?;
     }
@@ -6636,6 +6910,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     outcome.problems.extend(found.too_big.iter().map(|file| format!("share-too-big:{file}")));
     outcome.problems.append(&mut found.said);
     outcome.problems.extend(found.emptied.iter().map(|(folder, held)| format!("share-vanished:{folder}:{held}")));
+    outcome.problems.extend(found.never_held.iter().map(|(folder, held)| format!("share-never-held:{folder}:{held}")));
     let mut out: Vec<(String, Option<String>, u64, String)> = Vec::new();
 
     // Stores new here (projects shared from now on, a store a new version
@@ -6879,6 +7154,13 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 memory.held.remove(key);
                 continue;
             }
+            // Taken out of the sharing as a file of a folder that never travels
+            // (`NEVER_TAKE_OUT`): this device's copy stays where it is, and is
+            // never sent again from here (a device that does not know the
+            // setting yet, or whose settings do not travel, lists it).
+            if memory.never_takes.contains(key) && memory.entries.get(key).is_some_and(|k| k.h.is_empty()) {
+                continue;
+            }
             // What another device's change wrote here, in an exchange ended
             // before its memory was saved (`journal`): not a change of this
             // device's. That change is read again below, the memory never
@@ -6990,6 +7272,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             };
             memory.entries.insert(key.clone(), Known { c: clock, w: sharing.computer.to_string(), h: String::new(), b: base.clone() });
             met_draft(&mut memory, &key, [&base, ""]);
+            // "Take them out everywhere" for a folder that never travels: the take-out says so itself.
+            if locate(stores, file_of(&key)).is_some_and(|(store, _)| never_travels(store, file_of(&key))) {
+                memory.never_takes.insert(key.clone());
+            } else {
+                memory.never_takes.remove(&key);
+            }
             out.push((key, None, clock, base));
         }
         // The shared tables retired, and no device that may come back an older
@@ -7029,7 +7317,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     };
     // Changes that waited for this device to write format 2, or for this
     // Sioul to know their part's format: in, once it can.
-    let ready: Vec<String> = memory.waiting.iter().filter(|(key, (_, _, _, f))| memory.format >= 2 && known_part(file_of(key)).is_some_and(|part| *f <= part_format(part))).map(|(key, _)| key.clone()).collect();
+    let ready: Vec<String> = memory.waiting.iter().filter(|(key, (_, _, _, f))| (memory.format >= 2 || !renames(key, *f)) && known_part(file_of(key)).is_some_and(|part| *f <= part_format(part))).map(|(key, _)| key.clone()).collect();
     for key in ready {
         let Some((value, c, w, f)) = memory.waiting.remove(&key) else { continue };
         if off(&key) {
@@ -7038,6 +7326,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         if f < 2 && divided_otherwise(&key) {
             later(&mut older_format, key, value, c, &w);
         } else if !below_whole_floor(&memory, &key, c) && newer(c, &w, memory.entries.get(&key).map(|k| (k.c, k.w.as_str()))) && newer(c, &w, winners.get(&key).map(|(_, c, w)| (*c, w.as_str()))) {
+            mark_never_take(&mut memory.never_takes, &key, value.is_none(), f);
             winners.insert(key, (value, c, w));
         }
     }
@@ -7214,7 +7503,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 }
                 if own {
                     // Only the entries of the files rebuilt; the rest is this computer's as it is.
-                    if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format < 2 && change.f >= 2 {
+                    if rebuilt(file_of(&change.k)) && !off(&change.k) && memory.format < 2 && renames(&change.k, change.f) {
                         // Its own format 2, met while its memory says format 1 (a
                         // memory put back from before its switch): never written
                         // with format 1's rules; it takes format 2 again from its
@@ -7225,6 +7514,10 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                         later(&mut older_format, change.k, change.v, record.c, computer);
                     } else if rebuilt(file_of(&change.k)) && !off(&change.k) && !below_whole_floor(&memory, &change.k, record.c) && newer(record.c, computer, winners.get(&change.k).map(|(_, c, w)| (*c, w.as_str()))) && memory.entries.get(&change.k).is_none_or(|k| (record.c, computer.as_str()) > (k.c, k.w.as_str())) {
                         bases.insert(change.k.clone(), change.b);
+                        // Its own take-out of a folder that never travels, read back (a
+                        // memory lost): marked again, so that its next full round restates
+                        // it so (the fourth review's re-review, L2).
+                        mark_never_take(&mut memory.never_takes, &change.k, change.v.is_none(), change.f.max(1));
                         win(&mut winners, &mut theirs_now, sharing.computer, change.k, (change.v, record.c, computer.clone()));
                     }
                     continue;
@@ -7299,7 +7592,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 // Format 2 while this device writes format 1: another device
                 // writes it already; this one does from its next exchange, and
                 // the change waits for it.
-                if format >= 2 && memory.format < 2 {
+                if memory.format < 2 && renames(&change.k, format) {
                     memory.switch = true;
                     wait(&mut memory.waiting, change.k, (change.v, record.c, computer.clone(), format));
                     continue;
@@ -7348,6 +7641,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                         }
                     }
                     bases.insert(change.k.clone(), change.b);
+                    mark_never_take(&mut memory.never_takes, &change.k, change.v.is_none(), format);
                     win(&mut winners, &mut theirs_now, sharing.computer, change.k, (change.v, record.c, computer.clone()));
                 }
             }
@@ -7385,6 +7679,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let mut written_hashes: BTreeMap<String, String> = BTreeMap::new();
     // Files written: as they are now (a note, a paper: read next time only if it changes), or to read again.
     let mut written_files: BTreeMap<String, Option<Stat>> = BTreeMap::new();
+    // Files of folders that never travel whose take-out was settled here, the file left where it is.
+    let mut left_where_it_is: Vec<String> = Vec::new();
     // Files sealed apart already as the others' change says: known, nothing written.
     let mut settled: BTreeSet<String> = BTreeSet::new();
     let history = crate::history::root(sharing.memory);
@@ -7406,7 +7702,8 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let landing: Vec<Landed> = winners
         .iter()
         .filter(|(key, _)| key.starts_with(FILES) && !(tables.learner && table_key(key)))
-        .filter(|(key, _)| locate(stores, file_of(key)).is_some_and(|(store, _)| matches!(store.shape, Shape::Files) && reads(store) && !found.is_unknown(file_of(key))))
+        .filter(|(key, (value, ..))| !(value.is_none() && memory.never_takes.contains(*key)))
+        .filter(|(key, _)| locate(stores, file_of(key)).is_some_and(|(store, _)| matches!(store.shape, Shape::Files) && reads(store) && !found.is_unknown(file_of(key)) && !never_travels(store, file_of(key))))
         .map(|(key, (value, c, w))| Landed::new(key, *c, w, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default()))
         .collect();
     let noted = match journal.note(landing) {
@@ -7437,15 +7734,45 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                 memory.sealed.failing.remove(key);
                 continue;
             }
-            let why = if !reads(store) { "not-read" } else if hurried() { "hurried" } else if found.is_unknown(file) { "unknown" } else { "" };
+            // In a folder that never travels (`Store::never`), this device never
+            // writes, removes nor reads a file (as decided on 26 November 2026):
+            // a take-out ("Take them out everywhere", or an older Sioul's) is
+            // settled in the memory and the file left where it is, so that the
+            // content it names leaves the folder once read; a change another
+            // device still sends (one whose settings say otherwise, an older
+            // Sioul) waits, never written, its content never asked for. Until
+            // the third review of 26 November 2026 (C1), a take-out met the
+            // folder as unknown and waited, and one pressed on two devices came
+            // back at every exchange, the whole folder hashed each time.
+            let never = never_travels(store, file) || (value.is_none() && memory.never_takes.contains(key));
+            if never && value.is_none() && reads(store) && !hurried() {
+                settled.insert(key.clone());
+                memory.sealed.missing.remove(key);
+                memory.sealed.failing.remove(key);
+                left_where_it_is.push(file.clone());
+                continue;
+            }
+            let why = if !reads(store) {
+                "not-read"
+            } else if hurried() {
+                "hurried"
+            } else if never {
+                "never"
+            } else if found.is_unknown(file) {
+                "unknown"
+            } else {
+                ""
+            };
             if !why.is_empty() {
                 *outcome.waits.entry(why.into()).or_default() += 1;
                 // Sioul keeping the folder itself, an exchange that leaves the
                 // notes for later (a phone's background step, an alarm's): their
                 // contents asked for all the same, nothing written, so that the
                 // window writes them as soon as it opens, offline too (review of
-                // 18 October 2026, L-2).
-                if keeps_itself(sharing)
+                // 18 October 2026, L-2). Never for a folder that never travels:
+                // its content would never be written (the third review, C3).
+                if !never
+                    && keeps_itself(sharing)
                     && let Some(reference) = value.as_deref().and_then(|v| serde_json::from_str::<Reference>(v).ok())
                 {
                     let blob = crate::blobs::name(sharing.key, &reference.h);
@@ -7500,6 +7827,12 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
                     there.insert(blob.clone());
                 }
                 _ => {}
+            }
+            // What the file holds now, marked done in the journal (`journal`).
+            if matches!(came, Ok(Received::AlreadySo | Received::Written { .. }))
+                && let Some((_, c, w)) = winners.get(key)
+            {
+                journal.done(&[Landed::new(key, *c, w, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default())]);
             }
             match came {
                 Ok(Received::AlreadySo) => {
@@ -7643,16 +7976,22 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         };
         // What each entry holds once written, noted in the journal on the disk
         // just before the file is written (`journal`); not noted, the file is
-        // not written, and what came waits for the next exchange.
+        // not written, and what came waits for the next exchange. Marked done
+        // once written.
+        let mut noted: Vec<Landed> = Vec::new();
         let landed = |hashes: &BTreeMap<String, String>| {
-            let lines = changes
+            noted = changes
                 .iter()
                 .filter(|(key, _)| !held_there.contains(entry_of(key)) && !held_lists.contains(entry_of(key)))
                 .filter_map(|(key, _)| winners.get(key).map(|(_, c, w)| Landed::new(key, *c, w, hashes.get(entry_of(key)).cloned().unwrap_or_default())))
                 .collect();
-            journal.note(lines)
+            journal.note(noted.clone())
         };
-        match write_entries(store, &path, &entries, memory.medicines_released.contains(file), keep, landed) {
+        let wrote = write_entries(store, &path, &entries, memory.medicines_released.contains(file), keep, landed);
+        if wrote.is_ok() {
+            journal.done(&noted);
+        }
+        match wrote {
             Ok(hashes) => {
                 outcome.written.insert(store.name.clone());
                 for (key, _) in changes.iter().filter(|(key, _)| !held_there.contains(entry_of(key)) && !held_lists.contains(entry_of(key))) {
@@ -7727,6 +8066,11 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             None => files.remove(&file),
         };
     }
+    // Taken out in a folder that never travels, left where it is: no longer
+    // a file this device's memory holds sealed there (`share-never-held`).
+    for file in &left_where_it_is {
+        files.remove(file);
+    }
 
     // Joining, the whole sharing, a store or a file rebuilt: what only this computer holds goes out.
     if !memory.joined || !rebuilt_here.is_empty() {
@@ -7781,12 +8125,30 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // send it back). What it said past that point is lost for whoever had not
     // read it: a new file opens on every entry this computer has the last word on.
     let own = |memory: &Memory| std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
+    // The host's room, where the server says it (`host_room`): no full round
+    // is begun that it has no room for; what is behind, said with its numbers.
+    let room = host_room(sharing, now_ms);
+    let short = |need: u64| room.is_some_and(|(left, _)| left < need.saturating_add(HOST_MARGIN));
+    // Two codes (the third review of 26 November 2026, D3): records waiting
+    // (`share-host-behind`), and a full round owed (`share-host-full`, below).
+    if let Some((left, behind)) = room.filter(|(left, behind)| *behind > *left) {
+        outcome.problems.push(format!("share-host-behind:{left}:{behind}"));
+    }
     if memory.own_size > own(&memory) || restate {
         if !restate {
             outcome.problems.push("share-own-cut".into());
         }
-        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, true)?;
-        memory.round_base = own(&memory);
+        let need = full_round_after(sharing, &mut memory);
+        if short(need) {
+            // Owed, begun once the room is there: the readers doubt meanwhile.
+            memory.owed = true;
+            if !outcome.problems.iter().any(|p| p.starts_with("share-host-full:")) {
+                outcome.problems.push(format!("share-host-full:{}:{need}", room.map_or(0, |(left, _)| left)));
+            }
+        } else {
+            new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, true)?;
+            memory.round_base = own(&memory);
+        }
     }
     // Past `SEGMENT`, what comes goes into a new round continuing this one,
     // nothing restated: the file sent at each change stays small.
@@ -7800,9 +8162,6 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.seq = 0;
         memory.round_base = 0;
     }
-    let before = own(&memory);
-    // The number of the line before the first one this append writes.
-    let line_before = memory.seq;
     // What this device appends, noted in the journal on the disk first
     // (`journal`): ended before its memory is saved, the next look sends a
     // change it finds again at its own clock, never a later one. Not noted (a
@@ -7810,28 +8169,37 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // device's later change wrote or found so in this exchange: the file holds
     // that change, not this one, and the same value chosen again later is a
     // new change, at a new clock (the review of 24 November 2026, must-fix 2).
-    journal.note(
-        out.iter()
-            .filter(|(key, ..)| !written_keys.contains(key) && !settled.contains(key))
-            .map(|(key, value, clock, _)| Landed::new(key, *clock, sharing.computer, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default()))
-            .collect(),
-    )?;
-    append(sharing, &mut memory, &out)?;
+    // Marked done once appended.
+    let own_landed: Vec<Landed> = out
+        .iter()
+        .filter(|(key, ..)| !written_keys.contains(key) && !settled.contains(key))
+        .map(|(key, value, clock, _)| Landed::new(key, *clock, sharing.computer, value.as_deref().map(|v| value_hash(key, v)).unwrap_or_default()))
+        .collect();
+    journal.note(own_landed.clone())?;
+    // A computer's first round, whatever its pieces: a full one (below).
+    let first_round = memory.full_round == 0 && memory.round <= 1;
+    let (appended_bytes, placed) = append(sharing, &mut memory, &out)?;
+    journal.done(&own_landed);
     // This device's own take-outs of files sealed apart, and the round and line they went into (`stands`);
     // the contents its own changes replaced (`Sealed::replaced`).
-    for (at, (key, value, clock, base)) in out.iter().enumerate() {
+    for ((key, value, clock, base), (round, line)) in out.iter().zip(placed) {
         if value.is_none() && key.starts_with(FILES) && !base.is_empty() {
-            removed_now.push((base.clone(), sharing.computer.to_string(), memory.round, line_before + at as u64 + 1, (*clock >> 16) as i64));
+            removed_now.push((base.clone(), sharing.computer.to_string(), round, line, (*clock >> 16) as i64));
         }
         if value.is_some() && key.starts_with(FILES) && !base.is_empty() {
             replaced_now.push(base.clone());
         }
     }
-    memory.grown += own(&memory).saturating_sub(before);
-    // The first round holds all this computer had when it joined: a full one.
-    if memory.full_round == 0 && memory.round == 1 {
+    memory.grown += appended_bytes;
+    // The first round holds all this computer had when it joined: a full one,
+    // its size every piece's (`PIECE`: past a megabyte it went on in rounds
+    // continuing it; until the pieces, one file read for its size).
+    if first_round && memory.full_round == 0 {
         memory.full_round = 1;
         memory.grown = 0;
+        if appended_bytes > 0 && memory.round > 1 {
+            memory.full_size = appended_bytes;
+        }
     }
     // When each part last sent and received a change, for the window.
     let part_of = |key: &str| locate(stores, file_of(key)).map(|(store, _)| store.part);
@@ -7895,9 +8263,18 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         // Those whose file was taken out, due by the one rule: at once,
         // whatever their age (`stands`); the server's copy goes at the
         // sending, as any this device swept.
+        // Each noted for the sending as one it swept (`Memory::taken`,
+        // `taken_since`): its copy there goes when no newer than a day before
+        // the take-out, whatever sent it again (the second review of 24
+        // November 2026, S3: eDrive keeps such a copy and sends it again with
+        // another time, and it stayed on the server for good).
         for name in judged.iter().filter(|(_, stands)| *stands == Stands::Due).map(|(name, _)| name) {
             if last.remove(name).is_some() {
                 let _ = std::fs::remove_file(sharing.folder.join("blobs").join(name));
+                if let Some((_, _, since_wall)) = memory.sealed.removed_at.get(name) {
+                    memory.taken.insert(name.clone(), now_ms);
+                    memory.taken_since.insert(name.clone(), *since_wall);
+                }
             }
         }
         // Those an earlier Sioul noted (no line said): by rounds, with the sweep's care, as before.
@@ -8021,10 +8398,24 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     let thrifty = importing(sharing.memory) || (metered && memory.owed_waited < OWED_METERED);
     let owed = memory.owed && !thrifty && restatement(sharing, &memory, stores, &found).1 == 0;
     if (memory.grown > full_round_after(sharing, &mut memory) && !waits) || owed {
-        new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
-        memory.round_base = own(&memory);
+        // Never begun without room for it on the host (`host_room`): it would
+        // fill the host, and every small change after it would be refused
+        // too; begun cut, the readers would ask for another, from its first
+        // piece again. Owed meanwhile, and said with its numbers.
+        let need = full_round_after(sharing, &mut memory);
+        if short(need) {
+            if !outcome.problems.iter().any(|p| p.starts_with("share-host-full:")) {
+                outcome.problems.push(format!("share-host-full:{}:{need}", room.map_or(0, |(left, _)| left)));
+            }
+        } else {
+            new_round(sharing, &mut memory, stores, &found, &hurried, now_ms, false)?;
+            memory.round_base = own(&memory);
+        }
     }
     memory.own_size = own(&memory);
+    // A mark of a folder that never travels holds while its file stands taken out here, or its take-out waits.
+    let marks = std::mem::take(&mut memory.never_takes);
+    memory.never_takes = marks.into_iter().filter(|key| memory.entries.get(key).or_else(|| memory.sealed.entries.get(key)).is_some_and(|k| k.h.is_empty()) || memory.pending.get(key).is_some_and(|(value, ..)| value.is_none())).collect();
     memory.files = files;
     // Where each store was read; one not read this time where it was.
     let places: BTreeMap<String, String> = stores.iter().filter_map(|s| if reads(s) { Some((s.name.clone(), place(s))) } else { memory.places.get(&s.name).map(|p| (s.name.clone(), p.clone())) }).collect();
@@ -8077,6 +8468,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     // content it says elsewhere (`take_out_own_copies`).
     if looked_after {
         take_out_own_copies(sharing.folder, sharing.computer, memory.round, memory.full_round);
+    }
+    // On a phone, once: the old spam tables its sync app kept (`sweep_old_tables`).
+    if joined_before && looked_after && memory.old_tables < OLD_TABLES_SWEPT && crate::devices::own(&sharing.memory.with_file_name("device.toml")).kind == crate::devices::PHONE {
+        let swept = sweep_old_tables(sharing, &memory);
+        if swept > 0 {
+            eprintln!("sioul: {swept} old spam filter tables a sync app had kept taken out of this phone's sharing folder, once");
+        }
+        memory.old_tables = OLD_TABLES_SWEPT;
     }
     // Still on format 1: what each whole list holds now, and what one took out (`Floor::removed` at the switch).
     if memory.format < 2 {
@@ -9104,6 +9503,12 @@ fn fresh_again(sharing: &Sharing, key: &str, value: &str, sealed: &mut Sealed, n
     if !sealed.mine.contains_key(&name) {
         crate::blobs::make_fresh(sharing.folder, sharing.key, &reference.h);
         take_as_own(sharing.folder, sealed, &name, now_ms);
+    } else if sealed.removed.contains_key(&name) {
+        // This device's own, noted as taken out: made fresh too, its time not
+        // stamped as its own writing (`Sealed::stamped`), so that its copy on
+        // the server and the other devices' sweeps find it used since the
+        // take-out (the second review of 24 November 2026, S4).
+        crate::blobs::make_fresh(sharing.folder, sharing.key, &reference.h);
     }
 }
 
@@ -9174,37 +9579,84 @@ fn keeps_itself(sharing: &Sharing) -> bool {
     crate::remote::mirror_of(sharing.memory) == sharing.folder
 }
 
-fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<String>, u64, String)]) -> Result<(), String> {
-    if changes.is_empty() {
-        return Ok(());
-    }
-    let path = round_file(sharing.folder, sharing.computer, memory.round);
-    let mut text = String::new();
-    for (at, (key, value, clock, base)) in changes.iter().enumerate() {
-        // A round's first line says where it stands (`Turn`): it continues the
-        // round before, to that round's last line, or it is full (its
-        // computer's first round, or one restating all, `new_round`).
-        let turn = if at == 0 && memory.seq == 0 {
-            if memory.continues > 0 {
-                Turn { p: memory.continues, full: false }
-            } else if memory.full_round == memory.round || memory.round <= 1 {
-                Turn { p: 0, full: true }
+/// How large one writing lets a round grow (bytes): past it, what follows
+/// goes into a new round continuing it (`Turn`), as rounds past `SEGMENT`
+/// are continued, so that no file of the folder is ever written of more
+/// than about this in one go. Until 24 November 2026 a full round was one
+/// file, however large: 17.8 MB on one computer (its take-outs restated),
+/// which its host, with 12 MB left, refused whole, and the readers waited
+/// for it. A reader enters each round once it met the one before to its
+/// last line, since 10 October 2026 (0.1.0 too); the restatement is whole
+/// once its last piece is read.
+const PIECE: u64 = ROUND_SIZE;
+
+/// This computer's changes appended to its records: in its current round,
+/// and past `PIECE` in new rounds continuing it, each noted before it is
+/// written (`appended`). The bytes written, and where each change went (its
+/// round and number), in order.
+fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<String>, u64, String)]) -> Result<(u64, Vec<(u32, u64)>), String> {
+    let mut written = 0u64;
+    let mut placed: Vec<(u32, u64)> = Vec::with_capacity(changes.len());
+    let mut from = 0;
+    while from < changes.len() {
+        let path = round_file(sharing.folder, sharing.computer, memory.round);
+        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        let mut text = String::new();
+        let mut taken = 0;
+        for (at, (key, value, clock, base)) in changes.iter().enumerate().skip(from) {
+            // Past a piece, and one line at least in this round: the rest goes into the next.
+            if memory.seq > 0 && size + text.len() as u64 >= PIECE {
+                break;
+            }
+            // A round's first line says where it stands (`Turn`): it continues the
+            // round before, to that round's last line, or it is full (its
+            // computer's first round, or one restating all, `new_round`).
+            let turn = if memory.seq == 0 {
+                if memory.continues > 0 {
+                    Turn { p: memory.continues, full: false }
+                } else if memory.full_round == memory.round || memory.round <= 1 {
+                    Turn { p: 0, full: true }
+                } else {
+                    Turn::default()
+                }
             } else {
                 Turn::default()
-            }
-        } else {
-            Turn::default()
-        };
-        memory.seq += 1;
-        let build = if at == 0 { sioul_core::build::DESCRIBED.to_string() } else { String::new() };
-        // Its part's format, once this device writes format 2.
-        let f = if memory.format >= 2 { known_part(file_of(key)).map_or(1, part_format) } else { 1 };
-        let change = Change { k: key.clone(), v: value.clone(), b: base.clone(), build, f };
-        let plain = serde_json::to_vec(&Sealing { change: &change, turn }).map_err(|e| e.to_string())?;
-        let line = Line { n: memory.seq, c: *clock, s: seal(sharing.key, &bound(sharing.computer, memory.round, memory.seq, *clock), &plain) };
-        text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
-        text.push('\n');
+            };
+            memory.seq += 1;
+            let build = if at == 0 { sioul_core::build::DESCRIBED.to_string() } else { String::new() };
+            // Its part's format (`written_format`); a take-out of a folder that never travels says so (`NEVER_TAKE_OUT`).
+            let f = match known_part(file_of(key)) {
+                Some("notes") if value.is_none() && memory.never_takes.contains(key) => NEVER_TAKE_OUT,
+                Some(part) => written_format(part, memory),
+                None => 1,
+            };
+            let change = Change { k: key.clone(), v: value.clone(), b: base.clone(), build, f };
+            let plain = serde_json::to_vec(&Sealing { change: &change, turn }).map_err(|e| e.to_string())?;
+            let line = Line { n: memory.seq, c: *clock, s: seal(sharing.key, &bound(sharing.computer, memory.round, memory.seq, *clock), &plain) };
+            text.push_str(&serde_json::to_string(&line).map_err(|e| e.to_string())?);
+            text.push('\n');
+            placed.push((memory.round, memory.seq));
+            taken += 1;
+        }
+        // None taken: a round already a piece long, which the next continues.
+        if taken > 0 {
+            write_piece(sharing, memory, &path, &text)?;
+            written += text.len() as u64;
+            from += taken;
+        }
+        if from < changes.len() {
+            memory.continues = memory.seq;
+            memory.round += 1;
+            memory.seq = 0;
+            memory.round_base = 0;
+        }
     }
+    Ok((written, placed))
+}
+
+/// One piece of an append, in its round's file: noted first (`appended`),
+/// a line left half written cut back, appended, on the disk before this returns.
+fn write_piece(sharing: &Sharing, memory: &Memory, path: &Path, text: &str) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("{}: {e}", path.display());
     // Where this append ends, noted on the disk before it is made: its own
     // lines told from another device's under its name (`appended`). Not
@@ -9213,17 +9665,17 @@ fn append(sharing: &Sharing, memory: &mut Memory, changes: &[(String, Option<Str
     write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes())?;
     // A line left half written (Sioul stopped, a full disk): cut back to the
     // last whole line, so that the next record is not glued to it and lost.
-    if let Some(whole) = unfinished(&path) {
-        let file = std::fs::OpenOptions::new().write(true).open(&path).map_err(fail)?;
+    if let Some(whole) = unfinished(path) {
+        let file = std::fs::OpenOptions::new().write(true).open(path).map_err(fail)?;
         file.set_len(whole).map_err(fail)?;
     }
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(&path).map_err(fail)?;
+    let mut file = options.open(path).map_err(fail)?;
     // A round begun before its files were yours alone: made so at this write.
-    make_private(&path);
+    make_private(path);
     file.write_all(text.as_bytes()).map_err(fail)?;
     file.sync_all().map_err(fail)
 }
@@ -9383,12 +9835,30 @@ fn new_round(sharing: &Sharing, memory: &mut Memory, stores: &[Store], found: &F
         memory.continues = if previous > 0 { previous } else { UNKNOWN_TURN };
         memory.owed |= cut;
     }
-    append(sharing, memory, &ours)?;
-    // What it restated, for when the next one opens (`full_round_after`).
+    let (restated, _) = append(sharing, memory, &ours)?;
+    // What it restated, for when the next one opens (`full_round_after`):
+    // every piece of it (`PIECE`).
     if omitted == 0 {
-        memory.full_size = std::fs::metadata(round_file(sharing.folder, sharing.computer, memory.round)).map_or(0, |m| m.len());
+        memory.full_size = restated;
     }
     Ok(())
+}
+
+/// The room kept free on the host beyond what a full round weighs: what
+/// comes beside it meanwhile (the others' small changes, this device's own).
+const HOST_MARGIN: u64 = 1 << 20;
+
+/// The room the host last said was left to the account, and how much of this
+/// device's records there was behind the copies here, as the pull found them
+/// within the hour (`remote::State::room`, `behind`); none where it is not
+/// known (no account on that server, the pull not working, a server that
+/// does not say), and then the rounds go as before.
+fn host_room(sharing: &Sharing, now_ms: i64) -> Option<(u64, u64)> {
+    let state = crate::remote::State::load(sharing.memory);
+    if !state.confirmed_for(sharing.folder) || state.room_at <= 0 || now_ms / 1000 - state.room_at > 3600 {
+        return None;
+    }
+    state.room.map(|room| (room, state.behind))
 }
 
 /// What this computer appends since its last full round before it opens the
@@ -10087,6 +10557,68 @@ fn seen_path(folder: &Path, computer: &str) -> PathBuf {
     folder.join(format!("{computer}.toml"))
 }
 
+/// `Memory::old_tables` once the old tables were taken out (`sweep_old_tables`).
+const OLD_TABLES_SWEPT: u32 = 1;
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
+}
+
+/// The old spam filter's tables a phone's sync app kept in its sharing
+/// folder, taken out of it once (as decided on 26 November 2026): eDrive never passes a deletion on, so a phone kept every
+/// table it brought, about two megabytes each, while the computer that
+/// sealed them took them out of its own folder and of the server long ago
+/// (`prune_tables`), and since 7 November 2026 every device trains its own.
+/// Only the spam filter's tables, nothing else: a sealed file of `blobs/`
+/// here goes when it opens with this sharing's key to a table (its first
+/// bytes, `spam::table::MAGIC`), another device sealed it, no content this
+/// device knows names it (its records' entries, what waits, the earlier
+/// versions kept by reference, its own), and it is older here than a
+/// content left unused is kept (`blobs::UNUSED_DAYS`); never at the exchange
+/// that joins, whose memory has not read everything yet. Here only: its sync
+/// app passes no deletion on, and Sioul's own sending takes out only this
+/// device's files. Returns how many went.
+fn sweep_old_tables(sharing: &Sharing, memory: &Memory) -> usize {
+    let blobs = sharing.folder.join("blobs");
+    let Ok(names) = std::fs::read_dir(&blobs) else { return 0 };
+    let named = |key: &String, value: &str| -> Option<String> { key.starts_with(FILES).then(|| value_hash(key, value)).filter(|h| !h.is_empty()) };
+    let used: BTreeSet<String> = memory
+        .entries
+        .iter()
+        .chain(memory.sealed.entries.iter())
+        .filter(|(key, _)| key.starts_with(FILES))
+        .flat_map(|(_, known)| [known.h.clone(), known.b.clone()])
+        .filter(|h| !h.is_empty())
+        .chain(memory.pending.iter().filter_map(|(key, (value, ..))| value.as_deref().and_then(|v| named(key, v))))
+        .chain(memory.waiting.iter().filter_map(|(key, (value, ..))| value.as_deref().and_then(|v| named(key, v))))
+        .chain(memory.sealed.bases.values().cloned())
+        .chain(memory.sealed.named.values().flatten().cloned())
+        .map(|h| crate::blobs::name(sharing.key, &h))
+        .chain(memory.sealed.mine.keys().cloned())
+        .chain(memory.sealed.replaced.keys().cloned())
+        .chain(memory.sealed.named_at.keys().cloned())
+        .collect();
+    // Its age here by the file's own time, as the sweeps judge it (`blobs::sweep_after`).
+    let old = |meta: &std::fs::Metadata| meta.modified().ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_millis() as i64 >= crate::blobs::UNUSED_DAYS * DAY);
+    let mut swept = 0;
+    for item in names.filter_map(Result::ok) {
+        let name = item.file_name().to_string_lossy().to_string();
+        let path = item.path();
+        let Ok(meta) = item.metadata() else { continue };
+        if !meta.is_file() || meta.len() < OLD_TABLE_SMALLEST || name.starts_with('.') || used.contains(&name) || !old(&meta) {
+            continue;
+        }
+        if crate::blobs::begins_with(&path, sharing.key, &sioul_core::spam::table::MAGIC) && std::fs::remove_file(&path).is_ok() {
+            swept += 1;
+        }
+    }
+    swept
+}
+
+/// No spam filter's table is smaller than this, sealed (bytes): a smaller
+/// sealed file is never opened to be told.
+const OLD_TABLE_SMALLEST: u64 = 16 << 10;
+
 /// This computer's notes in the folder, when what they say changes (its
 /// round, how far it read the others); else restated a quarter of an hour
 /// after the last while this device is in use (its entry says it: another
@@ -10100,23 +10632,38 @@ fn seen_path(folder: &Path, computer: &str) -> PathBuf {
 /// Returns when they are due again (milliseconds).
 fn write_seen(sharing: &Sharing, memory: &Memory, all: &BTreeMap<String, Vec<u32>>, take_outs: bool, now_ms: i64) -> i64 {
     let again = if crate::devices::in_use(sharing.memory) { 15 * 60 } else { 24 * 3600 };
-    let mut seen = Seen {
+    let seen = Seen {
         at: now_ms / 1000,
         round: memory.round,
         read: memory.read.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, (round, _))| (c.clone(), *round)).collect(),
         full: full_asked(memory, all),
         lines: memory.read_n.iter().filter(|(c, _)| all.contains_key(*c)).map(|(c, at)| (c.clone(), *at)).collect(),
         pad: String::new(),
+        sealed: String::new(),
+        never: memory.never_here.clone(),
+        plain: false,
     };
-    if let Some(old) = read_seen_in(sharing.folder, sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && old.full == seen.full && (old.lines == seen.lines || !take_outs) && seen.at - old.at < again) {
+    // The plain fields beside the sealed copy while a device that counts reads them alone.
+    let plain = !notes_sealed_open(sharing, memory, now_ms);
+    let path = seen_path(sharing.folder, sharing.computer);
+    // As written last: sealed, with plain fields or not.
+    let written = read_small(&path).and_then(|t| toml::from_str::<Seen>(&t).ok()).map(|outer| (!outer.sealed.is_empty(), outer.at != 0));
+    if written == Some((true, plain))
+        && let Some(old) = read_seen_in(sharing.folder, Some(sharing.key), sharing.computer).filter(|old| old.round == seen.round && old.read == seen.read && old.full == seen.full && old.never == seen.never && (old.lines == seen.lines || !take_outs) && seen.at - old.at < again)
+    {
         return (old.at + again) * 1000;
     }
-    let path = seen_path(sharing.folder, sharing.computer);
-    let text = |seen: &Seen, pad: usize| toml::to_string(&Seen { pad: ".".repeat(pad), read: seen.read.clone(), full: seen.full.clone(), lines: seen.lines.clone(), ..*seen }).unwrap_or_default();
-    seen.pad = ".".repeat(pad_for(&path, |pad| text(&seen, pad).len() as u64));
-    if let Ok(text) = toml::to_string(&seen) {
-        let _ = write_atomically(&path, text.as_bytes());
-    }
+    let copy = |seen: &Seen| Seen { read: seen.read.clone(), full: seen.full.clone(), lines: seen.lines.clone(), pad: String::new(), sealed: String::new(), never: seen.never.clone(), plain: false, ..*seen };
+    let text = |pad: usize| -> String {
+        let inner = toml::to_string(&Seen { pad: ".".repeat(pad), ..copy(&seen) }).unwrap_or_default();
+        let sealed = seal(sharing.key, &notes_bound(sharing.computer), inner.as_bytes());
+        // The folders that never travel are said sealed alone, never in the plain fields an older Sioul reads.
+        let outer = if plain { Seen { sealed, never: BTreeSet::new(), ..copy(&seen) } } else { Seen { sealed, ..Seen::default() } };
+        toml::to_string(&outer).unwrap_or_default()
+    };
+    // Its size changed at each writing (`pad_for`), the padding sealed inside.
+    let pad = pad_for(&path, |pad| text(pad).len() as u64);
+    let _ = write_atomically(&path, text(pad).as_bytes());
     (seen.at + again) * 1000
 }
 
@@ -10142,15 +10689,37 @@ fn asked_for_full(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
         .any(|s| s.full.get(sharing.computer).is_some_and(|round| (last_full..=memory.round).contains(round)))
 }
 
-fn read_seen_in(folder: &Path, computer: &str) -> Option<Seen> {
-    read_small(&seen_path(folder, computer)).and_then(|t| toml::from_str(&t).ok())
+/// A computer's notes as its file in `folder` holds them: the sealed copy
+/// (`Seen::sealed`), opened with `key`, alone when there is one; else the
+/// plain fields, an older Sioul's (`Seen::plain`). With the key, a sealed
+/// copy that does not open is none (damaged, or another's). With no key
+/// (the sending: `rounds_past`), the plain fields, when written.
+fn read_seen_in(folder: &Path, key: Option<&[u8; 32]>, computer: &str) -> Option<Seen> {
+    let outer: Seen = read_small(&seen_path(folder, computer)).and_then(|t| toml::from_str(&t).ok())?;
+    match key {
+        Some(key) if !outer.sealed.is_empty() => {
+            let inner: Seen = open(key, &notes_bound(computer), &outer.sealed).and_then(|plain| String::from_utf8(plain).ok()).and_then(|t| toml::from_str(&t).ok())?;
+            Some(Seen { sealed: String::new(), plain: false, ..inner })
+        }
+        _ if outer.at == 0 && !outer.sealed.is_empty() => None,
+        _ => Some(Seen { sealed: String::new(), plain: true, ..outer }),
+    }
 }
 
 /// Another computer's notes, the later of the folder's and the copy fetched
-/// from the server (`remote::overlay`); the folder's on a tie.
+/// from the server (`remote::overlay`); the folder's on a tie. Opened with
+/// the key this process last exchanged with in `folder` (`notes_key`).
+///
+/// Plain notes alone in the name of a device whose sealed entry says it
+/// seals its own (`devices::Entry::sealed_notes`) are someone else's (the
+/// server's, its sealed copy taken away), and read as none.
 fn read_seen(folder: &Path, computer: &str) -> Option<Seen> {
-    let here = read_seen_in(folder, computer);
-    match (here, crate::remote::overlay(folder).and_then(|fetched| read_seen_in(&fetched, computer))) {
+    let key = notes_key(folder);
+    let key = key.as_ref();
+    let seals = std::cell::OnceCell::new();
+    let refused = |seen: &Seen| seen.plain && key.is_some_and(|key| *seals.get_or_init(|| crate::devices::one(folder, key, computer).is_some_and(|e| e.sealed_notes >= NOTES_SEALED)));
+    let here = read_seen_in(folder, key, computer).filter(|seen| !refused(seen));
+    match (here, crate::remote::overlay(folder).and_then(|fetched| read_seen_in(&fetched, key, computer)).filter(|seen| !refused(seen))) {
         (Some(here), Some(fetched)) => Some(if fetched.at > here.at { fetched } else { here }),
         (here, fetched) => here.or(fetched),
     }
@@ -10862,6 +11431,7 @@ pub fn others(folder: &Path, computer: &str) -> Vec<Other> {
 /// file travels on its own) is heard of by its records: the doses count it,
 /// in doubt, until its entry comes (review of 5 October 2026, F5).
 pub fn others_heard(folder: &Path, key: &[u8; 32], computer: &str) -> Vec<Other> {
+    remember_notes_key(folder, key);
     let (entries, _) = crate::devices::all(folder, key);
     let all = rounds_with(folder);
     let mut out = others(folder, computer);
@@ -10910,6 +11480,10 @@ mod tests {
         /// An exchange whose view of the others' entries lags (another device's
         /// new entry not synced here yet): the tables not retired, whatever it reads.
         pub(super) static GATE_CLOSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        /// An exchange as a Sioul before folders that never travel runs it
+        /// (0.1.0 up to 72e996b7): the notes read in format 1 only
+        /// (`part_format`), and its stores built without the setting.
+        pub(super) static BEFORE_NEVER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     }
 
     /// A computer of its own: its folders, its name, its memory.
@@ -13074,8 +13648,8 @@ mod tests {
         let (older, desk) = (Computer::new(&base, "older"), Computer::new(&base, "desk"));
         // The older Sioul's stores: this version's, and the watch's as it shared them.
         let mut with_watch = stores(&Config::default(), &older.roots);
-        with_watch.push(Store { name: "data/watch/".into(), path: older.roots.data.join("watch"), folder: true, shape: Shape::Whole, skip: &["imported.json"], part: "watch", flat: false, was: None });
-        with_watch.push(Store { name: "state/watch-offers.json".into(), path: older.roots.state.join("watch-offers.json"), folder: false, shape: Shape::Whole, skip: &[], part: "watch", flat: false, was: None });
+        with_watch.push(Store { name: "data/watch/".into(), path: older.roots.data.join("watch"), folder: true, shape: Shape::Whole, skip: &["imported.json"], part: "watch", flat: false, was: None, never: Vec::new() });
+        with_watch.push(Store { name: "state/watch-offers.json".into(), path: older.roots.state.join("watch-offers.json"), folder: false, shape: Shape::Whole, skip: &[], part: "watch", flat: false, was: None, never: Vec::new() });
         let older_exchange = |now: i64| exchange(&Sharing { folder: &folder, computer: &older.id, key: &key, memory: &older.memory, files: true, hurry: None }, &with_watch, now).unwrap();
         older.write("data/watch/2026-10-07.json", "{\"steps\": 4200}");
         older.write("state/watch-offers.json", "{\"declined\": {}}");

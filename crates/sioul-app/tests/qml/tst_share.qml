@@ -47,6 +47,9 @@ Item {
         property bool held: false
         // What waits to leave the server, said (`leaving`).
         property bool leaving: false
+        // The folders of the notes that never travel (`setShareNever`), and the last list set.
+        property var never: []
+        property var neverSet: []
         property var asked: []
         // Made up: no real device, no real server.
         readonly property var words: ({
@@ -126,7 +129,8 @@ Item {
                 lines: [],
                 problems: [],
                 parts: [],
-                vanished: [],
+                never: mock.never,
+                vanished: mock.never.length > 0 ? [{ store: "files/notes/archive/", text: "2 files of archive, which never travels, were sealed into the sharing before." }] : [],
                 withheld: mock.held ? [{ store: "files/notes/", text: "23 files went from your notes here at once on Friday 2 October, most of them from ~/Notes/Archives.", leaves: "They leave your other devices by themselves 14 days after they went, by Friday 16 October at the latest, unless they come back here first. Nothing has to be done.", key: "porch-withheld-said:files/notes/:1790000000000", size: mock.leaving ? "Their contents in the folder: 2.3 MB." : "" }] : [],
                 leaving: mock.leaving ? [
                     { text: "The contents of 3 notes and papers taken out, 12.4 MB, leave once The phone (FP5) has read that they were. The phone (FP5) has been silent since Sat 3 Oct 09:00: if it is no longer in use, “Forget it and remove its files…” lets them go at the next exchange.", device: "a" },
@@ -143,6 +147,16 @@ Item {
         }
         function sendsOff() {
             return mock.sends.length > 0 && mock.sends[mock.sends.length - 1] === false
+        }
+        function setShareNever(json) {
+            mock.neverSet = JSON.parse(json)
+            mock.never = mock.neverSet
+            return ""
+        }
+        property var confirmed: []
+        function shareConfirmGone(store) {
+            mock.confirmed = mock.confirmed.concat([store])
+            return ""
         }
         function setShareSend(on) {
             mock.sends = mock.sends.concat([on])
@@ -227,6 +241,34 @@ Item {
             mock.held = false
             mock.leaving = false
             mock.asked = []
+            mock.never = []
+            mock.neverSet = []
+            mock.confirmed = []
+        }
+
+        // Folders of the notes that never travel: a field leaves one out by its path, each
+        // one a row with a word to let it travel again; what was sealed of one before is
+        // said in its own words, with "Take them out everywhere".
+        function test_folders_that_never_travel() {
+            panel.reload()
+            wait(50)
+            const block = walk(panel, i => i.objectName === "shareNever", [])[0]
+            verify(block.visible)
+            const field = walk(panel, i => i.objectName === "shareNeverField", [])[0]
+            const add = walk(panel, i => i.objectName === "shareNeverAdd", [])[0]
+            verify(!add.enabled, "nothing typed: nothing to leave out")
+            field.text = "  archive  "
+            verify(add.enabled)
+            add.clicked()
+            compare(mock.neverSet, ["archive"], "trimmed")
+            compare(field.text, "", "emptied once kept")
+            tryVerify(() => walk(panel, i => i.objectName === "shareNeverTravel" && i.visible, []).length === 1, 2000)
+            verify(shown("archive") !== null, "its row")
+            verify(shown("2 files of archive, which never travels, were sealed into the sharing before.") !== null, "said in its own words")
+            button("share-vanished-confirm").clicked()
+            compare(mock.confirmed, ["files/notes/archive/"])
+            walk(panel, i => i.objectName === "shareNeverTravel" && i.visible, [])[0].clicked()
+            compare(mock.neverSet, [], "travels again")
         }
 
         // The notes folder is the Notes page's: one line says which it is (or that there

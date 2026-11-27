@@ -382,6 +382,37 @@ fn get_from(folder: &Path, key: &[u8; 32], hash: &str, target: &Path) -> Result<
     opened
 }
 
+/// Whether the sealed file at `path` (its name in `blobs/`) opens with `key`
+/// to a content that begins with `prefix`: its first piece alone opened, and
+/// inflated no further than `prefix` (a spam filter's table told by its
+/// first bytes, `share::sweep_old_tables`). False for anything that does not
+/// open so, a piece of another key, a file cut short, an empty placeholder.
+pub(crate) fn begins_with(path: &Path, key: &[u8; 32], prefix: &[u8]) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return false };
+    let Some(file) = present(path) else { return false };
+    let mut reader = BufReader::new(file);
+    if begins(&mut reader).is_err() {
+        return false;
+    }
+    let mut length = [0u8; 4];
+    if reader.read_exact(&mut length).is_err() {
+        return false;
+    }
+    let length = u32::from_be_bytes(length);
+    let (end, length) = (length & END != 0, (length & !END) as usize);
+    if end || !(AROUND..=PIECE + AROUND).contains(&length) {
+        return false;
+    }
+    let mut sealed = vec![0u8; length];
+    if reader.read_exact(&mut sealed).is_err() {
+        return false;
+    }
+    let (nonce, body) = sealed.split_at(24);
+    let Ok(plain) = XChaCha20Poly1305::new((&keys(key).0).into()).decrypt(XNonce::from_slice(nonce), Payload { msg: body, aad: bound(name, 0, false).as_bytes() }) else { return false };
+    let mut first = vec![0u8; prefix.len()];
+    flate2::read::GzDecoder::new(plain.as_slice()).read_exact(&mut first).is_ok() && first == prefix
+}
+
 /// The sealed file at `path` opens whole to the content `hash`, checked as
 /// `get` checks it, nothing written: a copy fetched is kept only so
 /// (`remote::fetch_wanted`).

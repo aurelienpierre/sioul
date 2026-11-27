@@ -132,20 +132,21 @@ impl<'a> Api<'a> {
     }
 }
 
-/// Whether the access given covers tasks (you may untick it on Google's page).
-fn tasks_granted(address: &str) -> bool {
+/// Whether the access given covers tasks (you may untick it on Google's
+/// page); the keyring not answering, its error (the tasks read at a later sync).
+fn tasks_granted(address: &str) -> Result<bool, SyncError> {
     #[cfg(feature = "insecure-test-tls")]
     if std::env::var_os("SIOUL_TEST_GOOGLE_TASKS").is_some() {
-        return true;
+        return Ok(true);
     }
-    crate::google::grant(address).is_some_and(|g| g.scopes.iter().any(|s| s.ends_with("/auth/tasks")))
+    Ok(crate::google::grant(address)?.is_some_and(|g| g.scopes.iter().any(|s| s.ends_with("/auth/tasks"))))
 }
 
 /// Syncs a Google account's task lists; nothing when tasks were not given.
 pub fn sync(account: &Account) -> Result<Report, SyncError> {
     let mut report = Report::default();
     let address = account.address.as_deref().or(account.login()).ok_or(SyncError::NoServer)?;
-    if !tasks_granted(address) {
+    if !tasks_granted(address)? {
         return Ok(report);
     }
     let api = Api::new(address)?;

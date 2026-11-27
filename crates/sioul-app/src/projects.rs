@@ -762,6 +762,24 @@ fn paid_back(number: &str, before: PaidBefore, today: Date) -> Result<(), String
 mod tests {
     use super::*;
 
+    /// Sharing set up and the keyring not answering: the sharing's key not
+    /// read, so the other computers' claims and series cannot be read here,
+    /// and nothing says this one may number an invoice: refused with
+    /// "invoice-unchecked", never numbered as if it were alone (the fourth
+    /// review's re-review, R1: counted as on, it numbered, and a number could
+    /// be given twice). On this thread alone (`share::SET_UP`, `KEYRING_LATE`).
+    #[test]
+    fn invoices_are_never_numbered_while_the_keyring_does_not_answer() {
+        crate::share::SET_UP.with(|s| s.set(true));
+        crate::share::KEYRING_LATE.with(|l| l.set(true));
+        let refused = invoices_held_elsewhere(&Shared::default());
+        crate::share::SET_UP.with(|s| s.set(false));
+        crate::share::KEYRING_LATE.with(|l| l.set(false));
+        let refused: serde_json::Value = serde_json::from_str(&refused.expect("refused")).unwrap();
+        assert_eq!(refused["error"].as_str(), Some(tr().text("invoice-unchecked", None).as_str()), "{refused}");
+        assert_eq!(refused["elsewhere"].as_bool(), Some(false));
+    }
+
     /// The Time page's table by area counts each task once, where it leans,
     /// and never under an area that is not ticked.
     #[test]

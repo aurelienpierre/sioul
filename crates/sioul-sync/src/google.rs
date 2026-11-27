@@ -121,26 +121,30 @@ impl std::fmt::Debug for Grant {
     }
 }
 
-/// The grant kept for an address's calendars, contacts and tasks.
-pub fn grant(email: &str) -> Option<Grant> {
+/// The grant kept for an address's calendars, contacts and tasks (`grant_for`).
+pub fn grant(email: &str) -> Result<Option<Grant>, SyncError> {
     grant_for(Purpose::Pim, email)
 }
 
-/// The grant kept for an address, for a purpose.
-pub fn grant_for(purpose: Purpose, email: &str) -> Option<Grant> {
-    crate::secret::named(&purpose.keyring_name(email)).and_then(|t| serde_json::from_str(&t).ok())
+/// The grant kept for an address, for a purpose: none kept (`Ok(None)`), or
+/// the keyring not answering now (an error: asked again later, never taken
+/// for none, so never "sign in to Google again" for it).
+pub fn grant_for(purpose: Purpose, email: &str) -> Result<Option<Grant>, SyncError> {
+    Ok(crate::secret::named(&purpose.keyring_name(email))?.and_then(|t| serde_json::from_str(&t).ok()))
 }
 
 /// A key of your own kept on this device for an address, to sign in with
 /// again or for its other part: the mail's, else the calendars' unless it is
 /// Sioul's own (which cannot read mail).
-pub fn own_key(email: &str) -> Option<(String, String)> {
+/// An error while the keyring does not answer: never Sioul's own key in its place.
+pub fn own_key(email: &str) -> Result<Option<(String, String)>, SyncError> {
     let built_in = built_in().map(|(id, _)| id);
-    [Purpose::Mail, Purpose::Pim]
-        .into_iter()
-        .filter_map(|purpose| grant_for(purpose, email))
-        .find(|g| !g.client_id.is_empty() && Some(g.client_id.as_str()) != built_in)
-        .map(|g| (g.client_id, g.client_secret))
+    for purpose in [Purpose::Mail, Purpose::Pim] {
+        if let Some(g) = grant_for(purpose, email)?.filter(|g| !g.client_id.is_empty() && Some(g.client_id.as_str()) != built_in) {
+            return Ok(Some((g.client_id, g.client_secret)));
+        }
+    }
+    Ok(None)
 }
 
 fn random(bytes: usize) -> String {
@@ -267,7 +271,8 @@ pub fn finish(sign_in: SignIn, client_id: &str, client_secret: &str, email: &str
 /// grant of the same key: Google ends a key's access to an account as a
 /// whole, and would end that one too.
 fn give_back(token: &str, client_id: &str, purpose: Purpose, email: &str) {
-    let shared = grant_for(purpose.other(), email).is_some_and(|g| g.client_id == client_id.trim());
+    // The keyring not answering: taken as shared, never given back on a doubt.
+    let shared = grant_for(purpose.other(), email).map_or(true, |g| g.is_some_and(|g| g.client_id == client_id.trim()));
     if !shared {
         let _ = post(REVOKE, &[("token", token)]);
     }
@@ -307,7 +312,8 @@ pub fn access_token_for(purpose: Purpose, email: &str, fresh: bool) -> Result<St
         return Ok(token);
     }
     // No grant kept: Google's page again.
-    let grant = grant_for(purpose, email).ok_or_else(|| SyncError::Login(SIGN_IN_AGAIN.into()))?;
+    // The keyring not answering: its error, asked again later, never a sign-in asked again.
+    let grant = grant_for(purpose, email)?.ok_or_else(|| SyncError::Login(SIGN_IN_AGAIN.into()))?;
     let (token, lasts) = refreshed(TOKEN, &grant)?;
     remember(&key, &token, lasts);
     Ok(token)
@@ -342,7 +348,8 @@ pub fn revoke(email: &str) -> Result<(), SyncError> {
 /// removed). Google is not asked when the address's other part keeps a grant
 /// of the same key: it would end that one too.
 pub fn revoke_for(purpose: Purpose, email: &str) -> Result<(), SyncError> {
-    if let Some(grant) = grant_for(purpose, email) {
+    // The keyring not answering: nothing given back nor forgotten, said.
+    if let Some(grant) = grant_for(purpose, email)? {
         give_back(&grant.refresh_token, &grant.client_id, purpose, email);
     }
     if let Ok(mut access) = ACCESS.lock()

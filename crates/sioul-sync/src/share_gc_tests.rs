@@ -401,6 +401,12 @@ fn contents_made_fresh_elsewhere_before_their_take_out_leave_once_every_device_r
     with_notes(&laptop, &folder, &key, NOW + 16 * MINUTE, &ln);
     with_notes(&desk, &folder, &key, NOW + 17 * MINUTE, &dn);
     assert!(!sealed(&folder, &a), "made fresh before its take-out, read by every device: gone");
+    // Noted for the sending as one it swept (`Memory::taken`, `taken_since`): its copy on the
+    // server goes when no newer than a day before the take-out (the second review, S3).
+    let swept = swept_theirs(&desk.memory, &desk.id);
+    let memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&desk.memory).unwrap()).unwrap();
+    assert!(swept.contains_key(&a) && memory["taken_since"].get(&a).is_some(), "noted with its take-out's time: {swept:?}");
+    assert!(!swept.contains_key(&b), "one in use is not");
     assert!(sealed(&folder, &b), "made fresh since its take-out: a use, kept its time");
     assert!(sealed(&folder, &c), "another note still holds it");
     assert!(sealed(&folder, &y), "an earlier version kept by reference");
@@ -2546,9 +2552,9 @@ fn a_reader_on_an_earlier_build_is_said_so() {
     assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 1);
     let said = leaving(&desk.memory, &desk.id);
     assert!(said.unread.contains_key(&laptop.id) && said.by_rounds.is_empty(), "this Sioul's notes say lines: {said:?}");
-    // The laptop's notes as an earlier Sioul writes them: rounds alone.
+    // The laptop's notes as an earlier Sioul writes them: rounds alone, plain.
     let notes = folder.join(format!("{}.toml", laptop.id));
-    let mut seen: Seen = toml::from_str(&std::fs::read_to_string(&notes).unwrap()).unwrap();
+    let mut seen = read_seen_in(&folder, Some(&key), &laptop.id).unwrap();
     seen.lines.clear();
     std::fs::write(&notes, toml::to_string(&seen).unwrap()).unwrap();
     with_notes(&desk, &folder, &key, NOW + 14 * MINUTE, &dn);
@@ -2902,3 +2908,516 @@ fn the_texts_are_read_once_while_they_do_not_change_and_never_in_a_hurry() {
     assert_eq!(read(), start + 2, "read again under another key");
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// The folders of the notes that never travel, as the settings say them
+/// (`never_folders`): paths from the notes folder, each ending in "/", blank
+/// ones and any leaving the notes folder passed over; the notes' store alone
+/// leaves them out (`never_travels`).
+#[test]
+fn the_folders_that_never_travel_are_read_from_the_settings() {
+    let said: Vec<String> = [" archive/scans/ ", "", "../outside", "a\\b", "/x//y", "archive/scans", "."].map(String::from).to_vec();
+    assert_eq!(never_folders(&said), ["a/b/", "archive/scans/", "x/y/"].map(String::from).to_vec());
+    let base = scratch("gc-never-settings");
+    let desk = Computer::new(&base, "desk");
+    let config = Config { notes_root: Some(base.join("notes").display().to_string()), share_never: vec!["archive".into()], ..Config::default() };
+    let stores = stores_of(&config, &desk.roots, &|part| matches!(part, "notes" | "papers") || shared_by_default(part, &config));
+    let notes = stores.iter().find(|s| s.name == "files/notes/").unwrap();
+    assert!(never_travels(notes, "files/notes/archive/a.pdf") && never_travels(notes, "files/notes/archive/deep/b.md"));
+    assert!(!never_travels(notes, "files/notes/archived.md") && !never_travels(notes, "files/notes/plans.md"));
+    assert!(stores.iter().filter(|s| s.name != "files/notes/").all(|s| s.never.is_empty()), "the notes' store alone");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Stores whose notes folder is `notes`, notes and papers shared, with the
+/// folders that never travel as said (`Config::share_never`).
+fn never_stores(c: &Computer, notes: &Path, never: &[&str]) -> Vec<Store> {
+    let config = Config { notes_root: Some(notes.display().to_string()), share_never: never.iter().map(|f| f.to_string()).collect(), ..Config::default() };
+    stores_of(&config, &c.roots, &|part| matches!(part, "notes" | "papers") || shared_by_default(part, &config))
+}
+
+/// One exchange with `never` left out (`never_stores`).
+fn exchange_never(c: &Computer, folder: &Path, key: &[u8; 32], now: i64, notes: &Path, never: &[&str]) -> Outcome {
+    exchange(&Sharing { folder, computer: &c.id, key, memory: &c.memory, files: true, hurry: None }, &never_stores(c, notes, never), now).unwrap()
+}
+
+/// One exchange as a Sioul before folders that never travel runs it
+/// (0.1.0 up to 72e996b7, `tests::BEFORE_NEVER`): the setting unknown, the
+/// notes read in format 1 only.
+fn exchange_before_never(c: &Computer, folder: &Path, key: &[u8; 32], now: i64, notes: &Path) -> Outcome {
+    super::tests::BEFORE_NEVER.with(|b| b.set(true));
+    let out = exchange_never(c, folder, key, now, notes, &[]);
+    super::tests::BEFORE_NEVER.with(|b| b.set(false));
+    out
+}
+
+/// A folder of the notes that never travels (Settings ▸ Sharing, under
+/// Notes): a file new in it is never sealed; what was sealed of it before
+/// stays in the sharing, said in words of its own on each device that holds
+/// it (never as a folder gone), never taken out by itself. "Take them out
+/// everywhere" takes out only what is in the sharing: every device keeps its
+/// own copy, nothing moved into its earlier versions, and the contents leave
+/// the folder once read (as decided on 26 November 2026). Pressed on both
+/// devices, it settles once: no take-out comes back, nothing is read again
+/// at every exchange (the third review of 26 November 2026, C1). The folder
+/// said "Archive" leaves out "archive" too (C4).
+#[test]
+fn a_folder_that_never_travels_is_never_sealed_and_each_device_keeps_its_copy() {
+    let base = scratch("gc-never");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let (a, b) = (b"%PDF-1.4 a scan, fiction\n".repeat(20), b"%PDF-1.4 another scan, fiction\n".repeat(20));
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "todo.md", b"# To do\n");
+    put(&dn, "archive/scans/a.pdf", &a);
+    put(&dn, "archive/scans/b.pdf", &b);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_never(&laptop, &folder, &key, NOW + MINUTE, &ln, &[]);
+    assert_eq!(std::fs::read(ln.join("archive/scans/a.pdf")).unwrap(), a);
+    let (sa, sb) = (content_name(&base, &key, &a), content_name(&base, &key, &b));
+    // Left out on both devices from now on (the setting travels), said
+    // "Archive"; a file new there is never sealed.
+    let c = b"%PDF-1.4 a third scan, fiction\n".to_vec();
+    put(&dn, "archive/scans/c.pdf", &c);
+    let mut said = Vec::new();
+    for minute in [2, 13, 24] {
+        said.extend(exchange_never(&desk, &folder, &key, NOW + minute * MINUTE, &dn, &["Archive"]).problems);
+        said.extend(exchange_never(&laptop, &folder, &key, NOW + (minute + 1) * MINUTE, &ln, &["Archive"]).problems);
+    }
+    assert!(said.iter().any(|p| p == "share-never-held:files/notes/archive/:2"), "{said:?}");
+    assert!(!said.iter().any(|p| p.starts_with("share-vanished")), "never said as a folder gone: {said:?}");
+    assert!(ln.join("archive/scans/a.pdf").exists() && ln.join("archive/scans/b.pdf").exists(), "never taken out by itself");
+    assert!(!ln.join("archive/scans/c.pdf").exists() && !sealed(&folder, &content_name(&base, &key, &c)), "never sealed");
+    assert!(sealed(&folder, &sa) && sealed(&folder, &sb));
+    // "Take them out everywhere", pressed on the desk, then on the laptop
+    // before it read the desk's take-outs.
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    let mut now = NOW + 30 * MINUTE;
+    exchange_never(&desk, &folder, &key, now, &dn, &["archive"]);
+    confirm_gone(&laptop.memory, &laptop.id, "files/notes/archive/").unwrap();
+    let mut last = Vec::new();
+    for _ in 0..4 {
+        now += 11 * MINUTE;
+        last = vec![exchange_never(&laptop, &folder, &key, now, &ln, &["archive"]), exchange_never(&desk, &folder, &key, now + 30_000, &dn, &["archive"])];
+    }
+    for (c, notes) in [(&desk, &dn), (&laptop, &ln)] {
+        assert_eq!(std::fs::read(notes.join("archive/scans/a.pdf")).unwrap(), a, "{}: its own copy kept", notes.display());
+        assert_eq!(std::fs::read(notes.join("archive/scans/b.pdf")).unwrap(), b);
+        let root = crate::history::root(&c.memory);
+        assert!(crate::history::versions(&root, "notes", "files/notes/archive/scans/a.pdf").is_empty(), "nothing moved into its earlier versions");
+        assert!(notes.join("plans.md").exists() && notes.join("todo.md").exists());
+    }
+    assert!(dn.join("archive/scans/c.pdf").exists());
+    assert!(!sealed(&folder, &sa) && !sealed(&folder, &sb), "their contents left the folder once read");
+    for outcome in &last {
+        assert!(outcome.sent == 0 && outcome.waits.is_empty() && outcome.pending == 0, "settled once, nothing coming back: {outcome:?}");
+        assert!(!outcome.problems.iter().any(|p| p.starts_with("share-never-held") || p.starts_with("share-vanished")), "{outcome:?}");
+    }
+    // Let travel again: the files go again, from the device that holds them.
+    let back = exchange_never(&desk, &folder, &key, now + 2 * MINUTE, &dn, &[]);
+    exchange_never(&laptop, &folder, &key, now + 3 * MINUTE, &ln, &[]);
+    assert!(back.sent >= 3, "{back:?}");
+    assert_eq!(std::fs::read(ln.join("archive/scans/c.pdf")).unwrap(), c, "travels again");
+    assert_eq!(std::fs::read(ln.join("archive/scans/a.pdf")).unwrap(), a);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device on a Sioul before folders that never travel (0.1.0 up to
+/// 72e996b7) beside one on this version, the setting made there. Meeting
+/// the notes in the format that says a folder never travels
+/// (`NEVER_FORMAT`), the older device holds the notes (`share-newer:notes`):
+/// it neither takes its own copies out at "Take them out everywhere", nor
+/// sends anything of its notes (a file of that folder sealed again among
+/// them), nor writes the others' changes. Updated, it reads what waited
+/// with the setting known: its copies stay, its own change held meanwhile
+/// goes, the others' come, and the contents leave the folder.
+#[test]
+fn a_device_before_the_mark_holds_the_notes_and_never_takes_its_copies_out() {
+    let base = scratch("gc-never-older");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    for c in [&desk, &phone] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let a = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &a);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_before_never(&phone, &folder, &key, NOW + MINUTE, &pn);
+    assert_eq!(std::fs::read(pn.join("archive/a.pdf")).unwrap(), a);
+    let sa = content_name(&base, &key, &a);
+    // Left out on the desk; a note changed there goes in the notes' format 2.
+    put(&dn, "plans.md", b"# Plans, changed\n");
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    let held = exchange_before_never(&phone, &folder, &key, NOW + 3 * MINUTE, &pn);
+    assert!(held.problems.iter().any(|p| p == "share-newer:notes"), "{held:?}");
+    assert_eq!(std::fs::read(pn.join("plans.md")).unwrap(), b"# Plans\n", "nothing of the notes written there");
+    // The phone's own changes meanwhile: a note, and a file new in that folder.
+    put(&pn, "phone.md", b"# From the phone\n");
+    let b = b"%PDF-1.4 a scan made on the phone, fiction\n".repeat(20);
+    put(&pn, "archive/b.pdf", &b);
+    let sent = exchange_before_never(&phone, &folder, &key, NOW + 4 * MINUTE, &pn);
+    assert_eq!(sent.sent, 0, "nothing of the notes sent: {sent:?}");
+    assert!(!sealed(&folder, &content_name(&base, &key, &b)), "never sealed by the older device");
+    // "Take them out everywhere" on the desk: the older phone keeps its copy.
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 5 * MINUTE, &dn, &["archive"]);
+    exchange_before_never(&phone, &folder, &key, NOW + 6 * MINUTE, &pn);
+    assert_eq!(std::fs::read(pn.join("archive/a.pdf")).unwrap(), a, "its copy never taken out");
+    assert!(crate::history::versions(&crate::history::root(&phone.memory), "notes", "files/notes/archive/a.pdf").is_empty());
+    // Updated: the setting known, the notes read in format 2.
+    let mut now = NOW + 10 * MINUTE;
+    for _ in 0..4 {
+        exchange_never(&phone, &folder, &key, now, &pn, &["archive"]);
+        exchange_never(&desk, &folder, &key, now + 30_000, &dn, &["archive"]);
+        now += 11 * MINUTE;
+    }
+    assert_eq!(std::fs::read(pn.join("plans.md")).unwrap(), b"# Plans, changed\n", "what waited is written");
+    assert_eq!(std::fs::read(dn.join("phone.md")).unwrap(), b"# From the phone\n", "its own change held meanwhile goes");
+    assert_eq!(std::fs::read(pn.join("archive/a.pdf")).unwrap(), a, "its copy stays");
+    assert_eq!(std::fs::read(pn.join("archive/b.pdf")).unwrap(), b);
+    assert!(!dn.join("archive/b.pdf").exists() && !sealed(&folder, &content_name(&base, &key, &b)), "never travels");
+    assert!(!sealed(&folder, &sa), "the content left the folder once read");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// While this device asks another for a full round (records of theirs met
+/// past what it read in order: a round stuck on a full host), nothing taken
+/// out leaves: those records may name the same bytes in another file (the
+/// second review of 24 November 2026, S4). Once answered, it leaves.
+#[test]
+fn nothing_taken_out_leaves_while_a_full_round_is_asked() {
+    let base = scratch("gc-asking");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let gone = b"%PDF-1.4 a scan taken out, fiction\n".repeat(20);
+    put(&dn, "a.pdf", &gone);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "todo.md", b"# To do\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    laptop.write("config/safe-senders.txt", "friend@example.org\n");
+    with_notes(&laptop, &folder, &key, NOW + 90_000, &ln);
+    let a = content_name(&base, &key, &gone);
+    std::fs::remove_file(dn.join("a.pdf")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 1);
+    with_notes(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln);
+    // The desk met the laptop's records past what it read in order: it asks for a full round.
+    let memory_file = desk.memory.clone();
+    let edit = |met: Option<serde_json::Value>| {
+        let mut memory: serde_json::Value = serde_json::from_slice(&std::fs::read(&memory_file).unwrap()).unwrap();
+        let read = memory["read_n"].get(&laptop.id).cloned();
+        let map = memory.as_object_mut().unwrap().entry("met").or_insert_with(|| serde_json::json!({}));
+        match met.or(read) {
+            Some(met) => map[laptop.id.as_str()] = met,
+            None => {
+                map.as_object_mut().unwrap().remove(&laptop.id);
+            }
+        }
+        std::fs::write(&memory_file, serde_json::to_vec(&memory).unwrap()).unwrap();
+    };
+    edit(Some(serde_json::json!([999, 1])));
+    with_notes(&desk, &folder, &key, NOW + 15 * MINUTE, &dn);
+    assert!(sealed(&folder, &a), "held while a full round is asked");
+    // Answered: what was met is what was read.
+    edit(None);
+    with_notes(&desk, &folder, &key, NOW + 16 * MINUTE, &dn);
+    assert!(!sealed(&folder, &a), "every device read the take-out, nothing asked: gone");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// This device's own content noted as taken out, named again by a change
+/// here (the same bytes in another file) before every device read the
+/// take-out: its file made fresh, so that its copy on the server and the
+/// other devices' sweeps find it used since (the second review of 24
+/// November 2026, S4; until then only another device's content was).
+#[test]
+fn an_own_content_taken_out_then_named_again_here_is_made_fresh() {
+    let base = scratch("gc-named-again");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let scan = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "c.pdf", &scan);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "todo.md", b"# To do\n");
+    with_notes(&desk, &folder, &key, NOW, &dn);
+    with_notes(&laptop, &folder, &key, NOW + MINUTE, &ln);
+    let c = content_name(&base, &key, &scan);
+    std::fs::remove_file(dn.join("c.pdf")).unwrap();
+    with_notes(&desk, &folder, &key, NOW + 2 * MINUTE, &dn);
+    assert_eq!(with_notes(&desk, &folder, &key, NOW + 13 * MINUTE, &dn).sent, 1);
+    assert!(Memory::load_all(&desk.memory, &desk.id).sealed.removed.contains_key(&c), "noted as taken out");
+    // Two days old in the folder (younger than what a seal makes fresh by itself), then named again here.
+    let two_days_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 86_400);
+    std::fs::File::options().write(true).open(folder.join("blobs").join(&c)).unwrap().set_modified(two_days_ago).unwrap();
+    put(&dn, "archive/c-again.pdf", &scan);
+    with_notes(&desk, &folder, &key, NOW + 14 * MINUTE, &dn);
+    let modified = std::fs::metadata(folder.join("blobs").join(&c)).unwrap().modified().unwrap();
+    assert!(modified > two_days_ago + std::time::Duration::from_secs(86_400), "made fresh: {modified:?}");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The old spam filter's tables a phone's sync app kept in its folder
+/// (eDrive passes no deletion on) are taken out of it once, by the phone
+/// (decided on 26 November 2026): only sealed files that open to a table,
+/// sealed by another device, named by nothing the phone knows, older than
+/// two weeks there. A note's content left the same way stays (nothing but
+/// the tables), so does a table younger than that or one a record still
+/// names; a table left there after the sweep stays too: once. A computer
+/// never does it (its sync app passes deletions on, and its own sweeps
+/// take its tables out).
+#[test]
+fn a_phone_takes_the_old_spam_tables_its_sync_app_kept_out_once() {
+    let base = scratch("gc-old-tables");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    says(&desk, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    says(&phone, &folder, &key, crate::devices::PHONE, crate::blobs::KEEPING);
+    desk.exchange(&folder, &key, NOW);
+    phone.exchange(&folder, &key, NOW + MINUTE);
+    // Left in the folder by a sync app: three old tables, an old note's content, a table of a day ago.
+    let seal_here = |bytes: &[u8], days: u64| {
+        let source = base.join("source.bin");
+        std::fs::write(&source, bytes).unwrap();
+        let (hash, _) = crate::blobs::hash_file(&source).unwrap();
+        crate::blobs::put(&folder, &key, &source, &hash).unwrap();
+        let name = crate::blobs::name(&key, &hash);
+        sealed_days_ago(&folder, &name, days);
+        name
+    };
+    // A table's weights compress little: bytes of a small generator, as many as a small table's.
+    let table = |n: u8| {
+        let mut state = u64::from(n) + 1;
+        let weights: Vec<u8> = (0..40_000)
+            .map(|_| {
+                state = state.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                (state >> 56) as u8
+            })
+            .collect();
+        [&sioul_core::spam::table::MAGIC[..], &weights].concat()
+    };
+    let old: Vec<String> = (0..3).map(|n| seal_here(&table(n), 20 + u64::from(n))).collect();
+    let note = seal_here(&b"# An old note, fiction\n".repeat(2_000), 30);
+    let recent = seal_here(&table(9), 1);
+    // A computer never sweeps them.
+    desk.exchange(&folder, &key, NOW + 20 * MINUTE);
+    assert!(old.iter().all(|name| sealed(&folder, name)), "never on a computer");
+    phone.exchange(&folder, &key, NOW + 21 * MINUTE);
+    assert!(old.iter().all(|name| !sealed(&folder, name)), "the old tables went");
+    assert!(sealed(&folder, &note), "nothing but the tables");
+    assert!(sealed(&folder, &recent), "a table younger than two weeks stays");
+    // Once: one left there later stays.
+    let later = seal_here(&table(5), 25);
+    phone.exchange(&folder, &key, NOW + 40 * MINUTE);
+    assert!(sealed(&folder, &later), "once");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// "Take them out everywhere" never removes another device's own files,
+/// whether or not that device knows yet that the folder never travels: the
+/// take-outs say so themselves (`NEVER_TAKE_OUT`). The laptop, asleep while
+/// the desk left the folder out and pressed, reads the setting and the
+/// take-outs in one exchange, its stores built before it (as one whose
+/// "settings" part is off never reads the setting at all): its own copy
+/// stays, nothing moved into its earlier versions, and it never sends that
+/// copy again (the fourth review of 27 November 2026, F1).
+#[test]
+fn a_device_late_on_the_mark_keeps_its_copy() {
+    let base = scratch("gc-never-late");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let a = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &a);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_never(&laptop, &folder, &key, NOW + MINUTE, &ln, &[]);
+    assert_eq!(std::fs::read(ln.join("archive/a.pdf")).unwrap(), a);
+    // The desk leaves the folder out, then "Take them out everywhere"; the laptop is asleep meanwhile.
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 13 * MINUTE, &dn, &["archive"]);
+    // The laptop wakes: the setting comes in this very exchange, its stores built before it
+    // (or its "settings" part is off and it never comes).
+    exchange_never(&laptop, &folder, &key, NOW + 14 * MINUTE, &ln, &[]);
+    assert!(ln.join("archive/a.pdf").exists(), "its own copy kept");
+    assert!(crate::history::versions(&crate::history::root(&laptop.memory), "notes", "files/notes/archive/a.pdf").is_empty(), "nothing moved into its earlier versions");
+    // Still without the setting: its copy, listed, is never sent again.
+    let later = exchange_never(&laptop, &folder, &key, NOW + 25 * MINUTE, &ln, &[]);
+    assert_eq!(later.sent, 0, "{later:?}");
+    exchange_never(&desk, &folder, &key, NOW + 26 * MINUTE, &dn, &["archive"]);
+    exchange_never(&laptop, &folder, &key, NOW + 37 * MINUTE, &ln, &[]);
+    exchange_never(&desk, &folder, &key, NOW + 38 * MINUTE, &dn, &["archive"]);
+    assert!(!sealed(&folder, &content_name(&base, &key, &a)), "its content left the folder");
+    assert_eq!(std::fs::read(ln.join("archive/a.pdf")).unwrap(), a);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device that joins after "Take them out everywhere", its own copy of
+/// the folder already there and the setting not read yet: it reads the
+/// take-outs, restated by the desk's full round too, in the format that says
+/// a folder never travels, and keeps its copy (the fourth review, F1).
+#[test]
+fn a_device_that_joins_after_the_press_keeps_its_copy() {
+    let base = scratch("gc-never-join");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop, tablet) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"), Computer::new(&base, "tablet"));
+    let (dn, ln, tn) = (base.join("desk-notes"), base.join("laptop-notes"), base.join("tablet-notes"));
+    for c in [&desk, &laptop, &tablet] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let a = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &a);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_never(&laptop, &folder, &key, NOW + MINUTE, &ln, &[]);
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 13 * MINUTE, &dn, &["archive"]);
+    // The tablet joins with its own copy, copied there by hand, and its own setting not read yet.
+    put(&tn, "archive/a.pdf", &a);
+    exchange_never(&tablet, &folder, &key, NOW + 14 * MINUTE, &tn, &[]);
+    exchange_never(&tablet, &folder, &key, NOW + 25 * MINUTE, &tn, &[]);
+    assert_eq!(std::fs::read(tn.join("archive/a.pdf")).unwrap(), a, "its own copy kept");
+    assert!(crate::history::versions(&crate::history::root(&tablet.memory), "notes", "files/notes/archive/a.pdf").is_empty());
+    assert!(tn.join("plans.md").exists(), "the rest came");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device on a Sioul before the mark (0.1.0 up to 72e996b7), "Take them
+/// out everywhere" pressed elsewhere: it holds the notes and keeps its copy;
+/// updated with its "settings" part switched off, so that the setting never
+/// reaches it, it reads the take-out that waited, in the format that says a
+/// folder never travels (kept with the waiting change), and still keeps its
+/// copy, never sending it again (the fourth review, F1).
+#[test]
+fn a_device_before_the_mark_updated_with_its_settings_off_keeps_its_copy() {
+    let base = scratch("gc-never-older-off");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (dn, pn) = (base.join("desk-notes"), base.join("phone-notes"));
+    for c in [&desk, &phone] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let a = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &a);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_before_never(&phone, &folder, &key, NOW + MINUTE, &pn);
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 13 * MINUTE, &dn, &["archive"]);
+    let held = exchange_before_never(&phone, &folder, &key, NOW + 14 * MINUTE, &pn);
+    assert!(held.problems.iter().any(|p| p == "share-newer:notes"), "{held:?}");
+    assert_eq!(std::fs::read(pn.join("archive/a.pdf")).unwrap(), a, "held: its copy kept");
+    // Updated, its settings part off: the setting never comes.
+    let mut now = NOW + 20 * MINUTE;
+    for _ in 0..3 {
+        exchange_never(&phone, &folder, &key, now, &pn, &[]);
+        exchange_never(&desk, &folder, &key, now + 30_000, &dn, &["archive"]);
+        now += 11 * MINUTE;
+    }
+    assert_eq!(std::fs::read(pn.join("archive/a.pdf")).unwrap(), a, "its own copy kept");
+    assert!(crate::history::versions(&crate::history::root(&phone.memory), "notes", "files/notes/archive/a.pdf").is_empty());
+    assert!(!sealed(&folder, &content_name(&base, &key, &a)), "never sealed again, the content gone from the folder");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device whose "settings" part is off never reads which folders never
+/// travel: once the desk lets its folder travel again, it learns so from the
+/// desk's notes (`Seen::never`), lets its mark go, and its own copy travels
+/// again, even where the desk no longer holds one (the fourth review's
+/// re-review, L3).
+#[test]
+fn a_device_without_the_settings_lets_its_mark_go_when_the_folder_travels_again() {
+    let base = scratch("gc-never-again-off");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    let settings_off = |c: &Computer, now: i64, notes: &Path| {
+        let config = Config { notes_root: Some(notes.display().to_string()), ..Config::default() };
+        let stores = stores_of(&config, &c.roots, &|part| part != "settings" && (matches!(part, "notes" | "papers") || shared_by_default(part, &config)));
+        exchange(&Sharing { folder: &folder, computer: &c.id, key: &key, memory: &c.memory, files: true, hurry: None }, &stores, now).unwrap()
+    };
+    let a = b"%PDF-1.4 a scan, fiction\n".repeat(20);
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &a);
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    settings_off(&laptop, NOW + MINUTE, &ln);
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 13 * MINUTE, &dn, &["archive"]);
+    settings_off(&laptop, NOW + 14 * MINUTE, &ln);
+    settings_off(&laptop, NOW + 25 * MINUTE, &ln);
+    assert_eq!(std::fs::read(ln.join("archive/a.pdf")).unwrap(), a, "its own copy kept");
+    // The desk no longer holds the file, then lets the folder travel again.
+    std::fs::remove_file(dn.join("archive/a.pdf")).unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 30 * MINUTE, &dn, &[]);
+    let again = settings_off(&laptop, NOW + 31 * MINUTE, &ln);
+    assert!(again.sent >= 1, "its copy goes again: {again:?}");
+    exchange_never(&desk, &folder, &key, NOW + 32 * MINUTE, &dn, &[]);
+    assert_eq!(std::fs::read(dn.join("archive/a.pdf")).unwrap(), a, "back on the desk");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A device that pressed "Take them out everywhere" and then lost its memory
+/// reads its own take-outs back in the format that says a folder never
+/// travels, and marks them again (`Memory::never_takes`), so that its next
+/// full round restates them so (the fourth review's re-review, L2).
+#[test]
+fn a_device_that_lost_its_memory_marks_its_own_never_take_outs_again() {
+    let base = scratch("gc-never-lost-memory");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
+    let (dn, ln) = (base.join("desk-notes"), base.join("laptop-notes"));
+    for c in [&desk, &laptop] {
+        says(c, &folder, &key, crate::devices::COMPUTER, crate::blobs::KEEPING);
+    }
+    put(&dn, "plans.md", b"# Plans\n");
+    put(&dn, "archive/a.pdf", &b"%PDF-1.4 a scan, fiction\n".repeat(20));
+    exchange_never(&desk, &folder, &key, NOW, &dn, &[]);
+    exchange_never(&laptop, &folder, &key, NOW + MINUTE, &ln, &[]);
+    exchange_never(&desk, &folder, &key, NOW + 2 * MINUTE, &dn, &["archive"]);
+    confirm_gone(&desk.memory, &desk.id, "files/notes/archive/").unwrap();
+    exchange_never(&desk, &folder, &key, NOW + 13 * MINUTE, &dn, &["archive"]);
+    let marked = |c: &Computer| Memory::load_all(&c.memory, &c.id).never_takes.contains("files/notes/archive/a.pdf#");
+    assert!(marked(&desk));
+    // Its memory lost: read again from the records, its own among them.
+    for name in ["memory.json", "files.json", "journal.jsonl"] {
+        let _ = std::fs::remove_file(desk.memory.with_file_name(name));
+    }
+    exchange_never(&desk, &folder, &key, NOW + 14 * MINUTE, &dn, &["archive"]);
+    exchange_never(&desk, &folder, &key, NOW + 25 * MINUTE, &dn, &["archive"]);
+    assert!(marked(&desk), "marked again from its own records");
+    let _ = std::fs::remove_dir_all(&base);
+}
+

@@ -348,7 +348,7 @@ fn numbering(s: &Session) -> Result<(life::Numbering, Option<(std::path::PathBuf
     let here = share::Here::load(&state);
     let Some(folder) = here.folder_path() else { return Ok((life::Numbering { device: here.id, ..life::Numbering::default() }, None)) };
     let drafts_shared = here.shares("drafts", &s.config);
-    let key = sioul_sync::secret::named(share::KEY_NAME).and_then(|k| unhex(&k)).ok_or_else(|| s.tr.text("invoice-unchecked", None))?;
+    let key = sioul_sync::secret::named(share::KEY_NAME).ok().flatten().and_then(|k| unhex(&k)).ok_or_else(|| s.tr.text("invoice-unchecked", None))?;
     let claims = lease::claims(&folder, &key, "invoices");
     let now = jiff::Timestamp::now().as_second();
     let heard = share::heard(&state.join("share").join("memory.json"), &here.id);

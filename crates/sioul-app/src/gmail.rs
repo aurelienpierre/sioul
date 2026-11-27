@@ -24,13 +24,16 @@ fn key(address: &str, client_id: &str, client_secret: &str) -> Result<(String, S
     if !client_id.trim().is_empty() {
         return Ok((client_id.trim().to_string(), client_secret.trim().to_string()));
     }
-    google::own_key(address).ok_or_else(|| if google::built_in().is_some() { tr().text("google-mail-built-in", None) } else { say("google-mail-no-key", &[("address", address.to_string())]) })
+    // The keyring not answering: said, asked again at the next try, never another key.
+    google::own_key(address).map_err(|e| e.sentence(tr(), address))?.ok_or_else(|| if google::built_in().is_some() { tr().text("google-mail-built-in", None) } else { say("google-mail-no-key", &[("address", address.to_string())]) })
 }
 
 /// Whether a key of your own is kept on this device for an address: the
 /// form then signs in with it, no ID or secret asked.
+/// The keyring not answering: none known now, the form asks for one, and the
+/// sign-in then says the keyring did not answer (`key`).
 pub(crate) fn has_own_key(address: &str) -> bool {
-    google::own_key(address.trim()).is_some()
+    google::own_key(address.trim()).is_ok_and(|key| key.is_some())
 }
 
 /// Adds an address's Google mail, signed in on Google's page, or signs its

@@ -2556,6 +2556,18 @@ notes-folder-choose = Choisir un dossier…
 notes-folder-choose-again = Choisir de nouveau…
 share-notes-folder = Votre dossier de notes est { $path } : vos notes partent de là quand une partie ci-dessous les porte.
 share-notes-folder-none = Cet appareil n’a pas encore de dossier de notes : aucune note n’en part.
+share-never-title = Dossiers de vos notes qui ne voyagent jamais
+share-never-help = Leurs fichiers restent sur chaque appareil et ne sont jamais scellés dans le dossier de partage, sur aucun appareil. Ce qui en a voyagé avant reste dans le partage jusqu’à ce que vous le retiriez partout, ce qui ne retire que ce qui est dans le partage : chaque appareil garde sa propre copie. Un appareil dont le Sioul est plus ancien cesse de partager vos notes jusqu’à sa mise à jour, pour ne jamais retirer sa copie.
+share-never-placeholder = Un dossier, par son chemin depuis votre dossier de notes : archives/scans
+share-never-add = Le laisser de côté
+share-never-travel-again = Le laisser voyager de nouveau
+share-never-refused = { $folder } n’est pas un dossier de votre dossier de notes.
+share-never-no-folder = Il n’y a pas de dossier { $folder } dans votre dossier de notes sur cet appareil.
+share-never-papers = { $folder } est l’endroit où sont rangés vos papiers : ils voyagent comme une partie à part, que vous désactivez plus bas.
+share-never-held = { $count ->
+    [one] Un fichier de { $folder }, qui ne voyage jamais, a été scellé dans le partage auparavant : il y reste jusqu’à ce que vous le retiriez partout. Chaque appareil garde sa propre copie.
+   *[other] { $count } fichiers de { $folder }, qui ne voyage jamais, ont été scellés dans le partage auparavant : ils y restent jusqu’à ce que vous les retiriez partout. Chaque appareil garde sa propre copie.
+}
 set-notes-root = Le dossier des notes
 set-notes-root-help = Vos notes, en simples fichiers Markdown qui restent les vôtres : Sioul s’y lie et ne les possède jamais. Propre à cet appareil : chacun de vos appareils dit où est sa copie.
 set-projects-rename = Renommer en sioul-projects.toml
@@ -4485,6 +4497,12 @@ share-sealed-otherwise = Le dossier de partage est désormais scellé avec une a
 share-twin = Un autre appareil partage sous le nom de celui-ci (son disque ou ses réglages y ont été copiés) : arrêtez le partage sur l’un des deux, puis reprenez-le là, ce qui lui donne un nom à lui.
 share-own-ahead = Les enregistrements de cet appareil dans le dossier vont plus loin que sa mémoire (restaurée d’une sauvegarde, ou partage remis en place) : il continue après eux, et relit tout.
 share-own-cut = L’application de synchronisation a remis une copie plus ancienne des enregistrements de cet appareil : il les a recommencés, en reprenant tout.
+share-host-full = Le serveur de votre dossier n’a plus que { $left } de libre. Les enregistrements de cet appareil, recommencés avec tout ce qu’il contient, demandent environ { $need } : ils attendent qu’il y ait la place, et vos changements continuent de passer.
+share-host-behind = Le serveur de votre dossier n’a plus que { $left } de libre, et { $behind } d’enregistrements de cet appareil attendent d’y monter : ils y monteront dès qu’il y aura la place. Libérez de la place là-bas (ses fichiers supprimés comptent tant qu’ils ne sont pas vidés).
+share-keyring-late = Le trousseau n’a pas répondu à l’instant : le partage attend, et reprend dès qu’il répond.
+share-let-go-kept = Le partage est arrêté. Son mot de passe d’application sur { $host } n’a pas été rendu au serveur, ni oublié ici : le trousseau n’a pas répondu. Vous pouvez le déconnecter dans les réglages de sécurité de votre serveur.
+share-let-go-failed = Le partage est arrêté. Son mot de passe d’application sur { $host } n’a pas pu être rendu au serveur. Vous pouvez le déconnecter dans les réglages de sécurité de votre serveur.
+share-host-full-status = Le serveur de votre dossier, { $host }, n’a plus que { $left } de libre, et { $behind } d’enregistrements de cet appareil attendent d’y monter. Libérez de la place là-bas (ses fichiers supprimés comptent tant qu’ils ne sont pas vidés) : ils y monteront dès qu’il y en aura.
 share-other-gap = Des enregistrements d’un autre appareil manquent ici : ce qu’il a fait entre-temps n’est pas connu (une prise de médicament affiche le doute) jusqu’à ce qu’il reprenne tout.
 share-other-cut = L’application de synchronisation a remis une copie plus ancienne des enregistrements d’un autre appareil : ils sont relus.
 share-other-line = Une ligne des enregistrements d’un autre appareil n’a pas pu être lue ici : ce qu’elle contenait n’est pas connu (une prise de médicament affiche le doute).
@@ -4620,6 +4638,7 @@ share-withheld-size = { $count ->
    *[other] Leurs contenus dans le dossier : { $size }.
 }
 share-leaving-title = Ce qui quitte le serveur de votre dossier
+share-leaving-weight = Votre dossier de partage occupe { $size } sur cet appareil, dont { $leaving } qui en partiront d’eux-mêmes, comme dit ci-dessous.
 share-leaving-unread = { $count ->
     [one] Le contenu d’une note ou d’un papier retiré, { $size }, part dès que { $device } a lu qu’il l’était.
    *[other] Les contenus de { $count } notes et papiers retirés, { $size }, partent dès que { $device } a lu qu’ils l’étaient.
@@ -4856,7 +4875,8 @@ share-device-build-older = Sioul { $build }, plus ancien que celui de cet appare
 share-newer = Vos autres appareils partagent « { $part } » sous une forme plus récente que celle que lit ce Sioul (écrite par Sioul { $build }). Mettez Sioul à jour sur cet appareil pour la partager de nouveau : d’ici là, ce que vous y changez ici reste sur cet appareil, et ce qui change sur les autres attend ici.
 share-newer-plain = Vos autres appareils partagent « { $part } » sous une forme plus récente que celle que lit ce Sioul. Mettez Sioul à jour sur cet appareil pour la partager de nouveau : d’ici là, ce que vous y changez ici reste sur cet appareil, et ce qui change sur les autres attend ici.
 share-newer-status = Cet appareil a besoin d’un Sioul plus récent pour partager « { $part } » : Paramètres ▸ Partage en dit plus.
-share-server-down-status = Sioul ne joint plus { $host } lui-même depuis { $when } : { $why }. Votre application de synchronisation porte toujours le dossier du partage ; Paramètres ▸ Partage en dit plus.
+share-server-down-status = Sioul ne joint plus { $host } lui-même depuis { $when } : { $why }. Paramètres ▸ Partage en dit plus.
+share-server-down-own = Sioul ne joint plus { $host } lui-même depuis { $when } : { $why }. Votre application de synchronisation se connecte de son côté et porte toujours le dossier du partage ; Paramètres ▸ Partage en dit plus.
 share-server-down-no-password = cet appareil ne garde aucun mot de passe pour { $account }
 share-format-held = L’un de vos appareils a un Sioul plus ancien, ou ce qu’il dit ne se lit pas ici (sa ligne ci-dessous dit lequel) : jusqu’à sa mise à jour là-bas, vos appareils continuent de partager sous la forme que lit un Sioul plus ancien. D’ici là, une séance de temps, vos sites épinglés ou une liste de mots changés sur deux appareils au même moment ne gardent que le dernier changement.
 share-format-wait = { $file } ne se lit pas comme il faut : vos appareils continuent de partager sous l’ancienne forme jusqu’à ce qu’il se lise. Sioul réessaie à chaque échange.
@@ -6175,6 +6195,7 @@ health-day-empty-set = Régler vos repas et votre sommeil habituels
 health-day-nothing = Rien de prévu ce jour-là.
 health-errand-day = { $what } (dans vos tâches à partir de ce jour)
 health-alone = Ces prises ne sont connues que de cet appareil. Si Sioul tourne aussi sur un autre, partagez entre eux (Paramètres ▸ Partage) : une prise notée sur l’un compte alors sur tous, et seul celui où vous êtes vous la rappelle.
+health-others-unknown = Le partage est en place, mais sa clé ne peut pas être lue pour l’instant (le trousseau est verrouillé ou n’a pas répondu) : une prise notée sur un autre appareil n’est peut-être pas encore connue ici.
 health-unchecked = Vos autres appareils ont été entendus pour la dernière fois à { $time } : une prise notée là-bas n’apparaît peut-être pas encore ici.
 health-unchecked-yet = Vos autres appareils n’ont pas encore été entendus : une prise notée là-bas n’apparaît peut-être pas encore ici.
 health-reminded-there = Les rappels viennent sur { $computer }, l’appareil où vous êtes.

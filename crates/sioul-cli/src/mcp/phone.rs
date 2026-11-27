@@ -240,6 +240,7 @@ fn sealer() -> Result<sioul_sync::textseal::TextSeal, String> {
             <[u8; 32]>::try_from(bytes?).ok()
         };
         sioul_sync::secret::named(sioul_sync::share::KEY_NAME)
+            .map_err(|_| "Sioul cannot open the texts now: the keyring did not answer. Ask again in a moment.".to_string())?
             .and_then(|key| unhex(&key))
             .map(|key| sioul_sync::textseal::TextSeal::new(&key))
             .ok_or_else(|| "Sioul cannot open the texts here: this computer holds no sharing key. The person shares texts from their phone first (Settings ▸ Your folder and sharing).".to_string())

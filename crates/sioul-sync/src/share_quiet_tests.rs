@@ -340,7 +340,7 @@ fn a_device_put_away_restates_its_notes_once_a_day() {
     let key = quick_key(&folder, "four words make a passphrase").unwrap();
     let phone = Computer::new(&base, "phone");
     let notes = seen_path(&folder, &phone.id);
-    let at = || read_seen_in(&folder, &phone.id).map(|s| s.at);
+    let at = || read_seen_in(&folder, Some(&key), &phone.id).map(|s| s.at);
     let mut n = 0;
     // A change at each exchange, so that each runs whole.
     let mut exchange_at = |now: i64| {

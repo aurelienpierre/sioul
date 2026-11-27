@@ -19,9 +19,11 @@ const ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
 /// Messages read per address and round; a burst of mail is read over the next rounds.
 const PER_ROUND: usize = 20;
 
-/// The key kept for Anthropic's API, if any (read as `secret` reads, through its session kept).
-pub fn api_key() -> Option<String> {
-    crate::secret::named("Anthropic API key").filter(|k| !k.trim().is_empty())
+/// The key kept for Anthropic's API, if any (read as `secret` reads, through
+/// its session kept); the keyring not answering now, its error (asked again
+/// at the next round).
+pub fn api_key() -> Result<Option<String>, SyncError> {
+    Ok(crate::secret::named("Anthropic API key")?.filter(|k| !k.trim().is_empty()))
 }
 
 /// Keeps the key, replacing any older one; an empty key forgets it. Through
@@ -49,7 +51,7 @@ pub fn read_new(config: &Config) -> Result<Read, SyncError> {
     if !config.accounts.iter().any(|a| a.ai_reads()) {
         return Ok(Read::default());
     }
-    let Some(key) = api_key() else { return Ok(Read::default()) };
+    let Some(key) = api_key()? else { return Ok(Read::default()) };
     read_with(config, ENDPOINT, &key)
 }
 

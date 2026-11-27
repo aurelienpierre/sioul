@@ -1270,7 +1270,7 @@ fn missed_of(reads: &Reads) -> String {
     if health.medicines.is_empty() {
         return json(&PorchDoses::default());
     }
-    let heard = !crate::share::on() || crate::share::last_exchange().is_some();
+    let heard = !crate::share::configured() || crate::share::last_exchange().is_some();
     let (state, now) = (&reads.state, Zoned::now());
     let mut doses = porch_doses(&health, state, &reads.records, &reads.told, &this_device(), &reads.knowledge, &now, crate::hours::doses_silent(), heard, tr());
     doses.due = with_lately(doses.due, &health, state, &now);
@@ -1745,10 +1745,28 @@ static SENT: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::M
 /// "Reminders come on `<computer>`", when another computer keeps them.
 static REMINDED_THERE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
+/// Whether this device is alone for the doses, and whether the others
+/// cannot be known now: alone only with no sharing set up, or sharing on
+/// (its key read) and no other device in it; sharing set up while its key
+/// is not read (a keyring locked, or not answering: `share::on` false) is
+/// never alone, the others unknown, a phone among them maybe (R2, and the
+/// fourth review's re-review, R1).
+pub(crate) fn doses_alone(no_peers: bool) -> (bool, bool) {
+    let configured = crate::share::configured();
+    let on = crate::share::on();
+    (!configured || (on && no_peers), configured && !on)
+}
+
 /// Why the doses here may not be all: this computer alone, or what is not
 /// known of your other devices now; "" when all is known.
 fn shared_note(knowledge: &Knowledge) -> String {
-    if !crate::share::on() {
+    // Sharing set up, its key not read (a keyring locked or not answering):
+    // the others not known now, never this device alone (the fourth review's re-review, R1).
+    let (alone, unknown) = doses_alone(knowledge.peers.is_empty());
+    if unknown {
+        return tr().text("health-others-unknown", None);
+    }
+    if !crate::share::on() && alone {
         return tr().text("health-alone", None);
     }
     let now = Timestamp::now().as_second();
@@ -2646,7 +2664,7 @@ fn repair() {
     let now = Timestamp::now().as_second();
     let path = HealthState::default_path();
     let set_aside = || HealthState::set_aside(&path, now);
-    let aside = if crate::share::on() {
+    let aside = if crate::share::configured() {
         match crate::share::rebuild_health_record(set_aside) {
             Ok(aside) => aside,
             Err(_) => {
@@ -2718,7 +2736,7 @@ fn repair_records() {
     let now = Timestamp::now().as_second();
     let path = DoseRecords::default_path();
     let set_aside = || DoseRecords::set_aside(&path, now);
-    let aside = if crate::share::on() {
+    let aside = if crate::share::configured() {
         match crate::share::rebuild_dose_records(set_aside) {
             Ok(aside) => aside,
             Err(_) => {
@@ -4775,7 +4793,7 @@ fn repair_told() {
     let now = Timestamp::now().as_second();
     let path = DoseReminders::default_path();
     let set_aside = || sioul_core::health::HealthState::set_aside(&path, now);
-    let aside = if crate::share::on() {
+    let aside = if crate::share::configured() {
         match crate::share::rebuild_dose_reminders(set_aside) {
             Ok(aside) => aside,
             Err(_) => {
@@ -5147,9 +5165,9 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // the folder); else this opening written into the folder, the claim and
     // the records written, and every phone's word that it read this opening.
     let configured = crate::share::configured();
-    let alone = !configured || (crate::share::on() && knowledge.peers.is_empty());
     // Sharing set up, its key not read: the others not known here, a phone among them maybe (R2).
-    let alarms = alarms || (configured && !crate::share::on());
+    let (alone, unknown) = doses_alone(knowledge.peers.is_empty());
+    let alarms = alarms || unknown;
     let start = crate::devices::published_start();
     let told_all = crate::share::on() && !claim_failed && start > 0;
     // Each phone's word as its newest copy read here says it, never an older one put back (the ninth review's W1).
@@ -5268,7 +5286,7 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
     // asked about once, as a question on the past, after your other computers
     // were heard from (a dose marked there comes first), and only where you
     // are; its title says which (`missed_title`); what is not known, said.
-    let heard = !crate::share::on() || crate::share::last_exchange().is_some();
+    let heard = !crate::share::configured() || crate::share::last_exchange().is_some();
     // On a phone, without notifications, the Porch asks it (`missed`).
     // Asleep with doses staying silent, it waits for waking too.
     if heard && keeper.mine && !cfg!(target_os = "android") && !crate::hours::doses_silent() && !ASKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
@@ -5356,6 +5374,27 @@ pub(crate) fn tick(qt: &QtThread, shared: &Arc<Shared>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Sharing set up and the keyring not answering: the doses are never
+    /// this device alone (`doses_alone`: the others unknown, a phone among
+    /// them maybe, so its alarms are kept and a dose marked elsewhere is in
+    /// doubt), and Health says why; with no sharing set up, alone (the fourth
+    /// review's re-review, R1). On this thread alone (`share::SET_UP`, `KEYRING_LATE`).
+    #[test]
+    fn the_doses_are_never_alone_while_the_keyring_does_not_answer() {
+        let nobody = Knowledge { record_lost: None, peers: Vec::new() };
+        crate::share::SET_UP.with(|s| s.set(true));
+        crate::share::KEYRING_LATE.with(|l| l.set(true));
+        let (late, note) = (doses_alone(true), shared_note(&nobody));
+        crate::share::SET_UP.with(|s| s.set(false));
+        crate::share::KEYRING_LATE.with(|l| l.set(false));
+        assert_eq!(late, (false, true), "not alone, the others unknown");
+        assert_eq!(note, tr().text("health-others-unknown", None));
+        if !crate::share::configured() {
+            assert_eq!(doses_alone(true), (true, false), "no sharing set up: alone");
+            assert_eq!(shared_note(&nobody), tr().text("health-alone", None));
+        }
+    }
     use sioul_sync::lease::Claim;
 
     fn claim(renewed: i64, wrote: Option<(u32, u64)>, closed: bool) -> Claim {

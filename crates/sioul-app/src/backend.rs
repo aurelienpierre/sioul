@@ -2308,6 +2308,10 @@ pub mod qobject {
         #[qinvokable]
         fn set_share_projects(self: Pin<&mut Sioul>, on: bool) -> QString;
 
+        /// The folders of the notes that never travel (a JSON list of paths from the notes folder); returns what went wrong, else "".
+        #[qinvokable]
+        fn set_share_never(self: Pin<&mut Sioul>, folders: &QString) -> QString;
+
         /// A part of what is shared ("settings", "notes"…) switched on or off on this device; returns what went wrong, else "".
         #[qinvokable]
         fn set_share_part(self: Pin<&mut Sioul>, part: &QString, on: bool) -> QString;
@@ -7835,6 +7839,14 @@ impl qobject::Sioul {
         QString::from(&problem)
     }
 
+    fn set_share_never(self: Pin<&mut Self>, folders: &QString) -> QString {
+        let problem = crate::share::set_never(&folders.to_string());
+        if problem.is_empty() {
+            crate::share::exchange(&self.qt_thread(), &self.shared());
+        }
+        QString::from(&problem)
+    }
+
     fn folders_in(&self, path: &QString) -> QString {
         QString::from(&crate::share::folders_in(&path.to_string()))
     }
@@ -9422,10 +9434,11 @@ impl qobject::Sioul {
         }
         // Whether the keyring keeps a key: the core does not read the keyring.
         for row in rows.iter_mut().filter(|r| r.key == "ai_key") {
-            row.value = config::SettingValue::Bool(sioul_sync::shield_ai::api_key().is_some());
+            // The keyring not answering: shown as kept, never as none (nothing is forgotten).
+            row.value = config::SettingValue::Bool(!matches!(sioul_sync::shield_ai::api_key(), Ok(None)));
         }
         for row in rows.iter_mut().filter(|r| r.key == "github_token") {
-            row.value = config::SettingValue::Bool(sioul_sync::github::token().is_some());
+            row.value = config::SettingValue::Bool(!matches!(sioul_sync::github::token(), Ok(None)));
         }
         // Whether the session starts the reminders' watcher: the desktop's own entry says.
         for row in rows.iter_mut().filter(|r| r.key == "reminders_closed") {

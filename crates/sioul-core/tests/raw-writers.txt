@@ -180,6 +180,7 @@ sioul-app/src/reviews.rs	mark_told	1	std::fs::write(told_path(), format!("work =
 sioul-app/src/share.rs	stop	1	std::fs::remove_dir_all(sioul_sync::remote::mirror_of(&memory))
 sioul-app/src/share.rs	stop	1	std::fs::remove_file(memory.with_file_name("files.json"))
 sioul-app/src/share.rs	stop	1	std::fs::remove_file(&memory)
+sioul-app/src/share.rs	stop	1	std::fs::remove_file(memory.with_file_name("journal.jsonl"))
 sioul-app/src/share.rs	begin_on_server	3	std::fs::remove_dir_all(&mirror)
 sioul-app/src/share.rs	begin_on_server	1	share::write_atomically(&mirror.join("seal.toml"), seal)
 
@@ -1012,9 +1013,9 @@ sioul-sync/src/share.rs	put_back	1	std::fs::rename(&beside, &path)
 sioul-sync/src/share.rs	put_back	1	std::fs::remove_file(version)
 #   on_the_disk: a put back's bytes written to the disk before the lock.
 sioul-sync/src/share.rs	on_the_disk	1	std::fs::OpenOptions::new()
-#   append: the sharing's records.
-sioul-sync/src/share.rs	append	1	write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes())
-sioul-sync/src/share.rs	append	2	std::fs::OpenOptions::new()
+#   write_piece: the sharing's records, a piece of an append at a time.
+sioul-sync/src/share.rs	write_piece	1	write_synced(&sharing.memory.with_file_name("appended.toml"), format!("computer = \"{}\"\nround = {}\nn = {}\n", sharing.computer, memory.round, memory.seq).as_bytes())
+sioul-sync/src/share.rs	write_piece	2	std::fs::OpenOptions::new()
 #   put_back_withheld: notes and papers held after going many at once, put back where they were.
 sioul-sync/src/share.rs	put_back_withheld	1	std::fs::remove_file(&opened)
 sioul-sync/src/share.rs	put_back_withheld	1	std::fs::remove_file(opened)
@@ -1025,8 +1026,10 @@ sioul-sync/src/share.rs	place_put_back	1	std::fs::remove_file(&beside)
 sioul-sync/src/share.rs	after_prepare	1	std::fs::OpenOptions::new()
 #   take_out_own_copies: the copies a sync app made of this device's own files in the sharing folder, taken out once nothing is in them that this device does not say elsewhere.
 sioul-sync/src/share.rs	take_out_own_copies	1	std::fs::remove_file(dir.join(&name))
+#   sweep_old_tables: the old spam filter's tables a phone's sync app kept in its sharing folder, taken out once (sealed files, no item).
+sioul-sync/src/share.rs	sweep_old_tables	1	std::fs::remove_file(&path)
 #   write_seen: the sharing's notes to the other devices.
-sioul-sync/src/share.rs	write_seen	1	write_atomically(&path, text.as_bytes())
+sioul-sync/src/share.rs	write_seen	1	write_atomically(&path, text(pad).as_bytes())
 #   remove_old_rounds: the sharing's records past their time.
 sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(sharing.folder, sharing.computer, *round))
 sioul-sync/src/share.rs	remove_old_rounds	1	std::fs::remove_file(round_file(&dir, id, *round))
@@ -1035,7 +1038,7 @@ sioul-sync/src/share.rs	remove_device_files	1	std::fs::remove_file(path)
 
 # sioul-sync/src/share_journal.rs: what an exchange wrote that its memory does not hold yet, noted on this device before each write and taken out once the memory is saved (state, its own, never shared): no item.
 sioul-sync/src/share_journal.rs	forget	1	std::fs::remove_file(&self.path)
-sioul-sync/src/share_journal.rs	note	2	std::fs::OpenOptions::new()
+sioul-sync/src/share_journal.rs	append	2	std::fs::OpenOptions::new()
 sioul-sync/src/share_journal.rs	settle	1	std::fs::remove_file(&self.path)
 sioul-sync/src/share_journal.rs	settle	1	write_synced(&self.path, &text)
 

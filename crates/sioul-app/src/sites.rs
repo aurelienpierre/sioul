@@ -692,7 +692,11 @@ pub(crate) fn bitwarden_unlock(shared: &Shared, password: &str, provider: i32, c
     let Some(email) = config.bitwarden.email.clone().filter(|e| !e.trim().is_empty()) else { return serde_json::json!({ "error": tr().text("bitwarden-missing", None) }).to_string() };
     let server = bitwarden::Server::of(config.bitwarden.server.as_deref().unwrap_or(""));
     let device = device();
-    let token = sioul_sync::secret::named(&remembered(&email));
+    // The keyring not answering: said, the token kept, never the second step asked again for it.
+    let token = match sioul_sync::secret::named(&remembered(&email)) {
+        Ok(token) => token,
+        Err(e) => return serde_json::json!({ "error": e.sentence(tr(), &email) }).to_string(),
+    };
     let factor = (0..100).contains(&provider).then(|| (u8::try_from(provider).unwrap_or(0), code));
     let new_device = (provider == 100).then_some(code);
     let unlocked = bitwarden::unlock(&server, &email, password, &device, factor, token.as_deref().filter(|_| factor.is_none()), new_device);

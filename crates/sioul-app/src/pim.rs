@@ -2083,8 +2083,19 @@ pub(crate) fn add_google_account(qt: &QtThread, shared: &Arc<Shared>, address: S
     std::thread::spawn(move || {
         let config = load_config();
         let address = address.trim().to_ascii_lowercase();
-        // Signed in again: the client kept with its grant.
-        let kept = again.as_ref().and_then(|_| google::grant(&address));
+        // Signed in again: the client kept with its grant. The keyring not
+        // answering: said, nothing signed in with another client meanwhile.
+        let kept = match again.as_ref().map(|_| google::grant(&address)).transpose() {
+            Ok(kept) => kept.flatten(),
+            Err(e) => {
+                let line = e.sentence(tr(), &address);
+                let _ = qt.queue(move |mut sioul| {
+                    sioul.as_mut().set_form_busy(false);
+                    sioul.as_mut().set_form_error(QString::from(&line));
+                });
+                return;
+            }
+        };
         // The key kept (signing in again), else the one given, else Sioul's own when the build has one.
         let (client_id, client_secret) = match (&kept, google::built_in()) {
             (Some(grant), _) if client_id.trim().is_empty() => (grant.client_id.clone(), grant.client_secret.clone()),

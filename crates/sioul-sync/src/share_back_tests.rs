@@ -65,14 +65,15 @@ fn copies(notes: &Path, stem: &str) -> Vec<String> {
     out
 }
 
-/// The case of 21 November 2026: a note written on the desk at 17:40, its
-/// version written on the phone by an exchange the phone did not live to
-/// save (the app ended); the desk's next version at 17:55; the phone started
-/// again at 17:56, something of its own changed at its start (a setting,
-/// dated then) found before the note in its look. Until the journal, the
-/// phone took the 17:40 version for a change of its own, sent it with a
-/// clock past its setting's, later than the desk's 17:55 version: the desk
-/// kept 17:55 aside as "plans (conflict … 17.55).md" and put 17:40 back.
+/// The case of 21 November 2026: a note written on the desk, that version
+/// written on the phone by an exchange the phone did not live to save (the
+/// app ended); the desk's next version a quarter of an hour later; the
+/// phone started again a minute after that, something of its own changed at
+/// its start (a setting, dated then) found before the note in its look.
+/// Until the journal, the phone took the received version for a change of
+/// its own, sent it with a clock past its setting's, later than the desk's
+/// next version: the desk kept its newer version aside as "plans (conflict
+/// …).md" and put the older one back.
 #[test]
 fn a_note_received_then_ended_never_goes_back_over_a_newer_one() {
     let base = scratch("back-note");
@@ -86,22 +87,22 @@ fn a_note_received_then_ended_never_goes_back_over_a_newer_one() {
     with_notes(&desk, &folder, &key, at(0), &desk_notes);
     with_notes(&phone, &folder, &key, at(1), &phone_notes);
     assert_eq!(std::fs::read(phone_notes.join("plans.md")).unwrap(), v0);
-    // The desk's next version ("17:40").
+    // The desk's next version.
     put(&desk_notes, "plans.md", v1);
     dated(&desk_notes.join("plans.md"), at(2));
     with_notes(&desk, &folder, &key, at(2), &desk_notes);
     // The phone writes it, then ends before its memory reaches the disk.
     ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
     assert_eq!(std::fs::read(phone_notes.join("plans.md")).unwrap(), v1);
-    // The desk's next version ("17:55").
+    // The desk's version after it.
     put(&desk_notes, "plans.md", v2);
     dated(&desk_notes.join("plans.md"), at(5));
     with_notes(&desk, &folder, &key, at(5), &desk_notes);
-    // The phone starts again ("17:56"): a setting of its own changed then.
+    // The phone starts again: a setting of its own changed then.
     phone.write("config/safe-senders.txt", "a@example.org\n");
     dated(&phone.path("config/safe-senders.txt"), at(6));
     let restart = with_notes(&phone, &folder, &key, at(6), &phone_notes);
-    // The desk reads ("17:57"), then the phone.
+    // The desk reads, then the phone.
     let read = with_notes(&desk, &folder, &key, at(7), &desk_notes);
     with_notes(&phone, &folder, &key, at(8), &phone_notes);
     for notes in [&desk_notes, &phone_notes] {
@@ -371,3 +372,287 @@ fn a_value_chosen_again_after_it_lost_goes_at_a_new_clock() {
     }
     let _ = std::fs::remove_dir_all(&base);
 }
+
+/// A setting taken out on the desk, the take-out written on the phone, the
+/// phone ended; the desk sets it again. The phone started again never sends
+/// that take-out back as its own (it would take the setting out everywhere).
+#[test]
+fn a_setting_taken_out_elsewhere_then_ended_never_takes_out_its_return() {
+    let base = scratch("back-taken");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/config.toml", "theme = \"dark\"\nlanguage = \"fr\"\n");
+    desk.exchange(&folder, &key, at(0));
+    phone.exchange(&folder, &key, at(1));
+    desk.write("config/config.toml", "language = \"fr\"\n");
+    desk.exchange(&folder, &key, at(2));
+    ends(&phone, &folder, &key, at(3), &plain(&phone));
+    assert!(!phone.read("config/config.toml").contains("theme"));
+    desk.write("config/config.toml", "theme = \"light\"\nlanguage = \"fr\"\n");
+    desk.exchange(&folder, &key, at(5));
+    assert_eq!(phone.exchange(&folder, &key, at(6)).sent, 0);
+    desk.exchange(&folder, &key, at(7));
+    for c in [&desk, &phone] {
+        assert!(c.read("config/config.toml").contains("light"), "{}", c.read("config/config.toml"));
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// This device's own take-out (a sender let in again), appended, the device
+/// ended; the desk blocks the sender again later. Started again, the phone
+/// sends its take-out at its own clock, which loses to the desk's later word.
+#[test]
+fn an_own_take_out_appended_then_ended_goes_again_at_its_own_clock() {
+    let base = scratch("back-own-out");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("config/blocked-senders.txt", "a@example.org\nnews@example.org\n");
+    desk.exchange(&folder, &key, at(0));
+    phone.exchange(&folder, &key, at(1));
+    phone.write("config/blocked-senders.txt", "a@example.org\n");
+    ends(&phone, &folder, &key, at(2), &plain(&phone));
+    desk.exchange(&folder, &key, at(3));
+    assert!(!desk.read("config/blocked-senders.txt").contains("news@"));
+    desk.write("config/blocked-senders.txt", "a@example.org\nnews@example.org\n");
+    desk.exchange(&folder, &key, at(4));
+    phone.exchange(&folder, &key, at(5));
+    desk.exchange(&folder, &key, at(6));
+    phone.exchange(&folder, &key, at(7));
+    for c in [&desk, &phone] {
+        assert!(c.read("config/blocked-senders.txt").contains("news@example.org"), "{}", c.read("config/blocked-senders.txt"));
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The doses' record and a draft received, the device ended: neither goes
+/// back as its own; the desk's later word on both stays.
+#[test]
+fn a_dose_and_a_draft_received_then_ended_never_go_back() {
+    let base = scratch("back-dose-draft");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    desk.write("state/health-state.toml", "[taken]\n\"levothyroxine@1790000600\" = 1790000600\n");
+    desk.write("data/drafts/reply.eml", "Subject: Lease\n\nFirst words.\n");
+    desk.exchange(&folder, &key, at(0));
+    phone.exchange(&folder, &key, at(1));
+    desk.write("state/health-state.toml", "[taken]\n\"levothyroxine@1790000600\" = 1790000600\n\"levothyroxine@1790086400\" = 1790086400\n");
+    desk.write("data/drafts/reply.eml", "Subject: Lease\n\nFirst words, and more.\n");
+    desk.exchange(&folder, &key, at(2));
+    ends(&phone, &folder, &key, at(3), &plain(&phone));
+    // The draft sent on the desk (taken out), a dose taken back there.
+    std::fs::remove_file(desk.path("data/drafts/reply.eml")).unwrap();
+    desk.write("state/health-state.toml", "[taken]\n\"levothyroxine@1790000600\" = 1790000600\n");
+    desk.exchange(&folder, &key, at(5));
+    assert_eq!(phone.exchange(&folder, &key, at(6)).sent, 0);
+    desk.exchange(&folder, &key, at(7));
+    for c in [&desk, &phone] {
+        assert!(!c.path("data/drafts/reply.eml").exists(), "the draft sent stays sent");
+        assert!(!c.read("state/health-state.toml").contains("1790086400"), "{}", c.read("state/health-state.toml"));
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// A quick exchange (a dose's alarm: no notes read) between the end and the
+/// next whole one: it saves its memory, and the note's line stays in the
+/// journal while the memory does not hold it; the whole exchange then passes
+/// over the received note as well.
+#[test]
+fn a_quick_exchange_between_the_end_and_the_next_keeps_the_note_s_line() {
+    let base = scratch("back-quick");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    put(&desk_notes, "lease.md", b"Rent: 600\n");
+    with_notes(&desk, &folder, &key, at(0), &desk_notes);
+    with_notes(&phone, &folder, &key, at(1), &phone_notes);
+    put(&desk_notes, "lease.md", b"Rent: 620\n");
+    with_notes(&desk, &folder, &key, at(2), &desk_notes);
+    ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
+    put(&desk_notes, "lease.md", b"Rent: 640\n");
+    with_notes(&desk, &folder, &key, at(4), &desk_notes);
+    let quick = exchange(&Sharing { folder: &folder, computer: &phone.id, key: &key, memory: &phone.memory, files: false, hurry: None }, &stores_with(&phone, &phone_notes), at(5)).unwrap();
+    assert_eq!(quick.sent, 0);
+    assert_eq!(with_notes(&phone, &folder, &key, at(6), &phone_notes).sent, 0, "the received note never goes back");
+    with_notes(&desk, &folder, &key, at(7), &desk_notes);
+    for notes in [&desk_notes, &phone_notes] {
+        assert_eq!(std::fs::read(notes.join("lease.md")).unwrap(), b"Rent: 640\n", "{}", notes.display());
+        assert!(copies(notes, "lease").is_empty(), "{}", notes.display());
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The journal's own edges: after two ended exchanges, only the last done
+/// line of a key counts, so a note put back to the first one's version is a
+/// change of the person's, sent (the review of 24 November 2026, 3); a line
+/// left half written by the end of a process is passed over and cut back.
+#[test]
+fn only_the_last_line_marked_done_counts_and_a_half_line_is_passed_over() {
+    let base = scratch("back-marks");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    let (v0, v1, v2): (&[u8], &[u8], &[u8]) = (b"Rent: 600\n", b"Rent: 620\n", b"Rent: 640\n");
+    put(&desk_notes, "lease.md", v0);
+    with_notes(&desk, &folder, &key, at(0), &desk_notes);
+    with_notes(&phone, &folder, &key, at(1), &phone_notes);
+    // Two versions received, each by an exchange that ended.
+    put(&desk_notes, "lease.md", v1);
+    with_notes(&desk, &folder, &key, at(2), &desk_notes);
+    ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
+    put(&desk_notes, "lease.md", v2);
+    with_notes(&desk, &folder, &key, at(4), &desk_notes);
+    ends(&phone, &folder, &key, at(5), &stores_with(&phone, &phone_notes));
+    assert_eq!(std::fs::read(phone_notes.join("lease.md")).unwrap(), v2);
+    // Half a line, as a process ended while it wrote.
+    let journal = journal::journal_path(&phone.memory);
+    let mut text = std::fs::read(&journal).unwrap();
+    text.extend(b"{\"v\":2,\"k\":\"files/notes/le");
+    std::fs::write(&journal, &text).unwrap();
+    // The person puts the first received version back by hand.
+    put(&phone_notes, "lease.md", v1);
+    let restart = with_notes(&phone, &folder, &key, at(6), &phone_notes);
+    assert_eq!(restart.sent, 1, "the person's change goes: {restart:?}");
+    let lines = std::fs::read(&journal).unwrap_or_default();
+    assert!(lines.split(|b| *b == b'\n').filter(|l| !l.is_empty()).all(|l| serde_json::from_slice::<serde_json::Value>(l).is_ok()), "no half line kept");
+    with_notes(&desk, &folder, &key, at(7), &desk_notes);
+    assert_eq!(std::fs::read(desk_notes.join("lease.md")).unwrap(), v1, "the person's word is the later one");
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The journal's lines as an exchange ended between a write and its mark
+/// leaves them (the process ended in the microseconds after a file's rename,
+/// or a power cut lost the marks, which are not waited for on the disk): a
+/// change noted after the key's last done one counts all the same where the
+/// file holds exactly what it wrote, so the note received is never sent
+/// back (the third review of 26 November 2026, A2).
+#[test]
+fn a_write_whose_mark_was_lost_still_counts_where_the_file_holds_it() {
+    let base = scratch("back-unmarked");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    put(&desk_notes, "lease.md", b"Rent: 600\n");
+    with_notes(&desk, &folder, &key, at(0), &desk_notes);
+    with_notes(&phone, &folder, &key, at(1), &phone_notes);
+    put(&desk_notes, "lease.md", b"Rent: 620\n");
+    with_notes(&desk, &folder, &key, at(2), &desk_notes);
+    ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
+    // Every mark lost: the lines noted remain.
+    let journal = journal::journal_path(&phone.memory);
+    let kept: Vec<u8> = std::fs::read(&journal).unwrap().split(|b| *b == b'\n').filter(|l| !l.is_empty() && !serde_json::from_slice::<Landed>(l).is_ok_and(|l| l.d)).flat_map(|l| l.iter().copied().chain([b'\n'])).collect();
+    assert!(!kept.is_empty());
+    std::fs::write(&journal, &kept).unwrap();
+    put(&desk_notes, "lease.md", b"Rent: 640\n");
+    with_notes(&desk, &folder, &key, at(4), &desk_notes);
+    assert_eq!(with_notes(&phone, &folder, &key, at(5), &phone_notes).sent, 0, "the received note never goes back");
+    with_notes(&desk, &folder, &key, at(6), &desk_notes);
+    for notes in [&desk_notes, &phone_notes] {
+        assert_eq!(std::fs::read(notes.join("lease.md")).unwrap(), b"Rent: 640\n", "{}", notes.display());
+        assert!(copies(notes, "lease").is_empty(), "{}", notes.display());
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// The update from a build whose journal had no marks (format 1, the
+/// install of 25 November 2026): its lines count where the file holds
+/// exactly what they wrote, which they meant there. A note received by such
+/// a build, the app then ended by the install before its memory was saved,
+/// is never sent back as this device's own change by the new build (the
+/// third review of 26 November 2026, A1: read as never written, it went
+/// back, the incident of 21 November at the moment of the install).
+#[test]
+fn a_line_of_the_journal_s_first_format_counts_where_the_file_holds_it() {
+    let base = scratch("back-format-1");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    put(&desk_notes, "lease.md", b"Rent: 600\n");
+    with_notes(&desk, &folder, &key, at(0), &desk_notes);
+    with_notes(&phone, &folder, &key, at(1), &phone_notes);
+    put(&desk_notes, "lease.md", b"Rent: 620\n");
+    with_notes(&desk, &folder, &key, at(2), &desk_notes);
+    ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
+    // The journal as the build before the marks wrote it: format 1, no "d".
+    let journal = journal::journal_path(&phone.memory);
+    let older: Vec<u8> = std::fs::read(&journal)
+        .unwrap()
+        .split(|b| *b == b'\n')
+        .filter_map(|l| serde_json::from_slice::<Landed>(l).ok())
+        .filter(|l| !l.d)
+        .flat_map(|l| {
+            let mut line = serde_json::to_vec(&Landed { v: 1, ..l }).unwrap();
+            line.push(b'\n');
+            line
+        })
+        .collect();
+    assert!(!older.is_empty());
+    std::fs::write(&journal, &older).unwrap();
+    put(&desk_notes, "lease.md", b"Rent: 640\n");
+    with_notes(&desk, &folder, &key, at(4), &desk_notes);
+    assert_eq!(with_notes(&phone, &folder, &key, at(5), &phone_notes).sent, 0, "nothing sent back");
+    with_notes(&desk, &folder, &key, at(6), &desk_notes);
+    for notes in [&desk_notes, &phone_notes] {
+        assert_eq!(std::fs::read(notes.join("lease.md")).unwrap(), b"Rent: 640\n", "{}", notes.display());
+        assert!(copies(notes, "lease").is_empty(), "{}", notes.display());
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// Two lines of the journal's first format for one note (the installed
+/// build counted every line of a key by its content), from two exchanges
+/// that ended in a row, the second between noting the newer version and
+/// writing it, so that the file still holds the earlier: at the update,
+/// nothing is sent back, and both devices end on the newer version with no
+/// conflicted copy (the fourth review of 27 November 2026, F2: each line read
+/// as done, the second hid the first, and the earlier version went back over
+/// the newer one, the incident of 21 November at the update).
+#[test]
+fn two_first_format_lines_the_file_holding_the_earlier_send_nothing_back() {
+    let base = scratch("back-format-1-two");
+    let folder = base.join("Sioul");
+    let key = quick_key(&folder, "four words make a passphrase").unwrap();
+    let (desk, phone) = (Computer::new(&base, "desk"), Computer::new(&base, "phone"));
+    let (desk_notes, phone_notes) = (base.join("desk-notes"), base.join("phone-notes"));
+    put(&desk_notes, "lease.md", b"Rent: 600\n");
+    with_notes(&desk, &folder, &key, at(0), &desk_notes);
+    with_notes(&phone, &folder, &key, at(1), &phone_notes);
+    put(&desk_notes, "lease.md", b"Rent: 620\n");
+    with_notes(&desk, &folder, &key, at(2), &desk_notes);
+    ends(&phone, &folder, &key, at(3), &stores_with(&phone, &phone_notes));
+    put(&desk_notes, "lease.md", b"Rent: 640\n");
+    with_notes(&desk, &folder, &key, at(4), &desk_notes);
+    ends(&phone, &folder, &key, at(5), &stores_with(&phone, &phone_notes));
+    assert_eq!(std::fs::read(phone_notes.join("lease.md")).unwrap(), b"Rent: 640\n");
+    // The second end came between noting 640 and writing it: the file still holds 620.
+    put(&phone_notes, "lease.md", b"Rent: 620\n");
+    let journal = journal::journal_path(&phone.memory);
+    let older: Vec<u8> = std::fs::read(&journal)
+        .unwrap()
+        .split(|b| *b == b'\n')
+        .filter_map(|l| serde_json::from_slice::<Landed>(l).ok())
+        .filter(|l| !l.d)
+        .flat_map(|l| {
+            let mut line = serde_json::to_vec(&Landed { v: 1, ..l }).unwrap();
+            line.push(b'\n');
+            line
+        })
+        .collect();
+    std::fs::write(&journal, &older).unwrap();
+    let out = with_notes(&phone, &folder, &key, at(6), &phone_notes);
+    with_notes(&desk, &folder, &key, at(7), &desk_notes);
+    with_notes(&phone, &folder, &key, at(8), &phone_notes);
+    assert_eq!(out.sent, 0, "nothing sent back");
+    for notes in [&desk_notes, &phone_notes] {
+        assert_eq!(std::fs::read(notes.join("lease.md")).unwrap(), b"Rent: 640\n");
+        assert!(copies(notes, "lease").is_empty());
+    }
+    let _ = std::fs::remove_dir_all(&base);
+}
+
