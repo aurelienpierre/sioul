@@ -249,6 +249,10 @@ sioul-cli/src/spam/jobs.rs	finish	1	crate::files::remove_file(file(&self.job.id,
 sioul-cli/src/store.rs	edit	1	crate::files::OpenOptions::new()
 sioul-cli/src/store.rs	edit	1	crate::files::remove_dir_all(&dir)
 sioul-cli/src/store.rs	unseal	1	crate::files::OpenOptions::new()
+# sioul-cli/src/clientsdb.rs: `sioul store export --clients`'s tables of a client's records (CSV), in the empty folder the person gives, outside Sioul's: no item.
+sioul-cli/src/clientsdb.rs	write	1	crate::files::write(&path, csv)
+# sioul-sync/src/history.rs: the sharing's earlier versions of an erased client's files, purged (`share::forget_erased_client`): no item.
+sioul-sync/src/history.rs	purge_below	1	crate::files::purge_dir(&dir)
 # sioul-cli/src/store.rs: `sioul settings set` puts the configuration back as it was when a change left it unreadable: no item.
 sioul-cli/src/store.rs	settings	1	sioul_core::filelock::replace(&s.config_path, &before)
 

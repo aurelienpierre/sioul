@@ -316,6 +316,7 @@ fn part_words(part: &str) -> (String, String) {
         "time" => (text("share-part-time"), text("share-part-time-carries")),
         "drafts" => (text("share-part-drafts"), text("share-part-drafts-carries")),
         "projects" => (text("share-part-projects"), text("share-part-projects-carries")),
+        sioul_sync::share::CLIENT_FILES_PART => (text("share-part-clients"), text("share-part-clients-carries")),
         "lists" => (text("share-part-lists"), text("share-part-lists-carries")),
         "notes" => (text("share-part-notes"), text("share-part-notes-carries")),
         "papers" => (text("share-part-papers"), text("share-part-papers-carries")),
@@ -2737,6 +2738,8 @@ fn exchange_now(qt: &QtThread, shared: &Arc<Shared>) {
             Ok(outcome) => {
                 // What it read and wrote, said in this device's entry (docs/database.md, "Devices"); the doses handed.
                 exchanged(&outcome, now.as_millisecond());
+                // Clients' files: one copy or two, and the move when one is due (`clientfiles`).
+                crate::clientfiles::after_exchange(&qt, &shared, &outcome);
                 // A draft changed here and replaced whole by another device's later version is said.
                 crate::invoices::after_exchange(&qt, outcome.written.contains("data/invoices/"));
                 (received, pending, waits) = (outcome.received, outcome.pending, waits_said(&outcome.waits));
@@ -2887,6 +2890,8 @@ fn want(change: impl FnOnce(&mut sioul_sync::trigger::Soon, i64)) {
 /// The worker and the watcher, started once, with the window's handles.
 fn start_worker(qt: &QtThread, shared: &Arc<Shared>) {
     if WORKER.set((qt.clone(), Arc::clone(shared))).is_ok() {
+        // Clients' files: the first move, whether or not sharing is set up (`clientfiles`).
+        crate::clientfiles::at_start(qt, shared);
         // The exchange runs each minute: on a computer its memory and the logs
         // of lines are kept between exchanges, read again only once their files
         // changed under them (`share::set_keeping`; tens of megabytes with many

@@ -110,7 +110,7 @@ impl Problem {
 }
 
 /// What a refresh did to the address books.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Done {
     /// The people the set holds.
     pub people: usize,
@@ -132,6 +132,9 @@ pub struct Done {
     /// Cards of people who reach the person in a special way, bound and left
     /// as they are but for the mark (the module's step 4).
     pub recognised: usize,
+    /// Each person's mark and the file of the card that is theirs now, for
+    /// what makes them clients when the set says so (docs/clients.md).
+    pub cards: Vec<(String, std::path::PathBuf)>,
 }
 
 /// What Sioul's lists say of the person's cards, for the trust guard (the
@@ -472,7 +475,9 @@ fn new_card(person: &Person, mark: &str, hash: &str, category: &str, region: Opt
     if !person.note.is_empty() {
         card.push(format!("NOTE:{}", lines::escape(&person.note)));
     }
-    card.push(contacts::categories_line(&[category.to_string()]));
+    if !category.is_empty() {
+        card.push(contacts::categories_line(&[category.to_string()]));
+    }
     card.push(format!("{MARK_LINE}:{mark}"));
     card.push(format!("{HASH_LINE}:{mark} {hash}"));
     card.push(format!("REV:{}", contacts::now_stamp()));
@@ -640,7 +645,9 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
     if !writable(book) {
         return Err(Problem::BookGone);
     }
-    let category = super::category(extension);
+    // A set whose people are the person's clients carries no category on a
+    // server's card: it would say who is a client (docs/clients.md).
+    let category = if set.clients { String::new() } else { super::category(extension) };
     let found = scan(extension, &set.id, book, region, trust);
     let sharing = Sharing::of(&set.people, region);
     let mut noted = load_noted(extension);
@@ -681,6 +688,13 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
     let mut done = Done { people: set.people.len(), ..Done::default() };
     let mut noted_changed = false;
     for ((mark, hash, act), person) in acts.into_iter().zip(&set.people) {
+        let card = match &act {
+            Act::Unchanged | Act::Left | Act::Recognised => found.held.get(&mark).map(|h| h.path.clone()),
+            Act::MarkAlone(at) | Act::Bind(at) => Some(found.candidates[*at].path.clone()),
+            Act::Make(path, ..) | Act::Update(path) => Some(path.clone()),
+            Act::Clash => None,
+        };
+        done.cards.extend(card.map(|c| (mark.clone(), c)));
         let (path, binding) = match act {
             Act::Unchanged => {
                 done.unchanged += 1;
@@ -757,7 +771,40 @@ pub fn take(extension: &str, set: &ContactSet, book: &vdir::Collection, region: 
     if noted_changed && let Err(why) = save_noted(extension, &noted) {
         eprintln!("sioul: extensions: {extension}: its notes of the cards: {why}");
     }
+    // The category taken off the cards it made for a set of clients, where
+    // it is still exactly its word; the mark and the hash stay.
+    if set.clients {
+        let word = super::category(extension);
+        for held in found.held.values().filter(|h| h.made && h.writable) {
+            if let Some(text) = crate::files::read_to_string(&held.path).ok().and_then(|t| without_category(&t, &word))
+                && let Err(why) = vdir::write_item(&held.path, &text)
+            {
+                eprintln!("sioul: extensions: {extension}: a card's category not taken off: {why}");
+            }
+        }
+    }
     Ok(done)
+}
+
+/// A card's text without its `CATEGORIES` line when that line is exactly
+/// `word` (folded or not), every other byte as it was; None when it has no such line.
+pub fn without_category(text: &str, word: &str) -> Option<String> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let mut end = i + 1;
+        while end < lines.len() && lines[end].starts_with([' ', '\t']) {
+            end += 1;
+        }
+        let unfolded: String = lines[i..end].iter().enumerate().map(|(n, l)| { let l = l.trim_end_matches(['\r', '\n']); if n == 0 { l } else { &l[1..] } }).collect();
+        if crate::lines::name(&unfolded) == "CATEGORIES" && crate::lines::unescape(crate::lines::value(&unfolded).trim()) == word {
+            let mut out: String = lines[..i].concat();
+            out.push_str(&lines[end..].concat());
+            return Some(out);
+        }
+        i = end;
+    }
+    None
 }
 
 /// The cards the door made for one set (their UID of the mark's form) moved
@@ -850,6 +897,23 @@ pub fn forget(extension: &str) {
 mod tests {
     use super::*;
     use crate::extensions::{card_file, person_mark, reply::refresh_reply};
+
+    /// For a set whose people are clients (docs/clients.md): the category is
+    /// taken off a card only where it is still exactly the extension's word,
+    /// folded or not, every other byte as it was; a new card gets none.
+    #[test]
+    fn a_set_of_clients_carries_no_category() {
+        let card = "BEGIN:VCARD\r\nVERSION:3.0\r\nUID:u\r\nFN:Marie Exemple\r\nCATEGORIES:Booking\r\nX-SIOUL-EXTENSION:m\r\nEND:VCARD\r\n";
+        assert_eq!(without_category(card, "Booking").as_deref(), Some("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:u\r\nFN:Marie Exemple\r\nX-SIOUL-EXTENSION:m\r\nEND:VCARD\r\n"));
+        let folded = "BEGIN:VCARD\r\nCATEGORIES:Book\r\n ing\r\nEND:VCARD\r\n";
+        assert_eq!(without_category(folded, "Booking").as_deref(), Some("BEGIN:VCARD\r\nEND:VCARD\r\n"));
+        assert_eq!(without_category("BEGIN:VCARD\r\nCATEGORIES:Booking,Friends\r\nEND:VCARD\r\n", "Booking"), None, "not exactly its word: left");
+        let person = refresh_reply(&json!({ "contacts": [{ "id": "s", "name": "S", "people": [{ "id": "p", "name": "Marie Exemple" }] }] }).to_string()).unwrap().contacts.remove(0).people.remove(0);
+        let (made, _) = new_card(&person, "m", "h", "", None);
+        assert!(!made.contains("CATEGORIES"), "{made}");
+        let (made, _) = new_card(&person, "m", "h", "Booking", None);
+        assert!(made.contains("CATEGORIES:Booking"), "{made}");
+    }
     use crate::vdir::{Kind, LOCAL};
     use serde_json::json;
 
@@ -1188,7 +1252,7 @@ mod tests {
         let reply = set(json!([{ "id": "c-1", "name": "Marie Exemple", "phones": ["01 23 45 67 89"] }, { "id": "c-2", "name": "Jean Exemple" }]));
         let done = take(EXT, &reply, &first, fr(), &plain()).unwrap();
         assert_eq!((done.bound, done.made), (1, 1));
-        let staff = ContactSet { id: "staff".into(), name: "Staff".into(), people: set(json!([{ "id": "s-1", "name": "Sam Exemple" }])).people };
+        let staff = ContactSet { id: "staff".into(), name: "Staff".into(), people: set(json!([{ "id": "s-1", "name": "Sam Exemple" }])).people, clients: false };
         take(EXT, &staff, &first, fr(), &plain()).unwrap();
         let second = book("Cards moved two");
         assert_eq!(move_made(&first, &second, EXT, "clients"), (1, 0));

@@ -137,6 +137,7 @@ impl Fixture {
                 super::CallSource { cards: vec!["sioul:contact/noa".into(), "sioul:contact/home".into()], ..call_source(MISSED_AT + 120_000, false, Some("sioul:contact/noa"), "Call from Noa Linden") },
             ],
             call_tasks: vec![super::CallTask { uid: "sioul-call-noa-1".into(), person: "sioul:contact/noa".into(), calls: vec![crate::callback::Mark { at: MISSED_AT, out: false }], called: Some(crate::callback::Mark { at: MISSED_AT + 3_600_000, out: false }) }],
+            clients: vec![crate::clients::ties::ClientTies { uri: "sioul:client/c-north".into(), name: "North Studio".into(), cards: vec!["north".into()], ties: vec!["sioul:invoice/2026-002".into()] }],
         };
         Fixture { tasks, events, contacts, vault, drafts, mail, projects, budget, local, sources }
     }
@@ -244,6 +245,10 @@ fn every_source_reads_from_both_ends() {
     both(&index, &world, &shared, "contact", "sioul:contact/noa", "involves");
     assert_eq!(links::call_parts(&missed), Some(("phone-1".to_string(), MISSED_AT, false)));
     assert_eq!(world.canonical(&missed), missed);
+    // Clients (docs/clients.md): a card and what a client's files tie to it say "Client", named by its name.
+    both(&index, &world, "sioul:contact/north", "client", "sioul:client/c-north", "client-of");
+    both(&index, &world, "sioul:invoice/2026-002", "client", "sioul:client/c-north", "client-of");
+    assert_eq!((world.describe("sioul:client/c-north").title.as_str(), world.describe("sioul:client/c-north").kind), ("North Studio", Kind::Client));
     // Time noted folds into its task, never a thing of its own.
     assert_eq!(index.sessions(index.node("sioul:task/pay-rent").unwrap()), 2);
     // A budget line's address is its own canonical form (the "/" before its position kept).

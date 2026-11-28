@@ -1151,6 +1151,8 @@ pub fn issue(dir: &Path, id: &str, s: &InvoiceSettings, day: Date, numbering: &N
     if let Some((clients, contacts)) = steps.clients {
         refresh_client(&mut invoice, clients, contacts);
     }
+    // For a client whose file holds a health mark: kept from agents, its file named by its number alone.
+    invoice.health = invoice.health || crate::clients::protect::health_at_issue(&crate::clients::door::opening(), &invoice.client_ref, &invoice.contact, steps.clients.map(|(clients, _)| clients));
     invoice.date = day.to_string();
     // Its deposits as they are now: what is left of each after its credit notes.
     recite(&mut invoice, &records);

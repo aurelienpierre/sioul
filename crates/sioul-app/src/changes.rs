@@ -59,11 +59,13 @@ pub(crate) fn heard(kind: Kind) -> Heard {
         Kind::Supplies => (true, false, false),
         // Settings ▸ Rules reads them again; what a rule made says its own kind as it is written.
         Kind::Rules => (true, false, false),
+        // Clients and their files: their view (its signal, `emit`) and the tie index, which reads their ties.
+        Kind::Clients => (true, false, false),
         // Made in Rust by their writers as they write.
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => (false, false, false),
     };
     // The tie index reads the persons, papers, letters, money, agendas and sites beside `loaded`.
-    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites | Kind::Issued);
+    let ties = loaded || matches!(kind, Kind::Persons | Kind::Papers | Kind::Letters | Kind::Money | Kind::Agendas | Kind::Sites | Kind::Issued | Kind::Clients);
     Heard { signal, agenda, loaded, ties }
 }
 
@@ -117,6 +119,8 @@ fn emit(mut sioul: std::pin::Pin<&mut crate::backend::qobject::Sioul>, kind: Kin
         Kind::Invoices | Kind::Issued => sioul.as_mut().invoices_changed(),
         Kind::Supplies => sioul.as_mut().supplies_changed(),
         Kind::Rules => sioul.as_mut().rules_changed(),
+        // The clients' view adds its signal here.
+        Kind::Clients => {}
         Kind::Calendars | Kind::Contacts | Kind::Notes | Kind::Accounts => {}
     }
 }

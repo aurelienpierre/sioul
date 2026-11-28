@@ -25,6 +25,11 @@ serde.workspace = true
 # The MCP server's JSON-RPC (`sioul mcp`); the core is built with it already.
 serde_json.workspace = true
 toml.workspace = true
+# A client's records written out as a database (`sioul store export --clients`:
+# records.sqlite, a table per kind of record), SQLite being the portable
+# database every system and many programs open; SQLite's own C sources built
+# in, so that no system library is needed. Here alone: no other crate gains it.
+rusqlite = { version = "0.43", features = ["bundled"] }
 
 # The spam filter's and the topics' training (`sioul spam`, `sioul topics`):
 # every device trains its own (docs/spam-filter.md, "Every device trains its own").

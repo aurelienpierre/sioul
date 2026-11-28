@@ -336,7 +336,10 @@ impl ContactsDoor for Door {
         // Numbers without their country read as the Contacts settings say; the
         // person's cards judged by the lists of who may reach them, as they stand.
         let config = load_config();
-        cards::take(extension, set, &book, sioul_core::reach::region(&config), &cards::Trust::load(&config))
+        let done = cards::take(extension, set, &book, sioul_core::reach::region(&config), &cards::Trust::load(&config))?;
+        // Its people made clients when the set says so and the person did not take it back (docs/clients.md).
+        sioul_core::clients::extension::after_set(&config, extension, set, &done.cards);
+        Ok(done)
     }
 }
 

@@ -55,7 +55,8 @@ pub fn folder() -> PathBuf {
 /// name (a prefix such as "F/2026-" makes no folder).
 pub fn pdf_path(invoice: &Invoice, folder_setting: &str, default_folder: &str) -> PathBuf {
     let folder = if folder_setting.trim().is_empty() { crate::config::expand_home(&format!("~/Documents/{default_folder}")) } else { crate::config::expand_home(folder_setting.trim()) };
-    let client: String = invoice.client.first_line().chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-').collect();
+    // An invoice that reveals care is named by its number alone (docs/clients.md, "Billing").
+    let client: String = if invoice.health { String::new() } else { invoice.client.first_line().chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-').collect() };
     let number: String = invoice.number.chars().map(|c| if c.is_alphanumeric() || matches!(c, ' ' | '-' | '_' | '.') { c } else { '-' }).collect();
     folder.join(format!("{} {}.pdf", number.trim_matches('.'), client.trim()).trim().to_string())
 }

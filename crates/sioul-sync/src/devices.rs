@@ -155,6 +155,14 @@ pub struct Entry {
     /// field unknown to it passed over.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub clients: u32,
+    /// Whether its Sioul knows clients' files (`share::CLIENT_FILES`,
+    /// `sioul_core::clients`): 1 from a build that has them, 0 from an
+    /// older one. Every device saying 1 opens the gate
+    /// (`share::client_files_shared`): the part travels, drafts name their
+    /// client by its address, profiles are adopted by their clients. An older
+    /// Sioul reads the entry as before, the field unknown to it passed over.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub client_files: u32,
     /// Whether its Sioul has the supplies' stores (`share::SUPPLIES`, the
     /// list, and `share::SUPPLY_MOVES`, each device's movements;
     /// `sioul_core::supplies`): 1 from a build that has them, 0 from an

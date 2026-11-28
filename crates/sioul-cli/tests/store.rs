@@ -143,22 +143,50 @@ fn the_export_writes_every_file_in_clear_in_its_standard_format() {
     let home = home("export");
     let root = &home.0;
     let store = Store::create(&folders(root), &RootKey::test(), Options::default()).unwrap();
-    store.write(&LogicalPath::new("config/config.toml").unwrap(), b"language = \"en\"\n", Default::default()).unwrap();
+    let config = "language = \"en\"\n\n[clients.kind.visit]\nname = \"Visit\"\n\n[clients.kind.visit.field.note]\nname = \"Note\"\ntype = \"text\"\n";
+    store.write(&LogicalPath::new("config/config.toml").unwrap(), config.as_bytes(), Default::default()).unwrap();
+    store.write(&LogicalPath::new("data/clients/c1/client.toml").unwrap(), b"format = 1\nid = \"c1\"\nname = \"Studio Exemple\"\n", Default::default()).unwrap();
+    store.write(&LogicalPath::new("data/clients/c1/db/visit/r1.toml").unwrap(), b"id = \"r1\"\nkind = \"visit\"\nschema = 1\nwhen = \"2026-11-21\"\n\n[fields]\nnote = \"Calm, on time\"\n", Default::default()).unwrap();
     store.write(&LogicalPath::new("data/calendars/local/perso/a1.ics").unwrap(), b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n", Default::default()).unwrap();
     store.write(&LogicalPath::new("data/mail/home/INBOX/cur/1700000000.M1P2.host:2,S").unwrap(), b"Subject: loyer\r\n\r\nmutuelle\r\n", Default::default()).unwrap();
     store.write(&LogicalPath::new("data/records/health.toml").unwrap(), b"[[day]]\n", Default::default()).unwrap();
     store.write(&LogicalPath::new("data/clients/c1/description.md").unwrap(), b"a client's words", Default::default()).unwrap();
+    // Where else a client's bytes live: the sharing's earlier versions of a client's file, this device's notes of erased ones.
+    store.write(&LogicalPath::new("state/share/history/clients/files/clients/c1/notes/n1.md/2026-11-28T10-00-00.000Z").unwrap(), b"an earlier note of a client's", Default::default()).unwrap();
+    store.write(&LogicalPath::new("state/clients/purged.toml").unwrap(), b"[purged]\nc0 = \"2026-11-28\"\n", Default::default()).unwrap();
+    // And a client's file a start set aside (a plain copy found in a moved folder).
+    store.write(&LogicalPath::new("data/set-aside/2026-11-28/data/clients/c2/notes/n9.md").unwrap(), b"a set-aside client note", Default::default()).unwrap();
     store.append_line(&LogicalPath::new("state/mcp/said.jsonl").unwrap(), "{\"n\":1}", Default::default()).unwrap();
     drop(store);
     let out = root.join("export");
     let export = sioul(root, true, &["store", "export", "--to", out.to_str().unwrap()], None);
     assert!(export.status.success(), "{}", said(&export));
-    assert_eq!(std::fs::read_to_string(out.join("config/config.toml")).unwrap(), "language = \"en\"\n");
+    assert_eq!(std::fs::read_to_string(out.join("config/config.toml")).unwrap(), config);
     assert_eq!(std::fs::read(out.join("data/calendars/local/perso/a1.ics")).unwrap(), b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
     assert_eq!(std::fs::read(out.join("data/mail/home/INBOX/cur/1700000000.M1P2.host:2,S")).unwrap(), b"Subject: loyer\r\n\r\nmutuelle\r\n", "a Maildir as mail programs read it");
     assert_eq!(std::fs::read_to_string(out.join("data/records/health.toml")).unwrap(), "[[day]]\n", "the person's own copy: health too");
     assert_eq!(std::fs::read_to_string(out.join("state/mcp/said.jsonl")).unwrap(), "{\"n\":1}\n", "a log as its lines");
     assert!(!out.join("data/clients").exists() && said(&export).contains("--clients"), "{}", said(&export));
+    // Not one byte of a client's anywhere in what was written without --clients.
+    let mut stack = vec![out.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+            if entry.file_type().unwrap().is_dir() {
+                stack.push(entry.path());
+                continue;
+            }
+            let bytes = std::fs::read(entry.path()).unwrap();
+            for word in [&b"a client's words"[..], b"an earlier note of a client's", b"Calm, on time", b"Studio Exemple", b"c0 = ", b"a set-aside client note"] {
+                assert!(!bytes.windows(word.len()).any(|w| w == word), "{} holds a client's bytes", entry.path().display());
+            }
+        }
+    }
+    assert!(!out.join("state/share/history/clients").exists() && !out.join("state/clients").exists());
+    // Nor printed or listed without --clients.
+    let cat = sioul(root, true, &["store", "cat", "--any", "state/share/history/clients/files/clients/c1/notes/n1.md/2026-11-28T10-00-00.000Z"], None);
+    assert!(!cat.status.success() && !String::from_utf8_lossy(&cat.stdout).contains("earlier note"), "{}", said(&cat));
+    let cat = sioul(root, true, &["store", "cat", "--any", "data/set-aside/2026-11-28/data/clients/c2/notes/n9.md"], None);
+    assert!(!cat.status.success() && !String::from_utf8_lossy(&cat.stdout).contains("set-aside client"), "a set-aside copy keeps its rule: {}", said(&cat));
     // Into a folder that is not empty: refused, nothing written.
     let again = sioul(root, true, &["store", "export", "--to", out.to_str().unwrap()], None);
     assert!(!again.status.success() && said(&again).contains("not empty"), "{}", said(&again));
@@ -167,6 +195,16 @@ fn the_export_writes_every_file_in_clear_in_its_standard_format() {
     let export = sioul(root, true, &["store", "export", "--to", all.to_str().unwrap(), "--clients"], None);
     assert!(export.status.success(), "{}", said(&export));
     assert_eq!(std::fs::read_to_string(all.join("data/clients/c1/description.md")).unwrap(), "a client's words");
+    assert_eq!(std::fs::read_to_string(all.join("state/share/history/clients/files/clients/c1/notes/n1.md/2026-11-28T10-00-00.000Z")).unwrap(), "an earlier note of a client's", "with --clients, the person's copy whole");
+    assert_eq!(std::fs::read_to_string(all.join("data/set-aside/2026-11-28/data/clients/c2/notes/n9.md")).unwrap(), "a set-aside client note");
+    // A client's records in clear as they are kept (TOML), and as a database and a table besides.
+    assert!(std::fs::read_to_string(all.join("data/clients/c1/db/visit/r1.toml")).unwrap().contains("Calm, on time"));
+    let db = rusqlite::Connection::open(all.join("data/clients/c1/records.sqlite")).unwrap();
+    let note: String = db.query_row("SELECT \"Note\" FROM \"Visit\" WHERE id = 'r1'", [], |r| r.get(0)).unwrap();
+    assert_eq!(note, "Calm, on time", "the database holds the row's field by its name");
+    let csv = std::fs::read_to_string(all.join("data/clients/c1/records/Visit.csv")).unwrap();
+    assert_eq!(csv, "id,when,health,supplies,Note\r\nr1,2026-11-21,0,,\"Calm, on time\"\r\n");
+    assert!(said(&export).contains("records.sqlite"), "{}", said(&export));
 }
 
 #[test]

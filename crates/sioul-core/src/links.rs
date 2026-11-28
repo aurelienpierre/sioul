@@ -63,6 +63,8 @@ pub enum Kind {
     Invoice,
     /// A money movement (`movements`): a payment out or in, once, with everything that tells of it.
     Movement,
+    /// A client, or a part of its file (`clients`): `sioul:client/<id>[/…]`.
+    Client,
     /// A site kept in Sioul's Sites: a bank, a tax office, a chat.
     Site,
     /// A call of one of your phones (`calls::Object`): who, when, how long, which way.
@@ -95,6 +97,7 @@ pub fn kind_of(uri: &str) -> Kind {
             "site" => Kind::Site,
             "movement" => Kind::Movement,
             "call" => Kind::Call,
+            "client" => Kind::Client,
             // A message without a Message-ID: `sioul:mail/<account>/<digest>`.
             "mail" => Kind::Mail,
             _ => Kind::Other,
@@ -991,6 +994,12 @@ impl World<'_> {
                 out.key = uri.clone();
                 out.found = true;
             }
+            // A client, by its name as the tie index read it from the clients' files (below);
+            // never its id as a title: "a client" until named.
+            Kind::Client => {
+                out.key = uri.clone();
+                out.found = self.ties.is_some_and(|t| t.index.named(&uri).is_some());
+            }
             Kind::Web | Kind::File | Kind::Other => {
                 let file = uri.get(..5).is_some_and(|s| s.eq_ignore_ascii_case("file:"));
                 out.title = if file {
@@ -1117,6 +1126,12 @@ impl Loaded {
     /// `holder` with a tie to `other`, when it can hold one: a task of a list
     /// that can be written, an event of such a calendar, a note.
     fn holding(&self, holder: &str, other: &str, now: &jiff::Zoned) -> Option<Rewrite> {
+        // A client's address is never written into a task, an event or a note, which
+        // travel to servers and other programs: a client's ties are the clients' own
+        // (`clients::ties::tie`, docs/clients.md).
+        if kind_of(holder) == Kind::Client || kind_of(other) == Kind::Client {
+            return None;
+        }
         let id = id_of(holder);
         match kind_of(holder) {
             Kind::Task => {
@@ -1389,6 +1404,16 @@ mod tests {
         assert!(read.office_hours, "{}", ticked.text);
         let plain = with_office.tie("sioul:contact/jane", "sioul:task/c", &now).unwrap();
         assert!(!crate::tasks::task_of_text(&plain.text, &jiff::tz::TimeZone::UTC).unwrap().office_hours);
+        // A client's address is never written into a task, an event or a note (docs/clients.md).
+        let event_file = dir.join("e.ics");
+        let event_text = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:e\r\nDTSTART:20261203T100000Z\r\nSUMMARY:Facial\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        std::fs::write(&event_file, event_text).unwrap();
+        let with_event = Loaded { events: vec![crate::agenda::EventRef { uid: "e".into(), key: event_file.display().to_string(), ..Default::default() }], ..Loaded { tasks: loaded.tasks.clone(), vault: Some(Vault::open(&dir.join("vault"))), ..Loaded::default() } };
+        for (a, b) in [("sioul:event/e", "sioul:client/c-1"), ("sioul:client/c-1", "sioul:event/e"), ("sioul:task/t", "sioul:client/c-1"), ("sioul:note/plan.md", "sioul:client/c-1/db/k/r")] {
+            assert_eq!(with_event.tie(a, b, &now), None, "{a} {b}");
+            assert_eq!(with_event.tie_into_event("e", "sioul:client/c-1", &now), None);
+        }
+        assert_eq!(std::fs::read_to_string(&event_file).unwrap(), event_text, "the event's text as it was");
         // Into the note when the task is not one of the two.
         let noted = loaded.tie("mid:abc@example.org", "sioul:note/plan.md", &now).unwrap();
         assert_eq!(noted.kind, Kind::Note);

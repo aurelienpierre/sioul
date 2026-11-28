@@ -860,7 +860,7 @@ mod tests {
         assert_eq!(take(EXT, &reply, &calendar, &words(), true).unwrap().written, 0, "the same ties: nothing written");
 
         // Jean's card made by the door later (its UID the mark): Jean's appointment is tied then.
-        let jean_alone = crate::extensions::reply::ContactSet { id: "clients".into(), name: "Clients".into(), people: vec![crate::extensions::reply::Person { id: "client-42".into(), name: "Jean Exemple".into(), ..Default::default() }] };
+        let jean_alone = crate::extensions::reply::ContactSet { id: "clients".into(), name: "Clients".into(), people: vec![crate::extensions::reply::Person { id: "client-42".into(), name: "Jean Exemple".into(), ..Default::default() }], clients: false };
         assert_eq!(crate::extensions::cards::take(EXT, &jean_alone, &book, None, &crate::extensions::cards::Trust::default()).unwrap().made, 1);
         assert_eq!(take(EXT, &reply, &calendar, &words(), true).unwrap().written, 1);
         assert_eq!(contacts_of(&calendar, &b3), vec![format!("CONTACT;ALTREP=\"urn:uuid:{}\":Jean Exemple", mark("client-42"))]);

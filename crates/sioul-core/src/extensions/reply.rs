@@ -157,6 +157,11 @@ pub struct ContactSet {
     pub id: String,
     pub name: String,
     pub people: Vec<Person>,
+    /// The extension says the people of this set are the clients of the
+    /// person signed in (`"clients": true`; absent reads false): Sioul then
+    /// makes them clients unless the person takes the set back
+    /// (docs/clients.md). Additive: the interface stays version 1.
+    pub clients: bool,
 }
 
 /// The reply to a `refresh` call.
@@ -440,7 +445,9 @@ fn contact_sets(value: Option<&Value>) -> Result<Vec<ContactSet>, Nonsense> {
                 note: person_text(person.get("note"), MOST_NOTE, true, "a note")?,
             });
         }
-        sets.push(ContactSet { id: id.to_string(), name, people: read });
+        // The extension's word, read leniently as `busy`: anything but `true` reads false.
+        let clients = set.get("clients").and_then(Value::as_bool).unwrap_or(false);
+        sets.push(ContactSet { id: id.to_string(), name, people: read, clients });
     }
     Ok(sets)
 }

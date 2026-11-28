@@ -537,6 +537,10 @@ pub struct Move {
     pub quantity: Qty,
     /// The task's UID, for a use and for what a task to resupply brought.
     pub task: String,
+    /// The record of a client's file it was used for (`for`,
+    /// `sioul:client/<id>/db/<kind>/<row>`, docs/clients.md); "" none.
+    #[serde(rename = "for", skip_serializing_if = "String::is_empty")]
+    pub for_row: String,
     /// The device whose file it was read from (not written).
     #[serde(skip)]
     pub device: String,
@@ -616,7 +620,7 @@ fn move_of(table: &toml::Table, device: &str) -> Option<Move> {
         return None;
     }
     let on = table.get("on").and_then(toml::Value::as_integer);
-    Some(Move { id, at, on, supply, kind, quantity, task: text("task"), device: device.to_string() })
+    Some(Move { id, at, on, supply, kind, quantity, task: text("task"), for_row: text("for"), device: device.to_string() })
 }
 
 /// A task to resupply made, kept so that it is never made again.
@@ -663,6 +667,9 @@ pub fn record(root: &Path, device: &str, lines: &[Move], made: &[Made]) -> Resul
                 table.insert("quantity", Item::Value(line.quantity.toml()));
                 if !line.task.is_empty() {
                     table.insert("task", toml_edit::value(line.task.as_str()));
+                }
+                if !line.for_row.is_empty() {
+                    table.insert("for", toml_edit::value(line.for_row.as_str()));
                 }
                 list.push(table);
             }
@@ -775,7 +782,7 @@ pub fn resupply_uid(supply: &str, line: &str) -> String {
 
 /// A movement said now by hand: a count, or something received; its id by chance.
 pub fn by_hand(supply: &str, kind: Kind, quantity: Qty, now: i64) -> Move {
-    Move { id: crate::ids::new(), at: now, on: None, supply: supply.to_string(), kind, quantity, task: String::new(), device: String::new() }
+    Move { id: crate::ids::new(), at: now, on: None, supply: supply.to_string(), kind, quantity, task: String::new(), for_row: String::new(), device: String::new() }
 }
 
 // ---------------------------------------------------------------- tasks
@@ -856,7 +863,7 @@ pub fn settle(root: &Path, device: &str, tasks: &[Task], now: i64) -> Result<Vec
                     Some(line) => line.quantity != used.quantity && older(line),
                 };
                 if differs {
-                    out.push(Move { id, at: now, on: Some(stamp), supply: used.id.clone(), kind: Kind::Used, quantity: used.quantity, task: task.uid.clone(), device: String::new() });
+                    out.push(Move { id, at: now, on: Some(stamp), supply: used.id.clone(), kind: Kind::Used, quantity: used.quantity, task: task.uid.clone(), for_row: String::new(), device: String::new() });
                 }
             }
             if !task.resupply.is_empty() {
@@ -866,7 +873,7 @@ pub fn settle(root: &Path, device: &str, tasks: &[Task], now: i64) -> Result<Vec
                 if !latest.contains_key(&id)
                     && let Some(brought) = list.get(&task.resupply).and_then(|s| s.bought_by)
                 {
-                    out.push(Move { id, at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity: brought, task: task.uid.clone(), device: String::new() });
+                    out.push(Move { id, at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity: brought, task: task.uid.clone(), for_row: String::new(), device: String::new() });
                 }
             }
         }
@@ -932,7 +939,7 @@ pub fn said_used(uses: &[Use], list: &List, tr: &crate::i18n::Translator) -> Str
 /// at once (the task comes back open, and no other device can read the
 /// turn). Returns the lines written.
 pub fn turn_done(root: &Path, device: &str, task: &Task, stamp: i64, now: i64) -> Result<Vec<Move>, String> {
-    let lines: Vec<Move> = task.supplies.iter().filter(|u| !u.quantity.is_zero()).map(|u| Move { id: used_id(&task.uid, &u.id, stamp), at: now, on: Some(stamp), supply: u.id.clone(), kind: Kind::Used, quantity: u.quantity, task: task.uid.clone(), device: String::new() }).collect();
+    let lines: Vec<Move> = task.supplies.iter().filter(|u| !u.quantity.is_zero()).map(|u| Move { id: used_id(&task.uid, &u.id, stamp), at: now, on: Some(stamp), supply: u.id.clone(), kind: Kind::Used, quantity: u.quantity, task: task.uid.clone(), for_row: String::new(), device: String::new() }).collect();
     record(root, device, &lines, &[])?;
     Ok(lines)
 }
@@ -942,7 +949,7 @@ pub fn turn_done(root: &Path, device: &str, task: &Task, stamp: i64, now: i64) -
 pub fn turn_used(root: &Path, device: &str, task: &str, stamp: i64, uses: &[Use], now: i64) -> Result<(), String> {
     let moves = read_moves(root, device);
     let latest = latest(&moves.lines);
-    let mut lines: Vec<Move> = merged(uses.to_vec()).into_iter().map(|u| Move { id: used_id(task, &u.id, stamp), at: now, on: Some(stamp), supply: u.id, kind: Kind::Used, quantity: u.quantity, task: task.to_string(), device: String::new() }).collect();
+    let mut lines: Vec<Move> = merged(uses.to_vec()).into_iter().map(|u| Move { id: used_id(task, &u.id, stamp), at: now, on: Some(stamp), supply: u.id, kind: Kind::Used, quantity: u.quantity, task: task.to_string(), for_row: String::new(), device: String::new() }).collect();
     for line in latest.values().filter(|m| m.task == task && m.kind == Kind::Used && m.when() == stamp) {
         if !lines.iter().any(|l| l.id == line.id) {
             lines.push(Move { at: now, quantity: Qty::ZERO, device: String::new(), ..line.clone() });
@@ -959,7 +966,7 @@ pub fn arrived(root: &Path, device: &str, task: &Task, quantity: Qty, now: i64) 
     if task.resupply.is_empty() {
         return Err("not a task to resupply".into());
     }
-    let line = Move { id: received_id(&task.uid, &task.resupply, stamp), at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity, task: task.uid.clone(), device: String::new() };
+    let line = Move { id: received_id(&task.uid, &task.resupply, stamp), at: now, on: Some(stamp), supply: task.resupply.clone(), kind: Kind::Received, quantity, task: task.uid.clone(), for_row: String::new(), device: String::new() };
     record(root, device, &[line], &[])
 }
 

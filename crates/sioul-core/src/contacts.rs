@@ -1191,7 +1191,7 @@ pub fn uid_uri(uid: &str) -> String {
 }
 
 /// `%XX` sequences decoded (a malformed one kept as written).
-fn percent_decoded(text: &str) -> String {
+pub(crate) fn percent_decoded(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
@@ -1213,7 +1213,7 @@ fn percent_decoded(text: &str) -> String {
 /// (a UUID's letters are the same whatever their case, RFC 9562 §4). Every
 /// UID is lowered, not only a UUID: two cards whose UIDs differ by case alone
 /// are one key, the first found winning (`ByUid::of`).
-fn uid_key(uid: &str) -> String {
+pub(crate) fn uid_key(uid: &str) -> String {
     let uid = uid.trim();
     let bare = if starts_ci(uid, "urn:uuid:") { &uid["urn:uuid:".len()..] } else { uid };
     bare.to_lowercase()
@@ -1221,7 +1221,7 @@ fn uid_key(uid: &str) -> String {
 
 /// The UID key an address names (`uid_uri`'s, or any `urn:` address another
 /// program wrote): none for an address that is no URN.
-fn uri_key(uri: &str) -> Option<String> {
+pub(crate) fn uri_key(uri: &str) -> Option<String> {
     let uri = uri.trim();
     starts_ci(uri, "urn:").then(|| uid_key(&percent_decoded(uri)))
 }

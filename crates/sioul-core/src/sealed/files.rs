@@ -346,6 +346,24 @@ fn open_profile(profile: &Folders) -> Option<Arc<Store>> {
     }
 }
 
+/// The profile's own store as this program reaches it: the one mounted over
+/// its folders, else opened now by the program's opener (`set_opener`).
+/// `Ok(None)`: the profile holds no store (a phone, a profile in clear).
+/// `Err(NotOpen)`: it is sealed and its store cannot be opened yet (the
+/// keyring locked or late): wait, never take it for a profile without one.
+/// What a module that reads a store's files by their logical paths takes
+/// (`clients::door`), so that it follows the store the process has now.
+pub fn profile_store() -> Result<Option<Arc<Store>>, Error> {
+    let profile = Folders::of_profile();
+    if let Some(store) = mounted().into_iter().find(|s| *s.profile() == profile) {
+        return Ok(Some(store));
+    }
+    if !profile_sealed(&profile) {
+        return Ok(None);
+    }
+    open_profile(&profile).map(Some).ok_or(Error::NotOpen)
+}
+
 /// Whether a path is read and written sealed (inside a store, or in the profile's sealed folders).
 pub fn is_sealed(path: &Path) -> bool {
     matches!(route(path), Route::Sealed(..) | Route::Top(..) | Route::Closed)

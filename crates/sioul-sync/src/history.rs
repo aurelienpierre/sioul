@@ -397,6 +397,18 @@ pub fn versions(root: &Path, part: &str, file: &str) -> Vec<Version> {
     below(root, part, file).map(|dir| versions_in(&dir)).unwrap_or_default()
 }
 
+/// Every version kept of the files below `prefix` (a name in the records,
+/// `"files/clients/<id>/"`) gone for good, with what a sealed store kept of
+/// them (`files::purge_dir`): a client erased (docs/clients.md, "Erasing").
+/// Nothing kept there: nothing to do.
+pub fn purge_below(root: &Path, part: &str, prefix: &str) -> Result<(), String> {
+    let dir = below(root, part, prefix.trim_end_matches('/')).ok_or_else(|| format!("{prefix}: not a file's name"))?;
+    if !dir.present_dir() {
+        return Ok(());
+    }
+    crate::files::purge_dir(&dir).map_err(|e| format!("{}: {e}", dir.display()))
+}
+
 /// The files of a part with versions kept, the one changed last first: each
 /// with its versions, the newest first.
 pub fn files(root: &Path, part: &str) -> Vec<(String, Vec<Version>)> {

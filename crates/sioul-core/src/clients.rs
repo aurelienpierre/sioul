@@ -15,11 +15,53 @@
 //! it names, else by the profile's name; a name with no profile bills as it
 //! did before, from the contact's card or as written (`resolve`).
 
+//!
+//! **Clients as objects of their own** (docs/clients.md) live in the
+//! submodules: the client and its record (`record`), its file's parts
+//! (`file`), the templates (`template`), the ties and their index (`ties`),
+//! the options that protect (`protect`), keeping and erasing (`keep`), an
+//! extension's people (`extension`), the move from these profiles
+//! (`moving`), all through the store's door (`door`).
+
+pub mod address;
+pub mod appointment;
+pub mod door;
+mod error;
+pub mod extension;
+pub mod file;
+pub mod keep;
+pub mod moving;
+pub mod protect;
+pub mod record;
+pub mod search;
+pub mod template;
+pub mod ties;
+#[cfg(test)]
+mod files_tests;
+
+pub use address::{Address as ClientAddress, client_uri, valid_id};
+pub use error::Error;
+pub use record::{Billing, Client as ClientRecord};
+
 use crate::contacts::Contact;
 use crate::invoice::{Address, Client, Identifier};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use toml_edit::{ArrayOfTables, DocumentMut, Item};
+
+/// Whether Clients is on (`features::on`, `Feature::Clients`, once that
+/// list is in the core; on until then).
+pub fn on(_config: &crate::config::Config) -> bool {
+    true
+}
+
+/// What a listing read, and how many of its files did not open: a damaged
+/// file is counted, never taken for none.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Read<T> {
+    pub items: T,
+    pub damaged: usize,
+}
 
 /// The profiles' file, at the root of the notes folder.
 pub const FILE: &str = "sioul-clients.toml";
@@ -107,7 +149,57 @@ pub struct Clients {
 
 impl Clients {
     /// The notes folder `root`'s profiles; none when the file is not there.
+    /// Then, once the store is open in this program, every client of the
+    /// store as a profile whose id is its address (`sioul:client/<id>`), so
+    /// that a draft naming a client by its address finds its billing identity
+    /// wherever profiles are read (`resolve`); a profile of the file comes first.
+    /// While the store is sealed here and cannot be opened yet (the keyring
+    /// locked or late), an error: wait, never bill a client by its address
+    /// as if no client existed.
     pub fn load(root: &Path) -> Result<Clients, String> {
+        Clients::load_in(root, &door::opening())
+    }
+
+    /// `load` with the store as it stands (`door::opening`).
+    pub fn load_in(root: &Path, opening: &door::Opening) -> Result<Clients, String> {
+        let clients = Clients::read_file(root)?;
+        match opening {
+            door::Opening::Open(door) => match record::list(door.as_ref()) {
+                Ok(read) => Ok(clients.with_clients(&read.items)),
+                Err(e) => Err(e.to_string()),
+            },
+            door::Opening::NoStore => Ok(clients),
+            door::Opening::Wait => Err(Error::NotOpen.to_string()),
+        }
+    }
+
+    /// These profiles, then each client of the store as a profile whose id is
+    /// its address; a client whose profile is still here is that profile,
+    /// never listed twice; one whose profile was adopted answers to its old
+    /// id too, so that a draft or a project naming it still finds it.
+    ///
+    /// A client the move or an extension made from a card keeps no name of
+    /// its own: `resolve` bills it with its card's name as the card says it
+    /// now, and the invoices' picker lists and finds it by that name
+    /// (`name_shown`), so that a card renamed is followed (the re-review, R2).
+    /// Its billing written from the window goes to the client
+    /// (`change_where_it_lives`), never "changed elsewhere" (the review of
+    /// the finish, 2).
+    pub fn with_clients(mut self, clients: &[record::Client]) -> Clients {
+        let mut store = Vec::new();
+        for c in clients.iter().filter(|c| c.listed() && c.profile_in(&self).is_none()) {
+            let profile = c.as_profile();
+            if !c.profile.is_empty() {
+                store.push(Profile { id: c.profile.clone(), ..profile.clone() });
+            }
+            store.push(profile);
+        }
+        self.list.extend(store);
+        self
+    }
+
+    /// The profiles of the file alone; none when it is not there.
+    pub fn read_file(root: &Path) -> Result<Clients, String> {
         let path = root.join(FILE);
         match crate::files::read_to_string(&path) {
             Ok(text) => toml::from_str::<Manifest>(&text).map(|m| Clients { list: m.clients }).map_err(|e| format!("{}: {e}", path.display())),
@@ -242,74 +334,7 @@ pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, S
         let mut doc: DocumentMut = text.parse().map_err(|e: toml_edit::TomlError| fail(e.to_string()))?;
         let Some(list) = doc.get_mut(TABLE).and_then(Item::as_array_of_tables_mut) else { return Ok(None) };
         let Some(table) = list.iter_mut().find(|t| !id.is_empty() && t.get("id").and_then(Item::as_str) == Some(id)) else { return Ok(None) };
-        let texts = |table: &mut dyn toml_edit::TableLike, key: &str, value: &Option<String>| {
-            if let Some(v) = value {
-                if v.trim().is_empty() {
-                    table.remove(key);
-                } else {
-                    put(table, key, toml_edit::value(v.trim()));
-                }
-            }
-        };
-        texts(table, "kind", &change.kind);
-        texts(table, "name", &change.name);
-        texts(table, "language", &change.language);
-        texts(table, "currency", &change.currency.as_ref().map(|c| c.trim().to_uppercase()));
-        texts(table, "email", &change.email);
-        texts(table, "order", &change.order);
-        // An address, field by field, in its own table as it was written (inline or not).
-        let address = |table: &mut toml_edit::Table, key: &str, lines: &Option<Vec<String>>, fields: [(&str, &Option<String>); 3]| {
-            if lines.is_none() && fields.iter().all(|(_, v)| v.is_none()) {
-                return;
-            }
-            if !table.contains_key(key) {
-                table.insert(key, toml_edit::value(toml_edit::InlineTable::new()));
-            }
-            let Some(at) = table.get_mut(key).and_then(Item::as_table_like_mut) else { return };
-            if let Some(lines) = lines {
-                let kept: toml_edit::Array = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-                put(at, "lines", toml_edit::value(kept));
-            }
-            for (field, value) in fields {
-                texts(at, field, value);
-            }
-            let empty = at.iter().all(|(_, v)| v.as_str().is_some_and(|s| s.trim().is_empty()) || v.as_array().is_some_and(|a| a.is_empty()));
-            if empty && key == "delivery" {
-                table.remove(key);
-            }
-        };
-        address(table, "address", &change.lines, [("postcode", &change.postcode), ("city", &change.city), ("country", &change.country)]);
-        address(table, "delivery", &change.delivery_lines, [("postcode", &change.delivery_postcode), ("city", &change.delivery_city), ("country", &change.delivery_country)]);
-        if let Some(ids) = &change.ids {
-            let mut array = toml_edit::Array::new();
-            for i in ids.iter().filter(|i| !i.value.trim().is_empty()) {
-                let mut one = toml_edit::InlineTable::new();
-                one.insert("kind", i.kind.trim().into());
-                one.insert("value", i.value.trim().into());
-                one.insert("printed", i.printed.into());
-                array.push(one);
-            }
-            if array.is_empty() {
-                table.remove("ids");
-            } else {
-                put(table, "ids", toml_edit::value(array));
-            }
-        }
-        if let Some(days) = &change.terms_days {
-            match days.trim().parse::<i64>() {
-                Ok(n) if n >= 0 => put(table, "terms_days", toml_edit::value(n)),
-                _ => {
-                    table.remove("terms_days");
-                }
-            }
-        }
-        if let Some(end) = change.end_of_month {
-            if end {
-                put(table, "end_of_month", toml_edit::value(true));
-            } else {
-                table.remove("end_of_month");
-            }
-        }
+        apply_change(table, change);
         // What it now says must read back as a profile, else nothing is written.
         toml::from_str::<Manifest>(&doc.to_string()).map_err(|e| fail(e.to_string()))?;
         let temporary = file.with_extension("toml.new");
@@ -326,6 +351,113 @@ pub fn change(file: &Path, id: &str, change: &ProfileChange) -> Result<String, S
         // (the second review of phase 3, R15).
         None if id.is_empty() => save(file, &change.profile()),
         None => Err(GONE.to_string()),
+    }
+}
+
+/// A billing form's change written where that billing identity lives: a
+/// profile of `file` by its id; a client of the store by its address
+/// (`sioul:client/<id>`, as `Clients::load` lists one) or by the id of the
+/// profile it adopted, through `record::change_billing`, so that the profile
+/// form and a draft's client kind or country never answer "changed elsewhere"
+/// for a client (the review of the finish, 2). The id written, or `GONE`.
+pub fn change_where_it_lives(file: &Path, id: &str, change: &ProfileChange) -> Result<String, String> {
+    let opening = door::opening();
+    change_where_it_lives_with(file, id, change, opening.door().ok().as_deref())
+}
+
+/// `change_where_it_lives` through `door` (none: no store open here, so no client but profiles).
+pub fn change_where_it_lives_with(file: &Path, id: &str, change: &ProfileChange, door: Option<&dyn door::Door>) -> Result<String, String> {
+    let id = id.trim();
+    let client_id = id.strip_prefix(address::PREFIX).map(str::to_string);
+    if client_id.is_none() {
+        match self::change(file, id, change) {
+            Err(e) if e == GONE => {}
+            done => return done,
+        }
+    }
+    let Some(door) = door else { return Err(if client_id.is_some() { Error::NotOpen.to_string() } else { GONE.to_string() }) };
+    let client = match &client_id {
+        Some(cid) => record::find(door, cid).map_err(|e| e.to_string())?,
+        // A profile adopted since its form opened: the client that names it.
+        None => record::list(door).map_err(|e| e.to_string())?.items.into_iter().find(|c| !id.is_empty() && c.profile == id),
+    };
+    let Some(client) = client else { return Err(GONE.to_string()) };
+    record::change_billing(door, &client.id, change, Some(file)).map_err(|e| e.to_string())?;
+    Ok(if client_id.is_some() { id.to_string() } else { client.uri() })
+}
+
+/// What a billing form changed written into `table`, key by key
+/// (`ProfileChange`): every other key, its comments, an identifier's
+/// `printed` and the delivery address's fields stay as they were written.
+/// A profile's table and a client's `[billing]` take it alike.
+pub(crate) fn apply_change(table: &mut toml_edit::Table, change: &ProfileChange) {
+    let texts = |table: &mut dyn toml_edit::TableLike, key: &str, value: &Option<String>| {
+        if let Some(v) = value {
+            if v.trim().is_empty() {
+                table.remove(key);
+            } else {
+                put(table, key, toml_edit::value(v.trim()));
+            }
+        }
+    };
+    texts(table, "kind", &change.kind);
+    texts(table, "name", &change.name);
+    texts(table, "language", &change.language);
+    texts(table, "currency", &change.currency.as_ref().map(|c| c.trim().to_uppercase()));
+    texts(table, "email", &change.email);
+    texts(table, "order", &change.order);
+    // An address, field by field, in its own table as it was written (inline or not).
+    let address = |table: &mut toml_edit::Table, key: &str, lines: &Option<Vec<String>>, fields: [(&str, &Option<String>); 3]| {
+        if lines.is_none() && fields.iter().all(|(_, v)| v.is_none()) {
+            return;
+        }
+        if !table.contains_key(key) {
+            table.insert(key, toml_edit::value(toml_edit::InlineTable::new()));
+        }
+        let Some(at) = table.get_mut(key).and_then(Item::as_table_like_mut) else { return };
+        if let Some(lines) = lines {
+            let kept: toml_edit::Array = lines.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+            put(at, "lines", toml_edit::value(kept));
+        }
+        for (field, value) in fields {
+            texts(at, field, value);
+        }
+        let empty = at.iter().all(|(_, v)| v.as_str().is_some_and(|s| s.trim().is_empty()) || v.as_array().is_some_and(|a| a.is_empty()));
+        if empty && key == "delivery" {
+            table.remove(key);
+        }
+    };
+    address(table, "address", &change.lines, [("postcode", &change.postcode), ("city", &change.city), ("country", &change.country)]);
+    address(table, "delivery", &change.delivery_lines, [("postcode", &change.delivery_postcode), ("city", &change.delivery_city), ("country", &change.delivery_country)]);
+    if let Some(ids) = &change.ids {
+        let mut array = toml_edit::Array::new();
+        for i in ids.iter().filter(|i| !i.value.trim().is_empty()) {
+            let mut one = toml_edit::InlineTable::new();
+            one.insert("kind", i.kind.trim().into());
+            one.insert("value", i.value.trim().into());
+            one.insert("printed", i.printed.into());
+            array.push(one);
+        }
+        if array.is_empty() {
+            table.remove("ids");
+        } else {
+            put(table, "ids", toml_edit::value(array));
+        }
+    }
+    if let Some(days) = &change.terms_days {
+        match days.trim().parse::<i64>() {
+            Ok(n) if n >= 0 => put(table, "terms_days", toml_edit::value(n)),
+            _ => {
+                table.remove("terms_days");
+            }
+        }
+    }
+    if let Some(end) = change.end_of_month {
+        if end {
+            put(table, "end_of_month", toml_edit::value(true));
+        } else {
+            table.remove("end_of_month");
+        }
     }
 }
 
@@ -394,6 +526,8 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
         .or_else(|| by_address.then(|| clients.list.iter().find(|p| crate::contacts::same_card(&p.contact, reference))).flatten())
         .or_else(|| clients.list.iter().find(|p| !reference.is_empty() && (p.name.eq_ignore_ascii_case(reference) || p.id == reference)));
     if let Some(profile) = profile {
+        // A client of the store named by its address: its card is its profile's.
+        let contact = contact.or_else(|| profile.contact.strip_prefix("sioul:contact/").map(crate::notes::decode).and_then(|uid| contacts.iter().find(|c| c.uid == uid)));
         let mut client = profile.client();
         if client.name.trim().is_empty()
             && let Some(card) = contact
@@ -404,6 +538,27 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
             && let Some(card) = contact
         {
             client.email = card.emails.first().map(|e| e.value.clone()).unwrap_or_default();
+        }
+        // A client of the store: what its billing lacks taken from its card,
+        // never what it says. Its postal lines, postcode and city from the
+        // card's address when it has none of them (one the move made from a
+        // card, as a draft naming that card took them before: the second
+        // review, A); its country from the card only when it says none, so
+        // that a country set in the invoice editor, which decides VAT, is
+        // never replaced (the re-review, R1).
+        if profile.id.starts_with("sioul:client/")
+            && let Some(card) = contact
+        {
+            let from_card = card_address(&card.addresses.first().map(|a| a.value.clone()).unwrap_or_default());
+            let postal_none = client.address.lines.iter().all(|l| l.trim().is_empty()) && client.address.postcode.trim().is_empty() && client.address.city.trim().is_empty();
+            if postal_none {
+                client.address.lines = from_card.lines;
+                client.address.postcode = from_card.postcode;
+                client.address.city = from_card.city;
+            }
+            if client.address.country.trim().is_empty() {
+                client.address.country = from_card.country;
+            }
         }
         return (client, Some(profile));
     }
@@ -420,6 +575,16 @@ pub fn resolve<'a>(reference: &str, clients: &'a Clients, contacts: &[Contact]) 
         ),
         None => (Client { kind: "business".into(), name: reference.to_string(), ..Client::default() }, None),
     }
+}
+
+/// The name a profile is shown and searched by: its own, else its card's
+/// as the card says it now (a client made from a card keeps no name of its
+/// own, so that a card renamed is followed: the re-review, R2).
+pub fn name_shown(profile: &Profile, contacts: &[Contact]) -> String {
+    if !profile.name.trim().is_empty() {
+        return profile.name.clone();
+    }
+    crate::contacts::card_named(contacts, &profile.contact).map(card_name).unwrap_or_default()
 }
 
 /// A card's postal address, on its lines; its last line, when it names a
@@ -502,7 +667,7 @@ fn folded_name(text: &str) -> String {
 }
 
 /// A card's name as invoices print it: its organisation, then the person.
-fn card_name(card: &Contact) -> String {
+pub(crate) fn card_name(card: &Contact) -> String {
     if card.org.is_empty() || card.org == card.name { card.name.clone() } else { format!("{}\n{}", card.org, card.name) }
 }
 

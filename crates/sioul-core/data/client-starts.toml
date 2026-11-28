@@ -1,0 +1,168 @@
+# Starts by trade for clients' files (docs/clients.md, "Templates").
+#
+# A start writes its kinds of record and its folders into the person's own
+# templates (`[clients]` of config.toml), in the window's language, where
+# their ids are free; from then on they are the person's to change. A trade
+# is data, never a type in the code. `proposes` lists the options that
+# protect a start offers, each shown with its sentence, never set by it:
+# keep-tied ("Keep from AI agents what is tied to a client"), stay-here
+# ("Clients' files stay on this device"), keeping ("Keeping times and
+# archiving by itself").
+#
+# Field types: line, text, number, amount, day, duration, choice, choices,
+# yes-no, supply, attachment.
+
+[start.beauty]
+place = 1
+name = { en = "Beauty care", fr = "Soins esthétiques" }
+about = { en = "A treatment for each visit: the services, the products, how the skin reacted, the price. Folders for consents and pictures.", fr = "Un soin à chaque visite : les prestations, les produits, la réaction de la peau, le prix. Des dossiers pour les consentements et les photos." }
+proposes = []
+
+[start.beauty.folder.consents]
+name = { en = "Consents", fr = "Consentements" }
+place = 1
+
+[start.beauty.folder.pictures]
+name = { en = "Pictures", fr = "Photos" }
+place = 2
+
+[start.beauty.kind.treatment]
+name = { en = "Treatment", fr = "Soin" }
+appointments = true
+default = true
+line = "{services} · {price}"
+
+[start.beauty.kind.treatment.field.services]
+name = { en = "Services", fr = "Prestations" }
+type = "line"
+place = 1
+shown = true
+
+[start.beauty.kind.treatment.field.products]
+name = { en = "Products", fr = "Produits" }
+type = "text"
+place = 2
+
+[start.beauty.kind.treatment.field.skin]
+name = { en = "How the skin reacted", fr = "Réaction de la peau" }
+type = "text"
+place = 3
+
+[start.beauty.kind.treatment.field.price]
+name = { en = "Price", fr = "Prix" }
+type = "amount"
+place = 4
+shown = true
+
+[start.care]
+place = 2
+name = { en = "Care practice", fr = "Cabinet de soins" }
+about = { en = "A session for each appointment, written in four parts (what the person says, what you observe, your assessment, the plan), marked as health. Folders for consents, documents received and documents given.", fr = "Une séance à chaque rendez-vous, écrite en quatre parties (ce que la personne dit, ce que vous observez, votre évaluation, la suite), marquée comme santé. Des dossiers pour les consentements, les documents reçus et les documents remis." }
+proposes = ["keep-tied", "stay-here", "keeping"]
+
+[start.care.folder.consents]
+name = { en = "Consents", fr = "Consentements" }
+place = 1
+health = true
+
+[start.care.folder.received]
+name = { en = "Documents received", fr = "Documents reçus" }
+place = 2
+health = true
+
+[start.care.folder.given]
+name = { en = "Documents given", fr = "Documents remis" }
+place = 3
+health = true
+
+[start.care.kind.session]
+name = { en = "Session", fr = "Séance" }
+health = true
+appointments = true
+default = true
+line = "{assessment}"
+
+[start.care.kind.session.field.subjective]
+name = { en = "What the person says", fr = "Ce que la personne dit" }
+type = "text"
+place = 1
+health = true
+
+[start.care.kind.session.field.objective]
+name = { en = "What you observe", fr = "Ce que vous observez" }
+type = "text"
+place = 2
+health = true
+
+[start.care.kind.session.field.assessment]
+name = { en = "Assessment", fr = "Évaluation" }
+type = "text"
+place = 3
+health = true
+shown = true
+
+[start.care.kind.session.field.plan]
+name = { en = "Plan", fr = "Suite" }
+type = "text"
+place = 4
+health = true
+
+[start.consulting]
+place = 3
+name = { en = "Consulting", fr = "Conseil" }
+about = { en = "A meeting for each appointment: what was decided, what to send, what comes next.", fr = "Une réunion à chaque rendez-vous : ce qui a été décidé, ce qu’il faut envoyer, la suite." }
+proposes = []
+
+[start.consulting.kind.meeting]
+name = { en = "Meeting", fr = "Réunion" }
+appointments = true
+default = true
+line = "{decided}"
+
+[start.consulting.kind.meeting.field.decided]
+name = { en = "Decided", fr = "Décidé" }
+type = "text"
+place = 1
+shown = true
+
+[start.consulting.kind.meeting.field.to-send]
+name = { en = "To send", fr = "À envoyer" }
+type = "text"
+place = 2
+
+[start.consulting.kind.meeting.field.next]
+name = { en = "Next", fr = "Suite" }
+type = "text"
+place = 3
+
+[start.craft]
+place = 4
+name = { en = "Craft", fr = "Artisanat" }
+about = { en = "An order for each piece: the item, its size, its price, the day it was sent.", fr = "Une commande pour chaque pièce : l’objet, sa taille, son prix, le jour de l’envoi." }
+proposes = []
+
+[start.craft.kind.order]
+name = { en = "Order", fr = "Commande" }
+line = "{item} · {price}"
+
+[start.craft.kind.order.field.item]
+name = { en = "Item", fr = "Objet" }
+type = "line"
+place = 1
+shown = true
+
+[start.craft.kind.order.field.size]
+name = { en = "Size", fr = "Taille" }
+type = "line"
+place = 2
+
+[start.craft.kind.order.field.price]
+name = { en = "Price", fr = "Prix" }
+type = "amount"
+place = 3
+shown = true
+
+[start.craft.kind.order.field.sent]
+name = { en = "Sent on", fr = "Envoyé le" }
+type = "day"
+place = 4

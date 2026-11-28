@@ -2000,6 +2000,7 @@ chain-kind-contract = Contrat
 chain-kind-letter = Courrier
 chain-kind-invoice = Facture
 chain-kind-movement = Paiement
+chain-kind-client = Client
 chain-kind-site = Site
 chain-kind-call = Appel
 chain-kind-web = Page web
@@ -2060,6 +2061,10 @@ chain-count-invoice = { $n } { $n ->
 chain-count-movement = { $n } { $n ->
         [one] paiement
        *[other] paiements
+    }
+chain-count-client = { $n } { $n ->
+        [one] client
+       *[other] clients
     }
 chain-count-site = { $n } { $n ->
         [one] site
@@ -4535,6 +4540,8 @@ share-part-drafts = Brouillons et factures
 share-part-drafts-carries = Les courriels en cours d’écriture, les factures faites.
 share-part-projects = Projets et argent
 share-part-projects-carries = Les propres listes de Sioul : les projets et leurs routes de courriels, les budgets, les comptes et mouvements bancaires, les contrats, les fiches des clients et, une fois sorties du dossier de notes, les listes des papiers et des courriers.
+share-part-clients = Dossiers des clients
+share-part-clients-carries = Vos clients, leurs dossiers et leurs fiches, et ce qui les lie à vos autres affaires : scellés. Qui transporte votre dossier de partage (votre Nextcloud, un hébergeur, un NAS, Syncthing entre vos appareils) voit combien de fichiers, leurs tailles et quand ils changent, jamais un nom ni un mot. Là où vous exercez, la loi peut demander que qui héberge des données de santé soit certifié, même scellées : en France, c’est le cas (CSP art. L. 1111-8 ; l’Agence du numérique en santé, 21 avril 2026 : « le chiffrement n’a pas d’impact sur l’obligation de certification »). Un serveur que vous possédez et faites tourner vous-même n’est pas un hébergement par un tiers, et n’en demande aucune. C’est à vous d’en juger. Vos clients ne voyagent qu’entre les appareils dont les fichiers sont scellés : un téléphone n’en garde aucun tant que ses propres fichiers ne le sont pas. Désactivé sur un appareil : ses clients y restent, et une facture pour eux ne peut être faite que là. Une pièce jointe de plus de 64 Mo reste sur son appareil.
 share-part-lists = Listes gardées ici
 share-part-lists-carries = Les agendas et contacts gardés sur cet appareil seulement.
 share-part-notes = Notes
@@ -9527,7 +9534,7 @@ cli-store-check--any = La santé et vos propres clés nommées aussi
 cli-store-check--clients = Les fichiers des clients nommés aussi
 cli-store-export = Écrit en clair chaque fichier que Sioul garde, chacun dans son format standard, pour tout autre programme
 cli-store-export--to = Un dossier vide à vous, hors des dossiers de Sioul
-cli-store-export--clients = Les dossiers clients aussi
+cli-store-export--clients = Les dossiers clients aussi, les fiches de chaque client aussi en base de données (records.sqlite) et en tableaux (CSV)
 cli-store-bring-in = Un fichier mis de côté à un démarrage (écrit à côté de ce que Sioul garde par un autre programme ou une version plus ancienne de Sioul) repris exprès : scellé à son propre chemin, ce qu’il remplace gardé comme version précédente
 cli-store-bring-in--path = Son chemin sous data/set-aside/ (`sioul store ls data/set-aside --any` les liste)
 cli-store-bring-in--any = N’importe quel fichier de Sioul, pas seulement sa configuration
@@ -12038,6 +12045,14 @@ store-export-clients-left = { $count ->
     [one] 1 fichier d’un client a été laissé de côté : ajoutez --clients pour l’écrire aussi.
    *[other] { $count } fichiers de clients ont été laissés de côté : ajoutez --clients pour les écrire aussi.
 }
+store-export-clients-databases = { $count ->
+    [one] Les fiches d’un client ont aussi été écrites en base de données (records.sqlite) et en tableaux (records/, un fichier CSV par type), à côté de son dossier.
+   *[other] Les fiches de { $count } clients ont aussi été écrites en bases de données (records.sqlite) et en tableaux (records/, un fichier CSV par type), à côté de leurs dossiers.
+}
+store-export-clients-rows-left = { $count ->
+    [one] 1 fiche d’un client ne s’ouvre pas : elle manque aux bases de données et aux tableaux (sioul store check la nomme).
+   *[other] { $count } fiches de clients ne s’ouvrent pas : elles manquent aux bases de données et aux tableaux (sioul store check les nomme).
+}
 store-export-damaged = { $count ->
     [one] 1 fichier ne s’ouvre pas et n’a pas été écrit : sioul store check dit lequel.
    *[other] { $count } fichiers ne s’ouvrent pas et n’ont pas été écrits : sioul store check dit lesquels.
@@ -12149,3 +12164,30 @@ store-left-plain = { $count ->
    *[other] { $count } fichiers n’ont pas pu être scellés et restent en clair là où ils sont, lus comme avant : le prochain démarrage réessaie.
 }
 store-lists-clear = Les propres listes de Sioul (projets, budgets, santé, argent) sont encore dans votre dossier de notes, en clair, comme avant : elles sont scellées une fois déplacées dans le propre dossier de Sioul (Réglages ▸ Votre dossier et le partage ▸ Où Sioul garde ses listes).
+# Clients et leurs dossiers (docs/clients.md) : les mots de ce que le cœur garde et dit.
+clients-file-invite = Garder des notes et des fiches sur ce client…
+clients-folder-no-longer = N’est plus dans votre modèle
+clients-folder-not-yet = Pas encore dans le modèle de cet appareil
+clients-value-as-written = tel qu’écrit avant
+clients-fields-newer = Champs d’un modèle plus récent
+clients-row-read-only = Écrite avec un modèle plus récent : mettez Sioul à jour sur cet appareil pour la changer.
+clients-from-extension = { $count ->
+        [one] Un client de { $extension }.
+       *[other] { $count } clients de { $extension }.
+    }
+clients-set-theirs = Ces personnes sont vos clients
+clients-set-not-mine = Ce ne sont pas mes clients
+clients-not-a-client = Pas un client
+clients-lock-screen = Sioul : à propos d’un client
+clients-propose-keep-tied = Garder des agents d’IA ce qui est lié à un client : ses fiches de contact, rendez-vous, messages, tâches et factures sont laissés hors de ce que les agents reçoivent.
+clients-propose-stay-here = Les dossiers des clients restent sur cet appareil : ils ne vont plus vers vos autres appareils, et une facture pour l’un de ces clients ne peut alors être faite qu’ici.
+clients-propose-keeping = Durées de conservation et archivage automatique : Sioul archive un client de lui-même quand la durée choisie est passée depuis le dernier contact, et n’efface jamais rien de lui-même.
+clients-erase-says = Sur cet appareil, le dossier part tout de suite, avec ses versions précédentes. Vos autres appareils qui gardent vos clients le retirent, avec les leurs, à leur prochain échange ; celui dont la partie Dossiers des clients est désactivée le garde jusqu’à ce que vous l’y activiez, puis le retire. Ses copies scellées restent dans votre dossier de partage jusqu’à deux semaines, illisibles sans votre clé ; ce que votre hébergeur garde dans sa corbeille ou ses sauvegardes, et toute sauvegarde à vous, Sioul ne peut pas l’atteindre.
+clients-erase-kept-until = Ce dossier est gardé jusqu’au { $day } par les durées de conservation que vous avez choisies.
+clients-error-damaged = Une partie du dossier de ce client ne s’ouvre pas : ce qui a pu être lu est affiché.
+clients-error-changed = Il a été changé ailleurs entre-temps : le voici tel qu’il est maintenant.
+clients-error-not-found = Il n’est plus là.
+clients-error-empty = Rien n’a été rempli, donc rien n’a été gardé.
+clients-error-not-here = Le dossier de ce client n’est pas sur cet appareil.
+clients-error-not-open = Ce que Sioul garde sur cet appareil n’est pas encore ouvert : cela s’ouvre avec votre session.
+clients-error-other = Cela n’a pas pu être fait : { $why }

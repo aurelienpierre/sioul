@@ -1068,9 +1068,14 @@ pub(crate) fn client_choices(shared: &Shared, query: &str) -> String {
     let world = loaded(shared);
     let hit = |text: &str| query.is_empty() || text.to_lowercase().contains(&query);
     let mut out: Vec<Value> = Vec::new();
-    for p in clients.list.iter().filter(|p| hit(&p.name)) {
+    // A profile by its name; a client made from a card by its card's, as the card says it now (never a nameless row).
+    for p in &clients.list {
+        let name = clients::name_shown(p, &world.contacts);
+        if name.trim().is_empty() || !hit(&name) {
+            continue;
+        }
         let reference = if p.contact.is_empty() { p.id.clone() } else { p.contact.clone() };
-        out.push(json!({ "ref": reference, "name": p.name.lines().next().unwrap_or(""), "detail": tr().text(&format!("invoices-client-kind-{}", p.kind), None) }));
+        out.push(json!({ "ref": reference, "name": name.lines().next().unwrap_or(""), "detail": tr().text(&format!("invoices-client-kind-{}", p.kind), None) }));
     }
     for c in world.contacts.iter().filter(|c| (!c.org.is_empty() || !c.name.is_empty()) && (hit(&c.org) || hit(&c.name))) {
         if out.len() >= 12 {
@@ -1222,7 +1227,8 @@ pub(crate) fn save_client_profile(form: &str) -> String {
     if form.id.trim().is_empty() && !named(&change.name) && !named(&change.contact) {
         return refused(tr().text("invoices-client-no-name", None));
     }
-    match clients::change(&clients::file_in(&root), form.id.trim(), &change) {
+    // Where that billing identity lives: a profile of the file, or a client of the store (`sioul:client/…`).
+    match clients::change_where_it_lives(&clients::file_in(&root), form.id.trim(), &change) {
         Ok(id) => json!({ "id": id }).to_string(),
         Err(e) if e == clients::GONE => refused(tr().text("invoices-client-changed-elsewhere", None)),
         Err(e) => refused(e),
@@ -1255,7 +1261,7 @@ pub(crate) fn set_client_traits(shared: &Arc<Shared>, id: &str, kind: &str, coun
         Ok(c) => c,
         Err(e) => return refused(e),
     };
-    if let Err(e) = clients::change(&clients::file_in(&root), profile.map_or("", |p| p.id.as_str()), &change) {
+    if let Err(e) = clients::change_where_it_lives(&clients::file_in(&root), profile.map_or("", |p| p.id.as_str()), &change) {
         return refused(if e == clients::GONE { tr().text("invoices-client-changed-elsewhere", None) } else { e });
     }
     draft(shared, id)

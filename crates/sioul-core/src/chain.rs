@@ -112,7 +112,7 @@ pub fn family(kind: Kind) -> &'static str {
     match kind {
         Kind::Task | Kind::Event => "time",
         Kind::Mail | Kind::Draft | Kind::Letter | Kind::Call => "messages",
-        Kind::Contact | Kind::Person => "people",
+        Kind::Contact | Kind::Person | Kind::Client => "people",
         Kind::Movement | Kind::Budget | Kind::Invoice | Kind::Contract => "money",
         Kind::Project => "projects",
         Kind::Note | Kind::Paper | Kind::Site | Kind::Web | Kind::File | Kind::Other => "records",
@@ -136,6 +136,7 @@ pub fn kind_id(kind: Kind) -> &'static str {
         Kind::Letter => "letter",
         Kind::Invoice => "invoice",
         Kind::Movement => "movement",
+        Kind::Client => "client",
         Kind::Site => "site",
         Kind::Call => "call",
         Kind::Web => "web",
@@ -150,7 +151,7 @@ pub fn kind_id(kind: Kind) -> &'static str {
 pub const FIRST_KINDS: [Kind; 5] = [Kind::Letter, Kind::Task, Kind::Note, Kind::Mail, Kind::Movement];
 
 /// Every kind, for the words' check.
-pub const KINDS: [Kind; 19] = [Kind::Task, Kind::Event, Kind::Mail, Kind::Draft, Kind::Note, Kind::Contact, Kind::Person, Kind::Budget, Kind::Project, Kind::Paper, Kind::Contract, Kind::Letter, Kind::Invoice, Kind::Movement, Kind::Site, Kind::Call, Kind::Web, Kind::File, Kind::Other];
+pub const KINDS: [Kind; 20] = [Kind::Task, Kind::Event, Kind::Mail, Kind::Draft, Kind::Note, Kind::Contact, Kind::Person, Kind::Budget, Kind::Project, Kind::Paper, Kind::Contract, Kind::Letter, Kind::Invoice, Kind::Movement, Kind::Client, Kind::Site, Kind::Call, Kind::Web, Kind::File, Kind::Other];
 
 /// A collection: shown with what it holds, not walked through unless it is
 /// the entry point. A budget whole (`sioul:budget/<budget>`) is one; its line is not.

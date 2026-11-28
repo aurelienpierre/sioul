@@ -119,6 +119,8 @@ Not built: the root key sealed into the sharing folder itself (the design's firs
 
 `sioul store export --to DIR` writes every file Sioul keeps in clear under `DIR`, at its logical path, so in the layout Sioul has always used: `config/config.toml`, `data/mail/<account>/<folder>/cur/…` (Maildir), `data/calendars/…/*.ics` and `data/contacts/…/*.vcf` (vdir, which khal, khard and vdirsyncer read), `data/records/*.toml`, `state/…`. A file that only grows is written as its lines. Health and the person's own keys go too (it is their copy); a client's file only with `--clients`. A file that does not open is said and skipped (`sioul store check` names it). `DIR` must be empty and outside Sioul's folders.
 
+**Clients' files** ([clients.md](clients.md)) are files of the store like the others, under `data/clients/<id>/`: their description and notes in Markdown, their record, rows and ties in TOML, their attachments as they came. With `--clients` the export writes them at their paths, and, for each client with records, `records.sqlite` beside them (a table per kind of record, a column per field, named as the template names them: SQLite, which every system and many programs open) and `records/<kind>.csv` (the same tables, for a spreadsheet). The rows stay one TOML file each in the store, which the sharing carries one by one; the database is made at the export, from them (`sioul-cli/src/clientsdb.rs`). Nothing of a client is ever written in clear by Sioul itself: on a profile without a store (a phone today) no client is kept at all.
+
 ## Locks
 
 The door takes its own: each logical folder's lock (exclusive for a change, shared for a read), and the profile's lock (`<config>/.profile.lock`), shared around every change, which the move and `check --repair` take exclusive so that nothing writes meanwhile. A writer of a plain file under the profile's folders takes the same profile lock (`ProfileLock::shared`) before it writes, and asks its route again under it. Inside an `update`'s change, the store refuses its own folder rather than write under itself.
@@ -168,14 +170,14 @@ sioul store edit PATH                   in $EDITOR, through the memory-backed fo
 sioul store versions PATH               a file's earlier versions
 sioul store restore PATH --version N    one put back (undone the same way)
 sioul store check [--repair]            the check
-sioul store export --to DIR [--clients] every file in clear, each in its standard format
+sioul store export --to DIR [--clients] every file in clear, each in its standard format (clients' records also as SQLite and CSV)
 sioul store unseal --to DIR             the store's files in today's plain layout, for an older Sioul
 sioul store reopen [WHEN] [--code|--card]  what "Start again" set aside: listed, or opened again with a way back and put back
 sioul store bring-in PATH [--any]       a file set aside at a start taken in on purpose, what it replaces kept
 sioul settings get KEY | set KEY VALUE  one setting, as the window changes it, in the configuration where it lives now
 ```
 
-`cat`, `put` and `edit` reach the configuration (`config/`) by default; any other file only with `--any`, and a client's file only with `--clients`; `ls`, `check` and `unseal` neither name nor write out a client's file without `--clients`, nor health or the person's own keys without `--any`. `put` and `edit` refuse a file that does not read as its kind (TOML, JSON) and a file changed meanwhile; each write keeps the replaced version; `cat` says when what it prints is an earlier version; `edit` keeps the edited copy when the write is refused. `sioul settings set` takes its value in JSON and goes through `settings::change`, as the window; the settings the window handles itself (a key, a folder moved) are refused, and a change after which the configuration no longer reads is undone.
+`cat`, `put` and `edit` reach the configuration (`config/`) by default; any other file only with `--any`, and a client's file only with `--clients` (a client's file is any place a client's bytes live: `data/clients/`, `state/clients/`, the sharing's earlier versions of their files, any part `clients` below `state/share/`, and a copy of one a start set aside, `data/set-aside/<day>/` followed by any of these); `ls`, `check` and `unseal` neither name nor write out a client's file without `--clients`, nor health or the person's own keys without `--any`. `put` and `edit` refuse a file that does not read as its kind (TOML, JSON) and a file changed meanwhile; each write keeps the replaced version; `cat` says when what it prints is an earlier version; `edit` keeps the edited copy when the write is refused. `sioul settings set` takes its value in JSON and goes through `settings::change`, as the window; the settings the window handles itself (a key, a folder moved) are refused, and a change after which the configuration no longer reads is undone.
 
 ## Bench
 

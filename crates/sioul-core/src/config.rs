@@ -182,6 +182,10 @@ pub struct Config {
     /// Where the extensions' signed list is read (`[extensions]`, docs/extensions.md).
     #[serde(default)]
     pub extensions: ExtensionSettings,
+    /// Clients' files: their templates and the options that protect
+    /// (`[clients]`, docs/clients.md). Read leniently, part by part.
+    #[serde(default)]
+    pub clients: crate::clients::template::Settings,
     /// Your accounts, those switched on (`Config::load` sets the others aside).
     #[serde(rename = "account", default)]
     pub accounts: Vec<Account>,
@@ -1088,6 +1092,13 @@ pub struct ExtensionSettings {
     /// Read leniently, as the calendars are.
     #[serde(default, deserialize_with = "extension_calendars")]
     pub addressbooks: std::collections::BTreeMap<String, String>,
+    /// Whether the people of each set of contacts an extension brings are the
+    /// person's clients (`[extensions.clients]`, `"<extension>/<set>" =
+    /// false` for "They are not my clients"), keyed as an agenda's calendar;
+    /// a set not named here follows the extension's own word
+    /// (`ContactSet::clients`, docs/clients.md). Read leniently, as `busy`.
+    #[serde(default, deserialize_with = "extension_busy")]
+    pub clients: std::collections::BTreeMap<String, bool>,
 }
 
 /// `[extensions.calendars]` or `[extensions.addressbooks]`, its texts alone.
@@ -1145,12 +1156,27 @@ pub fn set_extension_book(path: &Path, extension: &str, set: &str, place: &str) 
     })
 }
 
+/// Whether the people of an extension's set are the person's clients,
+/// written in the shared settings (`[extensions.clients]`, keyed as a
+/// calendar is): false is "They are not my clients"; true takes that back.
+/// Under the file's lock.
+pub fn set_extension_clients(path: &Path, extension: &str, set: &str, clients: bool) -> Result<(), String> {
+    edit_extension_map(path, "clients", |map| {
+        let key = extension_calendar_key(extension, set);
+        if clients {
+            map.remove(&key);
+        } else {
+            map.insert(&key, value(false));
+        }
+    })
+}
+
 /// Everything chosen for an extension taken out of the shared settings
 /// (Remove, its lessons taken out): its calendars, its busy choices and its
 /// address books. Another device that still runs it then writes nothing
 /// until a calendar or an address book is chosen again.
 pub fn forget_extension(path: &Path, extension: &str) -> Result<(), String> {
-    forget_extension_maps(path, extension, &["calendars", "busy", "addressbooks"])
+    forget_extension_maps(path, extension, &["calendars", "busy", "addressbooks", "clients"])
 }
 
 /// The address books chosen for an extension's sets of contacts taken out of

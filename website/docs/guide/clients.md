@@ -48,7 +48,7 @@ With the usual numbering, the year then three digits, invoice numbers start agai
 
 ## On your computer, your phone and your tablet {#on-your-desktop-and-your-laptop}
 
-Time noted on one device is on the others a minute later, and so are the invoices: sealed end to end, through a folder your sync already carries (Nextcloud, Dropbox, Syncthing). There is no server of ours in between. Projects and client profiles travel through the same sharing (until Sioul's lists leave your notes folder, a sync carrying that folder may carry them instead); tasks and events through your calendar's server. One device numbers the invoices, so that a number is never given twice. [Sharing between your devices](sharing.md)
+Time noted on one device is on the others a minute later, and so are the invoices: sealed end to end, through a folder your sync already carries (Nextcloud, Dropbox, Syncthing). There is no server of ours in between. Projects and client profiles travel through the same sharing (until Sioul's lists leave your notes folder, a sync carrying that folder may carry them instead), and so do your clients and what you keep about them, in the part **Clients' files**, between your computers: they are sealed on each computer's disk, and a phone keeps none until its own files are sealed; tasks and events through your calendar's server. One device numbers the invoices, so that a number is never given twice. [Sharing between your devices](sharing.md)
 
 Sioul for Android has shipped with each version since 0.0.2, for 64-bit phones and tablets with Android 9 or later ([Install](install.md#on-android)): the same projects, time and invoices, shared through the same folder when its sync app carries it ([On a phone or a tablet](first-steps.md#on-a-phone)).
 

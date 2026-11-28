@@ -50,6 +50,8 @@ mod devices;
 mod mail;
 mod help;
 mod books;
+// A client's records written out as databases and tables (`sioul store export --clients`).
+mod clientsdb;
 mod invoices;
 mod mcp;
 mod money;

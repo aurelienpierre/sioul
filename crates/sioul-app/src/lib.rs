@@ -150,6 +150,8 @@ mod capacity;
 mod changes;
 mod children;
 mod chosen;
+// Clients' files once the store is open: the move, clients erased elsewhere (docs/clients.md).
+mod clientfiles;
 // colour: the sites in the screen's own colours, and calmer colours (docs/colour.md); computers only.
 #[cfg(not(target_os = "android"))]
 mod colour;

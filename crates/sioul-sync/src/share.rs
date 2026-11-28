@@ -606,6 +606,93 @@ fn clients_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
     let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
     !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.clients >= CLIENTS_SHARED))
 }
+
+/// The part "Clients' files" (docs/clients.md, "Between devices"): its id,
+/// one switch in Settings ▸ Sharing, on like every part once sharing is set
+/// up, since an invoice needs its client on every device; off on a device,
+/// "Clients' files stay on this device" (an option a start by trade proposes).
+pub const CLIENT_FILES_PART: &str = "clients";
+
+/// The clients' files, the logical folder of the sealed store
+/// (`sioul_core::clients`, `data/clients/` under the data folder): on a
+/// device whose files are sealed they are read and written through the
+/// store's door, and travel sealed, never in clear on either disk.
+pub const CLIENT_FILES: &str = "data/clients/";
+
+/// Their name in the records: each file whole, sealed apart in the folder
+/// (`Shape::Files`, as the notes), so that an attachment travels as a sealed
+/// file and the later of two changes of one file wins, the other kept as an
+/// earlier version here (`history`). An older Sioul does not know the name:
+/// nothing is written under it until every device knows it
+/// (`client_files_shared`).
+pub const CLIENT_FILES_STORE: &str = "files/clients/";
+
+/// What a device's entry says once its Sioul knows clients' files (`devices::Entry::client_files`).
+pub const CLIENT_FILES_SHARED: u32 = 1;
+
+/// What a device's entry says once, besides, it holds them: its files are
+/// sealed (the clients' door opens there) and its part "Clients' files" is
+/// on (`client_files_held`). A phone whose files are not sealed yet says 1.
+pub const CLIENT_FILES_HELD: u32 = 2;
+
+/// Whether every device knows clients' files: at least one other device
+/// counts (`present`), and every one of them says in its sealed entry that
+/// its Sioul knows them (`devices::Entry::client_files`), as the persons'
+/// store waits (`persons_shared`). It opens, for good
+/// (`Memory::client_files_open`, `Outcome::client_files_open`), the part's
+/// travelling between the devices that hold it: an older Sioul, which would
+/// keep their records waiting at every exchange, never meets one.
+fn client_files_shared(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.client_files >= CLIENT_FILES_SHARED))
+}
+
+/// Whether every device holds clients' files (`CLIENT_FILES_HELD`): this one
+/// carries the part now (`held_here`), and every other present device says it
+/// does too. It opens, for good (`Memory::client_files_held`,
+/// `Outcome::client_files_held`), the drafts naming their client by its
+/// address and each profile adopted by its client
+/// (`sioul_core::clients::moving::run` with the gate open): a device that
+/// does not hold clients would read such an address as a name, or bill a
+/// client whose profile left the file with no billing identity.
+fn client_files_held(sharing: &Sharing, memory: &Memory, now_ms: i64, held_here: bool) -> bool {
+    let present = present(sharing.folder, sharing.key, sharing.computer, memory, now_ms);
+    held_here && !present.is_empty() && present.iter().all(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.client_files >= CLIENT_FILES_HELD))
+}
+
+/// Whether another present device holds clients' files (`CLIENT_FILES_HELD`):
+/// its files sealed and its part on, so that what travels from here has a
+/// copy there.
+fn client_files_held_elsewhere(sharing: &Sharing, memory: &Memory, now_ms: i64) -> bool {
+    present(sharing.folder, sharing.key, sharing.computer, memory, now_ms).iter().any(|(_, entry, _)| entry.as_ref().is_some_and(|e| e.client_files >= CLIENT_FILES_HELD))
+}
+
+/// Whether this device carries the clients' files now: their store is among
+/// the stores of this exchange (the part on here) and their folder is sealed
+/// here (a phone's, whose files are not sealed yet, never is: the part stays
+/// out of its exchanges and nothing of a client is written there).
+fn client_files_here(store: &Store) -> bool {
+    store.name == CLIENT_FILES_STORE && crate::files::is_sealed(&store.path)
+}
+
+/// What this device's sharing kept of an erased client's files, gone for
+/// good: the earlier versions it kept before another device's change was
+/// written over one (`history`), sealed with the state folder. Called with
+/// `sioul_core::clients::keep::apply_erased`'s ids.
+pub fn forget_erased_client(memory: &Path, id: &str) -> Result<(), String> {
+    if !sioul_core::clients::valid_id(id) {
+        return Err(format!("{id}: not a client's id"));
+    }
+    crate::history::purge_below(&crate::history::root(memory), CLIENT_FILES_PART, &format!("{CLIENT_FILES_STORE}{id}/"))
+}
+
+/// Whether this device's gate of clients' files stands open, read from its
+/// memory (`Memory::client_files_held`), for the window's first move at its
+/// start, before any exchange.
+pub fn client_files_held_in(memory: &Path, computer: &str) -> bool {
+    Memory::load(memory, computer).client_files_held
+}
+
 /// The supplies' list (`sioul_core::supplies`): each `[[supply]]` by its id,
 /// as projects are by theirs.
 static SUPPLIES_RULES: Rules = Rules { keyed: &[keyed("supply", &["id"])], whole: &[], local: &[], next: None };
@@ -860,9 +947,9 @@ pub const LETTERS_FILES: &str = "files/letters/";
 /// (docs/database.md, "Parts"): settings and accounts, senders, the calls
 /// your phones screened, the messages from your phones' notifications, the
 /// spam filter's table and label logs, health, time, drafts and invoices,
-/// projects and money, lists kept here, notes, papers.
+/// projects and money, clients' files, lists kept here, notes, papers.
 /// (texts: the part "texts", SMS phase b, after the phone's messages.)
-pub const PARTS: [&str; 13] = ["settings", "senders", "calls", sioul_core::phonemsgs::PART, sioul_core::texts::PART, "spam", "health", "time", "drafts", "projects", "lists", "notes", "papers"];
+pub const PARTS: [&str; 14] = ["settings", "senders", "calls", sioul_core::phonemsgs::PART, sioul_core::texts::PART, "spam", "health", "time", "drafts", "projects", CLIENT_FILES_PART, "lists", "notes", "papers"];
 
 /// Stores an older Sioul shared and this one no longer has: a Garmin
 /// watch's days and the memory of its offers, taken out on 8 October 2026
@@ -988,6 +1075,7 @@ pub fn shared_by_default(part: &str, config: &Config) -> bool {
         sioul_core::phonemsgs::PART => false,
         // texts: read and sent through your phone, once you say so on each device.
         sioul_core::texts::PART => false,
+        // Clients' files: on like every part, since an invoice needs its client on every device.
         _ => true,
     }
 }
@@ -1271,6 +1359,10 @@ pub fn stores_of(config: &Config, roots: &Roots, shares: &dyn Fn(&str) -> bool) 
         folder(sioul_core::texts::PART, TEXTS_SEND, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::SEND), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_OUTCOME, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::OUTCOME), Shape::Lines, &[]),
         folder(sioul_core::texts::PART, TEXTS_MARKS, d.join(sioul_core::texts::FOLDER).join(sioul_core::texts::MARKS), Shape::Lines, &[]),
+        // Clients' files (docs/clients.md, "Between devices"): each file whole, sealed apart,
+        // through the store's door on a device whose files are sealed; once every device knows
+        // them (`client_files_shared`), and only where they are sealed (`client_files_here`).
+        folder(CLIENT_FILES_PART, CLIENT_FILES_STORE, d.join(sioul_core::clients::record::FOLDER_NAME), Shape::Files, &[]),
     ];
     // Once this device's lists left the notes folder (docs/notes-folder.md,
     // "What lives where"): the same records, each where this device keeps
@@ -3500,6 +3592,18 @@ struct Memory {
     /// yet. An older Sioul reads a memory with it and writes it back without it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     clients_open: bool,
+    /// Every device said it knows clients' files (`client_files_shared`):
+    /// from then on the gate stays open on this device (the drafts' and
+    /// profiles' move, the part's carrying). Missing: not yet. An older Sioul
+    /// reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    client_files_open: bool,
+    /// Every device said it holds clients' files, this one too
+    /// (`client_files_held`): from then on drafts name their client by its
+    /// address and profiles are adopted, on this device for good. Missing:
+    /// not yet. An older Sioul reads a memory with it and writes it back without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    client_files_held: bool,
     /// The supplies' list and movements (`SUPPLIES`, `SUPPLY_MOVES`)
     /// travelled from here once every device said it has them
     /// (`supplies_shared`): from then on they stay in this device's
@@ -4100,7 +4204,7 @@ fn judge_removed(sharing: &Sharing, stores: &[Store], memory: &Memory, counts: &
     let named_by_waiting = memory.pending.iter().map(|(key, (value, ..))| (key, value)).chain(memory.waiting.iter().map(|(key, (value, ..))| (key, value))).filter(|(key, value)| key.starts_with(FILES) && value.is_some());
     let waiting: BTreeSet<String> = named_by_waiting.clone().filter_map(|(key, value)| value.as_deref().map(|v| value_hash(key, v))).filter(|h| !h.is_empty()).map(|h| crate::blobs::name(sharing.key, &h)).collect();
     let untold_waiting = named_by_waiting.into_iter().any(|(key, value)| value.as_deref().is_some_and(|v| value_hash(key, v).is_empty()));
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory);
     // This device asks another for a full round (`full_asked`: records of
     // theirs met past what it read in order, a round stuck on a full host):
     // what those records say is not known here, and one may name the same
@@ -4323,7 +4427,15 @@ pub fn leaving(memory: &Path, computer: &str) -> Leaving {
 /// The parts whose files are sealed apart (`Shape::Files`): what one of their
 /// records names is a sealed file of the folder, the same bytes the same
 /// file whatever the part (`blobs::name`): a note and a paper alike.
-const FILE_PARTS: [&str; 3] = ["spam", "papers", "notes"];
+const FILE_PARTS: [&str; 4] = ["spam", "papers", "notes", CLIENT_FILES_PART];
+
+/// Whether every part whose files are sealed apart is read here
+/// (`FILE_PARTS`), so that a sealed content none of their records names is
+/// known to be unused: the clients' files only once they travel
+/// (`Memory::client_files_open`), since before it no record names one.
+fn every_file_part(stores: &[Store], memory: &Memory) -> bool {
+    FILE_PARTS.iter().filter(|part| **part != CLIENT_FILES_PART || memory.client_files_open).all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)))
+}
 
 /// The others' contents of notes and papers that stopped being current in
 /// this exchange (`theirs_now`: replaced, taken out, or passed by a later
@@ -4422,7 +4534,7 @@ fn sweep_theirs(sharing: &Sharing, stores: &[Store], memory: &mut Memory, counte
     let unused = days * DAY;
     let fresh = |name: &str| crate::files::metadata(blobs.join(name)).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).is_some_and(|age| (age.as_millis() as i64) < unused);
     let due = last.iter().any(|(name, at)| !used.contains(name) && now_ms - *at >= unused && !fresh(name));
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory);
     if due && every_part && quick(sharing) && texts_shared(stores) {
         // The texts are read at the next whole exchange, never by one that must be quick (a dose's).
     } else if due
@@ -6561,6 +6673,17 @@ pub struct Outcome {
     /// left them (`withheld`); none when it did not get that far (`share-busy`,
     /// a seal missing, nothing to do).
     pub withheld: Option<Vec<Withheld>>,
+    /// Every device knows clients' files (`client_files_shared`, kept open for
+    /// good): the part travels between the devices that hold it.
+    pub client_files_open: bool,
+    /// Every device holds clients' files (`client_files_held`, kept open for
+    /// good): what `sioul_core::clients::moving::run` takes as its gate.
+    pub client_files_held: bool,
+    /// Another present device holds clients' files (says `CLIENT_FILES_HELD`)
+    /// while the part travels: a copy of each client's file is then there, so
+    /// this device writes one copy; until then two (the store's twin), since
+    /// no other device holds them (the review of the finish, 6).
+    pub client_files_elsewhere: bool,
 }
 
 /// Before the first exchange, a copy of every shared file, in case. Not of
@@ -6762,6 +6885,14 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
     if clients && !memory.clients_open && clients_shared(sharing, &memory, now_ms) {
         memory.clients_open = true;
     }
+    // Clients' files: they travel once every device knows them, and only where they are sealed.
+    if !memory.client_files_open && client_files_shared(sharing, &memory, now_ms) {
+        memory.client_files_open = true;
+    }
+    let client_files = stores.iter().any(client_files_here);
+    if !memory.client_files_held && memory.client_files_open && client_files_held(sharing, &memory, now_ms, client_files) {
+        memory.client_files_held = true;
+    }
     let supplies = stores.iter().any(|s| s.name == SUPPLIES || s.name == SUPPLY_MOVES);
     if supplies && !memory.supplies_open && supplies_shared(sharing, &memory, now_ms) {
         memory.supplies_open = true;
@@ -6790,6 +6921,7 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
             || ((s.name == SUPPLIES || s.name == SUPPLY_MOVES) && !memory.supplies_open)
             || ((s.name == TOPICS || s.name == TOPICS_TABLE) && !memory.topics_open)
             || ((s.name == RULES || s.name == RULES_ACTS) && !memory.rules_open)
+            || (s.name == CLIENT_FILES_STORE && (!memory.client_files_open || !client_files_here(s)))
     };
     let stores: &[Store] = if stores.iter().any(left_out) {
         gated = stores.iter().filter(|s| !left_out(s)).cloned().collect();
@@ -8562,6 +8694,9 @@ pub fn exchange(sharing: &Sharing, stores: &[Store], now_ms: i64) -> Result<Outc
         memory.drafts.remove(&key);
     }
     outcome.withheld = Some(memory.withheld.clone());
+    outcome.client_files_open = memory.client_files_open;
+    outcome.client_files_held = memory.client_files_held;
+    outcome.client_files_elsewhere = memory.client_files_open && client_files_held_elsewhere(sharing, &memory, now_ms);
     let needed: Option<BTreeSet<String>> = keeps_itself(sharing).then(|| {
         let name = |h: &str| crate::blobs::name(sharing.key, h);
         let waiting = memory.pending.iter().filter(|(key, _)| key.starts_with(FILES)).filter_map(|(key, (value, _, _))| value.as_deref().map(|v| name(&value_hash(key, v))));
@@ -11240,7 +11375,7 @@ fn plan_removal(sharing: &Sharing, stores: &[Store], memory: &Memory, device: &s
     // One sealed or used again lately (`fresh`, as the sweep judges it: a
     // device may have sealed the same bytes again in a record not read here
     // yet) goes later, swept as a departed device's replaced contents are.
-    let every_part = FILE_PARTS.iter().all(|part| stores.iter().any(|s| s.part == *part && matches!(s.shape, Shape::Files)));
+    let every_part = every_file_part(stores, memory);
     let media = if every_part && let Texts::Known(media) = texts_media(sharing, stores, memory, &counts) { Some(media) } else { None };
     files.sealed_known = media.is_some();
     let (mut names, mut later) = (Vec::new(), Vec::new());
@@ -14051,8 +14186,9 @@ mod tests {
         let roots = Roots { config: PathBuf::from("config"), data: PathBuf::from("data"), state: PathBuf::from("state") };
         let config = Config { notes_root: Some("/notes".into()), ..Config::default() };
         let parts = |stores: &[Store]| stores.iter().map(|s| s.part).collect::<BTreeSet<_>>();
-        // A device that never chose: what was shared before parts had switches.
-        assert_eq!(parts(&stores(&config, &roots)), ["calls", "drafts", "health", "lists", "senders", "settings", "spam", "time"].into());
+        // A device that never chose: what was shared before parts had switches, and
+        // clients' files, on like every part since an invoice needs its client everywhere.
+        assert_eq!(parts(&stores(&config, &roots)), ["calls", "clients", "drafts", "health", "lists", "senders", "settings", "spam", "time"].into());
         let old = Config { share_projects: true, ..config.clone() };
         assert!(parts(&stores(&old, &roots)).contains("projects"), "projects as the old setting said");
         // Its own choices, kept in its own file, never in a shared one.
@@ -15231,6 +15367,10 @@ mod lists_tests;
 #[cfg(test)]
 #[path = "share_move_tests.rs"]
 mod move_tests;
+
+#[cfg(test)]
+#[path = "share_clients_tests.rs"]
+mod clients_tests;
 
 #[cfg(test)]
 mod probe {

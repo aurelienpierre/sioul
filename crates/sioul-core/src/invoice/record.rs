@@ -345,6 +345,10 @@ pub struct Line {
     /// The time it bills, by session key.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<String>,
+    /// The record of a client's file it bills (`sioul:client/<id>/db/<kind>/<row>`,
+    /// docs/clients.md); "" none. A row removed later leaves the line as it is.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub row: String,
 }
 
 fn one() -> i64 {
@@ -380,6 +384,7 @@ impl Line {
             activity: String::new(),
             amount: 0,
             sessions: Vec::new(),
+            row: String::new(),
         };
         line.amount = line.net();
         line
@@ -552,10 +557,21 @@ pub struct Invoice {
     pub project: String,
     #[serde(default)]
     pub project_title: String,
-    /// Who it bills, as chosen: a client profile's id, a contact's address
-    /// (`sioul:contact/<uid>`), or a name as written.
+    /// Who it bills, as chosen: a client's address (`sioul:client/<id>`,
+    /// docs/clients.md), a client profile's id, a contact's address
+    /// (`sioul:contact/<uid>`), or a name as written. An issued invoice's is
+    /// never rewritten.
     #[serde(default)]
     pub client_ref: String,
+    /// The card it is addressed to, by UID, beside a client's address: the
+    /// one its billing identity mails, else the client's first; "" none.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub contact: String,
+    /// It names a client whose file holds a health mark (docs/clients.md,
+    /// "Billing"): kept from agents unless they may read clients' files, its
+    /// printed copy named by its number alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub health: bool,
     #[serde(default)]
     pub client: Client,
     #[serde(default)]

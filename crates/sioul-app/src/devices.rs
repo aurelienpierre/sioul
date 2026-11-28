@@ -128,6 +128,8 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
     let parts = if vault.is_some() { crate::share::parts_shared() } else { Vec::new() };
     // A phone's own number as Android gives it, asked before the entry's lock (`calls::own_number`).
     let own_number = crate::calls::own_number();
+    // Whether it holds clients' files (its files sealed, the part on), asked before the entry's lock.
+    let client_files = crate::clientfiles::said_in_entry();
     let written = sioul_sync::devices::change(&path, vault.as_ref().map(|(folder, key)| (folder.as_path(), key)), |entry| {
         entry.id = id;
         entry.name = name();
@@ -154,6 +156,9 @@ fn write(change: impl FnOnce(&mut Entry)) -> bool {
         entry.persons = sioul_sync::share::PERSONS_SHARED;
         // It has the client profiles' store: it travels once every device says so.
         entry.clients = sioul_sync::share::CLIENTS_SHARED;
+        // It knows clients' files, and holds them where its files are sealed and the part is on:
+        // they travel once every device knows them, drafts and profiles move once every device holds them.
+        entry.client_files = client_files;
         // It has the supplies' list and movements: they travel once every device says so.
         entry.supplies = sioul_sync::share::SUPPLIES_SHARED;
         // Where its lists are (docs/notes-folder.md, "What lives where"): it knows the new

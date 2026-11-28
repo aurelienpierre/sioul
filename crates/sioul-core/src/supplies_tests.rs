@@ -21,7 +21,7 @@ fn q(text: &str) -> Qty {
 }
 
 fn line(id: &str, at: i64, supply: &str, kind: Kind, quantity: &str) -> Move {
-    Move { id: id.into(), at, on: None, supply: supply.into(), kind, quantity: q(quantity), task: String::new(), device: String::new() }
+    Move { id: id.into(), at, on: None, supply: supply.into(), kind, quantity: q(quantity), task: String::new(), for_row: String::new(), device: String::new() }
 }
 
 fn stock(root: &Path, device: &str, supply: &str) -> Qty {

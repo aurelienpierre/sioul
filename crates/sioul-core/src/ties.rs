@@ -393,6 +393,8 @@ pub struct Sources {
     pub calls: Vec<CallSource>,
     /// The tasks the call-back rules made (`callback`), each tied to its calls.
     pub call_tasks: Vec<CallTask>,
+    /// Clients (`clients`): each one's address, name, cards and what is tied to it.
+    pub clients: Vec<crate::clients::ties::ClientTies>,
 }
 
 /// A call of a phone as the index names and ties it.
@@ -495,6 +497,8 @@ impl Sources {
         let persons = Persons::as_read(&Persons::default_path(), &config.agenda.calendars, &papers, &own);
         let (agendas, taken, children) = agenda_ties(config, &loaded.events, &persons);
         let (calls, call_tasks) = call_sources(config, loaded);
+        let invoices = crate::invoice::all_in(&crate::invoice::folder());
+        let clients = crate::clients::ties::for_tie_index(loaded, &invoices);
         Sources {
             movements: books.as_ref().map(|b| b.movements.clone()).unwrap_or_default(),
             budgets: books.as_ref().map(|b| b.ledger.budgets.iter().map(|budget| (budget.id.clone(), budget.title.clone())).collect()).unwrap_or_default(),
@@ -502,13 +506,14 @@ impl Sources {
             papers,
             letters: places.as_ref().and_then(|p| Letters::load_at(p).ok()),
             contracts: root.as_deref().and_then(|r| crate::contracts::Contracts::load(r).ok()).map(|c| c.list).unwrap_or_default(),
-            invoices: crate::invoice::all_in(&crate::invoice::folder()),
+            invoices,
             sessions: crate::timelog::sessions(),
             agendas,
             taken,
             children,
             calls,
             call_tasks,
+            clients,
         }
     }
 }
@@ -835,6 +840,16 @@ impl TieIndex {
             }
             for child in &person.of {
                 b.tie(&me, &links::person_uri(child), How::Parent, Need::Nothing);
+            }
+        }
+        // Clients: named by their name alone, tied to their cards and to what their files tie them to.
+        for client in &sources.clients {
+            b.name(&client.uri, Named { title: client.name.clone(), ..Named::default() });
+            for card in &client.cards {
+                b.tie(&links::contact_uri(card), &client.uri, How::Client, Need::Nothing);
+            }
+            for other in &client.ties {
+                b.tie(other, &client.uri, How::Client, Need::Nothing);
             }
         }
         // Who takes a child's event: a person by one of their cards' addresses, else a card.

@@ -1976,6 +1976,7 @@ chain-kind-contract = Contract
 chain-kind-letter = Letter
 chain-kind-invoice = Invoice
 chain-kind-movement = Payment
+chain-kind-client = Client
 chain-kind-site = Site
 chain-kind-call = Call
 chain-kind-web = Web page
@@ -2036,6 +2037,10 @@ chain-count-invoice = { $n } { $n ->
 chain-count-movement = { $n } { $n ->
         [one] payment
        *[other] payments
+    }
+chain-count-client = { $n } { $n ->
+        [one] client
+       *[other] clients
     }
 chain-count-site = { $n } { $n ->
         [one] site
@@ -4504,6 +4509,8 @@ share-part-drafts = Drafts and invoices
 share-part-drafts-carries = Mail being written, invoices made.
 share-part-projects = Projects and money
 share-part-projects-carries = Sioul's own lists: projects and their mail routes, budgets, bank accounts and movements, contracts, client profiles, and, once they left the notes folder, the lists of papers and letters.
+share-part-clients = Clients' files
+share-part-clients-carries = Your clients, their files and records, and what ties them to your other things: sealed. Whoever carries your sharing folder (your Nextcloud, a provider, a NAS, Syncthing between your devices) sees how many files, their sizes and when they change, never a name or a word. Where you work, the law may ask that whoever hosts health data be certified, even sealed: in France it does (CSP art. L. 1111-8; the health ministry's digital agency, 21 April 2026: encryption does not lift the duty of certification). A server you own and run yourself is not hosting by someone else, and needs none. It is yours to judge. Your clients travel only between devices whose files are sealed: a phone keeps none until its own files are sealed. Off on a device: its clients stay there, and an invoice for them can be made only there. An attachment over 64 MB stays on its device.
 share-part-lists = Lists kept here
 share-part-lists-carries = Calendars and contacts kept on this device only.
 share-part-notes = Notes
@@ -11619,6 +11626,14 @@ store-export-clients-left = { $count ->
     [one] 1 file of a client's was left out: add --clients to write it too.
    *[other] { $count } files of clients were left out: add --clients to write them too.
 }
+store-export-clients-databases = { $count ->
+    [one] 1 client's records were also written as a database (records.sqlite) and as tables (records/, one CSV file per kind), beside the client's files.
+   *[other] { $count } clients' records were also written as databases (records.sqlite) and as tables (records/, one CSV file per kind), beside each client's files.
+}
+store-export-clients-rows-left = { $count ->
+    [one] 1 record of a client's does not open: it is left out of the databases and tables (sioul store check names it).
+   *[other] { $count } records of clients do not open: they are left out of the databases and tables (sioul store check names them).
+}
 store-export-damaged = { $count ->
     [one] 1 file did not open and was not written: sioul store check says which.
    *[other] { $count } files did not open and were not written: sioul store check says which.
@@ -11730,3 +11745,30 @@ store-left-plain = { $count ->
    *[other] { $count } files could not be sealed and stay in clear where they are, read as before: the next start tries again.
 }
 store-lists-clear = Sioul's own lists (projects, budgets, health, money) are still in your notes folder, in clear there, as before: they are sealed once they move to Sioul's own folder (Settings ▸ Your folder and sharing ▸ Where Sioul keeps its lists).
+# Clients and their files (docs/clients.md): the words of what the core keeps and says.
+clients-file-invite = Keep notes and records about this client…
+clients-folder-no-longer = No longer in your template
+clients-folder-not-yet = Not in this device's template yet
+clients-value-as-written = as written before
+clients-fields-newer = Fields of a newer template
+clients-row-read-only = Written with a newer template: update Sioul on this device to change it.
+clients-from-extension = { $count ->
+        [one] One client from { $extension }.
+       *[other] { $count } clients from { $extension }.
+    }
+clients-set-theirs = These people are your clients
+clients-set-not-mine = They are not my clients
+clients-not-a-client = Not a client
+clients-lock-screen = Sioul: about a client
+clients-propose-keep-tied = Keep from AI agents what is tied to a client: their cards, appointments, messages, tasks and invoices are left out of what agents get.
+clients-propose-stay-here = Clients' files stay on this device: they no longer travel to your other devices, so an invoice for one of these clients can be made only here.
+clients-propose-keeping = Keeping times and archiving by itself: Sioul archives a client by itself once the time you set has passed since the last contact, and never erases anything by itself.
+clients-erase-says = On this device the file goes at once, with its earlier versions. Your other devices that hold your clients take it out, with theirs, when they next exchange; one whose part Clients' files is off keeps it until you turn the part on there, then takes it out. Its sealed copies stay in your sharing folder for up to two weeks, unreadable without your key; what your provider keeps in its own trash or backups, and any backup of yours, Sioul cannot reach.
+clients-erase-kept-until = This file is kept until { $day } by the keeping times you set.
+clients-error-damaged = A part of this client's file does not open: what could be read is shown.
+clients-error-changed = It was changed elsewhere meanwhile: here it is as it is now.
+clients-error-not-found = It is no longer there.
+clients-error-empty = Nothing was filled in, so nothing was kept.
+clients-error-not-here = This client's file is not on this device.
+clients-error-not-open = What Sioul keeps on this device is not open yet: it opens with your session.
+clients-error-other = It could not be done: { $why }

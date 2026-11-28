@@ -64,10 +64,12 @@ pub enum Kind {
     Supplies,
     /// Your rules (`rules.toml`) and what they did (`rules/acts/`).
     Rules,
+    /// Clients and their files (`clients`): a record, a part of a file, a tie.
+    Clients,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 17] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices, Kind::Issued, Kind::Supplies, Kind::Rules];
+    pub const ALL: [Kind; 18] = [Kind::Persons, Kind::Agendas, Kind::Calendars, Kind::Contacts, Kind::Papers, Kind::Letters, Kind::Money, Kind::Notes, Kind::Links, Kind::Sites, Kind::Projects, Kind::Accounts, Kind::Topics, Kind::Invoices, Kind::Issued, Kind::Supplies, Kind::Rules, Kind::Clients];
 
     /// Its place among the kinds, for a set of them as bits.
     pub fn bit(self) -> u32 {
@@ -94,6 +96,7 @@ impl Kind {
             Kind::Issued => "issued",
             Kind::Supplies => "supplies",
             Kind::Rules => "rules",
+            Kind::Clients => "clients",
         }
     }
 }

@@ -43,6 +43,10 @@ pub fn of(s: &Session, loaded: &Loaded) -> Consent {
     // What is a person's (docs/persons.md): each person is closed until opened on their
     // page; others' health papers never reach an agent, whatever the switch.
     consent.keep_persons(kept_for_persons(s, loaded));
+    // For clients' sake (docs/clients.md): a client follows what its cards and projects are
+    // kept from; what the person set; invoices that reveal care.
+    let for_clients = sioul_core::clients::protect::kept_for_agents(&s.config, loaded, &consent);
+    consent.keep_persons(for_clients);
     // A closed person's agendas, and a child's health and dentist events whatever the switch.
     let (closed, children) = agendas_for_persons(s);
     consent.keep_agendas(loaded, &closed, &children);

@@ -102,7 +102,7 @@ pub(crate) enum StoreCommand {
         /// An empty folder of your own, outside Sioul's folders.
         #[arg(long)]
         to: PathBuf,
-        /// The clients' files too.
+        /// The clients' files too, each client's records also as a database (records.sqlite) and as tables (CSV).
         #[arg(long)]
         clients: bool,
     },
@@ -204,12 +204,31 @@ enum Private {
 }
 
 fn private(path: &LogicalPath) -> Option<Private> {
-    let clients = LogicalPath::new("data/clients").ok()?;
-    if path.is_within(&clients) {
+    if holds_client_bytes(path) {
         return Some(Private::Client);
     }
     let personal = path.as_str().split('/').any(|part| part.starts_with("health")) || path.as_str().contains("/pgp/own");
     personal.then_some(Private::Personal)
+}
+
+/// Whether a path holds a client's bytes, wherever they live: the clients'
+/// files (`data/clients/`), this device's notes about them (`state/clients/`),
+/// and anything of the sharing's that keeps a copy of one, its earlier
+/// versions above all (`state/share/history/clients/files/clients/…`): any
+/// part named `clients` below `state/share/`. Each is written out, printed or
+/// listed only with `--clients` (the review of the finish, 1).
+///
+/// A copy set aside keeps its rule: what a start sets aside lies at
+/// `data/set-aside/<day>/<its logical path>` (`sealed::moving`), so the rule
+/// reads what follows the day, as many times as it is nested (the re-review, R4).
+fn holds_client_bytes(path: &LogicalPath) -> bool {
+    let mut text = path.as_str();
+    while let Some(rest) = text.strip_prefix("data/set-aside/") {
+        let Some((_, below)) = rest.split_once('/') else { return false };
+        text = below;
+    }
+    let within = |folder: &str| text == folder || text.starts_with(&format!("{folder}/"));
+    within("data/clients") || within("state/clients") || (within("state/share") && text.split('/').any(|part| part == "clients"))
 }
 
 fn shown(path: &LogicalPath, any: bool, clients: bool) -> bool {
@@ -223,7 +242,7 @@ fn shown(path: &LogicalPath, any: bool, clients: bool) -> bool {
 /// The path, if the flags given reach it: the configuration by default, a client's file with `--clients`, any other with `--any`.
 fn reached(s: &Session, path: &str, any: bool, clients: bool) -> Result<LogicalPath, String> {
     let logical = LogicalPath::new(path).map_err(|_| s.say("store-bad-path", &[("path", path.to_string())]))?;
-    let client = logical.is_within(&LogicalPath::new("data/clients").map_err(|e| e.to_string())?);
+    let client = holds_client_bytes(&logical);
     if client && !clients {
         return Err(s.say("store-client-file", &[("path", path.to_string())]));
     }
@@ -410,7 +429,8 @@ fn reopen(s: &Session, when: Option<&str>, code: bool, card: bool) -> Result<(),
 /// Every file Sioul keeps written in clear under `to`, in the layout Sioul has
 /// always used (config/, data/, state/, cache/), each in its standard format:
 /// TOML, iCalendar, vCard, Maildir, JSON, PDF. Health and the person's own
-/// keys go too (it is their copy); a client's file only with `--clients`.
+/// keys go too (it is their copy); a client's file only with `--clients`, its
+/// records then also as a database and as tables (`clientsdb`).
 fn export(s: &Session, to: &Path, clients: bool) -> Result<(), String> {
     let folders = Folders::of_profile();
     if [&folders.config, &folders.data, &folders.state, &folders.cache].iter().any(|f| to.starts_with(f) || f.starts_with(to)) {
@@ -432,6 +452,19 @@ fn export(s: &Session, to: &Path, clients: bool) -> Result<(), String> {
     eprintln!("{}", s.say("store-exported", &[("count", written.to_string()), ("folder", to.display().to_string())]));
     if left.get() > 0 {
         eprintln!("{}", s.say("store-export-clients-left", &[("count", left.get().to_string())]));
+    }
+    if clients {
+        // Each client's records as a database (records.sqlite) and as tables (records/*.csv), beside its TOML rows.
+        let config = to.join("config").join("config.toml");
+        let (settings, supplies) = (crate::clientsdb::settings_of(&config), crate::clientsdb::supply_names(&config));
+        let door = sioul_core::clients::door::Sealed::new(std::sync::Arc::new(store));
+        let databases = crate::clientsdb::write(&door, &to.join("data").join(sioul_core::clients::record::FOLDER_NAME), &settings, &supplies)?;
+        if databases.clients > 0 {
+            eprintln!("{}", s.say("store-export-clients-databases", &[("count", databases.clients.to_string())]));
+        }
+        if databases.left_out > 0 {
+            eprintln!("{}", s.say("store-export-clients-rows-left", &[("count", databases.left_out.to_string())]));
+        }
     }
     if !damaged.is_empty() {
         return Err(s.say("store-export-damaged", &[("count", damaged.len().to_string())]));
