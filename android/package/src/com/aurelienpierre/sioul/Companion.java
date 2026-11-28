@@ -7,6 +7,7 @@ import android.app.Activity;
 import android.companion.AssociationRequest;
 import android.companion.BluetoothDeviceFilter;
 import android.companion.CompanionDeviceManager;
+import android.companion.WifiDeviceFilter;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.os.Build;
@@ -17,8 +18,10 @@ import android.util.Log;
  * Android's question for the link to your computer (docs/android.md,
  * "Notifications from other apps"; option 2 of
  * docs/research/android-holding.md), asked from Settings ▸ Devices ▸ this phone's card ("Let
- * Sioul make them silent"): Android's own list of devices, the paired
- * Bluetooth ones first, where you choose the computer Sioul relays this
+ * Sioul make them silent"): Android's own list of devices, the Bluetooth
+ * ones and the Wi-Fi networks around (the owner's yes of 26 November 2026:
+ * a computer with no Bluetooth is reached on the Wi-Fi it is on), where you
+ * choose the computer, or the network it uses, that Sioul relays this
  * phone's notifications to. The association asks for no device profile and
  * no permission; it lets Sioul's listener make the apps it gathers silent
  * itself (AppNotes, ChannelSilence). Android answers only an activity that
@@ -41,8 +44,10 @@ public final class Companion extends Activity
             finish();
             return;
         }
+        // Either kind of link: Android lists the devices and networks that match any filter.
         AssociationRequest request = new AssociationRequest.Builder()
             .addDeviceFilter(new BluetoothDeviceFilter.Builder().build())
+            .addDeviceFilter(new WifiDeviceFilter.Builder().build())
             .build();
         CompanionDeviceManager.Callback answer = new CompanionDeviceManager.Callback() {
             /** Before Android 13: Android's list, to show. */

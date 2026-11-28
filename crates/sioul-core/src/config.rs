@@ -235,8 +235,9 @@ pub struct Config {
     pub presets: std::collections::BTreeMap<String, PresetSettings>,
     /// The settings' format (`FORMAT`): 2 once your availability is a list
     /// (`[[agenda.availabilities]]`, `migrate_availability`); 3 once the
-    /// call presets' switches are in `[presets]` (`migrate_presets`); unset,
-    /// 1. An older Sioul passes over it.
+    /// call presets' switches are in `[presets]` (`migrate_presets`); 4 once
+    /// the matrix's row of the working day before is taken out
+    /// (`migrate_attention`); unset, 1. An older Sioul passes over it.
     #[serde(default)]
     pub format: Option<u32>,
 }
@@ -245,8 +246,10 @@ pub struct Config {
 /// your availability (`[agenda.availability]`) became a list of
 /// availabilities, each with its shares and mirrors; 3 from 26 November
 /// 2026, when the call-back switches of Porch ⚙ ▸ Calls became the presets'
-/// own (`[presets]`, `migrate_presets`).
-pub const FORMAT: u32 = 3;
+/// own (`[presets]`, `migrate_presets`); 4 from 28 November 2026, when the
+/// matrix's row "Events, the working day before" (`[attention] day-before`)
+/// was taken out (`migrate_attention`).
+pub const FORMAT: u32 = 4;
 
 /// A preset the rules' engine runs, as you set it in Settings ▸ Rules ▸
 /// Presets (`[presets.<id>]`): on or off, and the choices it takes.
@@ -2289,6 +2292,45 @@ pub fn migrate_presets(path: &Path) -> Result<bool, String> {
 
 /// The preset that turns missed calls into tasks (`wiring::call`).
 pub const MISSED_CALL_TASK: &str = "missed-call-task";
+
+/// The rows of `[attention]` taken out of the matrix, by their ids: the
+/// working day before's (`day-before`, taken out on 28 November 2026: no
+/// notice of Sioul's read it since 13 November, the evening reminder of the
+/// next working day's events having left the notifications then).
+pub const ATTENTION_ROWS_OUT: &[&str] = &["day-before"];
+
+/// The rows of `[attention]` taken out of the matrix (`ATTENTION_ROWS_OUT`,
+/// a key written "Day_Before" by hand too) taken out of the file, once,
+/// before format 4: nothing else is touched, every other key and comment kept
+/// as it was. The settings' format is marked (`FORMAT`) when it wrote. Run
+/// at each start; a file of format 4 or later is left as it is, so a row an
+/// older Sioul writes back later stays, unread here (`attention::Row::read`
+/// knows it no more) and kept by every write of the table
+/// (`set_table_ranked` leaves the keys it does not name). Returns whether it
+/// wrote.
+pub fn migrate_attention(path: &Path) -> Result<bool, String> {
+    if !path.present() {
+        return Ok(false);
+    }
+    crate::filelock::with_lock(path, || {
+        let mut doc = read_document(path)?;
+        if doc.get("format").and_then(Item::as_integer).is_some_and(|f| f >= 4) {
+            return Ok(false);
+        }
+        let out = |key: &str| ATTENTION_ROWS_OUT.contains(&key.trim().to_ascii_lowercase().replace('_', "-").as_str());
+        let Some(table) = doc.get_mut("attention").and_then(Item::as_table_like_mut) else { return Ok(false) };
+        let keys: Vec<String> = table.iter().map(|(key, _)| key.to_string()).filter(|key| out(key)).collect();
+        if keys.is_empty() {
+            return Ok(false);
+        }
+        for key in &keys {
+            table.remove(key);
+        }
+        mark_format(&mut doc);
+        write_document(path, &doc)?;
+        Ok(true)
+    })
+}
 
 /// The two old switches (`[porch] call_back`, `call_again`) as the preset
 /// says them: on when either is; its ways those that are on; both off, off,

@@ -279,8 +279,9 @@ const UNTOUCHED: &[&str] = &[
 /// Apps that name people as the phone's address book does: their names say who.
 const BOOK_APPS: &[&str] = &["com.whatsapp", "com.whatsapp.w4b"];
 
-/// SMS apps, besides the phone's default one (`Posted::sms_app`).
-const SMS_APPS: &[&str] = &[
+/// SMS apps, besides the phone's default one (`Posted::sms_app`); the ones
+/// the listener's second look reads (`AppNotes.looksAt`, asked once).
+pub const SMS_APPS: &[&str] = &[
     "com.google.android.apps.messaging", "com.android.messaging", "com.android.mms", "com.samsung.android.messaging", "org.fossify.messages",
     "com.simplemobiletools.smsmessenger", "com.moez.QKSMS", "dev.octoshrimpy.quik", "foundation.e.message",
 ];
@@ -385,14 +386,19 @@ pub fn earlier_codes(p: &Posted, words: &crate::words::Words) -> Vec<(i64, crate
         .collect()
 }
 
+/// Whether a notification is a texting app's: the phone's SMS app, or one of
+/// the texting apps Sioul knows (`SMS_APPS`).
+pub fn texting(p: &Posted) -> bool {
+    p.sms_app || SMS_APPS.contains(&p.package.as_str())
+}
+
 /// What a notification gives the detector as its subject: its title; but a
 /// texting app's title that is only a number (a short number, a phone
 /// number) names who wrote, never a code (`36123` taken for the code beside
 /// "ce code").
 fn subject_of(p: &Posted) -> &str {
-    let texting = p.sms_app || SMS_APPS.contains(&p.package.as_str());
     let title = p.title.trim();
-    if texting && (short_code(title) || number_in(title).is_some()) { "" } else { p.title.as_str() }
+    if texting(p) && (short_code(title) || number_in(title).is_some()) { "" } else { p.title.as_str() }
 }
 
 /// A browser's site the notification is from, as its host: Chromium's
@@ -546,12 +552,37 @@ fn is_user(p: &Posted, sender: &Person) -> bool {
 /// What a notification is (`Kind`), as its app and Android say it, and as
 /// the person chose for its app and site (`Choices`).
 pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> Kind {
-    if p.package == OWN || p.ongoing || p.full_screen || p.summary || UNTOUCHED.contains(&p.category.as_str()) {
+    if untouched(p) {
         return Kind::Untouched;
     }
     if is_code(p, words) {
         return Kind::Code;
     }
+    beside_its_words(p, choices, false)
+}
+
+/// What a notification is with what it says left aside, codes and
+/// approvals, a copy Android redacted included: who wrote it, its app, its
+/// site; a texting app's short number read as the number it is (never an
+/// automaton's text here), so that your lists can judge it. What a code, or a
+/// short number's text, from someone you blocked is read as, so that it is
+/// held as their every text is, whatever it says (the owner's yes of 26
+/// November 2026 to the codes' choice 4; the review of 28 November 2026, F2:
+/// a short number named by its digits alone, as /e/OS's Message names it).
+pub fn classify_sender(p: &Posted, choices: &Choices) -> Kind {
+    if untouched(p) { Kind::Untouched } else { beside_its_words(p, choices, true) }
+}
+
+/// Never held: Sioul's own, what runs or rings, a group's summary, the
+/// categories of `UNTOUCHED`.
+fn untouched(p: &Posted) -> bool {
+    p.package == OWN || p.ongoing || p.full_screen || p.summary || UNTOUCHED.contains(&p.category.as_str())
+}
+
+/// `classify` once neither untouched nor a code: its app's and its site's
+/// kind, else who wrote; a texting app's short number an automaton's, or,
+/// `short_as_number`, a person's message from that number.
+fn beside_its_words(p: &Posted, choices: &Choices, short_as_number: bool) -> Kind {
     let app = choices.app(&p.package);
     if app.kind == AppKind::AtOnce {
         return Kind::AtOnce;
@@ -595,17 +626,21 @@ pub fn classify(p: &Posted, choices: &Choices, words: &crate::words::Words) -> K
         Some(person) => sender_of(person, book, p.contacts),
         None => {
             let title = one_line(&p.title);
-            if sms && short_code(&title) {
+            if sms && short_code(&title) && !short_as_number {
                 return automaton;
             }
             sender_of(&Person { name: title, ..Person::default() }, book, p.contacts)
         }
     };
-    if sms && let Sender::Named { name, .. } = &sender
-        && short_code(name)
-    {
-        return automaton;
-    }
+    let sender = match sender {
+        Sender::Named { name, .. } if sms && short_code(&name) => {
+            if !short_as_number {
+                return automaton;
+            }
+            Sender::Known { numbers: vec![name], emails: Vec::new(), contact: false, asked: p.contacts }
+        }
+        other => other,
+    };
     let to = if via == Channel::Mail { address_in(&p.sub).unwrap_or_default() } else { String::new() };
     let conversation = if via == Channel::Messages { conversation_of(p, person, sms) } else { None };
     Kind::People(Talk { via, sender, conversation, to, to_unsaid: false, sms })
@@ -2108,10 +2143,14 @@ pub fn channels_plan(ledger: &Ledger, choices: &Choices, silenced: &Silenced, li
     // person's message or an app let through at once.
     let vital = |package: &str, channel: &str| seen(package).is_some_and(|s| s.vital.contains_key(channel));
     let mixed = |package: &str, channel: &str| seen(package).is_some_and(|s| s.mixed.contains_key(channel));
+    // An app Sioul gathered and then forgot, unseen for thirty days (`Ledger::forget_old`): what it made
+    // silent stays so, as long as you set the app neither at once nor as messages between people (the
+    // owner's yes of 26 November 2026; its sound came back before).
+    let forgotten = |package: &str| seen(package).is_none() && choices.app(package).kind == AppKind::Usual;
     let wanted = |package: &str, channel: &str| {
         let chosen = choices.app(package);
         let named = chosen.silent.iter().any(|c| c == channel);
-        on && !chosen.keep_sound && !vital(package, channel) && (named || (choices.hold && gathered_app(package, ledger, choices) && !mixed(package, channel)))
+        on && !chosen.keep_sound && !vital(package, channel) && (named || (choices.hold && (gathered_app(package, ledger, choices) || forgotten(package)) && !mixed(package, channel)))
     };
     for (package, channels) in &silenced.app {
         for (channel, kept) in channels {
@@ -2839,6 +2878,27 @@ mod tests {
         assert_eq!(kind, Kind::Automaton { site: String::new() });
         let held = decide(&kind, None, false, &Choices::default(), &ask(&at("2026-10-06T21:40[Europe/Paris]"), &clock, None, None));
         assert_eq!((held.why, until_of(held).as_str()), (Why::Gathered, "2026-10-07T09:00:00"));
+    }
+
+    /// The review of 28 November 2026, F2: a texting app's short number,
+    /// named by its digits alone (title, or its message's sender), is an
+    /// automaton's for `classify`, and, judged with its words left aside
+    /// (`classify_sender`), the number it is, so that the blocked list holds
+    /// its texts, its codes among them; a sender id ("AMELI") stays a name.
+    #[test]
+    fn a_short_number_is_judged_as_its_number() {
+        let none = Choices::default();
+        let titled = posted(SMS_SHORT);
+        let messaged = posted(r#"{"key":"0|foundation.e.message|8|null|10125","package":"foundation.e.message","app":"Message","category":"msg","title":"36111","text":"Votre code de validation est 482913.","messages":[{"sender":{"name":"36111"},"text":"Votre code de validation est 482913."}],"sms_app":true,"contacts":true}"#);
+        for (p, number, asked) in [(&titled, "38015", false), (&messaged, "36111", true)] {
+            assert!(matches!(beside_its_words(p, &none, false), Kind::Automaton { .. }), "{number}");
+            let Kind::People(talk) = classify_sender(p, &none) else { panic!("{number}: a person's message") };
+            assert_eq!(talk.sender, Sender::Known { numbers: vec![number.to_string()], emails: Vec::new(), contact: false, asked }, "{number}");
+            assert!(talk.sms);
+        }
+        assert!(matches!(classify(&titled, &none), Kind::Automaton { .. }), "as before for everything else");
+        let Kind::People(talk) = classify_sender(&posted(SMS_SENDER_ID), &none) else { panic!("a sender id") };
+        assert_eq!(talk.sender, Sender::Named { name: "AMELI".into(), book: true });
     }
 
     /// Review of 25 November 2026, must-fix 1 (b): a texting app's title that
@@ -3771,6 +3831,15 @@ mod tests {
         // A file of a later Sioul: nothing at all.
         let later = Silenced { format: SILENCED_FORMAT + 1, ..silenced.clone() };
         assert_eq!(channels_plan(&ledger, &off, &later, true), ChannelPlan::default());
+        // Unseen for thirty days, forgotten by the ledger: its channels stay silent (the owner's yes of 26
+        // November 2026), unless you set it at once; nothing new is made silent for it.
+        let mut later_on = ledger.clone();
+        later_on.forget_old(stamp + SEEN_KEPT + 60, &on);
+        assert!(!later_on.apps.contains_key("com.shop.example"), "forgotten by the ledger");
+        let plan = channels_plan(&later_on, &on, &silenced, true);
+        assert!(plan.restore.is_empty() && plan.silence.is_empty() && !plan.unlink, "{plan:?}");
+        assert_eq!(channels_plan(&later_on, &at_once, &silenced, true).restore, [("com.shop.example".to_string(), "offers".to_string(), 4)]);
+        assert_eq!(channels_plan(&later_on, &off, &silenced, true).restore.len(), 2, "turned off: given back all the same");
         // An app forgotten when given back for good.
         let mut gone = silenced.clone();
         gone.forget("com.shop.example", "");

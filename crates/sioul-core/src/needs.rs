@@ -538,6 +538,19 @@ pub enum DayProblem {
     Unknown,
 }
 
+/// How early the night's and a nap's own notice comes when sleep turns
+/// do-not-disturb on at the same minute (`[dnd] sleep`): a minute, so that
+/// the notice that says sleep begins is posted before the do-not-disturb
+/// holds it (seconds; the owner's yes of 26 November 2026).
+pub const BEFORE_SLEEP_DND: i64 = 60;
+
+/// When a block's own notice is said (Unix seconds): at its start; the
+/// night's and a nap's `BEFORE_SLEEP_DND` earlier when sleep turns
+/// do-not-disturb on (`sleep_dnd`), which begins at that start.
+pub fn said_at(block: &Kept, sleep_dnd: bool) -> i64 {
+    if sleep_dnd && (block.kind == "sleep" || block.kind == "nap") { block.start - BEFORE_SLEEP_DND } else { block.start }
+}
+
 /// `at` (Unix seconds) on the clock in `zone`: "12:30".
 fn clock(at: i64, zone: &TimeZone) -> String {
     jiff::Timestamp::from_second(at).map(|t| t.to_zoned(zone.clone()).strftime("%H:%M").to_string()).unwrap_or_default()
@@ -561,17 +574,20 @@ impl Today {
 
     /// The notices due `now` (Unix seconds) among `kept`, each marked given:
     /// (block, true) for the heads-up, `heads_up` minutes before, within ten
-    /// minutes of its time and never once the block began; (block, false) at
-    /// its time, within a quarter of an hour. Each once; none for a block
-    /// skipped today or whose notices are off.
-    pub fn due<'a>(&mut self, kept: &'a [Kept], heads_up: u32, now: i64) -> Vec<(&'a Kept, bool)> {
+    /// minutes of its time and never once its own notice may come; (block,
+    /// false) at its time (`said_at`: the night's and a nap's a minute early
+    /// when sleep turns do-not-disturb on, `sleep_dnd`), within a quarter of
+    /// an hour. Each once; none for a block skipped today or whose notices
+    /// are off.
+    pub fn due<'a>(&mut self, kept: &'a [Kept], heads_up: u32, sleep_dnd: bool, now: i64) -> Vec<(&'a Kept, bool)> {
         let mut out = Vec::new();
         for block in kept.iter().filter(|k| k.notices && !self.skipped.contains(&k.key)) {
+            let at = said_at(block, sleep_dnd);
             let ahead = block.start - i64::from(heads_up) * 60;
-            if heads_up > 0 && now >= ahead && now < block.start && now - ahead < 10 * 60 && self.sent.insert(format!("{}:heads-up", block.key)) {
+            if heads_up > 0 && now >= ahead && now < at && now - ahead < 10 * 60 && self.sent.insert(format!("{}:heads-up", block.key)) {
                 out.push((block, true));
             }
-            if now >= block.start && now - block.start < 15 * 60 && self.sent.insert(format!("{}:start", block.key)) {
+            if now >= at && now - at < 15 * 60 && self.sent.insert(format!("{}:start", block.key)) {
                 out.push((block, false));
             }
         }
@@ -1445,7 +1461,7 @@ mod tests {
         let at = |text: &str| -> i64 { format!("2026-10-05T{text}[Europe/Paris]").parse::<jiff::Zoned>().unwrap().timestamp().as_second() };
         let mut today = Today::default();
         // Lunch is got ready from 12:10: the heads-up at 11:55, once.
-        let given = |today: &mut Today, time: &str| -> Vec<(String, bool)> { today.due(&kept, 15, at(time)).into_iter().map(|(k, h)| (k.key.clone(), h)).collect() };
+        let given = |today: &mut Today, time: &str| -> Vec<(String, bool)> { today.due(&kept, 15, false, at(time)).into_iter().map(|(k, h)| (k.key.clone(), h)).collect() };
         assert!(given(&mut today, "11:54").is_empty());
         assert_eq!(given(&mut today, "11:56"), [("meal:1".to_string(), true)]);
         assert!(given(&mut today, "11:57").is_empty(), "once");
@@ -1458,6 +1474,19 @@ mod tests {
         // Not today: nothing at all.
         let mut skipped = Today { skipped: ["meal:1".to_string()].into(), ..Today::default() };
         assert!(given(&mut skipped, "11:56").is_empty() && given(&mut skipped, "12:11").is_empty());
+        // Sleep turning do-not-disturb on (`[dnd] sleep`): the night's own a minute before its start, the
+        // meals at theirs (the owner's yes of 26 November 2026).
+        let nights = Needs { sleep_on: true, meals_on: true, sleep: Sleep { bed: "23:00".into(), wake: "07:00".into(), wind_down: 30, ..Sleep::default() }, ..Needs::default() };
+        let kept = nights.kept_on(monday, &zone(), &none);
+        let night = kept.iter().find(|k| k.kind == "sleep" && hm(k.start) == "05 22:30").unwrap();
+        assert_eq!((said_at(night, true), said_at(night, false)), (night.start - BEFORE_SLEEP_DND, night.start));
+        let lunch = kept.iter().find(|k| k.key == "meal:1").unwrap();
+        assert_eq!(said_at(lunch, true), lunch.start, "a meal's own at its time");
+        let given = |today: &mut Today, time: &str, dnd: bool| -> Vec<(String, bool)> { today.due(&kept, 0, dnd, at(time)).into_iter().filter(|(k, _)| k.kind == "sleep").map(|(k, h)| (k.key.clone(), h)).collect() };
+        assert!(given(&mut Today::default(), "22:29", false).is_empty(), "without it, at its start");
+        let mut early = Today::default();
+        assert_eq!(given(&mut early, "22:29", true).len(), 1, "a minute before");
+        assert!(given(&mut early, "22:30", true).is_empty(), "once");
     }
 
     fn day(text: &str) -> Date {

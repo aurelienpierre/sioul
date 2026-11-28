@@ -192,4 +192,17 @@ fn a_forged_code_is_said_never_shown() {
     assert_eq!(proven.lane, Lane::RightNow);
     assert!(sioul_core::view::set_aside_codes(std::slice::from_ref(&proven), &tr).is_empty());
     assert_eq!(sioul_core::view::codes(std::slice::from_ref(&proven), &tr)[0].code.as_deref(), Some("551204"));
+    // A name that borrows a brand its address does not belong to (should-fix 5, the owner's yes of 26 November
+    // 2026): said as the forged one is, from its address, not verified, never its code.
+    let raw = "From: PayPal <billing@lumen.example.net>\r\nTo: you@example.org\r\nSubject: Votre code\r\nMessage-ID: <code-name@lumen.example.net>\r\n\
+               Authentication-Results: mx.example.net; spf=pass smtp.mailfrom=lumen.example.net; dkim=pass header.d=lumen.example.net; dmarc=pass (p=reject) header.from=lumen.example.net\r\n\
+               Content-Type: text/plain; charset=UTF-8\r\n\r\nVotre code de vérification : 551204. Il expire dans 10 minutes.\r\n";
+    let borrowed = porch::triage(sioul_core::card::Card::from_bytes(raw.as_bytes()).unwrap(), &ctx);
+    assert_eq!(borrowed.lane, Lane::SetAside);
+    assert!(borrowed.reasons.iter().any(|r| matches!(r, porch::Reason::Impersonation { .. })), "{:?}", borrowed.reasons);
+    let said = sioul_core::view::set_aside_codes(std::slice::from_ref(&borrowed), &tr);
+    assert_eq!(said.len(), 1);
+    assert_eq!((said[0].title.as_str(), said[0].code.as_deref()), ("Code from billing@lumen.example.net (not verified)", None));
+    assert_eq!(said[0].warning.as_deref(), Some(tr.text("right-now-set-aside-name", None).as_str()));
+    assert!(!said[0].body().contains("551204"), "{:?}", said[0].body());
 }

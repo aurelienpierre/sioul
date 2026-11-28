@@ -19,11 +19,13 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ShortcutInfo;
 import android.content.res.Resources;
+import android.database.ContentObserver;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
@@ -207,6 +209,19 @@ public final class AppNotes extends NotificationListenerService
     private final Runnable lineSoon = this::lineNow;
     /** A hold or a return settles this long before the line is written again (Android holds what it was asked by then). */
     private static final long LINE_SETTLE_MS = 1_000;
+    /** The held texts looked at again at most this often while the phone is in use, but when a text arrives (`look`). */
+    static final long LOOK_EVERY_MS = 60_000;
+    /** A text written into the phone's store: its app updates its notification within this, then it is looked at (ms). */
+    static final long LOOK_SETTLE_MS = 3_000;
+    /** When the held texts were last looked at again (Unix ms; 0, never). On the worker. */
+    private long lookedAt;
+    /** The texting apps Sioul knows (Rust's `appnotes::SMS_APPS`), asked once (`textingApps`); null until then. */
+    private Set<String> texting;
+    /** The held texts looked at again once a text arrived: one runnable, so that a burst of them runs it once. */
+    private final Runnable lookTexted = () -> look("texted", true);
+    /** The phone's store of texts watched for a text arriving (`watch`), and the phone unlocked; null when not watched. */
+    private ContentObserver textsArriving;
+    private BroadcastReceiver unlocked;
     /** The line as last posted (HeldNotices), so that one saying the same is not posted again; null: none known. */
     private HeldNotices.Line shown;
     /** People's messages come back since Sioul last told it (B2), kept on the worker. */
@@ -693,6 +708,8 @@ public final class AppNotes extends NotificationListenerService
         boolean runs = n == null || (n.flags & kept) != 0 || !sbn.isClearable();
         if (!runs && !getPackageName().equals(sbn.getPackageName()))
             worker.post(() -> decide(sbn, given));
+        // Any notification heard while the phone is in use: the held texts looked at again, once a minute at most.
+        worker.post(() -> look("heard", false));
         // While a quiet window is open, every notification posted is heard here, at once, on Android's thread;
         // after its decision was queued, so that what the window's close tells counts it (B2).
         heard(sbn, n, given, runs);
@@ -1528,6 +1545,7 @@ public final class AppNotes extends NotificationListenerService
     private void watch()
     {
         unwatch();
+        watchTexts();
         File files = getFilesDir();
         for (String folder : new String[] { "state/sioul", "config/sioul", "data/sioul", "data/sioul/time" }) {
             String path = new File(files, folder).getAbsolutePath();
@@ -1592,6 +1610,155 @@ public final class AppNotes extends NotificationListenerService
         for (FileObserver observer : watches)
             observer.stopWatching();
         watches.clear();
+        try {
+            if (textsArriving != null)
+                getContentResolver().unregisterContentObserver(textsArriving);
+            if (unlocked != null)
+                unregisterReceiver(unlocked);
+        } catch (RuntimeException e) {
+            // Unregistered already.
+        }
+        textsArriving = null;
+        unlocked = null;
+    }
+
+    /**
+     * The phone's store of texts watched for a text arriving, and the phone
+     * unlocked: each time, the held texts looked at again (`look`). A text
+     * written into a conversation whose notification Sioul holds updates the
+     * held record and posts nothing (AOSP's SnoozeHelper): the store's change,
+     * a few seconds before its app updates its notification, is the one word
+     * of it the listener gets. Without the texts' permission, only the unlock
+     * and the notifications heard. On the worker.
+     */
+    private void watchTexts()
+    {
+        try {
+            ContentObserver observer = new ContentObserver(worker) {
+                @Override
+                public void onChange(boolean self)
+                {
+                    worker.removeCallbacks(lookTexted);
+                    worker.postDelayed(lookTexted, LOOK_SETTLE_MS);
+                }
+            };
+            getContentResolver().registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer);
+            textsArriving = observer;
+        } catch (RuntimeException e) {
+            // No access to the texts (refused, or none on this phone): the unlock and the notifications heard still look.
+            Log.i(TAG, "Notes: the texts' store is not watched: " + e.getClass().getSimpleName());
+        }
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent)
+            {
+                if (Intent.ACTION_USER_PRESENT.equals(intent.getAction()))
+                    worker.post(() -> look("unlocked", true));
+            }
+        };
+        IntentFilter filter = new IntentFilter(Intent.ACTION_USER_PRESENT);
+        // Exported: SystemUI sends it; a protected broadcast, which no app can send.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+        else
+            registerReceiver(receiver, filter);
+        unlocked = receiver;
+    }
+
+    /**
+     * Whether the second look reads a held notification of this app: the
+     * phone's SMS app, or one of the texting apps Sioul knows, never another
+     * app's chats (the design of 25 November 2026, point 2; the review of 28
+     * November 2026, F3). Pure (HeldCheck).
+     *
+     * @param pkg the notification's app
+     * @param smsApp the phone's SMS app, "" for none
+     * @param texting the texting apps Sioul knows
+     * @return whether it is looked at
+     */
+    static boolean looksAt(String pkg, String smsApp, Set<String> texting)
+    {
+        return pkg != null && !pkg.isEmpty() && (pkg.equals(smsApp) || texting.contains(pkg));
+    }
+
+    /** The texting apps Sioul knows, as Rust lists them ("texting"), asked once; none when Rust does not answer. */
+    private Set<String> textingApps()
+    {
+        if (texting != null)
+            return texting;
+        Set<String> apps = new HashSet<>();
+        try {
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("texting", "{}");
+            JSONArray listed = answer == null || answer.isEmpty() || "null".equals(answer) ? null : new JSONObject(answer).optJSONArray("apps");
+            for (int i = 0; listed != null && i < listed.length(); i++)
+                if (!listed.optString(i, "").isEmpty())
+                    apps.add(listed.optString(i));
+            texting = apps;
+        } catch (Throwable e) {
+            // Rust that fails: the phone's SMS app alone this time, asked again at the next look.
+            Log.w(TAG, "Notes: the texting apps were not said: " + e.getClass().getSimpleName());
+        }
+        return apps;
+    }
+
+    /**
+     * The second look at held conversations (docs/android.md, "Never held"):
+     * while the phone is in use, a texting app's conversation that Sioul holds
+     * and whose newest message became a code comes now, held again for a
+     * second as a release is, so that it is decided again as it stands
+     * (Rust's `look`, sioul-app appnotes.rs: never the blocked's, never one
+     * whose code is over; anything else stays held, its time untouched). When
+     * a text arrived (`now`), at the unlock, and at most once a minute
+     * otherwise; never with the screen off, when no code is asked, nor on
+     * Android 9 and 10 (`fixed`). Only the texting apps' held notifications
+     * (`looksAt`) are described to Rust, in memory, as `decide` reads them,
+     * their conversations' records left as they are (no ranking, no
+     * `remember`). On the worker.
+     */
+    private void look(String why, boolean now)
+    {
+        // Android 9 and 10 keep a held notification's first time: holding it again for a second brings
+        // nothing back, so there is no second look there (the review of 28 November 2026, F4).
+        if (!connected || fixed())
+            return;
+        long at = System.currentTimeMillis();
+        if (!now && at >= lookedAt && at - lookedAt < LOOK_EVERY_MS)
+            return;
+        if (!Notices.inUse(getApplicationContext()))
+            return;
+        lookedAt = at;
+        try {
+            StatusBarNotification[] held = getSnoozedNotifications();
+            JSONArray described = new JSONArray();
+            Set<String> apps = textingApps();
+            for (int i = 0; held != null && i < held.length; i++) {
+                StatusBarNotification sbn = held[i];
+                if (sbn != null && sbn.getNotification() != null && looksAt(sbn.getPackageName(), smsApp(), apps))
+                    described.put(describe(sbn, null));
+            }
+            if (described.length() == 0)
+                return;
+            DoseAlarms.load(getApplicationContext());
+            String answer = nativeShade("look", new JSONObject().put("held", described).put("why", why).toString());
+            if (answer == null || answer.isEmpty() || "null".equals(answer))
+                return;
+            JSONObject looked = new JSONObject(answer);
+            JSONArray release = looked.optJSONArray("release");
+            for (int i = 0; release != null && i < release.length(); i++) {
+                String key = release.optString(i, "");
+                if (!key.isEmpty()) {
+                    window.forget(key);
+                    snooze(key, 1000);
+                }
+            }
+            String line = looked.optString("line", "");
+            if (!line.isEmpty())
+                Log.i(TAG, line);
+        } catch (Throwable e) {
+            // Rust that fails, Android's service gone a moment: what is held stays as it was.
+            Log.w(TAG, "Notes: the held texts were not looked at again: " + e.getClass().getSimpleName());
+        }
     }
 
     // ---------------------------------------------------------------- read elsewhere
@@ -1848,8 +2015,10 @@ public final class AppNotes extends NotificationListenerService
         // The channel Android ranked it on, whose importance this is: a conversation's own (Android 11 and
         // later), not its app's, once the conversation was given one.
         out.put("ranked_channel", given == null || given.getId() == null ? "" : given.getId());
-        // Its page in Android, for the tab: where a conversation Always through is marked important.
-        if (!shortcut.trim().isEmpty())
+        // Its page in Android, for the tab: where a conversation Always through is marked important. Only
+        // from a notification Android ranked: one held, described without its ranking (the second look),
+        // would write its conversation as no conversation, on its own channel (the review of 28 November 2026, F3).
+        if (ranking != null && !shortcut.trim().isEmpty())
             remember(this, sbn.getPackageName(), shortcut.trim(), channel, given, conversation, System.currentTimeMillis());
         boolean alerted = ranking != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             && ranking.getLastAudiblyAlertedMillis() > 0 && System.currentTimeMillis() - ranking.getLastAudiblyAlertedMillis() < ALERTED_MS;

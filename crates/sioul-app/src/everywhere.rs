@@ -1185,6 +1185,8 @@ fn change_here(verb: &str, json: &str) -> String {
         }
         // This phone kept in step in the background, or not (its own setting).
         "background" => crate::steps::set_background(asked["on"] == true).err().unwrap_or_default(),
+        // The faster fetch for codes after an unlock, or not (this phone's own setting, off unless turned on).
+        "code_fetch" => sioul_core::settings::apply(&crate::backend::config_path(), &config, "dnd.code_fetch", &sioul_core::config::SettingValue::Bool(asked["on"] == true)).err().unwrap_or_default(),
         // Starred people both ways, on every device (`stars::turn`: on a phone, Android asked first).
         "stars" => crate::stars::turn(asked["on"] == true).err().unwrap_or_default(),
         // GNOME's consent, the same one the pauses use.

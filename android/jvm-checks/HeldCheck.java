@@ -101,6 +101,17 @@ public final class HeldCheck
         String held = read(sources.resolve("HeldNotices.java"));
         String notes = read(sources.resolve("AppNotes.java"));
         String lineCode = body(held, "static void line(Context context, Line line)");
+        // The second look (the review of 28 November 2026, F3 and F4): the texting apps alone, no conversation's
+        // record written from a held notification, nothing on Android 9 and 10.
+        java.util.Set<String> texting = new java.util.HashSet<>(java.util.Arrays.asList("foundation.e.message", "org.fossify.messages"));
+        expect("the phone's SMS app is looked at", AppNotes.looksAt("org.example.sms", "org.example.sms", texting), true);
+        expect("a texting app Sioul knows", AppNotes.looksAt("foundation.e.message", "", texting), true);
+        expect("never another app's chats", AppNotes.looksAt("com.whatsapp", "foundation.e.message", texting) || AppNotes.looksAt("org.thoughtcrime.securesms", "", texting), false);
+        expect("no app, none", AppNotes.looksAt("", "", texting), false);
+        String describing = body(notes, "private JSONObject describe(StatusBarNotification sbn, Ranking ranking)");
+        expect("a conversation's record written only from a ranked notification", describing.contains("if (ranking != null && !shortcut.trim().isEmpty())") && describing.indexOf("remember(this,") > describing.indexOf("if (ranking != null && !shortcut.trim().isEmpty())"), true);
+        String looking = body(notes, "private void look(String why, boolean now)");
+        expect("the look: none on Android 9 and 10, texting apps alone, described without a ranking", looking.contains("if (!connected || fixed())") && looking.contains("looksAt(sbn.getPackageName(), smsApp(), apps)") && looking.contains("describe(sbn, null)") && !looking.contains("CATEGORY_MESSAGE"), true);
         expect("its channel: minimum importance, no sound", lineCode.contains("Channels.quiet(HELD, ") && lineCode.contains("NotificationManager.IMPORTANCE_MIN") && lineCode.contains("channel.setSound(null, null)"), true);
         expect("never ongoing, alerting once, staying at a tap", lineCode.contains(".setOngoing(false)") && lineCode.contains(".setOnlyAlertOnce(true)") && lineCode.contains(".setAutoCancel(false)"), true);
         expect("nothing said goes", lineCode.indexOf("if (line.text.isEmpty()) {") >= 0 && lineCode.indexOf("cancelLine(context);") > lineCode.indexOf("if (line.text.isEmpty()) {"), true);

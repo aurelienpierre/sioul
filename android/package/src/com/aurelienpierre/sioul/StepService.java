@@ -124,6 +124,18 @@ public final class StepService extends Service
     private String calls = "";
     /** A step asked while one runs: the phone stays awake for it. */
     private volatile boolean posted;
+    /** When the last step began (elapsed ms; 0, none yet): the unlock's step comes two minutes after it at the soonest. */
+    private volatile long ranAt;
+    /** The unlock's step comes no sooner than this after the last one (ms): a code may be on its way (Rust's `code_expected`). */
+    static final long UNLOCKED_EVERY_MS = 2 * 60_000L;
+    /**
+     * When the phone was last unlocked (Unix ms; 0, not since this process
+     * began), kept apart from the steps: each step reads it ("unlocked"), so
+     * that a step that ran or waited just before the unlock does not hide it.
+     */
+    static volatile long unlockedAt;
+    /** The faster fetch for codes is on on this phone, as the last step said (`code_fetch`): off, the unlock asks no step. */
+    private volatile boolean codeFetch;
     /** The step asked for later, waiting for its alarm (`later`); none: null. */
     private Later waiting;
     /** The names of the other devices' files the sync app wrote since the last step, for Rust ("folder:"). */
@@ -152,6 +164,8 @@ public final class StepService extends Service
                 return "true";
             case "running":
                 return runningHere(context) ? "true" : "false";
+            case "unlocked":
+                return new JSONObject().put("at", unlockedAt).toString();
             case "battery":
                 return exempt(context) ? "true" : "false";
             case "ask-battery":
@@ -489,8 +503,10 @@ public final class StepService extends Service
             @Override
             public void onReceive(Context context, Intent intent)
             {
-                if (Intent.ACTION_USER_PRESENT.equals(intent.getAction()))
+                if (Intent.ACTION_USER_PRESENT.equals(intent.getAction())) {
                     Notices.seen(context.getApplicationContext());
+                    unlockedStep();
+                }
             }
         };
         IntentFilter unlocked = new IntentFilter(Intent.ACTION_USER_PRESENT);
@@ -851,9 +867,52 @@ public final class StepService extends Service
         }
     }
 
+    /**
+     * The phone unlocked: its time kept (`unlockedAt`), and, while the faster
+     * fetch for codes is on, a step that fetches mail for a code you may be
+     * waiting for (Rust's `steps::code_expected`: for ten minutes, while the
+     * phone stays in use, a round every two minutes), when `unlockedDelay` says.
+     */
+    private void unlockedStep()
+    {
+        unlockedAt = System.currentTimeMillis();
+        boolean queued;
+        synchronized (this) {
+            queued = posted || waiting != null;
+        }
+        long delay = unlockedDelay(codeFetch, queued, ranAt, SystemClock.elapsedRealtime());
+        if (delay >= 0)
+            step("unlocked", delay);
+    }
+
+    /**
+     * When the unlock's step comes (ms from now), or -1 for none: none while
+     * the faster fetch is off (`on`), or while a step is about to run or waits
+     * already (`queued`: it reads the unlock's time); now when the last one
+     * began two minutes ago or more, none ran, or the clock went back; else
+     * two minutes after the last one (the review of 28 November 2026, F1: an
+     * unlock thirty seconds after a step still opens the ten minutes). Pure
+     * (StepsCheck).
+     *
+     * @param on the faster fetch is on
+     * @param queued a step is about to run or waits for its time
+     * @param ranAt when the last step began (elapsed ms; 0, none)
+     * @param now the time now (elapsed ms)
+     * @return the delay (ms), or -1
+     */
+    static long unlockedDelay(boolean on, boolean queued, long ranAt, long now)
+    {
+        if (!on || queued)
+            return -1;
+        if (ranAt <= 0 || now < ranAt || now - ranAt >= UNLOCKED_EVERY_MS)
+            return 0;
+        return UNLOCKED_EVERY_MS - (now - ranAt);
+    }
+
     private void run(String reason)
     {
         posted = false;
+        ranAt = SystemClock.elapsedRealtime();
         String names = takeWritten();
         try {
             // A folder's step whose files a step since has read (their names taken): nothing left to do.
@@ -880,6 +939,7 @@ public final class StepService extends Service
                 return;
             }
             schedule(this, answer.optLong("next", USUAL_S));
+            codeFetch = answer.optBoolean("code_fetch", false);
             own = answer.optString("own", own);
             watchFolder(answer.optString("folder", ""));
             if (answer.optJSONObject("calls") == null)

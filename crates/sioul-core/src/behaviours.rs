@@ -318,7 +318,7 @@ impl Group {
     pub fn kinds(self) -> &'static [Kind] {
         match self {
             Group::Asked => &[Kind::Codes, Kind::Doses, Kind::Wake, Kind::Alarms],
-            Group::Reminders => &[Kind::Before, Kind::DayBefore, Kind::Dates],
+            Group::Reminders => &[Kind::Before, Kind::Dates],
             Group::Care => &[Kind::Needs, Kind::Move, Kind::WorkOver, Kind::Time],
             Group::Sites => &[Kind::Sites, Kind::AppAutomatons],
         }

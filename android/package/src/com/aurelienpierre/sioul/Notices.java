@@ -26,8 +26,10 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -289,6 +291,43 @@ final class Notices
         return said.actionable || PauseMode.MAIL_CHANNEL.equals(said.channel);
     }
 
+    /** A code's notice: its kind as Rust says it (attention::Kind::Codes). */
+    static final String CODES = "codes";
+    /** One sound per sender of codes within this time (ms): the rest come silent in the shade. */
+    static final long CODE_SOUND_EVERY_MS = 2 * 60_000L;
+    /** When this process last rang for a code from each sender (its notice's title, the sender as safe to say). */
+    private static final Map<String, Long> CODES_RUNG = new HashMap<>();
+
+    /**
+     * Whether a code's notice comes silent, in the shade without a sound,
+     * because a code from the same sender (its title: "Code from …", "A
+     * code in …") rang here less than two minutes ago; one that rings is
+     * noted. Ten texts worded as codes at night, under one of Sioul's modes,
+     * are one sound (the owner's yes of 26 November 2026 to the codes'
+     * choice 5). A clock set back forgets what it noted. Kept in this
+     * process: the listener's (texts) and the steps' (mail) each keep their
+     * own. Checked on a JVM (NoticesCheck).
+     *
+     * @param rung when each sender last rang (ms), changed here
+     * @param title the notice's title
+     * @param now the time now (Unix ms)
+     * @return whether it comes silent
+     */
+    static boolean codeSilent(Map<String, Long> rung, String title, long now)
+    {
+        rung.values().removeIf(at -> now - at >= CODE_SOUND_EVERY_MS || now < at);
+        if (rung.containsKey(title))
+            return true;
+        rung.put(title, now);
+        return false;
+    }
+
+    /** `codeSilent` on this process's own map. */
+    private static synchronized boolean codeSilentNow(String title, long now)
+    {
+        return codeSilent(CODES_RUNG, title, now);
+    }
+
     /**
      * Each press's own request code, so that Android keeps their intents
      * apart (the same address in two notices, two buttons of one): the
@@ -337,7 +376,9 @@ final class Notices
         String channel = channelOf(said, passing);
         boolean seen = inUse(context);
         long timeout = timeout(said.actionable, said.lastsMs, said.endsMs, now, seen);
-        boolean alerts = alerts(said);
+        // A code from a sender that rang less than two minutes ago: in the shade, without a sound.
+        boolean silent = CODES.equals(said.kind) && codeSilentNow(said.title, now);
+        boolean alerts = alerts(said) && !silent;
         Bundle extras = new Bundle();
         extras.putString(ABOUT, said.about);
         extras.putLong(LASTS, said.lastsMs);
@@ -360,7 +401,9 @@ final class Notices
             .setOnlyAlertOnce(!alerts)
             .setOngoing(false)
             .setGroup(GROUP + said.group)
-            .setGroupAlertBehavior(Notification.GROUP_ALERT_CHILDREN)
+            // A code's notice that comes silent: a child of its group whose summary alone may alert makes no
+            // sound nor vibration, whatever its channel (what androidx's setSilent does).
+            .setGroupAlertBehavior(silent ? Notification.GROUP_ALERT_SUMMARY : Notification.GROUP_ALERT_CHILDREN)
             .addExtras(extras);
         if (timeout > 0)
             note.setTimeoutAfter(timeout);

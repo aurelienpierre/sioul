@@ -4164,7 +4164,9 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
     let stamp = now.timestamp().as_second();
     let pushed = needs.past_events_on(now.date(), now.time_zone(), &days, &held_today(now));
     let kept = needs.kept_with(now.date(), now.time_zone(), &days, &|key: &str| pushed.get(key).copied().unwrap_or(0));
-    let due: Vec<(Kept, bool)> = today.due(&kept, needs.heads_up, stamp).into_iter().map(|(block, heads_up)| (block.clone(), heads_up)).collect();
+    // Sleep turning do-not-disturb on at the night's start: its own notice a minute before (`needs::said_at`).
+    let sleep_dnd = crate::backend::load_config().dnd.sleep;
+    let due: Vec<(Kept, bool)> = today.due(&kept, needs.heads_up, sleep_dnd, stamp).into_iter().map(|(block, heads_up)| (block.clone(), heads_up)).collect();
     if due.is_empty() {
         return Vec::new();
     }
@@ -4184,7 +4186,7 @@ fn needs_now(health: &Health, now: &Zoned) -> Vec<(Kept, bool)> {
     let starting = attention.level(row, &awake) == sioul_core::attention::Level::Now;
     due.into_iter()
         .filter(|(block, heads_up)| {
-            let own_start = !heads_up && (block.kind == "sleep" || block.kind == "nap") && block.start <= stamp;
+            let own_start = !heads_up && (block.kind == "sleep" || block.kind == "nap") && sioul_core::needs::said_at(block, sleep_dnd) <= stamp;
             may || (own_start && starting)
         })
         .collect()
@@ -4249,14 +4251,16 @@ fn need_notice(block: &Kept, heads_up: bool, now: &Zoned) -> sioul_core::notice:
 pub(crate) fn coming_night(now: &Zoned) -> Vec<(String, i64)> {
     let stamp = now.timestamp().as_second();
     let today = sioul_core::needs::Today::load(&sioul_core::needs::Today::default_path(), now.date());
+    // A minute before the night's start when sleep turns do-not-disturb on then (`needs::said_at`).
+    let sleep_dnd = crate::backend::load_config().dnd.sleep;
     crate::hours::blocks(now)
         .kept
         .iter()
-        .filter(|block| block.kind == "sleep" && block.notices && stamp - block.start < 15 * 60)
+        .filter(|block| block.kind == "sleep" && block.notices && stamp - sioul_core::needs::said_at(block, sleep_dnd) < 15 * 60)
         .filter_map(|block| {
             let date = Timestamp::from_second(block.start).ok()?.to_zoned(now.time_zone().clone()).date();
             let given = date == now.date() && today.sent.contains(&format!("{}:start", block.key));
-            (!given).then(|| (format!("day:night:{date}"), block.start))
+            (!given).then(|| (format!("day:night:{date}"), sioul_core::needs::said_at(block, sleep_dnd)))
         })
         .collect()
 }
@@ -4275,20 +4279,23 @@ pub(crate) fn coming_needs(now: &Zoned) -> Vec<(String, i64)> {
         let date = Timestamp::from_second(block.start).ok().map(|t| t.to_zoned(now.time_zone().clone()).date());
         date == Some(now.date()) && today.sent.contains(&format!("{}:{what}", block.key))
     };
-    needs_alarms(&crate::hours::blocks(now).kept, heads_up, now.timestamp().as_second(), given)
+    needs_alarms(&crate::hours::blocks(now).kept, heads_up, crate::backend::load_config().dnd.sleep, now.timestamp().as_second(), given)
 }
 
-/// `coming_needs` from the blocks kept, the heads-up's minutes (seconds), now
-/// (Unix seconds) and what was given here already: pure.
-fn needs_alarms(kept: &[Kept], heads_up: i64, stamp: i64, given: impl Fn(&Kept, &str) -> bool) -> Vec<(String, i64)> {
+/// `coming_needs` from the blocks kept, the heads-up's minutes (seconds),
+/// whether sleep turns do-not-disturb on (`sleep_dnd`: a nap's own notice a
+/// minute early, `needs::said_at`), now (Unix seconds) and what was given
+/// here already: pure.
+fn needs_alarms(kept: &[Kept], heads_up: i64, sleep_dnd: bool, stamp: i64, given: impl Fn(&Kept, &str) -> bool) -> Vec<(String, i64)> {
     let mut out = Vec::new();
     for block in kept.iter().filter(|block| block.notices) {
+        let at = sioul_core::needs::said_at(block, sleep_dnd);
         let ahead = block.start - heads_up;
-        if heads_up > 0 && stamp - ahead < 10 * 60 && stamp < block.start && !given(block, "heads-up") {
+        if heads_up > 0 && stamp - ahead < 10 * 60 && stamp < at && !given(block, "heads-up") {
             out.push((format!("day:need:{ahead}:{}:heads-up", block.key), ahead));
         }
-        if block.kind != "sleep" && stamp - block.start < 15 * 60 && !given(block, "start") {
-            out.push((format!("day:need:{}:{}:start", block.start, block.key), block.start));
+        if block.kind != "sleep" && stamp - at < 15 * 60 && !given(block, "start") {
+            out.push((format!("day:need:{at}:{}:start", block.key), at));
         }
     }
     out
@@ -4329,7 +4336,9 @@ fn tell_needs(now: &Zoned) -> bool {
 /// it does not come.
 pub(crate) fn decide_night(now: &Zoned) -> serde_json::Value {
     let stamp = now.timestamp().as_second();
-    let starts: Vec<i64> = crate::hours::blocks(now).kept.iter().filter(|block| block.kind == "sleep").map(|block| block.start).collect();
+    // Its notice's time: a minute before the night's start when sleep turns do-not-disturb on then.
+    let sleep_dnd = crate::backend::load_config().dnd.sleep;
+    let starts: Vec<i64> = crate::hours::blocks(now).kept.iter().filter(|block| block.kind == "sleep").map(|block| sioul_core::needs::said_at(block, sleep_dnd)).collect();
     if let Some(start) = starts.iter().copied().filter(|start| *start > stamp).min()
         && start - stamp < 3600
     {
@@ -8175,18 +8184,22 @@ mod tests {
         let night = Kept { key: "sleep".into(), kind: "sleep", index: 0, name: String::new(), start: at(22, 30), at: at(23, 0), end: at(23, 59), notices: true };
         let kept = [lunch.clone(), nap, night.clone()];
         let none = |_: &Kept, _: &str| false;
-        let alarms = needs_alarms(&kept, 15 * 60, at(9, 0), none);
+        let alarms = needs_alarms(&kept, 15 * 60, false, at(9, 0), none);
         assert_eq!(
             alarms,
             [(format!("day:need:{}:meal:0:heads-up", at(12, 15)), at(12, 15)), (format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30)), (format!("day:need:{}:sleep:heads-up", at(22, 15)), at(22, 15))],
             "the nap's notices off; the night's own is the night's alarm"
         );
-        assert_eq!(needs_alarms(&kept, 15 * 60, at(9, 1), none), alarms, "the same a minute on");
-        let past = needs_alarms(&kept, 15 * 60, at(12, 40), none);
+        assert_eq!(needs_alarms(&kept, 15 * 60, false, at(9, 1), none), alarms, "the same a minute on");
+        let past = needs_alarms(&kept, 15 * 60, false, at(12, 40), none);
         assert_eq!(past, [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30)), (format!("day:need:{}:sleep:heads-up", at(22, 15)), at(22, 15))], "the heads-up gone once the meal began");
-        assert_eq!(needs_alarms(&kept, 15 * 60, at(12, 45), none).len(), 1, "a quarter of an hour on, the meal's own gone too");
-        assert_eq!(needs_alarms(&kept, 15 * 60, at(9, 0), |block: &Kept, what: &str| block.key == "meal:0" && what == "heads-up").len(), 2, "given here already");
-        assert_eq!(needs_alarms(&kept, 0, at(9, 0), none), [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30))], "no heads-up set");
+        assert_eq!(needs_alarms(&kept, 15 * 60, false, at(12, 45), none).len(), 1, "a quarter of an hour on, the meal's own gone too");
+        assert_eq!(needs_alarms(&kept, 15 * 60, false, at(9, 0), |block: &Kept, what: &str| block.key == "meal:0" && what == "heads-up").len(), 2, "given here already");
+        assert_eq!(needs_alarms(&kept, 0, false, at(9, 0), none), [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30))], "no heads-up set");
+        // Sleep turning do-not-disturb on (`[dnd] sleep`): a nap's own a minute before its start, a meal's at its time.
+        let nap = Kept { key: "nap:0".into(), kind: "nap", index: 0, name: String::new(), start: at(14, 0), at: at(14, 0), end: at(14, 30), notices: true };
+        let naps = [lunch.clone(), nap];
+        assert_eq!(needs_alarms(&naps, 0, true, at(9, 0), none), [(format!("day:need:{}:meal:0:start", at(12, 30)), at(12, 30)), (format!("day:need:{}:nap:0:start", at(13, 59)), at(13, 59))]);
         // A meal's heads-up and its own share their place; the night's own keeps its day's.
         assert_eq!(need_tag(&lunch, true, &zone), need_tag(&lunch, false, &zone));
         assert_eq!(need_tag(&lunch, false, &zone), "day:need:2026-11-14:meal:0");

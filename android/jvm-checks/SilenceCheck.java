@@ -26,7 +26,8 @@ import java.util.TreeMap;
  * nothing forgotten. Then, read from the sources: the association asks for
  * no profile and no permission, the feature is not required, the activity
  * and the listener's receiver are never exported, Android's chooser shows
- * the paired devices (a Bluetooth filter), channels changed in one place
+ * the paired devices (a Bluetooth filter) and the Wi-Fi networks around (a
+ * Wi-Fi filter, in the same request), channels changed in one place
  * for this phone's own profile, the link let go only when Rust says nothing
  * is left.
  */
@@ -257,6 +258,7 @@ public final class SilenceCheck
         expect("no device profile asked", companion.contains("setDeviceProfile") || companion.contains("DEVICE_PROFILE"), false);
         expect("never self-managed", companion.contains("setSelfManaged"), false);
         expect("Android's list shows the paired devices: a Bluetooth filter", companion.contains("new BluetoothDeviceFilter.Builder().build()"), true);
+        expect("and the Wi-Fi networks around, in the same request (the owner's yes of 26 November 2026)", companion.contains(".addDeviceFilter(new WifiDeviceFilter.Builder().build())") && companion.indexOf("WifiDeviceFilter.Builder()") < companion.indexOf(".build();\n        CompanionDeviceManager.Callback"), true);
         expect("the feature not required", manifest.contains("<uses-feature android:name=\"android.software.companion_device_setup\" android:required=\"false\" />"), true);
         expect("no permission for it", manifest.contains("REQUEST_COMPANION"), false);
         int activity = manifest.indexOf("com.aurelienpierre.sioul.Companion\"");

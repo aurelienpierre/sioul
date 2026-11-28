@@ -303,7 +303,7 @@ const fn with_ids(list: &'static str, by: &'static [&'static str]) -> Keyed {
 /// zone it shows, what it is (a phone, a tablet or a computer), and where it
 /// reads the extensions' signed list (an address on this device for a trial,
 /// or one that only this device should follow: docs/extensions.md).
-const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "letters.folder", "papers.folder", "dnd.background", "agenda.time_zone", "spam.train_here", "spam.train_network", "device_kind", "extensions.manifest"];
+const CONFIG_LOCAL: &[&str] = &["case_store", "known_senders", "blocked_senders", "reading", "history_weeks", "letters.inbox", "letters.folder", "papers.folder", "dnd.background", "dnd.code_fetch", "agenda.time_zone", "spam.train_here", "spam.train_network", "device_kind", "extensions.manifest"];
 static CONFIG_RULES: Rules = Rules { keyed: &[Keyed { list: "account", by: &["id"], local: &["maildir", "history_weeks"], also: &[], ids: false }], whole: &[], local: CONFIG_LOCAL, next: Some(&CONFIG_RULES_2) };
 /// Format 2: pinned sites, routines and task kinds one each, by their ids;
 /// days off one each; the words you added to a list and those you took
@@ -12611,7 +12611,7 @@ mod tests {
         let (desk, laptop) = (Computer::new(&base, "desk"), Computer::new(&base, "laptop"));
 
         // The desk shares first: its settings, its lists, a draft, a session.
-        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\ndevice_kind = \"tablet\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[spam]\ntrain_here = false\ntrain_network = \"unmetered\"\n\n[extensions]\nmanifest = \"/desk/sioul-extensions/manifest.toml\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
+        desk.write("config/config.toml", "language = \"fr\"\ncase_store = \"~/Notes\"\ndevice_kind = \"tablet\"\n\n[tasks]\nkind = \"plan\"\n\n[agenda]\ntime_zone = \"Asia/Tokyo\"\n\n[dnd]\ncode_fetch = true\n\n[spam]\ntrain_here = false\ntrain_network = \"unmetered\"\n\n[extensions]\nmanifest = \"/desk/sioul-extensions/manifest.toml\"\n\n[[account]]\nid = \"perso\"\nkind = \"imap\"\nmaildir = \"/desk/mail\"\n");
         desk.write("config/blocked-senders.txt", "spam@example.org\n");
         desk.write("data/drafts/a1.toml", "subject = \"Hello\"\n");
         desk.write("data/time/2026-10.toml", "[[session]]\ntask = \"t1\"\nstart = 100\nminutes = 25\n");
@@ -12628,6 +12628,7 @@ mod tests {
         assert!(config.contains("America/New_York") && !config.contains("Asia/Tokyo"), "the time zone shown stays here: {config}");
         assert!(!config.contains("train_here") && !config.contains("unmetered"), "whether a device trains, and on which networks, stays on it: {config}");
         assert!(!config.contains("device_kind"), "what a device is (a tablet here) stays on it: {config}");
+        assert!(!config.contains("code_fetch"), "the faster fetch for codes after an unlock stays on the device that turned it on: {config}");
         assert!(!config.contains("/desk/sioul-extensions"), "where the extensions' list is read stays on each device: {config}");
         assert!(config.contains("id = \"perso\"") && !config.contains("/desk/mail"), "accounts come, without this computer's paths: {config}");
         assert_eq!(laptop.read("data/drafts/a1.toml"), "subject = \"Hello\"\n");

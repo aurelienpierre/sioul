@@ -11,6 +11,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * - StepService.Later.of: a step asked for later, by its own alarm, joined
  *   to the one waiting: a folder's moved on by each file written, never in
  *   place of a message's; a message's joining the one waiting at its time;
+ * - StepService.unlockedDelay: the step at an unlock while the faster fetch
+ *   for codes is on: none while off or a step is queued, now two minutes or
+ *   more after the last one, else two minutes after it (an unlock thirty
+ *   seconds after a step still has its step, at ninety seconds);
  * - StepService.othersFile: which files written in the sharing folder bring
  *   a step (another device's; never a hidden one, never this phone's own);
  * - Texts.changedSince: whether the import asks Android (the texts watched in
@@ -43,6 +47,14 @@ public final class StepsCheck
 
     public static void main(String[] args)
     {
+        // The unlock's step (the review of 28 November 2026, F1), the faster fetch on or off.
+        long two = StepService.UNLOCKED_EVERY_MS;
+        expect("off: no step at the unlock", StepService.unlockedDelay(false, false, 100_000, 100_000 + 3 * two), -1L);
+        expect("a step queued: it reads the unlock's time", StepService.unlockedDelay(true, true, 100_000, 130_000), -1L);
+        expect("thirty seconds after a step: ninety seconds on", StepService.unlockedDelay(true, false, 100_000, 130_000), two - 30_000);
+        expect("two minutes after a step: now", StepService.unlockedDelay(true, false, 100_000, 100_000 + two), 0L);
+        expect("no step yet: now", StepService.unlockedDelay(true, false, 0, 5_000), 0L);
+        expect("a clock before the last step: now", StepService.unlockedDelay(true, false, 100_000, 50_000), 0L);
         // None waiting: the step comes `delay` on.
         expect("a folder's, alone", later(null, "folder", 3_000, 100_000), "folder@103000");
         expect("a message's, alone", later(null, "messages", 20_000, 100_000), "messages@120000");

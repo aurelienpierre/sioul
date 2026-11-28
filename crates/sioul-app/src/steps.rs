@@ -74,6 +74,20 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 static IN_SERVICE: AtomicBool = AtomicBool::new(false);
 /// Mail fetched in the background this often (seconds).
 pub(crate) const MAIL_EVERY: i64 = 15 * 60;
+/// While a code may be on its way (`code_expected`), mail fetched this often
+/// and the steps this close (seconds).
+pub(crate) const CODE_MAIL_EVERY: i64 = 2 * 60;
+/// How long after the phone's unlock a code may be on its way while it stays
+/// in use (seconds): a code asked for at a site comes within minutes.
+pub(crate) const CODE_EXPECTED: i64 = 10 * 60;
+
+/// When this phone was last unlocked, as the background service heard it
+/// (`StepService.unlockedAt`, kept apart from the steps so that one that ran
+/// just before the unlock does not hide it: the review of 28 November 2026,
+/// F1), Unix seconds; 0 when it heard none since it began, or elsewhere.
+fn unlocked_at() -> i64 {
+    java("unlocked", "{}").get("at").and_then(serde_json::Value::as_i64).unwrap_or(0) / 1000
+}
 /// Your availabilities' calendars looked at in the background this often
 /// while you are awake, and while you sleep (seconds; design-availability-sharing §3).
 pub(crate) const AVAILABILITY_AWAKE: i64 = 15 * 60;
@@ -211,7 +225,7 @@ pub(crate) fn set_background(on: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Settings ▸ Do not disturb, on a phone: {on, running, sharing, battery, line, battery_line}.
+/// Settings ▸ Do not disturb, on a phone: {on, running, sharing, battery, line, battery_line, code_fetch}.
 pub(crate) fn setup(config: &Config) -> serde_json::Value {
     let sharing = crate::share::vault().is_some_and(|(_, vault)| vault.is_some());
     let running = java("running", "{}") == true;
@@ -223,6 +237,7 @@ pub(crate) fn setup(config: &Config) -> serde_json::Value {
         "battery": battery,
         "line": tr().text(if config.dnd.background && running { "dnd-steps-on" } else { "dnd-steps-off" }, None),
         "battery_line": tr().text(if battery { "dnd-steps-battery-ok" } else { "dnd-steps-battery" }, None),
+        "code_fetch": config.dnd.code_fetch,
     })
 }
 
@@ -346,6 +361,24 @@ fn could_tell(config: &Config, attention: &sioul_core::attention::Attention, lis
 fn fetches_for_codes(attention: &sioul_core::attention::Attention, now: &sioul_core::attention::Now, in_use: bool) -> bool {
     use sioul_core::attention::{Kind, Level, Row};
     in_use && attention.level(Row::Own(Kind::Codes), now) == Level::Now
+}
+
+/// Whether a code may be on its way, so that mail is fetched every two
+/// minutes and the steps follow (`CODE_MAIL_EVERY`; the owner's yes of 26
+/// November 2026 to the codes' choice 10, "a faster fetch while a code is
+/// expected"): the phone in use (`in_use`) within ten minutes of its unlock
+/// (`unlocked`, Unix seconds; `CODE_EXPECTED`). A code is asked for at a
+/// screen, mostly right after picking the phone up; put away, the step
+/// keeps its own rhythm. Pure.
+fn code_expected(unlocked: i64, now: i64, in_use: bool) -> bool {
+    in_use && unlocked > 0 && (0..CODE_EXPECTED).contains(&(now - unlocked))
+}
+
+/// Whether a code's round is due while one may be on its way
+/// (`code_expected`): two minutes since the last round, an account fetched
+/// in the background. Pure.
+fn code_round_due(config: &Config, now: i64, last: i64) -> bool {
+    now - last >= CODE_MAIL_EVERY - 10 && config.accounts.iter().any(sioul_core::config::Account::syncs)
 }
 
 /// Whether this phone is in use now: its screen on, as Android says (the
@@ -631,8 +664,13 @@ fn step(reason: &str) -> serde_json::Value {
     // Some mail fetched now could be told now, or a code is wanted: else no round (nothing told
     // would come of it). The batch is told after this step's exchange (`mail_round`).
     let tells = tellable(&config);
+    // The phone unlocked lately, the faster fetch turned on here (`[dnd] code_fetch`, off unless you turn
+    // it on): for ten minutes while it stays in use, a code may be on its way (`code_expected`).
+    let unlocked = if config.dnd.code_fetch { unlocked_at() } else { 0 };
+    let expecting = code_expected(unlocked, started, unlocked > 0 && phone_in_use());
     let (exchanged_said, exchanged) = std::sync::mpsc::channel::<()>();
-    let mut mail = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells).then(|| {
+    let due = mail_due(&config, started, MAILED.load(Ordering::Relaxed), tells) || (expecting && code_round_due(&config, started, MAILED.load(Ordering::Relaxed)));
+    let mut mail = due.then(|| {
         MAILED.store(started, Ordering::Relaxed);
         std::thread::spawn(move || mail_round(exchanged))
     });
@@ -657,7 +695,8 @@ fn step(reason: &str) -> serde_json::Value {
     let calls = if pressed { Some(crate::calls::step(true)) } else { None };
     // A press heard from this phone's own do-not-disturb (DndReceiver): sent at once too; and
     // a message's line for your computers (`phonemsgs`, the listener's "messages").
-    let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && !pressed && (in_use || !asleep);
+    // At the unlock, a code's round is not kept waiting for the sync app.
+    let fetch_first = reason != "folder" && reason != "heard" && reason != "messages" && reason != "unlocked" && !pressed && (in_use || !asleep);
     rounds_wait();
     let exchanged = crate::share::exchange_here(fetch_first);
     // The exchange done: the mail round may tell what it fetched, what another device told now known.
@@ -771,6 +810,8 @@ fn step(reason: &str) -> serde_json::Value {
     // fetch and "The Porch opens" come then, not a step later.
     let resting = !tells && mail_due(&config, mailed + MAIL_EVERY, mailed, true);
     let next = rest_cap(next, now, resting.then(|| crate::hours::mode_now().until.map(|until| until.timestamp().as_second())).flatten());
+    // A code may be on its way: the next step within two minutes, while it may.
+    let next = if code_expected(unlocked, now, expecting) { next.min(CODE_MAIL_EVERY) } else { next };
     let words = words();
     serde_json::json!({
         "next": next,
@@ -782,6 +823,8 @@ fn step(reason: &str) -> serde_json::Value {
         "channel": words["channel"],
         "calls": calls,
         "stop": false,
+        // Java asks a step at the unlock only while the faster fetch is on (`StepService.unlockedStep`).
+        "code_fetch": config.dnd.code_fetch,
     })
 }
 
@@ -1389,6 +1432,26 @@ mod tests {
     #[test]
     fn a_code_is_fetched_for_while_the_phone_is_in_use() {
         use sioul_core::attention::{Attention, Column, Now};
+        // A faster fetch while a code may be on its way (the owner's yes of 26 November 2026): the phone in
+        // use within ten minutes of its unlock, a round every two minutes; put away, or later, as usual.
+        let unlocked = 50_000;
+        assert!(code_expected(unlocked, unlocked, true) && code_expected(unlocked, unlocked + CODE_EXPECTED - 1, true));
+        assert!(!code_expected(unlocked, unlocked + 60, false), "put away");
+        assert!(!code_expected(unlocked, unlocked + CODE_EXPECTED, true), "ten minutes on");
+        assert!(!code_expected(0, unlocked, true) && !code_expected(unlocked, unlocked - 60, true), "never unlocked here, or a clock set back");
+        let account: Config = toml::from_str("[[account]]\nid = \"a\"\nkind = \"imap\"\naddress = \"jane@example.org\"\nhost = \"imap.example.org\"\n").unwrap();
+        assert!(code_round_due(&account, unlocked, unlocked - CODE_MAIL_EVERY) && !code_round_due(&account, unlocked, unlocked - 60), "every two minutes");
+        assert!(!code_round_due(&Config::default(), unlocked, 0), "no account");
+        assert!(!mail_due(&account, unlocked, unlocked - CODE_MAIL_EVERY, true), "mail's own rhythm unchanged");
+        // Off unless turned on (the review of 28 November 2026): its cost is not measured yet.
+        assert!(!Config::default().dnd.code_fetch && !account.dnd.code_fetch);
+        let on: Config = toml::from_str("[dnd]\ncode_fetch = true\n").unwrap();
+        assert!(on.dnd.code_fetch);
+        // F1: the unlock is read apart from the steps, so a step that ran thirty seconds before it, its next
+        // one ninety seconds after the unlock (`StepService.unlockedDelay`), still finds the ten minutes open.
+        let step = 80_000;
+        let at_unlock = step + 30;
+        assert!(code_expected(at_unlock, at_unlock + 90, true), "the next step after an unlock just after a step");
         let usual = Attention::usual();
         assert!(fetches_for_codes(&usual, &Now::time(Column::Leisure), true));
         assert!(!fetches_for_codes(&usual, &Now::time(Column::Leisure), false), "put away");

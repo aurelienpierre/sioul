@@ -302,7 +302,8 @@ pub fn row_of(kind: Kind) -> attention::Kind {
     match kind {
         Kind::Alarm => attention::Kind::Alarms,
         Kind::Before => attention::Kind::Before,
-        Kind::Event => attention::Kind::DayBefore,
+        // The working day before's (an older Sioul's: none made since 13 November 2026), its row taken
+        // out on 28 November 2026: read as the dates'.
         _ => attention::Kind::Dates,
     }
 }
@@ -1734,13 +1735,15 @@ mod tests {
         assert!(dinner.ready_in(now, &asleep), "as usual: its event falls in the night");
         asleep.attention.set(attention::Row::Own(attention::Kind::Alarms), attention::Column::Sleep, Level::Later).unwrap();
         assert!(!dinner.ready_in(now, &asleep));
-        // During do-not-disturb: the working day before waits when you say so; work resting still holds work's.
+        // During do-not-disturb: an older Sioul's reminder of the working day before reads as the dates' row
+        // (its own taken out on 28 November 2026), waiting when you say so.
         let mut working = Holds::usual(Wait::Nothing);
         let eve = Reminder { key: "event:board".into(), kind: Kind::Event, starts: None, ..bill.clone() };
         working.now.dnd = true;
         assert!(eve.ready_in(now, &working));
-        working.attention.set(attention::Row::Own(attention::Kind::DayBefore), attention::Column::Dnd, Level::Later).unwrap();
-        assert!(!eve.ready_in(now, &working) && bill.ready_in(now, &working));
+        assert_eq!(row_of(Kind::Event), attention::Kind::Dates);
+        working.attention.set(attention::Row::Own(attention::Kind::Dates), attention::Column::Dnd, Level::Later).unwrap();
+        assert!(!eve.ready_in(now, &working) && !bill.ready_in(now, &working));
         let mut evening = Holds::usual(Wait::Work);
         evening.attention.set(attention::Row::Own(attention::Kind::Dates), attention::Column::Leisure, Level::Later).unwrap();
         let personal = Reminder { key: "asked:garden".into(), kind: Kind::Asked, ..bill.clone() };

@@ -778,7 +778,8 @@ pub struct PorchLine {
     /// The messages it says, to mark them seen.
     pub ids: Vec<String>,
     /// "While you slept, Dr Martin's office wrote:"; "A code came from your
-    /// bank at 09:12. It stays on your phone."
+    /// bank at 09:12. Read it on your phone."; "A code came in Message at
+    /// 09:12. Read it on your phone." when the phone said its app's name.
     pub head: String,
     pub said: Vec<Said>,
     /// "Their words stay on your phone: WhatsApp sends who and when only."; "" otherwise.
@@ -911,11 +912,16 @@ fn porch_line(group: &[&Line], column: &str, date: jiff::civil::Date, l: &Lister
         let mut args = crate::i18n::args();
         args.set("who", who.clone());
         args.set("time", time(first));
+        // The app's name where the phone said it in place of a sender that may hold a code
+        // (`code_sender_or_app`): "in Message", never "from Message" (review of 25 November 2026, should-fix 7).
+        let app = !first.label.trim().is_empty() && (first.name.trim().is_empty() || first.name == first.label);
+        args.set("app", first.label.clone());
+        let id = if app { "phonemsgs-code-app" } else { "phonemsgs-code" };
         let head = if date == today {
-            tr.text("phonemsgs-code", Some(&args))
+            tr.text(id, Some(&args))
         } else {
             args.set("day", calls::day_words(tr, date, today));
-            tr.text("phonemsgs-code-day", Some(&args))
+            tr.text(&format!("{id}-day"), Some(&args))
         };
         // Its row: who sent it, that a code came and stays on the phone, when.
         let when = row_when(first, l);
@@ -1343,7 +1349,11 @@ mod tests {
         assert_eq!(lines[0].said.iter().map(|s| s.text.as_str()).collect::<Vec<_>>(), ["Bonjour,", "Votre rendez-vous est déplacé."]);
         assert!(lines[0].texted && lines[0].known && lines[0].dial == "+33199001234" && lines[0].number == "01 99 00 12 34");
         assert_eq!(lines[1].said[0].text, "a picture");
-        assert_eq!(lines[2].head, "A code came from Ma Banque at 09:55. It stays on your phone.");
+        assert_eq!(lines[2].head, "A code came from Ma Banque at 09:55. Read it on your phone.");
+        // The app's name where the phone said it in place of a sender (should-fix 7): "in Message".
+        let in_app = Line { label: "Message".into(), name: "Message".into(), ..all[3].clone() };
+        assert_eq!(super::lines(&[in_app.clone()], &calls::Seen::default(), &l)[0].head, "A code came in Message at 09:55. Read it on your phone.");
+        assert_eq!(super::lines(&[Line { name: String::new(), ..in_app }], &calls::Seen::default(), &l)[0].head, "A code came in Message at 09:55. Read it on your phone.");
         // Seen on another device: gone.
         let mut seen = calls::Seen::default();
         seen.seen.extend(lines[0].ids.iter().cloned());

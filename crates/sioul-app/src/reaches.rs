@@ -101,7 +101,7 @@ fn kinds(phone: bool) -> Vec<Kind> {
     if phone {
         out.push(Wake);
     }
-    out.extend([Alarms, Before, DayBefore, Dates, Needs, Move, WorkOver]);
+    out.extend([Alarms, Before, Dates, Needs, Move, WorkOver]);
     if phone {
         out.extend([AppAutomatons, AppAtOnce]);
     } else {
@@ -408,10 +408,10 @@ fn matrix_persons(channel: Channel) -> Vec<Person> {
     attention::persons(channel).iter().copied().filter(|p| p.state() && !attention::screened(Row::People(channel, *p)) && (people || *p != Person::People)).collect()
 }
 
-/// Sioul's own kinds in words, the four reminders together when all are
+/// Sioul's own kinds in words, the three reminders together when all are
 /// there: "your reminders, doses and the codes you ask for".
 fn kinds_words(subjects: &[Kind]) -> Option<(String, bool)> {
-    let reminders = [Kind::Alarms, Kind::Before, Kind::DayBefore, Kind::Dates];
+    let reminders = [Kind::Alarms, Kind::Before, Kind::Dates];
     let together = reminders.iter().all(|k| subjects.contains(k));
     let mut items: Vec<(String, bool)> = Vec::new();
     for kind in subjects {
@@ -421,7 +421,7 @@ fn kinds_words(subjects: &[Kind]) -> Option<(String, bool)> {
             }
             continue;
         }
-        let singular = matches!(kind, Kind::Wake | Kind::DayBefore | Kind::Move | Kind::WorkOver);
+        let singular = matches!(kind, Kind::Wake | Kind::Move | Kind::WorkOver);
         items.push((text(&format!("attention-what-{}", kind.id())), !singular));
     }
     if items.is_empty() {
@@ -1136,7 +1136,7 @@ fn now_sentences(attention: &Attention, now: &Now, reach: Reach) -> Vec<String> 
     // Of Sioul's own, what matters most: codes, doses, reminders; on a
     // computer, what is to know shown alone while a pause or a do-not-disturb holds.
     let held_here = !reach.phone && (mode.paused() || now.dnd || now.times.iter().any(|c| silenced(&load_config(), *c)));
-    for kind in [Kind::Codes, Kind::Doses, Kind::Alarms, Kind::Before, Kind::DayBefore, Kind::Dates] {
+    for kind in [Kind::Codes, Kind::Doses, Kind::Alarms, Kind::Before, Kind::Dates] {
         match known_only(attention.level(Row::Own(kind), now), kind, held_here) {
             Level::Quiet => add(2, Subject::Own(kind)),
             Level::Now | Level::Event => add(0, Subject::Own(kind)),

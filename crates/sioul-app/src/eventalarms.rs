@@ -376,9 +376,18 @@ fn mail_note_json(title: &str, body: &str, through: bool, open: &str, opens: &[s
 /// a notice to know (`notice_json`), its words, each button opening Sioul on
 /// what it offers by its address, a tap on the notice its thing (DayNotes.java);
 /// shown in its place, by `key` (the alarm's: "day:work:2026-10-14"), when it
-/// comes again. Whether it was shown: false once it no longer lasts.
+/// comes again. Whether it was shown: false once it no longer lasts, or when
+/// another device told it from a little before on (a computer you left a
+/// minute ago: `tell::told_elsewhere`); shown, it is said in this phone's
+/// told log for the others (`tell::say_told`; the owner's yes of 26 November
+/// 2026, "a notice told on one device is dropped on the others").
 pub(crate) fn day_note(key: &str, notice: &Notice) -> bool {
-    let Some(json) = notice_json(key, notice, false, None, jiff::Timestamp::now().as_second()) else { return false };
+    let now = jiff::Timestamp::now().as_second();
+    if crate::tell::told_elsewhere(notice, now) {
+        return false;
+    }
+    let Some(json) = notice_json(key, notice, false, None, now) else { return false };
+    crate::tell::say_told(notice);
     let Ok(text) = CString::new(json.to_string()) else { return false };
     #[cfg(target_os = "android")]
     // SAFETY: android/main.cpp's; `text` is a C string alive until the call returns, and it copies it.

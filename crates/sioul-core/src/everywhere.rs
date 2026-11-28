@@ -163,6 +163,13 @@ pub struct DndSettings {
     /// Android: this device keeps in step in the background (its own, never shared).
     #[serde(default = "yes")]
     pub background: bool,
+    /// Android: for ten minutes after you unlock this phone, while you use
+    /// it, mail fetched every two minutes for a code on its way, where the
+    /// background's rhythm is fifteen (`steps::code_expected`; its own,
+    /// never shared). Off unless you turn it on: its cost on the battery and
+    /// the network is not measured yet (the review of 28 November 2026).
+    #[serde(default)]
+    pub code_fetch: bool,
     /// Starred people both ways (`stars`; the owner's decision of 18
     /// November 2026): a contact starred on a phone, or a favourite on a
     /// server that keeps one, is on the Always through list, and everyone
@@ -174,7 +181,7 @@ pub struct DndSettings {
 
 impl Default for DndSettings {
     fn default() -> Self {
-        DndSettings { button: true, focus: false, pauses: true, sleep: false, people: true, background: true, stars: false }
+        DndSettings { button: true, focus: false, pauses: true, sleep: false, people: true, background: true, code_fetch: false, stars: false }
     }
 }
 

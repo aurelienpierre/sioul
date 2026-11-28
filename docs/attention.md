@@ -41,7 +41,7 @@ One row per kind, with no who (`attention::Kind`), in five groups:
 | Group | Rows (their id) |
 |---|---|
 | What you set or asked for | codes and links you asked for (`codes`), doses (`doses`), the alarm at waking (`wake`), an event's alarms (`alarms`) |
-| Reminders | Sioul's reminder before an event (`before`), events the working day before (`day-before`), dates, waits, payments, papers (`dates`) |
+| Reminders | Sioul's reminder before an event (`before`), dates, waits, payments, papers (`dates`); the row of events the working day before (`day-before`), which nothing told since 13 November 2026, taken out on 28 November 2026 ([§7](#7-the-configuration)) |
 | Your day | meals, naps and the night (`needs`), the pause to move (`move`), "Work hours are over" (`work-over`), the time running (`time`) |
 | Sites, on a computer | sites gathered (`sites`), a site in real time (`sites-live`), a call in a site (`site-calls`) |
 | Other apps, on a phone | automatons (`app-automatons`), apps and browser sites set to At once (`app-at-once`) |
@@ -90,11 +90,11 @@ One scale for every row, from the least strict to the strictest (`attention::Lev
 | = | **As their list** | Always through's row only: as the person's own row says. |
 | ☆ | **Through, at their own times** | Always through's row, on a layer only: the layer does not hold them; their own row's times do. |
 
-Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –, ◎ in work, admin, leisure and meals (decided 26 November 2026); calls ● ○; messages ● ○, ◎ in work, admin, leisure and meals (held apps, phase 1, A3), and ◑ under do-not-disturb; Always through ● ◑ (mail) and =, with ☆ on a layer; each kind its own (codes ● or –, doses ● or ○, sites ◎ or ○…).
+Each cell offers some levels only (`attention::choices`): mail ● ◑ ○ –, ◎ in work, admin, leisure and meals (decided 26 November 2026); calls ● ○; messages ● ○, ◎ in work, admin, leisure and meals (held apps, phase 1, A3), and ◑ under do-not-disturb; Always through ● ◑ (mail) and =, with ☆ on a layer; each kind its own (codes ● alone since 24 November 2026, doses ● or ○, sites ◎ or ○…).
 
 ### 1.6 Outputs
 - **Shown in Sioul**: the Porch (its lanes; above them codes, doses, calls declined (on every device, the phones' logs shared: [porch.md](porch.md), "Calls declined"), sites' news, the line of held apps, letters, payments), Health, the Agenda, the pages, the status line, the phone's home card, the pause's screen. Showing is never a notification.
-- **Told**: a notification Sioul sends, a notice about one thing ([notifications.md](notifications.md)). Its class follows from its kind (`Kind::class`): what you set or asked for and a call in a site are **to do** (codes, doses, the alarm at waking, an event's alarms, a call in a site): they stay until settled, and pass a pause or a do-not-disturb when the model says they pierce; reminders, your day's notices, sites' and new mail are **to know**: they leave after the minutes set (five unless set), only while someone is at the computer, and never during a pause or a do-not-disturb, whatever the cell says, the Porch keeping what matters. On a computer, normal urgency without sound, critical only for a notice to do that pierces a do-not-disturb holding now (the doses keep their own path, critical as before); an ongoing one for the time running. On a phone (as before, until the notifications' phase 3), a channel each: "Doses", "Doses during a pause", "Waking", "Events", "An event's alarms during a pause", "New mail", "New mail from people always let through", "Focus timer", "Devices in step".
+- **Told**: a notification Sioul sends, a notice about one thing ([notifications.md](notifications.md)). Its class follows from its kind (`Kind::class`): what you set or asked for and a call in a site are **to do** (codes, doses, the alarm at waking, an event's alarms, a call in a site): they stay until settled, and pass a pause or a do-not-disturb when the model says they pierce; reminders, your day's notices, sites' and new mail are **to know**: they leave after the minutes set (five unless set), only while someone is at the computer, and never during a pause or a do-not-disturb, whatever the cell says, the Porch keeping what matters; but new mail from someone Always through, which passes them as the model says it pierces, as on a phone, critical under a do-not-disturb (the owner's yes of 26 November 2026, `notice::decide`). On a computer, normal urgency without sound, critical only for a notice to do that pierces a do-not-disturb holding now (the doses keep their own path, critical as before); an ongoing one for the time running. On a phone (as before, until the notifications' phase 3), a channel each: "Doses", "Doses during a pause", "Waking", "Events", "An event's alarms during a pause", "New mail", "New mail from people always let through", "Focus timer", "Devices in step".
 - **Held or let through**: another app's notification is snoozed until a time, never cancelled (`AppNotes.java`); a call is let ring, or declined plainly, the network sending it to voicemail and the Porch listing it later (`Calls.java`). People's messages are held by their rows only where **Hold people's messages too** is on for that phone (`appnotes::Choices::people`, held apps phase 1, A2: worked out once, on where anything was ever chosen for other apps there); off, they come at once, but the blocked, a conversation set to gathered or never, and what has rows of its own by time ([android.md](android.md#notifications-from-other-apps)).
 - **Silenced**: the system's do-not-disturb, through Sioul's three modes ([§6](#6-what-the-system-lets-through)).
 
@@ -137,7 +137,7 @@ It stays the caller's: the model says whether a thing is told now on this device
 - **A safe colleague's mail at 19:00 to your work address**: shown on the Porch (◑), told with "The Porch opens" when work begins (step 8, decision 2 of 13 November 2026); to your personal address, told at once (Mail × Safe × Leisure is ●).
 - **A neutral colleague's mail at 19:00 to your work address**: it waits off the Porch until work (Mail × Neutral × Leisure is ○, and step 8).
 - **A group's message during Free time**: held until Free time ends and its row lets it come (Groups × Free time is ○).
-- **Under do-not-disturb from its switch**: Sioul's reminder before an event is ● (on a computer a notice to know, so not posted while do-not-disturb holds: the Porch and the agenda show the event); mail from someone Always through is ★ (on a computer a notice to know too: shown on the Porch, untold, since 13 November 2026; on a phone, its own channel, as before); a safe sender's who is not on the list is shown, not told (◑); a safe caller goes to voicemail, the list's people ring.
+- **Under do-not-disturb from its switch**: Sioul's reminder before an event is ● (on a computer a notice to know, so not posted while do-not-disturb holds: the Porch and the agenda show the event); mail from someone Always through is ★ (on a computer a notice to know too, which passes do-not-disturb since 28 November 2026 at critical urgency, after a fortnight shown on the Porch untold; on a phone, its own channel, as before); a safe sender's who is not on the list is shown, not told (◑); a safe caller goes to voicemail, the list's people ring.
 
 ## 3. The usual matrix
 What Sioul does unless you change it (`attention::usual`; since 11 October 2026, people of your address books (Neutral) call and write in your leisure and meals too: a friend's text on a weekend is not held until Monday; the test `the_usual_matrix_as_decided` writes it out). W A L M S P F: Work, Admin, Leisure, Meals, Sleep, Pause, Free time; Y: Time for you; D: Do not disturb. **Bold**: fixed.
@@ -184,12 +184,11 @@ A mail app's notification on a phone takes the Mail rows (◑ held, since a phon
 
 | Sioul's own | W | A | L | M | S | P | F | Y | D |
 |---|---|---|---|---|---|---|---|---|---|
-| Codes and links you asked for | **●** | **●** | **●** | **●** | – | **●** | **●** | **●** | **●** |
+| Codes and links you asked for | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** |
 | Doses | **●** | **●** | **●** | **●** | ● | ● | **●** | **●** | **●** |
 | The alarm at waking | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** | **●** |
 | An event's alarms | ● | ● | ● | ● | ◐ | **●** | ◐ | ● | **●** |
 | Reminders before an event | ● | ● | ● | ● | ◐ | ● | ◐ | ● | ● |
-| Events, the working day before | ● | ● | ● | ● | ○ | ○ | ○ | ● | ● |
 | Dates, waits, payments, papers | ● | ● | ● | ● | ○ | ○ | ○ | ● | ● |
 | Meals, naps and the night | ● | ● | ● | ● | – | – | – | ● | ● |
 | The pause to move | ● | ● | ● | ● | – | – | – | – | – |
@@ -229,13 +228,13 @@ Silencing the system is no step of the pipeline: it follows the time. The pause,
 **On a computer**: Plasma inhibits its pop-ups but critical ones; GNOME's switch, with your consent; macOS through two shortcuts; Windows and other desktops cannot be asked ([do-not-disturb.md](do-not-disturb.md)). Sioul decides alone what passes (the notifications' decision 4 of 13 November 2026, [notifications.md](notifications.md)): a notice to do that pierces (codes, an event's alarms) goes at critical urgency while a do-not-disturb holds, Sioul's or the desktop's; the doses keep their own path, at critical urgency; notices to know are not posted then. Nothing to tick in Plasma's settings.
 
 ## 7. The configuration
-`[attention]` in `config.toml`, one key per row, a list of column words: a bare column is ●, `column:level` another level (`now`, `quiet`, `event`, `gathered`, `later`, `never`, `as`, `through`). A row that says the usual is not written; a fixed cell keeps its value; a word not understood, or a value not offered there, is left aside (`Attention::of`): a `codes` row an older Sioul wrote with "sleep:never" reads at once there, the Codes row being fixed since 24 November 2026. An older device (0.1.0) keeps reading what it wrote; nothing of this format changed.
+`[attention]` in `config.toml`, one key per row, a list of column words: a bare column is ●, `column:level` another level (`now`, `quiet`, `event`, `gathered`, `later`, `never`, `as`, `through`). A row that says the usual is not written; a fixed cell keeps its value; a word not understood, or a value not offered there, is left aside (`Attention::of`): a `codes` row an older Sioul wrote with "sleep:never" reads at once there, the Codes row being fixed since 24 November 2026. An older device (0.1.0) keeps reading what it wrote. **The row of the working day before taken out** (the owner's yes of 26 November 2026; the settings' format 4, `config::FORMAT`): `config::migrate_attention`, at the window's start, takes `day-before` (or a hand-written `Day_Before`) out of `[attention]` once, before format 4, every other key and comment kept, and marks format 4 when it wrote. A device on 608d8521 or earlier passes over the format and reads its own row as usual once it is gone; a row it writes back later (its Settings, a preset) stays in the file, read by no device of this build (`Row::read` knows it no more, `set_table_ranked` keeps the keys it does not name) and never taken out again (`attention::tests::the_working_day_before_s_row_goes_once_beside_an_older_sioul`). An older Sioul's reminder of the working day before (`reminders::Kind::Event`, none made since 13 November) reads as the dates' row.
 
 ```toml
 [attention]
 "mail.neutral" = ["work", "admin", "leisure", "meals:quiet", "sleep:later", "pause:later", "free:later", "slot:quiet", "dnd:quiet"]
 "messages.always" = ["work", "admin", "leisure", "meals", "sleep:as", "pause:as", "free", "slot", "dnd:through"]
-"day-before" = ["work", "admin", "leisure", "meals", "sleep:later", "pause:later", "free:later", "slot", "dnd:later"]
+dates = ["work", "admin", "leisure", "meals", "sleep:later", "pause:later", "free:later", "slot", "dnd:later"]
 "app.com.discord" = ["work", "admin:later", "leisure:later", "meals:later", "sleep:later", "pause:later", "free:later", "slot:later", "dnd:later", "name=Discord"]
 "conversation.8c1f0e5a2b7d4c69" = ["leisure", "dnd"]
 ```
@@ -323,7 +322,7 @@ Decided on 7 October 2026: the plan and the re-interfacing adopted, and every in
 7. **An event's alarms in a pause, on a phone**: a channel of their own that passes Sioul's modes. Since 14 November 2026 (the notifications' decision 3), only where Sioul rings them; where the phone's calendar app rings them in Sioul's place, the mode lets its events through where this row says at once (`Silence::calendar`).
 8. **Always through conversations under Sioul's modes**: the modes let Priority conversations through; Sioul opens the conversation's page in Android to mark it.
 9. **Safe callers in Free time**: while the phone screens calls, Sioul's modes let every contact's call ring; else starred contacts only.
-10. **Always through mail on a computer** goes out at critical urgency. Changed on 13 November 2026 (the notifications, [notifications.md](notifications.md)): new mail is a notice to know, at normal urgency, never posted under a pause or a do-not-disturb; Always through's mail is then shown on the Porch, untold, on a computer.
+10. **Always through mail on a computer** goes out at critical urgency. Changed on 13 November 2026 (the notifications, [notifications.md](notifications.md)): new mail is a notice to know, at normal urgency, never posted under a pause or a do-not-disturb; Always through's mail was then shown on the Porch, untold, on a computer, until the owner's yes of 26 November 2026: since 28 November it passes a pause and a do-not-disturb as the model says it pierces, at critical urgency under a do-not-disturb, as it did before 13 November (`notice::decide`).
 11. **Calls carry the layers**: Time for you and do-not-disturb, in the calls' table.
 12. **Time for you everywhere**: `state/slots.toml`.
 13. **Chat sites on a computer**: one naming someone your cards know follows their Messages row when it holds more.

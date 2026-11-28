@@ -255,12 +255,18 @@ pub const TOLD: &str = "told";
 /// weekend must still know what the other told).
 pub const TOLD_KEPT_MS: i64 = KEPT * 1000;
 
-/// A line of a device's told log.
+/// A line of a device's told log: the messages it told (`told`, their keys);
+/// since 28 November 2026 the notices of Sioul's own it told too (`notices`,
+/// each `notice::Notice::told_id`: a digest, never its words), which a
+/// device on 608d8521 reads past (its line has `at` and `told` alone, and
+/// such a line's `told` is empty).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ToldLine {
     at: i64,
     #[serde(default)]
     told: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    notices: Vec<String>,
 }
 
 /// A device's own told log in the notices' folder `notices`.
@@ -274,10 +280,41 @@ pub fn say_told(notices: &Path, device: &str, ids: &[String], now_ms: i64) -> Re
     if ids.is_empty() {
         return Ok(());
     }
+    say_line(notices, device, &ToldLine { at: now_ms, told: ids.to_vec(), notices: Vec::new() })
+}
+
+/// What this device (`device`) just told of Sioul's own notices, by their
+/// ids (`notice::Notice::told_id`): a line of its told log, as `say_told`
+/// writes one, so that another device drops its own copy of the same notice
+/// (`notices_told_elsewhere`; the owner's yes of 26 November 2026).
+pub fn say_notices_told(notices: &Path, device: &str, ids: &[String], now_ms: i64) -> Result<(), String> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    say_line(notices, device, &ToldLine { at: now_ms, told: Vec::new(), notices: ids.to_vec() })
+}
+
+/// A line at the end of this device's told log, its lines older than `TOLD_KEPT_MS` taken out.
+fn say_line(notices: &Path, device: &str, line: &ToldLine) -> Result<(), String> {
     let path = told_file(notices, device);
-    crate::calls::rewrite_lines(&path, |line| !serde_json::from_str::<ToldLine>(line).is_ok_and(|l| now_ms - l.at <= TOLD_KEPT_MS))?;
-    let text = serde_json::to_string(&ToldLine { at: now_ms, told: ids.to_vec() }).map_err(|e| e.to_string())? + "\n";
+    let now_ms = line.at;
+    crate::calls::rewrite_lines(&path, |kept| !serde_json::from_str::<ToldLine>(kept).is_ok_and(|l| now_ms - l.at <= TOLD_KEPT_MS))?;
+    let text = serde_json::to_string(line).map_err(|e| e.to_string())? + "\n";
     crate::filelock::with_lock(&path, || crate::calls::append_private(&path, &text))
+}
+
+/// The notices of Sioul's own the other devices told from `since_ms` on, by
+/// their ids (`notice::Notice::told_id`), as their told logs say (this
+/// device's own, `device`, aside).
+pub fn notices_told_elsewhere(notices: &Path, device: &str, since_ms: i64) -> BTreeSet<String> {
+    let own = crate::calls::file_safe(device);
+    crate::calls::device_files(&notices.join(TOLD))
+        .into_iter()
+        .filter(|(name, _)| *name != own)
+        .flat_map(|(_, path)| crate::calls::read_lines::<ToldLine>(&path))
+        .filter(|l| l.at >= since_ms)
+        .flat_map(|l| l.notices)
+        .collect()
 }
 
 /// What the other devices told in the last `TOLD_KEPT_MS`, by message key, as
@@ -863,6 +900,44 @@ mod tests {
         assert_eq!(own.lines().count(), 1, "{own}");
         // Never read as the notices' words: a folder of its own.
         assert!(crate::notices::States::read(&folder).is_empty());
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The notices of Sioul's own one device told, in the same log (the
+    /// owner's yes of 26 November 2026: a notice told on one device is
+    /// dropped on the others): read by the others from a time on, never by
+    /// the device itself, never as mail told; a device on 608d8521 beside
+    /// reads such a line as a line that told no mail (its `ToldLine` has `at`
+    /// and `told` alone, and serde passes over the rest), and its own lines
+    /// still read here.
+    #[test]
+    fn a_notice_one_device_told_is_known_to_the_others() {
+        let folder = std::env::temp_dir().join(format!("sioul-told-notices-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let (phone, desk) = ("7c41d09e-0000-4000-8000-000000000001", "0b5e11a2-0000-4000-8000-000000000002");
+        let minute = 60_000;
+        let night = "3f1c2a9d0b7e6a51".to_string();
+        say_notices_told(&folder, phone, std::slice::from_ref(&night), 100 * minute).unwrap();
+        say_notices_told(&folder, phone, &[], 100 * minute).unwrap();
+        assert_eq!(notices_told_elsewhere(&folder, desk, 90 * minute).into_iter().collect::<Vec<_>>(), [night.clone()]);
+        assert!(notices_told_elsewhere(&folder, desk, 101 * minute).is_empty(), "told before the time asked");
+        assert!(notices_told_elsewhere(&folder, phone, 0).is_empty(), "never its own");
+        assert!(told_elsewhere(&folder, desk, 100 * minute).is_empty(), "never as mail told");
+        // As 608d8521 reads the phone's line: `at` and `told`, nothing told.
+        #[derive(serde::Deserialize)]
+        struct Older {
+            #[allow(dead_code)]
+            at: i64,
+            #[serde(default)]
+            told: Vec<String>,
+        }
+        let line = std::fs::read_to_string(told_file(&folder, phone)).unwrap();
+        let older: Older = serde_json::from_str(line.lines().next().unwrap()).unwrap();
+        assert!(older.told.is_empty(), "{line}");
+        // A line 608d8521 writes (mail alone) reads here as before, no notice in it.
+        std::fs::write(told_file(&folder, desk), "{\"at\":6000000,\"told\":[\"mail:home:a\"]}\n").unwrap();
+        assert_eq!(told_elsewhere(&folder, phone, 100 * minute).into_iter().collect::<Vec<_>>(), ["mail:home:a"]);
+        assert!(notices_told_elsewhere(&folder, phone, 0).is_empty());
         let _ = std::fs::remove_dir_all(&folder);
     }
 

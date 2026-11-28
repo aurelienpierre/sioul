@@ -528,6 +528,22 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: setup.theme.muted
     }
+    // The faster fetch for codes after an unlock: this phone's own, off unless turned on (its cost said).
+    WrapCheckBox {
+        visible: setup.phoneShown
+        Layout.fillWidth: true
+        text: setup.sioul.text("set-dnd-code-fetch")
+        checked: setup.shown.steps ? setup.shown.steps.code_fetch === true : false
+        onToggled: setup.act("code_fetch", { on: checked })
+    }
+    Label {
+        visible: setup.phoneShown
+        Layout.fillWidth: true
+        text: setup.sioul.text("set-dnd-code-fetch-help")
+        textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        color: setup.theme.muted
+    }
     Label {
         visible: setup.phoneShown && setup.shown.steps !== undefined
         Layout.fillWidth: true

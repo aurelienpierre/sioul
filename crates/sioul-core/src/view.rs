@@ -335,26 +335,39 @@ pub fn codes(items: &[Triaged], tr: &Translator) -> Vec<CodeView> {
 }
 
 /// The codes among `items` that the Porch set aside because their message
-/// failed its authentication (forged: DMARC said so), still valid: a
-/// notification says a code came and from which address, **never the code**
-/// nor a word of the message, which stays set aside (the owner's word of 24
-/// November 2026: a code always goes through; a relay that rewrites a
-/// message, a provider's spam tag in its subject, breaks its signature too).
-/// Never a blocked sender's, a borrowed brand's name (phishing), nor spam,
-/// which a code protects already. What a forger gains at most: one notice,
-/// `Code from <the address it forged> (forged)`, which opens the message in
-/// Mail's reader under its "set aside" line.
+/// failed its authentication (forged: DMARC said so), or because its name
+/// borrows a brand its address does not belong to (a real service writing
+/// from a domain its brand's list does not hold: review of 25 November 2026,
+/// should-fix 5, the owner's yes of 26 November 2026), still valid: a notification
+/// says a code came and from which address, **never the code** nor a word of
+/// the message, which stays set aside (the owner's word of 24 November 2026:
+/// a code always goes through; a relay that rewrites a message, a provider's
+/// spam tag in its subject, breaks its signature too). Never a blocked
+/// sender's, a message read as hostile at a shielded address (the shield
+/// keeps them from reaching you), nor spam, which a code protects already.
+/// What a forger gains at most: one notice, `Code from <the address it
+/// forged> (forged)`, or `(not verified)` for a borrowed name, which opens
+/// the message in Mail's reader under its "set aside" line.
 pub fn set_aside_codes(items: &[Triaged], tr: &Translator) -> Vec<CodeView> {
+    // Why it waits, as its warning says it; none for every other reason.
+    let said = |t: &Triaged| {
+        t.reasons.iter().find_map(|r| match r {
+            Reason::Forged => Some(("right-now-set-aside", t.trust)),
+            Reason::Impersonation { .. } => Some(("right-now-set-aside-name", crate::trust::Trust::Unverified)),
+            _ => None,
+        })
+    };
     items
         .iter()
-        .filter(|t| t.lane == Lane::SetAside && t.code.is_some() && t.reasons.contains(&Reason::Forged) && !t.reasons.contains(&Reason::Blocked))
-        .map(|t| {
+        .filter(|t| t.lane == Lane::SetAside && t.code.is_some() && !t.reasons.iter().any(|r| matches!(r, Reason::Blocked | Reason::Hostile)))
+        .filter_map(|t| said(t).map(|said| (t, said)))
+        .map(|(t, (warning, trust))| {
             let view = code_view(t, tr);
             let kind = t.code.as_ref().map_or(crate::codes::CodeKind::Code, |c| c.kind);
             let address = t.card.from_address.as_deref().unwrap_or_else(|| t.card.sender());
             // Its row in the notices' store names what it is, never the code.
             let notice = crate::notices::Notice { what: tr.code_kind(kind), ..view.notice.clone() };
-            CodeView { title: tr.right_now(kind, address, t.trust, None, None), code: None, validity: None, warning: Some(tr.text("right-now-set-aside", None)), notice, ..view }
+            CodeView { title: tr.right_now(kind, address, trust, None, None), code: None, validity: None, warning: Some(tr.text(warning, None)), notice, ..view }
         })
         .collect()
 }

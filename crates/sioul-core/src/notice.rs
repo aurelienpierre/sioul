@@ -213,6 +213,24 @@ impl Notice {
         replacing(self.kind, &self.about)
     }
 
+    /// What a device's told log says of it, for the other devices
+    /// (`mailnote::say_notices_told`): its key and its title, digested (a
+    /// meal's heads-up and its notice at its time share a key, never a
+    /// title); none of its words travel.
+    pub fn told_id(&self) -> String {
+        crate::notices::digest(&format!("{}\n{}", self.key(), self.title))
+    }
+
+    /// Whether another device's telling of it drops it here (the owner's yes
+    /// of 26 November 2026, "a notice told on one device is dropped on the
+    /// others"): a notice to know of Sioul's own (a meal, the night, the end
+    /// of work, a reminder, the sites' news); never new mail, which its told
+    /// log settles by message, nor one to do (a code, a dose, an alarm),
+    /// which each device tells.
+    pub fn told_once(&self) -> bool {
+        matches!(self.kind, Kind::Own(_)) && self.class() == Some(Class::Informative)
+    }
+
     /// Of this class rather than its kind's (`class_said`); a kind without
     /// one stays without (no notice of Sioul's own).
     pub fn of_class(mut self, class: Class) -> Notice {
@@ -225,6 +243,12 @@ impl Notice {
         self.kind.class().map(|class| self.class_said.unwrap_or(class))
     }
 }
+
+/// How long before a notice came due on a device another device's telling
+/// of the same counts (seconds): a meal's, the night's or the end of work's
+/// alarm on a phone and a computer's minute come within it; the same notice
+/// the next day is long past it.
+pub const TOLD_BEFORE: i64 = 15 * 60;
 
 /// The key a notice of `kind` about `about` replaces (`Notice::key`).
 pub fn replacing(kind: Kind, about: &str) -> String {
@@ -442,9 +466,10 @@ pub fn moment_from_files(config: &crate::config::Config, now: &jiff::Zoned, pres
 /// model says of it (`out`: told now, piercing), the `moment`, and the
 /// lifetime of informative notices (`minutes`, `Settings::minutes`):
 /// - informative: posted only when told, someone present, no pause and no
-///   do-not-disturb holding; else it waits while it is still worth telling
-///   (`Notice::relevance`), never lost meanwhile. Posted at normal urgency,
-///   for `minutes`, leaving no trace; the time to leave stays in the history
+///   do-not-disturb holding, unless it pierces (mail from someone Always
+///   through), critical then under a do-not-disturb; else it waits while it
+///   is still worth telling (`Notice::relevance`), never lost meanwhile.
+///   Posted at normal urgency, for `minutes`, leaving no trace; the time to leave stays in the history
 ///   until its event starts, its popup the minutes set; a thing that ends
 ///   sooner takes it away then;
 /// - actionable: posted when told, at a pause or a do-not-disturb only when
@@ -471,11 +496,14 @@ pub fn decide(notice: &Notice, out: &attention::Output, moment: Moment, minutes:
             if !moment.present {
                 return later(Dropped::Away);
             }
-            if moment.paused || moment.silenced {
+            // What pierces (mail from someone Always through, as the matrix says) passes them, as on a
+            // phone, critical under a do-not-disturb (the owner's yes of 26 November 2026).
+            if (moment.paused || moment.silenced) && !out.pierce {
                 return later(Dropped::Held);
             }
+            let urgency = if out.pierce && moment.silenced { Urgency::Critical } else { Urgency::Normal };
             let lifetime = i64::from(minutes.clamp(SHORTEST, LONGEST)) * 60;
-            let shape = |popup: i64, close: i64, transient: bool| Shape { class, urgency: Urgency::Normal, timeout_ms: millis(popup - now), transient, resident: false, key: key.clone(), close_at: Some(close) };
+            let shape = |popup: i64, close: i64, transient: bool| Shape { class, urgency, timeout_ms: millis(popup - now), transient, resident: false, key: key.clone(), close_at: Some(close) };
             Decision::Post(match (notice.kind, notice.until) {
                 // The time to leave: its popup the minutes set, in the history until its event starts.
                 (Kind::Own(attention::Kind::Before), Some(until)) => shape(until.min(now + lifetime), until, false),
@@ -566,7 +594,6 @@ mod tests {
             (Row::Wake, Some(Actionable)),
             (Row::Alarms, Some(Actionable)),
             (Row::Before, Some(Informative)),
-            (Row::DayBefore, Some(Informative)),
             (Row::Dates, Some(Informative)),
             (Row::Needs, Some(Informative)),
             (Row::Move, Some(Informative)),
@@ -622,7 +649,14 @@ mod tests {
         assert_eq!(decide(&date, &told(false), away, 5, NOW), Decision::Wait(NOW + 36_000), "until the day ends");
         assert_eq!(decide(&date, &told(false), Moment { paused: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 36_000));
         let mail = Notice::new("mid:a@example.org", Kind::Mail, "One e-mail", "Noa, The lease");
-        assert_eq!(decide(&mail, &told(true), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 36_000), "piercing or not, after the do-not-disturb");
+        assert_eq!(decide(&mail, &told(false), Moment { silenced: true, ..HERE }, 5, NOW), Decision::Wait(NOW + 36_000), "after the do-not-disturb");
+        // Someone Always through in it: through the do-not-disturb, critical, and a pause, as on a phone
+        // (the owner's yes of 26 November 2026); nobody at the desk, it waits all the same.
+        let Decision::Post(shape) = decide(&mail, &told(true), Moment { silenced: true, ..HERE }, 5, NOW) else { panic!("Always through passes") };
+        assert_eq!((shape.class, shape.urgency, shape.transient), (Class::Informative, Urgency::Critical, true));
+        let Decision::Post(shape) = decide(&mail, &told(true), Moment { paused: true, ..HERE }, 5, NOW) else { panic!("and a pause") };
+        assert_eq!(shape.urgency, Urgency::Normal);
+        assert_eq!(decide(&mail, &told(true), away, 5, NOW), Decision::Wait(NOW + 36_000));
         let work = Notice::new(address::work_day("2026-11-13"), Kind::Own(Row::WorkOver), "Work hours are over", "").relevant(Some(NOW + 7_200));
         assert_eq!(decide(&work, &told(false), away, 5, NOW), Decision::Wait(NOW + 7_200), "until the evening's leisure is over");
         let news = Notice::new(address::PORCH, Kind::Own(Row::Sites), "Your sites have news", "");
@@ -695,6 +729,13 @@ mod tests {
         let at_time = Notice::new(&block, Kind::Own(Row::Needs), "Lunch", "12:30");
         assert_eq!(heads_up.key(), at_time.key());
         assert_ne!(heads_up.key(), Notice::new(&block, Kind::Own(Row::Dates), "", "").key());
+        // Told on one device, dropped on the others (the owner's yes of 26 November 2026): by key and
+        // title, so that a meal's heads-up told elsewhere never drops its notice at its time.
+        assert_ne!(heads_up.told_id(), at_time.told_id());
+        assert_eq!(at_time.told_id(), at_time.clone().action("Options…", Act::Open { address: block.clone(), hint: String::new() }).told_id());
+        assert!(heads_up.told_once() && !heads_up.told_id().contains("Lunch"), "a digest, never its words");
+        let code = Notice::new("mid:code@example.org", Kind::Own(Row::Codes), "Code from example.org", "482913");
+        assert!(!code.told_once() && !Notice::new("mid:a@example.org", Kind::Mail, "One e-mail", "").told_once(), "each device tells what is to do; mail's own log settles mail");
         assert_eq!(block, "sioul:need/meal:lunch:2026-11-13");
         assert_eq!(address::site("proton/mail", "thread #4"), "sioul:site/proton%2Fmail#thread%20%234");
         assert_eq!(address::event("a/b", 1_794_000_000), "sioul:event/a%2Fb#1794000000");

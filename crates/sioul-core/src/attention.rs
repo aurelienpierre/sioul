@@ -169,8 +169,6 @@ pub enum Kind {
     Alarms,
     /// Sioul's own reminder before an event.
     Before,
-    /// An event, the working day before.
-    DayBefore,
     /// Dates asked, waits over, payments, papers and contracts, the money watch.
     Dates,
     /// Health's notices of a meal, a nap or the night.
@@ -194,13 +192,12 @@ pub enum Kind {
 }
 
 impl Kind {
-    pub const ALL: [Kind; 16] = [
+    pub const ALL: [Kind; 15] = [
         Kind::Codes,
         Kind::Doses,
         Kind::Wake,
         Kind::Alarms,
         Kind::Before,
-        Kind::DayBefore,
         Kind::Dates,
         Kind::Needs,
         Kind::Move,
@@ -220,7 +217,6 @@ impl Kind {
             Kind::Wake => "wake",
             Kind::Alarms => "alarms",
             Kind::Before => "before",
-            Kind::DayBefore => "day-before",
             Kind::Dates => "dates",
             Kind::Needs => "needs",
             Kind::Move => "move",
@@ -254,7 +250,7 @@ impl Kind {
     /// the end of work and the time running: those keep the hours' answer
     /// on every device.
     pub fn follows_devices(self) -> bool {
-        matches!(self, Kind::DayBefore | Kind::Dates | Kind::Sites | Kind::SitesLive | Kind::AppAutomatons | Kind::AppAtOnce)
+        matches!(self, Kind::Dates | Kind::Sites | Kind::SitesLive | Kind::AppAutomatons | Kind::AppAtOnce)
     }
 
     /// Its class of notice (docs/notifications.md, "Two classes"): what you
@@ -266,7 +262,7 @@ impl Kind {
         use crate::notice::Class;
         match self {
             Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms | Kind::SiteCalls => Some(Class::Actionable),
-            Kind::Before | Kind::DayBefore | Kind::Dates | Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Sites | Kind::SitesLive => Some(Class::Informative),
+            Kind::Before | Kind::Dates | Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Sites | Kind::SitesLive => Some(Class::Informative),
             Kind::Time | Kind::AppAutomatons | Kind::AppAtOnce => None,
         }
     }
@@ -276,7 +272,7 @@ impl Kind {
     pub fn group(self) -> &'static str {
         match self {
             Kind::Codes | Kind::Doses | Kind::Wake | Kind::Alarms => "asked",
-            Kind::Before | Kind::DayBefore | Kind::Dates => "reminders",
+            Kind::Before | Kind::Dates => "reminders",
             Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time => "day",
             Kind::Sites | Kind::SitesLive | Kind::SiteCalls => "sites",
             Kind::AppAutomatons | Kind::AppAtOnce => "apps",
@@ -284,8 +280,10 @@ impl Kind {
     }
 }
 
-/// How many rows the matrix has (`Row::ALL`).
-pub const ROWS: usize = 39;
+/// How many rows the matrix has (`Row::ALL`): 38 since 28 November 2026,
+/// when "Events, the working day before" (`day-before`, which nothing told
+/// since 13 November) was taken out (`config::migrate_attention`).
+pub const ROWS: usize = 38;
 
 /// A row of the matrix: a who on a channel, or a kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -325,7 +323,6 @@ impl Row {
         Row::Own(Kind::Wake),
         Row::Own(Kind::Alarms),
         Row::Own(Kind::Before),
-        Row::Own(Kind::DayBefore),
         Row::Own(Kind::Dates),
         Row::Own(Kind::Needs),
         Row::Own(Kind::Move),
@@ -338,7 +335,7 @@ impl Row {
         Row::Own(Kind::AppAtOnce),
     ];
 
-    /// "mail.safe", "calls.hidden", "messages.groups", "codes", "day-before".
+    /// "mail.safe", "calls.hidden", "messages.groups", "codes", "work-over".
     pub fn id(self) -> String {
         match self {
             Row::People(channel, person) => format!("{}.{}", channel.id(), person.id()),
@@ -571,7 +568,7 @@ pub fn usual(row: Row, column: Column) -> Level {
             Kind::Codes => Now,
             Kind::Doses | Kind::Wake | Kind::Time => Now,
             Kind::Alarms | Kind::Before => if matches!(column, Sleep | Free) { Event } else { Now },
-            Kind::DayBefore | Kind::Dates => if rests { Later } else { Now },
+            Kind::Dates => if rests { Later } else { Now },
             Kind::Needs => if rests { Never } else { Now },
             Kind::Move => if hours { Now } else { Never },
             Kind::WorkOver => if column == Work || rests { Never } else { Now },
@@ -607,7 +604,7 @@ pub fn choices(row: Row, column: Column) -> &'static [Level] {
             Kind::Wake => &[Now],
             Kind::Alarms | Kind::Before if column.ends() => &[Now, Event, Later],
             Kind::Alarms | Kind::Before => &[Now, Later],
-            Kind::DayBefore | Kind::Dates | Kind::SitesLive | Kind::SiteCalls | Kind::AppAtOnce => &[Now, Later],
+            Kind::Dates | Kind::SitesLive | Kind::SiteCalls | Kind::AppAtOnce => &[Now, Later],
             Kind::Needs | Kind::Move | Kind::WorkOver | Kind::Time => &[Now, Never],
             // At once too, from Settings ▸ What reaches you's "Sites and apps" (`behaviours::Group::Sites`).
             Kind::Sites => &[Now, Gathered, Later],
@@ -2048,7 +2045,7 @@ impl Settings {
 pub struct NotifySettings(pub BTreeMap<String, toml::Value>);
 
 impl NotifySettings {
-    /// A row's words, by its id ("day-before"; "Day_Before" too): a list of
+    /// A row's words, by its id ("work-over"; "Work_Over" too): a list of
     /// words, or one text of words separated by commas; none when not written.
     pub fn words(&self, row: &str) -> Option<Vec<String>> {
         let value = self.0.iter().find(|(key, _)| key.trim().to_ascii_lowercase().replace('_', "-") == row).map(|(_, v)| v)?;
@@ -2275,7 +2272,7 @@ fn older_notify(row: &str, column: Column) -> &'static str {
         "codes" => if matches!(column, Sleep | Pause) { "never" } else { "now" },
         "doses" | "wake" | "time" => "now",
         "alarms" | "before" => if matches!(column, Sleep | Free) { "event" } else { "now" },
-        "day-before" | "dates" => if held { "later" } else { "now" },
+        "dates" => if held { "later" } else { "now" },
         "needs" => if held { "never" } else { "now" },
         "move" => if hours { "now" } else { "never" },
         "work-over" => if column == Work || held { "never" } else { "now" },
@@ -3009,7 +3006,6 @@ mod tests {
             ("wake", "●●●●●●●●●"),
             ("alarms", "●●●●◐●◐●●"),
             ("before", "●●●●◐●◐●●"),
-            ("day-before", "●●●●○○○●●"),
             ("dates", "●●●●○○○●●"),
             ("needs", "●●●●–––●●"),
             ("move", "●●●●–––––"),
@@ -3043,7 +3039,9 @@ mod tests {
                 }
             }
         }
-        assert_eq!(Row::read("Day_Before"), Some(Row::Own(Kind::DayBefore)));
+        // "Events, the working day before", taken out on 28 November 2026 (nothing told it since 13 November).
+        assert_eq!((Row::read("day-before"), Row::read("Day_Before"), Kind::read("day-before")), (None, None, None));
+        assert_eq!(Row::read("Work_Over"), Some(Row::Own(Kind::WorkOver)));
     }
 
     #[test]
@@ -3185,7 +3183,9 @@ mod tests {
         // Codes are fixed at once everywhere (24 November 2026): an older "sleep:never" is left aside.
         assert_eq!((a.cell(row("codes"), Column::Sleep), a.cell(row("codes"), Column::Pause)), (Level::Now, Level::Now));
         assert_eq!((a.cell(row("messages.always"), Column::Dnd), a.cell(row("messages.always"), Column::Sleep)), (Level::Through, Level::As));
-        assert_eq!(a.cell(row("day-before"), Column::Free), Level::Now);
+        // The working day before's row, taken out on 28 November 2026: its words left aside, the rest read.
+        assert_eq!(Row::read("day_before"), None);
+        assert_eq!(a.cell(row("dates"), Column::Free), Level::Later);
         // A row that is no list is left aside, never the configuration.
         let odd: Config = toml::from_str("[attention]\n\"mail.safe\" = 3\n").unwrap();
         assert_eq!(Attention::of(&odd), Attention::usual());
@@ -4549,8 +4549,12 @@ mod tests {
     /// (`git show v0.0.12:crates/sioul-core/src/attention.rs`, `Person::read`
     /// and `Row::read`): its rows' ids, the 36 of its `Row::ALL`.
     mod v0_0_12 {
-        use crate::attention::Kind;
         use crate::reach::Channel;
+
+        /// Its kinds' ids (`Kind::ALL` of 0.0.12, which `day-before` was one of).
+        const KINDS: [&str; 16] = [
+            "codes", "doses", "wake", "alarms", "before", "day-before", "dates", "needs", "move", "work-over", "time", "sites", "sites-live", "site-calls", "app-automatons", "app-at-once",
+        ];
 
         pub const ROWS: [&str; 36] = [
             "mail.always", "mail.safe", "mail.neutral", "mail.restricted", "mail.stranger", "mail.blocked",
@@ -4585,7 +4589,8 @@ mod tests {
                 let (channel, who) = (Channel::read(channel)?, person(who)?);
                 return persons(channel).contains(&who).then(|| format!("{}.{who}", channel.id()));
             }
-            Kind::read(text).map(|k| k.id().to_string())
+            let kind = text.to_ascii_lowercase().replace('_', "-");
+            KINDS.into_iter().find(|k| *k == kind).map(str::to_string)
         }
 
         /// `Settings::words` of 0.0.12: the first key that reads as `row`.
@@ -4611,9 +4616,11 @@ mod tests {
         }
         for id in v0_0_12::ROWS {
             assert_eq!(v0_0_12::read(id).as_deref(), Some(id), "{id}");
-            assert_eq!(Row::read(id).map(Row::id).as_deref(), Some(id), "{id}: the same row here");
+            // The working day before's, taken out here on 28 November 2026 (`config::migrate_attention`).
+            let here = if id == "day-before" { None } else { Some(id) };
+            assert_eq!(Row::read(id).map(Row::id).as_deref(), here, "{id}: the same row here");
         }
-        assert_eq!(Row::ALL.len(), v0_0_12::ROWS.len() + new_rows.len(), "three rows more, none taken away");
+        assert_eq!(Row::ALL.len(), v0_0_12::ROWS.len() + new_rows.len() - 1, "three rows more, the working day before's taken away");
         let dir = std::env::temp_dir().join(format!("sioul-attention-older-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -4627,9 +4634,10 @@ mod tests {
         let config = Config::load(&path).unwrap();
         let settings = config.attention.clone().unwrap();
         // Read by 0.0.12: its rows take their own words only.
-        for id in v0_0_12::ROWS {
+        for id in v0_0_12::ROWS.into_iter().filter(|id| *id != "day-before") {
             assert_eq!(v0_0_12::words(&settings, id).is_some(), settings.words(id).is_some(), "{id}");
         }
+        assert!(v0_0_12::words(&settings, "day-before").is_none(), "never written here: as usual there");
         assert!(v0_0_12::words(&settings, "mail.safe").is_some() && v0_0_12::words(&settings, "calls.safe").is_none());
         // Written by 0.0.12 (a row of its own changed: `write_with` names its rows, `set_table` writes them): ours stay.
         let mut older = Attention::of(&config);
@@ -4644,6 +4652,52 @@ mod tests {
         crate::config::set_table(&path, "attention", &[("mail.safe".to_string(), None)], &[]).unwrap();
         let after = Attention::of(&Config::load(&path).unwrap());
         assert_eq!((after.cell(row("calls.people"), Column::Pause), after.cell(row("mail.safe"), Column::Meals)), (Level::Later, Level::Now));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The row "Events, the working day before" taken out (the owner's yes of
+    /// 26 November 2026; the settings' format 4, `config::migrate_attention`),
+    /// with a device on 608d8521 beside, whose rows are 0.0.12's and Your
+    /// people's (its `Kind::ALL` holds `day-before`, as `v0_0_12::read` does):
+    /// its row read here is left aside, the rest read; the migration takes it
+    /// out once, every other key and comment kept; the older device then
+    /// reads its own row as usual (unwritten) and the others as written,
+    /// passing over the format; its row written back later is kept here,
+    /// unread, by our writes of the table, and never taken out again.
+    #[test]
+    fn the_working_day_before_s_row_goes_once_beside_an_older_sioul() {
+        let dir = std::env::temp_dir().join(format!("sioul-attention-day-before-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        // As 608d8521 writes it: format 3, the row changed, another row and a comment.
+        let older = "format = 3\nlanguage = \"en\"\n\n[attention]\n# mine\n\"mail.safe\" = [\"work\", \"admin\", \"leisure:quiet\", \"meals\", \"sleep:later\", \"pause:later\", \"free:later\", \"slot\", \"dnd:quiet\"]\n\"day-before\" = [\"work\", \"admin\", \"leisure\", \"meals\", \"sleep\", \"pause:later\", \"free:later\", \"slot\", \"dnd\"]\ndates = [\"work\", \"admin\", \"leisure\", \"meals\", \"sleep:later\", \"pause:later\", \"free\", \"slot\", \"dnd\"]\n";
+        std::fs::write(&path, older).unwrap();
+        let before = Attention::of(&Config::load(&path).unwrap());
+        assert_eq!((before.cell(row("mail.safe"), Column::Leisure), before.cell(row("dates"), Column::Free)), (Level::Quiet, Level::Now), "the rest read");
+        assert!(crate::config::migrate_attention(&path).unwrap());
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("day-before") && text.contains("# mine") && text.contains("\"mail.safe\"") && text.contains("dates = "), "{text}");
+        let config = Config::load(&path).unwrap();
+        assert_eq!((config.format, Attention::of(&config)), (Some(crate::config::FORMAT), before.clone()), "nothing else moved");
+        assert!(!crate::config::migrate_attention(&path).unwrap(), "once");
+        // Read by the device on 608d8521: its row of the working day before unwritten (as usual there), the others as written.
+        let settings = config.attention.clone().unwrap();
+        assert!(v0_0_12::words(&settings, "day-before").is_none() && v0_0_12::words(&settings, "mail.safe").is_some() && v0_0_12::words(&settings, "dates").is_some());
+        // It writes its row back (its `write_with`, through `config::set_table`): kept here, unread, never taken out again.
+        crate::config::set_table(&path, "attention", &[("day-before".to_string(), Some(vec!["work".to_string(), "sleep".to_string()]))], &[]).unwrap();
+        assert!(!crate::config::migrate_attention(&path).unwrap());
+        assert_eq!(Attention::of(&Config::load(&path).unwrap()), before);
+        // Ours written meanwhile: its key stays where it is.
+        let words = |w: &[&str]| SettingValue::Texts(w.iter().map(|s| s.to_string()).collect());
+        apply(&path, &Config::load(&path).unwrap(), "attention.dates", &words(&["sleep"])).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("day-before = [\"work\", \"sleep\"]"), "{text}");
+        assert_eq!(Attention::of(&Config::load(&path).unwrap()).cell(row("dates"), Column::Sleep), Level::Now);
+        // A key written by hand ("Day_Before") goes too, before format 4.
+        std::fs::write(&path, "[attention]\nDay_Before = [\"free\"]\n").unwrap();
+        assert!(crate::config::migrate_attention(&path).unwrap());
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("Day_Before"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -32,7 +32,8 @@ import org.json.JSONObject;
  *   notice and never before one, Sioul's own post or cancel counted at once;
  *   the background card's and the time running's groups summed too;
  * - Notices.alerts: a code and new mail on its channel that passes ring
- *   each time, never as a silent update;
+ *   each time, never as a silent update; but a code from a sender that
+ *   rang less than two minutes ago, silent in the shade (Notices.codeSilent);
  * - Notices.channelOf: the class's channel, the twin that passes only for
  *   something to do that pierces while one of Sioul's modes is on;
  * - EventAlarms.tapped, fresh: taps kept apart, each once, none older than
@@ -139,6 +140,19 @@ public final class NoticesCheck
         expect("new mail of someone Always through, in a mode: rings each time", Notices.alerts(through), true);
         Notices.Said usual = MailNotes.said(new JSONObject().put("title", "One e-mail").put("open", "mid:a@example.org"), five, now + 3_600_000);
         expect("new mail as usual: once", Notices.alerts(usual), false);
+
+        // One sound per sender of codes per two minutes, the rest silent in the shade (the owner's yes of 26 November 2026).
+        java.util.Map<String, Long> rung = new java.util.HashMap<>();
+        expect("a sender's first code rings", Notices.codeSilent(rung, "Code from 36123", now), false);
+        expect("its second, a minute on: silent", Notices.codeSilent(rung, "Code from 36123", now + 60_000), true);
+        expect("another sender meanwhile rings", Notices.codeSilent(rung, "A code in Message", now + 61_000), false);
+        expect("its third, a moment under two minutes after the first: silent", Notices.codeSilent(rung, "Code from 36123", now + Notices.CODE_SOUND_EVERY_MS - 1), true);
+        expect("two minutes after the one that rang: rings again", Notices.codeSilent(rung, "Code from 36123", now + Notices.CODE_SOUND_EVERY_MS), false);
+        expect("a clock set back forgets: rings", Notices.codeSilent(rung, "A code in Message", now), false);
+        String posting = code(read(Paths.get(System.getProperty("sioul.root"), "android", "package", "src", "com", "aurelienpierre", "sioul", "Notices.java")));
+        expect("a code's notice alone, silent in the shade, never cancelled then posted anew",
+               posting.contains("boolean silent = CODES.equals(said.kind) && codeSilentNow(said.title, now);") && posting.contains("boolean alerts = alerts(said) && !silent;") && posting.contains(".setGroupAlertBehavior(silent ? Notification.GROUP_ALERT_SUMMARY : Notification.GROUP_ALERT_CHILDREN)"), true);
+        expect("a code's kind as Rust says it", Notices.CODES, new JSONObject(CODE).getString("kind"));
 
         // The taps: each kept apart, once, five minutes at most.
         JSONArray taps = new JSONArray();

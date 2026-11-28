@@ -5548,6 +5548,10 @@ impl qobject::Sioul {
         }
         // The single share of your availability of before, read once as an availability of the list.
         crate::mirrors::migrate_at_start();
+        // The matrix's row of the working day before, taken out of `[attention]` once (format 4).
+        if let Err(e) = config::migrate_attention(&config_path()) {
+            eprintln!("{e}");
+        }
         // The call-back switches of Porch ⚙ ▸ Calls of before, carried once into their presets.
         if let Err(e) = config::migrate_presets(&config_path()) {
             eprintln!("{e}");

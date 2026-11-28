@@ -19,6 +19,12 @@
 //!   key: a reminder offered again each minute keeps the end it had); its
 //!   source's mark (`Claim`: a reminder's claim, the end of work's day told,
 //!   the sites' news named) made only once it is posted.
+//! - **Told elsewhere**: a notice to know of Sioul's own that another device
+//!   told meanwhile (a meal, the night, the end of work: a phone tells them
+//!   while nobody is at a computer) is dropped here, never told twice
+//!   (`Notice::told_once`, the devices' told logs, `told_elsewhere`); each
+//!   one this computer tells is said in its own told log for the others
+//!   (`say_told`; the owner's yes of 26 November 2026).
 //! - **The posting**: `sioul_sync::notify::Teller`, one thread and one
 //!   connection for every notice of the process; on Windows, a notice with
 //!   something to open goes through Sioul's icon in the tray instead, whose
@@ -122,10 +128,31 @@ struct Waiting {
     claim: Option<Claim>,
 }
 
-/// The notices waiting (`Fate::Waits`), one per key, and the end of
-/// relevance each key had when it first waited.
+/// The notices waiting (`Fate::Waits`), one per key, the end of relevance
+/// each key had when it first waited, and when it first waited (Unix
+/// seconds: another device's telling of it from a little before counts).
 static WAITING: Mutex<Vec<Waiting>> = Mutex::new(Vec::new());
 static RELEVANT: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
+static SINCE: Mutex<Vec<(String, i64)>> = Mutex::new(Vec::new());
+
+/// Whether another device told `notice` from `since` (Unix seconds, when it
+/// came due here) less `notice::TOLD_BEFORE` on, as the devices' told logs
+/// carried by the sharing say (`mailnote::notices_told_elsewhere`). For both
+/// a computer's notices and a phone's (`eventalarms::day_note`).
+pub(crate) fn told_elsewhere(notice: &Notice, since: i64) -> bool {
+    notice.told_once() && sioul_core::mailnote::notices_told_elsewhere(&sioul_core::notices::folder(), &crate::notices::here_id(), (since - notice::TOLD_BEFORE) * 1000).contains(&notice.told_id())
+}
+
+/// `notice` told here: said in this device's told log, for the others to
+/// drop their copy (`told_elsewhere`); only a notice to know of Sioul's own.
+pub(crate) fn say_told(notice: &Notice) {
+    if !notice.told_once() {
+        return;
+    }
+    if let Err(e) = sioul_core::mailnote::say_notices_told(&sioul_core::notices::folder(), &crate::notices::here_id(), &[notice.told_id()], jiff::Timestamp::now().as_millisecond()) {
+        eprintln!("sioul: a notice told: {e}");
+    }
+}
 
 /// Tells `notice` as the matrix says now: of its kind's row for one of
 /// Sioul's own; as its source decided for new mail and the minor notices.
@@ -163,12 +190,18 @@ pub(crate) fn tell_with(mut notice: Notice, out: Output, mut settled: Option<Set
     }
     match notice::decide(&notice, &out, moment(), load_config().notices.minutes(), now) {
         Decision::Post(shape) => {
+            // Told on another device meanwhile (a phone, while nobody was here): not told twice.
+            let since = SINCE.lock().unwrap_or_else(PoisonError::into_inner).iter().find(|(k, _)| *k == key).map_or(now, |(_, at)| *at);
             forget(&key);
+            if told_elsewhere(&notice, since) {
+                return Fate::Dropped;
+            }
             if let Some(claim) = claim
                 && !claim()
             {
                 return Fate::Dropped;
             }
+            say_told(&notice);
             post(notice, shape, settled);
             Fate::Posted
         }
@@ -176,8 +209,12 @@ pub(crate) fn tell_with(mut notice: Notice, out: Output, mut settled: Option<Set
             {
                 let mut first = RELEVANT.lock().unwrap_or_else(PoisonError::into_inner);
                 first.retain(|(_, at)| *at > now);
+                let mut since = SINCE.lock().unwrap_or_else(PoisonError::into_inner);
+                since.retain(|(k, _)| first.iter().any(|(kept, _)| kept == k));
                 if !first.iter().any(|(k, _)| *k == key) {
                     first.push((key.clone(), relevant));
+                    since.retain(|(k, _)| *k != key);
+                    since.push((key.clone(), now));
                 }
             }
             if keep {
@@ -202,6 +239,7 @@ pub(crate) fn tell_with(mut notice: Notice, out: Output, mut settled: Option<Set
 fn forget(key: &str) {
     WAITING.lock().unwrap_or_else(PoisonError::into_inner).retain(|w| w.notice.key() != key);
     RELEVANT.lock().unwrap_or_else(PoisonError::into_inner).retain(|(k, _)| k != key);
+    SINCE.lock().unwrap_or_else(PoisonError::into_inner).retain(|(k, _)| k != key);
 }
 
 /// At the window's minute: what waits told again, as the moment now lets it
@@ -314,5 +352,42 @@ fn given(token: &str) {
 fn verb(qt: &QtThread, word: &str) {
     if let Some(code) = word.strip_prefix("read-language:") {
         crate::languages::read_also(qt, code);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The owner's yes of 26 November 2026 (notifications, 6): a notice to
+    /// know that another device told (a phone, while this computer sat idle)
+    /// is dropped here when it comes due here within `TOLD_BEFORE` of it, or
+    /// waited here since; the same notice another day is told; a heads-up of
+    /// the same block, another title, is not that one; what this device says
+    /// it told is never read as another's; what is to do, and mail, are
+    /// never dropped for it. On a phone, `eventalarms::day_note` asks the same.
+    #[test]
+    fn a_notice_told_on_another_device_is_dropped_here() {
+        sioul_core::config::stand_ins_only();
+        let folder = sioul_core::notices::folder();
+        let other = "0b5e11a2-0000-4000-8000-00000000abcd";
+        let _ = std::fs::remove_file(sioul_core::mailnote::told_file(&folder, other));
+        let night = Notice::new(notice::address::need("sleep"), notice::Kind::Own(Row::Needs), "Wind down", "22:30");
+        let now = jiff::Timestamp::now().as_second();
+        assert!(!told_elsewhere(&night, now));
+        sioul_core::mailnote::say_notices_told(&folder, other, &[night.told_id()], now * 1000).unwrap();
+        assert!(told_elsewhere(&night, now), "told there just now");
+        assert!(told_elsewhere(&night, now + notice::TOLD_BEFORE - 60), "come due here a little after");
+        assert!(!told_elsewhere(&night, now + notice::TOLD_BEFORE + 60), "told long before it came due here: another one");
+        let heads_up = Notice::new(notice::address::need("sleep"), notice::Kind::Own(Row::Needs), "No new big task", "Wind down at 22:30");
+        assert!(!told_elsewhere(&heads_up, now), "the same block's heads-up");
+        say_told(&heads_up);
+        assert!(!told_elsewhere(&heads_up, now), "this device's own word");
+        let code = Notice::new("mid:c@example.org", notice::Kind::Own(Row::Codes), "Wind down", "22:30");
+        let mail = Notice::new("mid:m@example.org", notice::Kind::Mail, "Wind down", "22:30");
+        sioul_core::mailnote::say_notices_told(&folder, other, &[code.told_id(), mail.told_id()], now * 1000).unwrap();
+        assert!(!told_elsewhere(&code, now) && !told_elsewhere(&mail, now), "what is to do and mail: each device's");
+        let _ = std::fs::remove_file(sioul_core::mailnote::told_file(&folder, other));
+        let _ = std::fs::remove_file(sioul_core::mailnote::told_file(&folder, &crate::notices::here_id()));
     }
 }
